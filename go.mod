@@ -7,7 +7,7 @@ require (
 	github.com/docker/libcontainer v2.2.1+incompatible
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
 	github.com/go-gost/gost v0.0.0-20220312160816-bfc1f8472cc2
-	github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314122048-c282e69ffdc6
+	github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314141206-42f72adde0ee
 	github.com/go-gost/metrics v0.0.0-20220314135054-2263ae431a5f
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
 	github.com/go-gost/tls-dissector v0.0.2-0.20211125135007-2b5d5bd9c07e

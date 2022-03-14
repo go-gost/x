@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/go-gost/gost/v3/pkg/common/admission"
+	admission "github.com/go-gost/gost/v3/pkg/admission/wrapper"
 	"github.com/go-gost/gost/v3/pkg/listener"
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
