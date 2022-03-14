@@ -2,19 +2,19 @@ module github.com/go-gost/x
 
 go 1.18
 
-replace github.com/templexxx/cpu v0.0.7 => github.com/templexxx/cpu v0.0.10-0.20211111114238-98168dcec14a
-
 require (
 	github.com/LiamHaworth/go-tproxy v0.0.0-20190726054950-ef7efd7f24ed
 	github.com/docker/libcontainer v2.2.1+incompatible
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
+	github.com/go-gost/gost v0.0.0-20220312160816-bfc1f8472cc2
 	github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314122048-c282e69ffdc6
+	github.com/go-gost/metrics v0.0.0-20220314135054-2263ae431a5f
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
 	github.com/go-gost/tls-dissector v0.0.2-0.20211125135007-2b5d5bd9c07e
 	github.com/golang/snappy v0.0.4
 	github.com/gorilla/websocket v1.5.0
 	github.com/lucas-clemente/quic-go v0.25.0
-	github.com/miekg/dns v1.1.26
+	github.com/miekg/dns v1.1.45
 	github.com/milosgajdos/tenus v0.0.3
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
@@ -49,7 +49,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mmcloughlin/avo v0.0.0-20200803215136-443f81d77104 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/onsi/ginkgo v1.16.4 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -60,12 +60,12 @@ require (
 	github.com/templexxx/cpu v0.0.7 // indirect
 	github.com/templexxx/xorsimd v0.4.1 // indirect
 	github.com/tjfoc/gmsm v1.3.2 // indirect
-	golang.org/x/mod v0.4.2 // indirect
+	golang.org/x/mod v0.5.1 // indirect
 	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	golang.org/x/tools v0.1.1 // indirect
+	golang.org/x/tools v0.1.9 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
+	google.golang.org/genproto v0.0.0-20220126215142-9970aeb2e350 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

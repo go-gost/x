@@ -7,11 +7,11 @@ import (
 	"net/http/httputil"
 
 	"github.com/go-gost/gost/v3/pkg/common/admission"
-	"github.com/go-gost/gost/v3/pkg/common/metrics"
 	"github.com/go-gost/gost/v3/pkg/listener"
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
+	metrics "github.com/go-gost/metrics/wrapper"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	"github.com/gorilla/websocket"
 	"github.com/xtaci/smux"

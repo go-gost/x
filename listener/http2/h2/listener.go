@@ -8,11 +8,11 @@ import (
 	"net/http/httputil"
 
 	"github.com/go-gost/gost/v3/pkg/common/admission"
-	"github.com/go-gost/gost/v3/pkg/common/metrics"
 	"github.com/go-gost/gost/v3/pkg/listener"
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
+	metrics "github.com/go-gost/metrics/wrapper"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
