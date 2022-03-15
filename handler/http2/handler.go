@@ -24,7 +24,6 @@ import (
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
-	http2_util "github.com/go-gost/x/internal/util/http2"
 )
 
 func init() {
@@ -76,13 +75,18 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	cc, ok := conn.(*http2_util.ServerConn)
-	if !ok {
+	v, ok := conn.(md.Metadatable)
+	if !ok || v == nil {
 		err := errors.New("wrong connection type")
 		log.Error(err)
 		return err
 	}
-	return h.roundTrip(ctx, cc.Writer(), cc.Request(), log)
+	md := v.GetMetadata()
+	return h.roundTrip(ctx,
+		md.Get("w").(http.ResponseWriter),
+		md.Get("r").(*http.Request),
+		log,
+	)
 }
 
 // NOTE: there is an issue (golang/go#43989) will cause the client hangs

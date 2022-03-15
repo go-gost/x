@@ -5,12 +5,17 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	mdata "github.com/go-gost/gost/v3/pkg/metadata"
 )
 
 // a dummy HTTP2 server conn used by HTTP2 handler
 type conn struct {
+	md     mdata.Metadata
 	r      *http.Request
 	w      http.ResponseWriter
+	laddr  net.Addr
+	raddr  net.Addr
 	closed chan struct{}
 }
 
@@ -32,13 +37,11 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) LocalAddr() net.Addr {
-	addr, _ := net.ResolveTCPAddr("tcp", c.r.Host)
-	return addr
+	return c.raddr
 }
 
 func (c *conn) RemoteAddr() net.Addr {
-	addr, _ := net.ResolveTCPAddr("tcp", c.r.RemoteAddr)
-	return addr
+	return c.raddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
@@ -51,4 +54,13 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (c *conn) Done() <-chan struct{} {
+	return c.closed
+}
+
+// GetMetadata implements metadata.Metadatable interface.
+func (c *conn) GetMetadata() mdata.Metadata {
+	return c.md
 }

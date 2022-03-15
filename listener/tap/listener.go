@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-gost/gost/v3/pkg/listener"
 	"github.com/go-gost/gost/v3/pkg/logger"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
-	tap_util "github.com/go-gost/x/internal/util/tap"
+	metrics "github.com/go-gost/metrics/wrapper"
 )
 
 func init() {
@@ -15,26 +15,28 @@ func init() {
 }
 
 type tapListener struct {
-	saddr  string
-	addr   net.Addr
-	cqueue chan net.Conn
-	closed chan struct{}
-	logger logger.Logger
-	md     metadata
+	saddr   string
+	addr    net.Addr
+	cqueue  chan net.Conn
+	closed  chan struct{}
+	logger  logger.Logger
+	md      metadata
+	options listener.Options
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
-	options := &listener.Options{}
+	options := listener.Options{}
 	for _, opt := range opts {
-		opt(options)
+		opt(&options)
 	}
 	return &tapListener{
-		saddr:  options.Addr,
-		logger: options.Logger,
+		saddr:   options.Addr,
+		logger:  options.Logger,
+		options: options,
 	}
 }
 
-func (l *tapListener) Init(md md.Metadata) (err error) {
+func (l *tapListener) Init(md mdata.Metadata) (err error) {
 	if err = l.parseMetadata(md); err != nil {
 		return
 	}
@@ -64,9 +66,18 @@ func (l *tapListener) Init(md md.Metadata) (err error) {
 	l.cqueue = make(chan net.Conn, 1)
 	l.closed = make(chan struct{})
 
-	conn := tap_util.NewConn(l.md.config, ifce, l.addr, &net.IPAddr{IP: ip})
+	var c net.Conn
+	c = &conn{
+		ifce:  ifce,
+		laddr: l.addr,
+		raddr: &net.IPAddr{IP: ip},
+	}
+	c = metrics.WrapConn(l.options.Service, c)
+	c = withMetadata(mdata.MapMetadata{
+		"config": l.md.config,
+	}, c)
 
-	l.cqueue <- conn
+	l.cqueue <- c
 
 	return
 }

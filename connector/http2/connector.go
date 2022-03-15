@@ -16,7 +16,6 @@ import (
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
-	http2_util "github.com/go-gost/x/internal/util/http2"
 )
 
 func init() {
@@ -52,9 +51,9 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 	})
 	log.Infof("connect %s/%s", address, network)
 
-	cc, ok := conn.(*http2_util.ClientConn)
-	if !ok {
-		err := errors.New("wrong connection type")
+	v, _ := conn.(md.Metadatable)
+	if v == nil {
+		err := errors.New("http2: wrong connection type")
 		log.Error(err)
 		return nil, err
 	}
@@ -91,10 +90,11 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	resp, err := cc.Client().Do(req.WithContext(ctx))
+	client := v.GetMetadata().Get("client").(*http.Client)
+	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		log.Error(err)
-		cc.Close()
+		conn.Close()
 		return nil, err
 	}
 

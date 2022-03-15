@@ -11,7 +11,6 @@ import (
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
 	metrics "github.com/go-gost/metrics/wrapper"
-	http2_util "github.com/go-gost/x/internal/util/http2"
 	"golang.org/x/net/http2"
 )
 
@@ -108,7 +107,15 @@ func (l *http2Listener) Close() (err error) {
 
 func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 	raddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
-	conn := http2_util.NewServerConn(w, r, l.addr, raddr)
+	conn := &conn{
+		laddr:  l.addr,
+		raddr:  raddr,
+		closed: make(chan struct{}),
+		md: md.MapMetadata{
+			"r": r,
+			"w": w,
+		},
+	}
 	select {
 	case l.cqueue <- conn:
 	default:

@@ -12,7 +12,6 @@ import (
 	"github.com/go-gost/gost/v3/pkg/logger"
 	md "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
-	http2_util "github.com/go-gost/x/internal/util/http2"
 )
 
 func init() {
@@ -90,12 +89,19 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 		d.clients[address] = client
 	}
 
-	return http2_util.NewClientConn(
-		&net.TCPAddr{}, raddr,
-		client,
-		func() {
+	var c net.Conn
+	c = &conn{
+		localAddr:  &net.TCPAddr{},
+		remoteAddr: raddr,
+		onClose: func() {
 			d.clientMutex.Lock()
 			defer d.clientMutex.Unlock()
 			delete(d.clients, address)
-		}), nil
+		},
+	}
+	c = withMetadata(md.MapMetadata{
+		"client": client,
+	}, c)
+
+	return c, nil
 }

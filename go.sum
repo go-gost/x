@@ -112,6 +112,10 @@ github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314122048-c282e69ffdc6 h1:epQ9S
 github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314122048-c282e69ffdc6/go.mod h1:Hv/IAKyc+9uEGQT5DPWsnqgAFEp4Or7uOxFawr6ghjM=
 github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314141206-42f72adde0ee h1:p+KM6ZUggiPnxa9l9lP+bsGjO52smX73wPeHlf5xR+E=
 github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220314141206-42f72adde0ee/go.mod h1:hq4/YM+Vki2ODyhMCk59IwvFJks1sAYhHGnivz+6Ono=
+github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220315022357-2e40afe53584 h1:TfVYWYW0Oyg5ojvWFVO/Vux6Ht9wt7x1HDOv09nsS1Q=
+github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220315022357-2e40afe53584/go.mod h1:S4iyROMDN6+OvvrALvHyoV/lBswp7ExC1DS5go7woLM=
+github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220315024338-20e7528b2588 h1:2RxUmbtz1Rz0qfzxmmfGqo61EhnY4L908LFW4nTQT1I=
+github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220315024338-20e7528b2588/go.mod h1:S4iyROMDN6+OvvrALvHyoV/lBswp7ExC1DS5go7woLM=
 github.com/go-gost/metrics v0.0.0-20220314135054-2263ae431a5f h1:gNquUvOvPXUpq4Xk7ed7motbVN5t0HMqImf96k+pzlU=
 github.com/go-gost/metrics v0.0.0-20220314135054-2263ae431a5f/go.mod h1:Ac2Pigx5GMJEznkP9wLdBJ36+rYwWiJPqWk7lrg3FKg=
 github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7 h1:itaaJhQJ19kUXEB4Igb0EbY8m+1Py2AaNNSBds/9gk4=

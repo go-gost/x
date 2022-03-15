@@ -84,8 +84,8 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	log := h.options.Logger
 
-	cc, ok := conn.(*tun_util.Conn)
-	if !ok || cc.Config() == nil {
+	v, _ := conn.(md.Metadatable)
+	if v == nil {
 		err := errors.New("tun: wrong connection type")
 		log.Error(err)
 		return err
@@ -121,7 +121,8 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log.Infof("%s >> %s", conn.RemoteAddr(), target.Addr)
 	}
 
-	h.handleLoop(ctx, conn, raddr, cc.Config(), log)
+	config := v.GetMetadata().Get("config").(*tun_util.Config)
+	h.handleLoop(ctx, conn, raddr, config, log)
 	return nil
 }
 

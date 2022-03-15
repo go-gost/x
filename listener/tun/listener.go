@@ -3,11 +3,11 @@ package tun
 import (
 	"net"
 
+	"github.com/go-gost/gost/pkg/common/metrics"
 	"github.com/go-gost/gost/v3/pkg/listener"
 	"github.com/go-gost/gost/v3/pkg/logger"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/gost/v3/pkg/metadata"
 	"github.com/go-gost/gost/v3/pkg/registry"
-	tun_util "github.com/go-gost/x/internal/util/tun"
 )
 
 func init() {
@@ -34,7 +34,7 @@ func NewListener(opts ...listener.Option) listener.Listener {
 	}
 }
 
-func (l *tunListener) Init(md md.Metadata) (err error) {
+func (l *tunListener) Init(md mdata.Metadata) (err error) {
 	if err = l.parseMetadata(md); err != nil {
 		return
 	}
@@ -64,9 +64,18 @@ func (l *tunListener) Init(md md.Metadata) (err error) {
 	l.cqueue = make(chan net.Conn, 1)
 	l.closed = make(chan struct{})
 
-	conn := tun_util.NewConn(l.md.config, ifce, l.addr, &net.IPAddr{IP: ip})
+	var c net.Conn
+	c = &conn{
+		ifce:  ifce,
+		laddr: l.addr,
+		raddr: &net.IPAddr{IP: ip},
+	}
+	c = metrics.WrapConn(l.options.Service, c)
+	c = withMetadata(mdata.MapMetadata{
+		"config": l.md.config,
+	}, c)
 
-	l.cqueue <- conn
+	l.cqueue <- c
 
 	return
 }
