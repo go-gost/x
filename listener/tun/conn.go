@@ -52,6 +52,11 @@ type metadataConn struct {
 	md mdata.Metadata
 }
 
+// GetMetadata implements metadata.Metadatable interface.
+func (c *metadataConn) GetMetadata() mdata.Metadata {
+	return c.md
+}
+
 func withMetadata(md mdata.Metadata, c net.Conn) net.Conn {
 	return &metadataConn{
 		Conn: c,

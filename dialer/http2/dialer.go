@@ -98,10 +98,8 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 			defer d.clientMutex.Unlock()
 			delete(d.clients, address)
 		},
+		md: md.MapMetadata{"client": client},
 	}
-	c = withMetadata(md.MapMetadata{
-		"client": client,
-	}, c)
 
 	return c, nil
 }
