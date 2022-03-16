@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/dialer"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
+	"github.com/go-gost/core/dialer"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"golang.org/x/crypto/ssh"
 )

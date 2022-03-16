@@ -5,10 +5,9 @@ go 1.18
 require (
 	github.com/LiamHaworth/go-tproxy v0.0.0-20190726054950-ef7efd7f24ed
 	github.com/docker/libcontainer v2.2.1+incompatible
+	github.com/go-gost/core v0.0.0-20220316114029-7db81fcfeb66
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
-	github.com/go-gost/gost v0.0.0-20220312160816-bfc1f8472cc2
-	github.com/go-gost/gost/v3 v3.0.0-alpha.3.0.20220315024338-20e7528b2588
-	github.com/go-gost/metrics v0.0.0-20220314135054-2263ae431a5f
+	github.com/go-gost/metrics v0.0.0-20220316114656-e95ab1c62ea8
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
 	github.com/go-gost/tls-dissector v0.0.2-0.20211125135007-2b5d5bd9c07e
 	github.com/golang/snappy v0.0.4
@@ -61,11 +60,10 @@ require (
 	github.com/templexxx/xorsimd v0.4.1 // indirect
 	github.com/tjfoc/gmsm v1.3.2 // indirect
 	golang.org/x/mod v0.5.1 // indirect
-	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
+	golang.org/x/sys v0.0.0-20220315194320-039c03cc5b86 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.9 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20220126215142-9970aeb2e350 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

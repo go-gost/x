@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/logger"
+	"github.com/go-gost/core/logger"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
 	"google.golang.org/grpc/peer"
 )

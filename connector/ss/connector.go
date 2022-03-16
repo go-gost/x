@@ -6,11 +6,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/common/bufpool"
+	"github.com/go-gost/core/connector"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	"github.com/go-gost/gosocks5"
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
-	"github.com/go-gost/gost/v3/pkg/connector"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
 	"github.com/go-gost/x/internal/util/ss"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 )

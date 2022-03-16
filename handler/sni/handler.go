@@ -11,12 +11,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/chain"
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
-	netpkg "github.com/go-gost/gost/v3/pkg/common/net"
-	"github.com/go-gost/gost/v3/pkg/handler"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
+	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/common/bufpool"
+	netpkg "github.com/go-gost/core/common/net"
+	"github.com/go-gost/core/handler"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	dissector "github.com/go-gost/tls-dissector"
 )
 

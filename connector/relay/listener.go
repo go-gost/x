@@ -5,7 +5,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/go-gost/gost/v3/pkg/logger"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 )

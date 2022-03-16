@@ -7,8 +7,8 @@ import (
 	"net"
 	"time"
 
-	netpkg "github.com/go-gost/gost/v3/pkg/common/net"
-	"github.com/go-gost/gost/v3/pkg/logger"
+	netpkg "github.com/go-gost/core/common/net"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 )
 

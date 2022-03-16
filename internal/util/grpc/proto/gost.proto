@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "github.com/go-gost/gost/v3/pkg/common/util/grpc/proto";
+option go_package = "github.com/go-gost/core/common/util/grpc/proto";
 
 message Chunk {
   bytes data = 1;

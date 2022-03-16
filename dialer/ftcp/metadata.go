@@ -3,7 +3,7 @@ package ftcp
 import (
 	"time"
 
-	md "github.com/go-gost/gost/v3/pkg/metadata"
+	md "github.com/go-gost/core/metadata"
 )
 
 const (

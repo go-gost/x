@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/chain"
-	"github.com/go-gost/gost/v3/pkg/handler"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
+	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/handler"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	"github.com/go-gost/relay"
 )
 

@@ -5,10 +5,10 @@ package pht
 import (
 	"net"
 
-	"github.com/go-gost/gost/v3/pkg/listener"
-	"github.com/go-gost/gost/v3/pkg/logger"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
+	"github.com/go-gost/core/listener"
+	"github.com/go-gost/core/logger"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	metrics "github.com/go-gost/metrics/wrapper"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 )

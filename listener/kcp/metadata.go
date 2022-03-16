@@ -3,7 +3,7 @@ package kcp
 import (
 	"encoding/json"
 
-	mdata "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/core/metadata"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
 )
 

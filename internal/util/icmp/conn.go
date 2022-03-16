@@ -8,8 +8,8 @@ import (
 	"net"
 	"sync/atomic"
 
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
-	"github.com/go-gost/gost/v3/pkg/logger"
+	"github.com/go-gost/core/common/bufpool"
+	"github.com/go-gost/core/logger"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )

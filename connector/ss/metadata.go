@@ -3,7 +3,7 @@ package ss
 import (
 	"time"
 
-	mdata "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/core/metadata"
 )
 
 type metadata struct {

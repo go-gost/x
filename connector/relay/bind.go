@@ -6,9 +6,9 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/go-gost/gost/v3/pkg/common/util/udp"
-	"github.com/go-gost/gost/v3/pkg/connector"
-	"github.com/go-gost/gost/v3/pkg/logger"
+	"github.com/go-gost/core/common/util/udp"
+	"github.com/go-gost/core/connector"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 	relay_util "github.com/go-gost/x/internal/util/relay"

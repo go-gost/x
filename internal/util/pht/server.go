@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
-	"github.com/go-gost/gost/v3/pkg/logger"
+	"github.com/go-gost/core/common/bufpool"
+	"github.com/go-gost/core/logger"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/rs/xid"

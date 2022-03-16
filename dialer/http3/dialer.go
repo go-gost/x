@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/go-gost/gost/v3/pkg/dialer"
-	md "github.com/go-gost/gost/v3/pkg/metadata"
-	"github.com/go-gost/gost/v3/pkg/registry"
+	"github.com/go-gost/core/dialer"
+	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/registry"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"

@@ -3,8 +3,8 @@ package ssh
 import (
 	"io/ioutil"
 
-	tls_util "github.com/go-gost/gost/v3/pkg/common/util/tls"
-	mdata "github.com/go-gost/gost/v3/pkg/metadata"
+	tls_util "github.com/go-gost/core/common/util/tls"
+	mdata "github.com/go-gost/core/metadata"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"golang.org/x/crypto/ssh"
 )

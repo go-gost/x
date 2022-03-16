@@ -4,7 +4,7 @@ import (
 	"net"
 
 	"github.com/LiamHaworth/go-tproxy"
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
+	"github.com/go-gost/core/common/bufpool"
 )
 
 func (l *redirectListener) listenUDP(addr *net.UDPAddr) (*net.UDPConn, error) {

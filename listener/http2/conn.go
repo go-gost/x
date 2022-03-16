@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	mdata "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/core/metadata"
 )
 
 // a dummy HTTP2 server conn used by HTTP2 handler

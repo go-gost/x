@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"net"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
 )
 
 type udpTunConn struct {

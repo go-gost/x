@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gost/gost/v3/pkg/common/bufpool"
+	"github.com/go-gost/core/common/bufpool"
 )
 
 type redirConn struct {

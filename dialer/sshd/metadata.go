@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	mdata "github.com/go-gost/gost/v3/pkg/metadata"
+	mdata "github.com/go-gost/core/metadata"
 	"golang.org/x/crypto/ssh"
 )
 

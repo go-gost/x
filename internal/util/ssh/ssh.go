@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/go-gost/gost/v3/pkg/auth"
+	"github.com/go-gost/core/auth"
 	"golang.org/x/crypto/ssh"
 )
 

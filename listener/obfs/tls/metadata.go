@@ -1,7 +1,7 @@
 package tls
 
 import (
-	md "github.com/go-gost/gost/v3/pkg/metadata"
+	md "github.com/go-gost/core/metadata"
 )
 
 type metadata struct {
