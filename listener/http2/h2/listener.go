@@ -11,8 +11,8 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	metrics "github.com/go-gost/core/metrics/wrapper"
 	"github.com/go-gost/core/registry"
-	metrics "github.com/go-gost/metrics/wrapper"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
