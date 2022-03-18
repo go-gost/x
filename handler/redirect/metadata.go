@@ -4,15 +4,8 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 )
 
-type metadata struct {
-	retryCount int
-}
+type metadata struct{}
 
 func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		retryCount = "retry"
-	)
-
-	h.md.retryCount = mdata.GetInt(md, retryCount)
 	return
 }

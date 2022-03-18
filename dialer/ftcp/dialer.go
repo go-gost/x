@@ -45,7 +45,7 @@ func (d *ftcpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		return
 	}
 	return &fakeTCPConn{
-		raddr:      raddr,
-		PacketConn: c,
+		raddr: raddr,
+		pc:    c,
 	}, nil
 }

@@ -7,7 +7,7 @@ require (
 	github.com/docker/libcontainer v2.2.1+incompatible
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
-	github.com/go-gost/core v0.0.0-20220317144108-bab2906aeb73
+	github.com/go-gost/core v0.0.0-20220318131726-78089d88873f
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
 	github.com/go-gost/tls-dissector v0.0.2-0.20211125135007-2b5d5bd9c07e
