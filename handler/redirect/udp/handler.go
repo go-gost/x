@@ -14,10 +14,7 @@ import (
 )
 
 func init() {
-	registry.HandlerRegistry().Register("red", NewHandler)
 	registry.HandlerRegistry().Register("redu", NewHandler)
-	registry.HandlerRegistry().Register("redir", NewHandler)
-	registry.HandlerRegistry().Register("redirect", NewHandler)
 }
 
 type redirectHandler struct {
@@ -66,22 +63,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	network := "tcp"
-	var dstAddr net.Addr
-	var err error
-
-	if _, ok := conn.(net.PacketConn); ok {
-		network = "udp"
-		dstAddr = conn.LocalAddr()
-	}
-
-	if network == "tcp" {
-		dstAddr, conn, err = h.getOriginalDstAddr(conn)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-	}
+	network := "udp"
+	dstAddr := conn.LocalAddr()
 
 	log = log.WithFields(map[string]any{
 		"dst": fmt.Sprintf("%s/%s", dstAddr, network),

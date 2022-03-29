@@ -105,12 +105,23 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if v.Interface == "" {
 				v.Interface = hop.Interface
 			}
+			if v.SockOpts == nil {
+				v.SockOpts = hop.SockOpts
+			}
+
+			var sockOpts *chain.SockOpts
+			if v.SockOpts != nil {
+				sockOpts = &chain.SockOpts{
+					Mark: v.SockOpts.Mark,
+				}
+			}
 
 			tr := (&chain.Transport{}).
 				WithConnector(cr).
 				WithDialer(d).
 				WithAddr(v.Addr).
-				WithInterface(v.Interface)
+				WithInterface(v.Interface).
+				WithSockOpts(sockOpts)
 
 			node := &chain.Node{
 				Name:      v.Name,

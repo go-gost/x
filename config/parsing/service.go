@@ -91,10 +91,18 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		auther = registry.AutherRegistry().Get(cfg.Handler.Auther)
 	}
 
+	var sockOpts *chain.SockOpts
+	if cfg.SockOpts != nil {
+		sockOpts = &chain.SockOpts{
+			Mark: cfg.SockOpts.Mark,
+		}
+	}
+
 	router := (&chain.Router{}).
 		WithRetries(cfg.Handler.Retries).
 		// WithTimeout(timeout time.Duration).
 		WithInterface(cfg.Interface).
+		WithSockOpts(sockOpts).
 		WithChain(registry.ChainRegistry().Get(cfg.Handler.Chain)).
 		WithResolver(registry.ResolverRegistry().Get(cfg.Resolver)).
 		WithHosts(registry.HostsRegistry().Get(cfg.Hosts)).

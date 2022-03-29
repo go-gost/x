@@ -7,9 +7,7 @@ import (
 	"net"
 )
 
-func (h *redirectHandler) getOriginalDstAddr(conn net.Conn) (addr net.Addr, c net.Conn, err error) {
-	defer conn.Close()
-
+func (h *redirectHandler) getOriginalDstAddr(conn net.Conn) (addr net.Addr, err error) {
 	err = errors.New("TCP redirect is not available on non-linux platform")
 	return
 }
