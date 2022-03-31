@@ -63,11 +63,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	network := "udp"
 	dstAddr := conn.LocalAddr()
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", dstAddr, network),
+		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
 	})
 
 	log.Infof("%s >> %s", conn.RemoteAddr(), dstAddr)
@@ -77,7 +76,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		return nil
 	}
 
-	cc, err := h.router.Dial(ctx, network, dstAddr.String())
+	cc, err := h.router.Dial(ctx, dstAddr.Network(), dstAddr.String())
 	if err != nil {
 		log.Error(err)
 		return err

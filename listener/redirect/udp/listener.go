@@ -6,6 +6,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	metrics "github.com/go-gost/core/metrics/wrapper"
 	"github.com/go-gost/core/registry"
 )
 
@@ -36,12 +37,7 @@ func (l *redirectListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	laddr, err := net.ResolveUDPAddr("udp", l.options.Addr)
-	if err != nil {
-		return
-	}
-
-	ln, err := l.listenUDP(laddr)
+	ln, err := l.listenUDP(l.options.Addr)
 	if err != nil {
 		return
 	}
@@ -55,7 +51,7 @@ func (l *redirectListener) Accept() (conn net.Conn, err error) {
 	if err != nil {
 		return
 	}
-	// conn = metrics.WrapConn(l.options.Service, conn)
+	conn = metrics.WrapConn(l.options.Service, conn)
 	return
 }
 

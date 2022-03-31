@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultTTL            = 60 * time.Second
+	defaultTTL            = 30 * time.Second
 	defaultReadBufferSize = 1500
 )
 

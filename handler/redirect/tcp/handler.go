@@ -58,7 +58,7 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 	return
 }
 
-func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
@@ -74,16 +74,20 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	network := "tcp"
+	var dstAddr net.Addr
 
-	dstAddr, err := h.getOriginalDstAddr(conn)
-	if err != nil {
-		log.Error(err)
-		return err
+	if h.md.tproxy {
+		dstAddr = conn.LocalAddr()
+	} else {
+		dstAddr, err = h.getOriginalDstAddr(conn)
+		if err != nil {
+			log.Error(err)
+			return
+		}
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", dstAddr, network),
+		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
 	})
 
 	var rw io.ReadWriter = conn
@@ -120,7 +124,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		return nil
 	}
 
-	cc, err := h.router.Dial(ctx, network, dstAddr.String())
+	cc, err := h.router.Dial(ctx, dstAddr.Network(), dstAddr.String())
 	if err != nil {
 		log.Error(err)
 		return err

@@ -62,7 +62,7 @@ type APIConfig struct {
 
 type MetricsConfig struct {
 	Addr string `json:"addr"`
-	Path string `json:"path"`
+	Path string `yaml:",omitempty" json:"path,omitempty"`
 }
 
 type TLSConfig struct {
