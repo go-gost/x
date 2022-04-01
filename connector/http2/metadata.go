@@ -1,31 +1,30 @@
 package http2
 
 import (
+	"net/http"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 )
 
-const (
-	defaultUserAgent = "Chrome/78.0.3904.106"
-)
-
 type metadata struct {
 	connectTimeout time.Duration
-	UserAgent      string
+	header         http.Header
 }
 
 func (c *http2Connector) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		connectTimeout = "timeout"
-		userAgent      = "userAgent"
+		header         = "header"
 	)
 
 	c.md.connectTimeout = mdata.GetDuration(md, connectTimeout)
-	c.md.UserAgent = mdata.GetString(md, userAgent)
-	if c.md.UserAgent == "" {
-		c.md.UserAgent = defaultUserAgent
+	if mm := mdata.GetStringMapString(md, header); len(mm) > 0 {
+		hd := http.Header{}
+		for k, v := range mm {
+			hd.Add(k, v)
+		}
+		c.md.header = hd
 	}
-
 	return
 }

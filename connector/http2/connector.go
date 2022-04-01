@@ -65,12 +65,12 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		Host:       address,
 		ProtoMajor: 2,
 		ProtoMinor: 0,
-		Header:     make(http.Header),
+		Header:     c.md.header,
 		Body:       pr,
 		// ContentLength: -1,
 	}
-	if c.md.UserAgent != "" {
-		req.Header.Set("User-Agent", c.md.UserAgent)
+	if req.Header == nil {
+		req.Header = make(http.Header)
 	}
 
 	if user := c.options.Auth; user != nil {
