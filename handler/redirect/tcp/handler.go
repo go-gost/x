@@ -210,7 +210,11 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	if host == "" {
 		host = dstAddr.String()
 	} else {
-		host = net.JoinHostPort(host, "443")
+		_, port, _ := net.SplitHostPort(dstAddr.String())
+		if port == "" {
+			port = "443"
+		}
+		host = net.JoinHostPort(host, port)
 	}
 
 	log = log.WithFields(map[string]any{
