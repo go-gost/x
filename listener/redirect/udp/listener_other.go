@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-func (l *redirectListener) listenUDP(addr *net.UDPAddr) (*net.UDPConn, error) {
+func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
 	return nil, errors.New("UDP redirect is not available on non-linux platform")
 }
 
