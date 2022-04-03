@@ -7,6 +7,10 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 )
 
+const (
+	defaultBufferSize = 1024
+)
+
 type metadata struct {
 	readTimeout time.Duration
 	ttl         time.Duration

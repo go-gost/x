@@ -3,7 +3,7 @@ package ftcp
 import (
 	"net"
 
-	"github.com/go-gost/core/common/util/udp"
+	"github.com/go-gost/core/common/net/udp"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -39,11 +39,6 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	laddr, err := net.ResolveTCPAddr("tcp", l.options.Addr)
-	if err != nil {
-		return
-	}
-
 	var conn net.PacketConn
 	conn, err = tcpraw.Listen("tcp", l.options.Addr)
 	if err != nil {
@@ -53,11 +48,14 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 
 	l.ln = udp.NewListener(
 		conn,
-		laddr,
-		l.md.backlog,
-		l.md.readQueueSize, l.md.readBufferSize,
-		l.md.ttl,
-		l.logger)
+		&udp.ListenConfig{
+			Backlog:        l.md.backlog,
+			ReadQueueSize:  l.md.readQueueSize,
+			ReadBufferSize: l.md.readBufferSize,
+			TTL:            l.md.ttl,
+			KeepAlive:      true,
+			Logger:         l.logger,
+		})
 	return
 }
 

@@ -114,7 +114,7 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	b := bufpool.Get(4096)
+	b := bufpool.Get(defaultBufferSize)
 	defer bufpool.Put(b)
 
 	n, err := conn.Read(*b)
@@ -165,7 +165,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 
 	mr = h.lookupHosts(&mq, log)
 	if mr != nil {
-		b := bufpool.Get(4096)
+		b := bufpool.Get(defaultBufferSize)
 		return mr.PackBuffer(*b)
 	}
 
@@ -177,7 +177,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 			log.Debugf("exchange message %d (cached): %s", mq.Id, mq.Question[0].String())
 			mr.Id = mq.Id
 
-			b := bufpool.Get(4096)
+			b := bufpool.Get(defaultBufferSize)
 			return mr.PackBuffer(*b)
 		}
 
@@ -188,7 +188,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 		}()
 	}
 
-	b := bufpool.Get(4096)
+	b := bufpool.Get(defaultBufferSize)
 	defer bufpool.Put(b)
 
 	query, err := mq.PackBuffer(*b)

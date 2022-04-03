@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/go-gost/core/common/util/udp"
+	"github.com/go-gost/core/common/net/udp"
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
@@ -67,11 +67,15 @@ func (c *relayConnector) bindUDP(ctx context.Context, conn net.Conn, network, ad
 
 	ln := udp.NewListener(
 		relay_util.UDPTunClientPacketConn(conn),
-		laddr,
-		opts.Backlog,
-		opts.UDPDataQueueSize, opts.UDPDataBufferSize,
-		opts.UDPConnTTL,
-		log)
+		&udp.ListenConfig{
+			Addr:           laddr,
+			Backlog:        opts.Backlog,
+			ReadQueueSize:  opts.UDPDataQueueSize,
+			ReadBufferSize: opts.UDPDataBufferSize,
+			TTL:            opts.UDPConnTTL,
+			KeepAlive:      true,
+			Logger:         log,
+		})
 
 	return ln, nil
 }
