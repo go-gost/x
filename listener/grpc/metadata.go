@@ -2,6 +2,7 @@ package grpc
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -19,11 +20,11 @@ func (l *grpcListener) parseMetadata(md mdata.Metadata) (err error) {
 		insecure = "grpcInsecure"
 	)
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
 
-	l.md.insecure = mdata.GetBool(md, insecure)
+	l.md.insecure = mdx.GetBool(md, insecure)
 	return
 }

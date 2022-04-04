@@ -10,7 +10,7 @@ import (
 	netpkg "github.com/go-gost/core/common/net"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {

@@ -10,7 +10,8 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
-	"github.com/go-gost/core/registry"
+	mdx "github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
 )
 
@@ -111,10 +112,10 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		laddr:  l.addr,
 		raddr:  raddr,
 		closed: make(chan struct{}),
-		md: md.MapMetadata{
+		md: mdx.NewMetadata(map[string]any{
 			"r": r,
 			"w": w,
-		},
+		}),
 	}
 	select {
 	case l.cqueue <- conn:

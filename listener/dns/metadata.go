@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -27,12 +28,12 @@ func (l *dnsListener) parseMetadata(md mdata.Metadata) (err error) {
 		writeTimeout   = "writeTimeout"
 	)
 
-	l.md.mode = mdata.GetString(md, mode)
-	l.md.readBufferSize = mdata.GetInt(md, readBufferSize)
-	l.md.readTimeout = mdata.GetDuration(md, readTimeout)
-	l.md.writeTimeout = mdata.GetDuration(md, writeTimeout)
+	l.md.mode = mdx.GetString(md, mode)
+	l.md.readBufferSize = mdx.GetInt(md, readBufferSize)
+	l.md.readTimeout = mdx.GetDuration(md, readTimeout)
+	l.md.writeTimeout = mdx.GetDuration(md, writeTimeout)
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

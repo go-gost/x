@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -17,8 +18,8 @@ func (c *sniConnector) parseMetadata(md mdata.Metadata) (err error) {
 		connectTimeout = "timeout"
 	)
 
-	c.md.host = mdata.GetString(md, host)
-	c.md.connectTimeout = mdata.GetDuration(md, connectTimeout)
+	c.md.host = mdx.GetString(md, host)
+	c.md.connectTimeout = mdx.GetDuration(md, connectTimeout)
 
 	return
 }

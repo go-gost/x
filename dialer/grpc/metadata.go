@@ -2,6 +2,7 @@ package grpc
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -15,8 +16,8 @@ func (d *grpcDialer) parseMetadata(md mdata.Metadata) (err error) {
 		host     = "host"
 	)
 
-	d.md.insecure = mdata.GetBool(md, insecure)
-	d.md.host = mdata.GetString(md, host)
+	d.md.insecure = mdx.GetBool(md, insecure)
+	d.md.host = mdx.GetString(md, host)
 
 	return
 }

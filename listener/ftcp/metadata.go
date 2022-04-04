@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -29,21 +30,21 @@ func (l *ftcpListener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog        = "backlog"
 	)
 
-	l.md.ttl = mdata.GetDuration(md, ttl)
+	l.md.ttl = mdx.GetDuration(md, ttl)
 	if l.md.ttl <= 0 {
 		l.md.ttl = defaultTTL
 	}
-	l.md.readBufferSize = mdata.GetInt(md, readBufferSize)
+	l.md.readBufferSize = mdx.GetInt(md, readBufferSize)
 	if l.md.readBufferSize <= 0 {
 		l.md.readBufferSize = defaultReadBufferSize
 	}
 
-	l.md.readQueueSize = mdata.GetInt(md, readQueueSize)
+	l.md.readQueueSize = mdx.GetInt(md, readQueueSize)
 	if l.md.readQueueSize <= 0 {
 		l.md.readQueueSize = defaultReadQueueSize
 	}
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

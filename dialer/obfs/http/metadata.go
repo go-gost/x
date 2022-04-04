@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -17,13 +18,13 @@ func (d *obfsHTTPDialer) parseMetadata(md mdata.Metadata) (err error) {
 		host   = "host"
 	)
 
-	if m := mdata.GetStringMapString(md, header); len(m) > 0 {
+	if m := mdx.GetStringMapString(md, header); len(m) > 0 {
 		h := http.Header{}
 		for k, v := range m {
 			h.Add(k, v)
 		}
 		d.md.header = h
 	}
-	d.md.host = mdata.GetString(md, host)
+	d.md.host = mdx.GetString(md, host)
 	return
 }

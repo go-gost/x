@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
 	pht_util "github.com/go-gost/x/internal/util/pht"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {

@@ -11,7 +11,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
+	mdx "github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {
@@ -98,7 +99,7 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 			defer d.clientMutex.Unlock()
 			delete(d.clients, address)
 		},
-		md: md.MapMetadata{"client": client},
+		md: mdx.NewMetadata(map[string]any{"client": client}),
 	}
 
 	return c, nil

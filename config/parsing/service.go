@@ -4,14 +4,14 @@ import (
 	"strings"
 
 	"github.com/go-gost/core/chain"
-	tls_util "github.com/go-gost/core/common/util/tls"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/config"
+	tls_util "github.com/go-gost/x/internal/util/tls"
+	"github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/registry"
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
@@ -46,6 +46,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listenerLogger.Error(err)
 		return nil, err
 	}
+	if tlsConfig == nil {
+		tlsConfig = defaultTLSConfig.Clone()
+	}
 
 	auther := ParseAutherFromAuth(cfg.Listener.Auth)
 	if cfg.Listener.Auther != "" {
@@ -66,7 +69,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Listener.Metadata == nil {
 		cfg.Listener.Metadata = make(map[string]any)
 	}
-	if err := ln.Init(metadata.MapMetadata(cfg.Listener.Metadata)); err != nil {
+	if err := ln.Init(metadata.NewMetadata(cfg.Listener.Metadata)); err != nil {
 		listenerLogger.Error("init: ", err)
 		return nil, err
 	}
@@ -84,6 +87,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if err != nil {
 		handlerLogger.Error(err)
 		return nil, err
+	}
+	if tlsConfig == nil {
+		tlsConfig = defaultTLSConfig.Clone()
 	}
 
 	auther = ParseAutherFromAuth(cfg.Handler.Auth)
@@ -124,7 +130,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Handler.Metadata == nil {
 		cfg.Handler.Metadata = make(map[string]any)
 	}
-	if err := h.Init(metadata.MapMetadata(cfg.Handler.Metadata)); err != nil {
+	if err := h.Init(metadata.NewMetadata(cfg.Handler.Metadata)); err != nil {
 		handlerLogger.Error("init: ", err)
 		return nil, err
 	}

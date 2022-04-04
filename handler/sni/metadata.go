@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -15,6 +16,6 @@ func (h *sniHandler) parseMetadata(md mdata.Metadata) (err error) {
 		readTimeout = "readTimeout"
 	)
 
-	h.md.readTimeout = mdata.GetDuration(md, readTimeout)
+	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
 	return
 }

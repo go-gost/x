@@ -5,6 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -34,19 +35,19 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		host          = "host"
 	)
 
-	d.md.authorizePath = mdata.GetString(md, authorizePath)
+	d.md.authorizePath = mdx.GetString(md, authorizePath)
 	if !strings.HasPrefix(d.md.authorizePath, "/") {
 		d.md.authorizePath = defaultAuthorizePath
 	}
-	d.md.pushPath = mdata.GetString(md, pushPath)
+	d.md.pushPath = mdx.GetString(md, pushPath)
 	if !strings.HasPrefix(d.md.pushPath, "/") {
 		d.md.pushPath = defaultPushPath
 	}
-	d.md.pullPath = mdata.GetString(md, pullPath)
+	d.md.pullPath = mdx.GetString(md, pullPath)
 	if !strings.HasPrefix(d.md.pullPath, "/") {
 		d.md.pullPath = defaultPullPath
 	}
 
-	d.md.host = mdata.GetString(md, host)
+	d.md.host = mdx.GetString(md, host)
 	return
 }

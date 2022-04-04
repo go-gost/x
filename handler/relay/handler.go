@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
 	"github.com/go-gost/relay"
+	"github.com/go-gost/x/registry"
 )
 
 var (

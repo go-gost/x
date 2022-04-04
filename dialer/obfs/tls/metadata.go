@@ -2,6 +2,7 @@ package tls
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -13,6 +14,6 @@ func (d *obfsTLSDialer) parseMetadata(md mdata.Metadata) (err error) {
 		host = "host"
 	)
 
-	d.md.host = mdata.GetString(md, host)
+	d.md.host = mdx.GetString(md, host)
 	return
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
-	"github.com/go-gost/core/registry"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {

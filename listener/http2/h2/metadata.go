@@ -2,6 +2,7 @@ package h2
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -19,11 +20,11 @@ func (l *h2Listener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog = "backlog"
 	)
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
 
-	l.md.path = mdata.GetString(md, path)
+	l.md.path = mdx.GetString(md, path)
 	return
 }

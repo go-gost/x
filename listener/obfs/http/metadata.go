@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -15,7 +16,7 @@ func (l *obfsListener) parseMetadata(md mdata.Metadata) (err error) {
 		header = "header"
 	)
 
-	if mm := mdata.GetStringMapString(md, header); len(mm) > 0 {
+	if mm := mdx.GetStringMapString(md, header); len(mm) > 0 {
 		hd := http.Header{}
 		for k, v := range mm {
 			hd.Add(k, v)

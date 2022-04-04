@@ -5,9 +5,11 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
+	defaultTimeout    = 5 * time.Second
 	defaultBufferSize = 1024
 )
 
@@ -29,17 +31,17 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 		dns         = "dns"
 	)
 
-	h.md.readTimeout = mdata.GetDuration(md, readTimeout)
-	h.md.ttl = mdata.GetDuration(md, ttl)
-	h.md.timeout = mdata.GetDuration(md, timeout)
+	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
+	h.md.ttl = mdx.GetDuration(md, ttl)
+	h.md.timeout = mdx.GetDuration(md, timeout)
 	if h.md.timeout <= 0 {
-		h.md.timeout = 5 * time.Second
+		h.md.timeout = defaultTimeout
 	}
-	sip := mdata.GetString(md, clientIP)
+	sip := mdx.GetString(md, clientIP)
 	if sip != "" {
 		h.md.clientIP = net.ParseIP(sip)
 	}
-	h.md.dns = mdata.GetStrings(md, dns)
+	h.md.dns = mdx.GetStrings(md, dns)
 
 	return
 }

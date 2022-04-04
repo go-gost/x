@@ -11,8 +11,8 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
-	"github.com/go-gost/core/registry"
 	ws_util "github.com/go-gost/x/internal/util/ws"
+	"github.com/go-gost/x/registry"
 	"github.com/gorilla/websocket"
 	"github.com/xtaci/smux"
 )

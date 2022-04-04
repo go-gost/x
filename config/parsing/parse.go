@@ -8,12 +8,16 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
-	hostspkg "github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
-	resolver_impl "github.com/go-gost/core/resolver/impl"
+	admission_impl "github.com/go-gost/x/admission"
+	auth_impl "github.com/go-gost/x/auth"
+	bypass_impl "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
+	hosts_impl "github.com/go-gost/x/hosts"
+	"github.com/go-gost/x/registry"
+	resolver_impl "github.com/go-gost/x/resolver"
 )
 
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
@@ -33,14 +37,14 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	if len(m) == 0 {
 		return nil
 	}
-	return auth.NewAuthenticator(m)
+	return auth_impl.NewAuthenticator(m)
 }
 
 func ParseAutherFromAuth(au *config.AuthConfig) auth.Authenticator {
 	if au == nil || au.Username == "" {
 		return nil
 	}
-	return auth.NewAuthenticator(map[string]string{
+	return auth_impl.NewAuthenticator(map[string]string{
 		au.Username: au.Password,
 	})
 }
@@ -84,10 +88,10 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	if cfg == nil {
 		return nil
 	}
-	return admission.NewAdmissionPatterns(
+	return admission_impl.NewAdmissionPatterns(
 		cfg.Reverse,
 		cfg.Matchers,
-		admission.LoggerOption(logger.Default().WithFields(map[string]any{
+		admission_impl.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":      "admission",
 			"admission": cfg.Name,
 		})),
@@ -98,10 +102,10 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 	if cfg == nil {
 		return nil
 	}
-	return bypass.NewBypassPatterns(
+	return bypass_impl.NewBypassPatterns(
 		cfg.Reverse,
 		cfg.Matchers,
-		bypass.LoggerOption(logger.Default().WithFields(map[string]any{
+		bypass_impl.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":   "bypass",
 			"bypass": cfg.Name,
 		})),
@@ -136,11 +140,11 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 	)
 }
 
-func ParseHosts(cfg *config.HostsConfig) hostspkg.HostMapper {
+func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 	if cfg == nil || len(cfg.Mappings) == 0 {
 		return nil
 	}
-	hosts := hostspkg.NewHosts()
+	hosts := hosts_impl.NewHosts()
 	hosts.Logger = logger.Default().WithFields(map[string]any{
 		"kind":  "hosts",
 		"hosts": cfg.Name,

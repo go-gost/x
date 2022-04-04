@@ -7,7 +7,8 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
-	"github.com/go-gost/core/registry"
+	mdx "github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {
@@ -71,9 +72,9 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 		raddr: &net.IPAddr{IP: ip},
 	}
 	c = metrics.WrapConn(l.options.Service, c)
-	c = withMetadata(mdata.MapMetadata{
+	c = withMetadata(mdx.NewMetadata(map[string]any{
 		"config": l.md.config,
-	}, c)
+	}), c)
 
 	l.cqueue <- c
 

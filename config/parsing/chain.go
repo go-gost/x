@@ -2,13 +2,13 @@ package parsing
 
 import (
 	"github.com/go-gost/core/chain"
-	tls_util "github.com/go-gost/core/common/util/tls"
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
 	"github.com/go-gost/x/config"
+	tls_util "github.com/go-gost/x/internal/util/tls"
+	"github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/registry"
 )
 
 func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
@@ -58,7 +58,7 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if v.Connector.Metadata == nil {
 				v.Connector.Metadata = make(map[string]any)
 			}
-			if err := cr.Init(metadata.MapMetadata(v.Connector.Metadata)); err != nil {
+			if err := cr.Init(metadata.NewMetadata(v.Connector.Metadata)); err != nil {
 				connectorLogger.Error("init: ", err)
 				return nil, err
 			}
@@ -88,7 +88,7 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if v.Dialer.Metadata == nil {
 				v.Dialer.Metadata = make(map[string]any)
 			}
-			if err := d.Init(metadata.MapMetadata(v.Dialer.Metadata)); err != nil {
+			if err := d.Init(metadata.NewMetadata(v.Dialer.Metadata)); err != nil {
 				dialerLogger.Error("init: ", err)
 				return nil, err
 			}

@@ -2,6 +2,7 @@ package h2
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -15,8 +16,8 @@ func (d *h2Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		path = "path"
 	)
 
-	d.md.host = mdata.GetString(md, host)
-	d.md.path = mdata.GetString(md, path)
+	d.md.host = mdx.GetString(md, host)
+	d.md.path = mdx.GetString(md, path)
 
 	return
 }

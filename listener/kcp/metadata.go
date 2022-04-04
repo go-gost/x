@@ -5,6 +5,7 @@ import (
 
 	mdata "github.com/go-gost/core/metadata"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -22,7 +23,7 @@ func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
 		config  = "config"
 	)
 
-	if m := mdata.GetStringMap(md, config); len(m) > 0 {
+	if m := mdx.GetStringMap(md, config); len(m) > 0 {
 		b, err := json.Marshal(m)
 		if err != nil {
 			return err
@@ -38,7 +39,7 @@ func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.config = kcp_util.DefaultConfig
 	}
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

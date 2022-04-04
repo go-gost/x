@@ -18,8 +18,8 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
 	dissector "github.com/go-gost/tls-dissector"
+	"github.com/go-gost/x/registry"
 )
 
 func init() {

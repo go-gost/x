@@ -2,6 +2,7 @@ package http2
 
 import (
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -17,7 +18,7 @@ func (l *http2Listener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog = "backlog"
 	)
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

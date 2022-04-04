@@ -3,9 +3,9 @@ package ssh
 import (
 	"io/ioutil"
 
-	tls_util "github.com/go-gost/core/common/util/tls"
 	mdata "github.com/go-gost/core/metadata"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
+	mdx "github.com/go-gost/x/metadata"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -27,13 +27,13 @@ func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog        = "backlog"
 	)
 
-	if key := mdata.GetString(md, privateKeyFile); key != "" {
+	if key := mdx.GetString(md, privateKeyFile); key != "" {
 		data, err := ioutil.ReadFile(key)
 		if err != nil {
 			return err
 		}
 
-		pp := mdata.GetString(md, passphrase)
+		pp := mdx.GetString(md, passphrase)
 		if pp == "" {
 			l.md.signer, err = ssh.ParsePrivateKey(data)
 		} else {
@@ -44,14 +44,14 @@ func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 	}
 	if l.md.signer == nil {
-		signer, err := ssh.NewSignerFromKey(tls_util.DefaultConfig.Clone().Certificates[0].PrivateKey)
+		signer, err := ssh.NewSignerFromKey(l.options.TLSConfig.Certificates[0].PrivateKey)
 		if err != nil {
 			return err
 		}
 		l.md.signer = signer
 	}
 
-	if name := mdata.GetString(md, authorizedKeys); name != "" {
+	if name := mdx.GetString(md, authorizedKeys); name != "" {
 		m, err := ssh_util.ParseAuthorizedKeysFile(name)
 		if err != nil {
 			return err
@@ -59,7 +59,7 @@ func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.authorizedKeys = m
 	}
 
-	l.md.backlog = mdata.GetInt(md, backlog)
+	l.md.backlog = mdx.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

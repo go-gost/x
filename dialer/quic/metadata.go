@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -25,16 +26,16 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 		host      = "host"
 	)
 
-	d.md.handshakeTimeout = mdata.GetDuration(md, handshakeTimeout)
+	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 
-	if key := mdata.GetString(md, cipherKey); key != "" {
+	if key := mdx.GetString(md, cipherKey); key != "" {
 		d.md.cipherKey = []byte(key)
 	}
 
-	d.md.keepAlive = mdata.GetBool(md, keepAlive)
-	d.md.handshakeTimeout = mdata.GetDuration(md, handshakeTimeout)
-	d.md.maxIdleTimeout = mdata.GetDuration(md, maxIdleTimeout)
+	d.md.keepAlive = mdx.GetBool(md, keepAlive)
+	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
+	d.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 
-	d.md.host = mdata.GetString(md, host)
+	d.md.host = mdx.GetString(md, host)
 	return
 }

@@ -12,13 +12,13 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
-	resolver_util "github.com/go-gost/core/common/util/resolver"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/registry"
-	"github.com/go-gost/core/resolver/exchanger"
+	resolver_util "github.com/go-gost/x/internal/util/resolver"
+	"github.com/go-gost/x/registry"
+	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
 )
 

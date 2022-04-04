@@ -5,6 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -22,11 +23,11 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 		noDelay       = "nodelay"
 	)
 
-	h.md.readTimeout = mdata.GetDuration(md, readTimeout)
-	h.md.enableBind = mdata.GetBool(md, enableBind)
-	h.md.noDelay = mdata.GetBool(md, noDelay)
+	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
+	h.md.enableBind = mdx.GetBool(md, enableBind)
+	h.md.noDelay = mdx.GetBool(md, noDelay)
 
-	if bs := mdata.GetInt(md, udpBufferSize); bs > 0 {
+	if bs := mdx.GetInt(md, udpBufferSize); bs > 0 {
 		h.md.udpBufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
 	} else {
 		h.md.udpBufferSize = 1500

@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-gost/core/registry"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
+	"github.com/go-gost/x/registry"
 )
 
 // swagger:parameters createResolverRequest

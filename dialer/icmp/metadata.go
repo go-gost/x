@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type metadata struct {
@@ -19,11 +20,11 @@ func (d *icmpDialer) parseMetadata(md mdata.Metadata) (err error) {
 		maxIdleTimeout   = "maxIdleTimeout"
 	)
 
-	d.md.handshakeTimeout = mdata.GetDuration(md, handshakeTimeout)
+	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 
-	d.md.keepAlive = mdata.GetBool(md, keepAlive)
-	d.md.handshakeTimeout = mdata.GetDuration(md, handshakeTimeout)
-	d.md.maxIdleTimeout = mdata.GetDuration(md, maxIdleTimeout)
+	d.md.keepAlive = mdx.GetBool(md, keepAlive)
+	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
+	d.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 
 	return
 }
