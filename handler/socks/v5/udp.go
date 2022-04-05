@@ -9,9 +9,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/common/net/relay"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
+	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
 )
 
@@ -68,7 +68,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 		return err
 	}
 
-	r := relay.NewUDPRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
+	r := udp.NewRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
 	r.SetBufferSize(h.md.udpBufferSize)

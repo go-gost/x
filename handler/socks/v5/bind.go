@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
-	netpkg "github.com/go-gost/core/common/net"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
+	netpkg "github.com/go-gost/x/internal/net"
 )
 
 func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {

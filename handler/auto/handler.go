@@ -6,11 +6,11 @@ import (
 	"net"
 	"time"
 
-	netpkg "github.com/go-gost/core/common/net"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
 	"github.com/go-gost/gosocks5"
+	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 

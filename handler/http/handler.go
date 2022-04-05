@@ -17,10 +17,10 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	"github.com/go-gost/core/chain"
-	netpkg "github.com/go-gost/core/common/net"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 

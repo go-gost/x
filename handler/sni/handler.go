@@ -13,10 +13,10 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
-	netpkg "github.com/go-gost/core/common/net"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	dissector "github.com/go-gost/tls-dissector"
+	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 

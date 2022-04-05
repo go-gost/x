@@ -8,8 +8,8 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/go-gost/core/common/net/relay"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
 )
 
@@ -65,7 +65,7 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.L
 		return err
 	}
 
-	relay := relay.NewUDPRelay(socks.UDPTunServerConn(conn), pc).
+	relay := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
 

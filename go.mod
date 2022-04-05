@@ -7,7 +7,7 @@ require (
 	github.com/docker/libcontainer v2.2.1+incompatible
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
-	github.com/go-gost/core v0.0.0-20220404033031-04f6ed470873
+	github.com/go-gost/core v0.0.0-20220405095520-c2f49e94443c
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
@@ -18,6 +18,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.25.0
 	github.com/miekg/dns v1.1.47
 	github.com/milosgajdos/tenus v0.0.3
+	github.com/prometheus/client_golang v1.12.1
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/shadowsocks/shadowsocks-go v0.0.0-20200409064450-3e585ff90601
@@ -69,7 +70,6 @@ require (
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect

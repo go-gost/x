@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
-	netpkg "github.com/go-gost/core/common/net"
-	net_relay "github.com/go-gost/core/common/net/relay"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
+	netpkg "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/mux"
 	relay_util "github.com/go-gost/x/internal/util/relay"
 )
@@ -113,7 +113,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	})
 	log.Debugf("bind on %s OK", pc.LocalAddr())
 
-	r := net_relay.NewUDPRelay(relay_util.UDPTunServerConn(conn), pc).
+	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
 	r.SetBufferSize(h.md.udpBufferSize)
