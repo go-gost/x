@@ -26,7 +26,7 @@ func Transport(rw1, rw2 io.ReadWriter) error {
 }
 
 func copyBuffer(dst io.Writer, src io.Reader) error {
-	buf := bufpool.Get(32 * 1024)
+	buf := bufpool.Get(4 * 1024)
 	defer bufpool.Put(buf)
 
 	_, err := io.CopyBuffer(dst, src, *buf)
