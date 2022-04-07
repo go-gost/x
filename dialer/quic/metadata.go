@@ -13,7 +13,6 @@ type metadata struct {
 	handshakeTimeout time.Duration
 
 	cipherKey []byte
-	host      string
 }
 
 func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -23,7 +22,6 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 		maxIdleTimeout   = "maxIdleTimeout"
 
 		cipherKey = "cipherKey"
-		host      = "host"
 	)
 
 	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
@@ -36,6 +34,5 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 
-	d.md.host = mdx.GetString(md, host)
 	return
 }

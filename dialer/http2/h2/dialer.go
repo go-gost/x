@@ -123,12 +123,15 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 	req := &http.Request{
 		Method:     http.MethodConnect,
 		URL:        &url.URL{Scheme: "https", Host: host},
-		Header:     make(http.Header),
+		Header:     d.md.header,
 		ProtoMajor: 2,
 		ProtoMinor: 0,
 		Body:       pr,
 		Host:       host,
 		// ContentLength: -1,
+	}
+	if req.Header == nil {
+		req.Header = make(http.Header)
 	}
 	if d.md.path != "" {
 		req.Method = http.MethodGet

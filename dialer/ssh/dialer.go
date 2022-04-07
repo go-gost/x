@@ -24,17 +24,19 @@ type sshDialer struct {
 	sessionMutex sync.Mutex
 	logger       logger.Logger
 	md           metadata
+	options      dialer.Options
 }
 
 func NewDialer(opts ...dialer.Option) dialer.Dialer {
-	options := &dialer.Options{}
+	options := dialer.Options{}
 	for _, opt := range opts {
-		opt(options)
+		opt(&options)
 	}
 
 	return &sshDialer{
 		sessions: make(map[string]*sshSession),
 		logger:   options.Logger,
+		options:  options,
 	}
 }
 
@@ -139,9 +141,9 @@ func (d *sshDialer) initSession(ctx context.Context, addr string, conn net.Conn)
 		Timeout:         30 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	if d.md.user != nil {
-		config.User = d.md.user.Username()
-		if password, _ := d.md.user.Password(); password != "" {
+	if d.options.Auth != nil {
+		config.User = d.options.Auth.Username()
+		if password, _ := d.options.Auth.Password(); password != "" {
 			config.Auth = []ssh.AuthMethod{
 				ssh.Password(password),
 			}
