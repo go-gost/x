@@ -2,7 +2,6 @@ package admission
 
 import (
 	"net"
-	"strconv"
 
 	admission_pkg "github.com/go-gost/core/admission"
 	"github.com/go-gost/core/logger"
@@ -22,60 +21,52 @@ func LoggerOption(logger logger.Logger) Option {
 }
 
 type admission struct {
-	matchers []matcher.Matcher
-	reversed bool
-	options  options
-}
-
-// NewAdmission creates and initializes a new Admission using matchers as its match rules.
-// The rules will be reversed if the reversed is true.
-func NewAdmission(reversed bool, matchers []matcher.Matcher, opts ...Option) admission_pkg.Admission {
-	options := options{}
-	for _, opt := range opts {
-		opt(&options)
-	}
-	return &admission{
-		matchers: matchers,
-		reversed: reversed,
-		options:  options,
-	}
+	ipMatcher   matcher.Matcher
+	cidrMatcher matcher.Matcher
+	reversed    bool
+	options     options
 }
 
 // NewAdmissionPatterns creates and initializes a new Admission using matcher patterns as its match rules.
 // The rules will be reversed if the reverse is true.
-func NewAdmissionPatterns(reversed bool, patterns []string, opts ...Option) admission_pkg.Admission {
-	var matchers []matcher.Matcher
+func NewAdmission(reversed bool, patterns []string, opts ...Option) admission_pkg.Admission {
+	var options options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	var ips []net.IP
+	var inets []*net.IPNet
 	for _, pattern := range patterns {
-		if m := matcher.NewMatcher(pattern); m != nil {
-			matchers = append(matchers, m)
+		if ip := net.ParseIP(pattern); ip != nil {
+			ips = append(ips, ip)
+			continue
+		}
+		if _, inet, err := net.ParseCIDR(pattern); err == nil {
+			inets = append(inets, inet)
+			continue
 		}
 	}
-	return NewAdmission(reversed, matchers, opts...)
+	return &admission{
+		reversed:    reversed,
+		options:     options,
+		ipMatcher:   matcher.IPMatcher(ips),
+		cidrMatcher: matcher.CIDRMatcher(inets),
+	}
 }
 
 func (p *admission) Admit(addr string) bool {
-	if addr == "" || p == nil || len(p.matchers) == 0 {
+	if addr == "" || p == nil {
 		p.options.logger.Debugf("admission: %v is denied", addr)
 		return false
 	}
 
 	// try to strip the port
-	if host, port, _ := net.SplitHostPort(addr); host != "" && port != "" {
-		if p, _ := strconv.Atoi(port); p > 0 { // port is valid
-			addr = host
-		}
+	if host, _, _ := net.SplitHostPort(addr); host != "" {
+		addr = host
 	}
 
-	var matched bool
-	for _, matcher := range p.matchers {
-		if matcher == nil {
-			continue
-		}
-		if matcher.Match(addr) {
-			matched = true
-			break
-		}
-	}
+	matched := p.matched(addr)
 
 	b := !p.reversed && matched ||
 		p.reversed && !matched
@@ -83,4 +74,9 @@ func (p *admission) Admit(addr string) bool {
 		p.options.logger.Debugf("admission: %v is denied", addr)
 	}
 	return b
+}
+
+func (p *admission) matched(addr string) bool {
+	return p.ipMatcher.Match(addr) ||
+		p.cidrMatcher.Match(addr)
 }

@@ -88,7 +88,7 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	if cfg == nil {
 		return nil
 	}
-	return admission_impl.NewAdmissionPatterns(
+	return admission_impl.NewAdmission(
 		cfg.Reverse,
 		cfg.Matchers,
 		admission_impl.LoggerOption(logger.Default().WithFields(map[string]any{
@@ -102,7 +102,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 	if cfg == nil {
 		return nil
 	}
-	return bypass_impl.NewBypassPatterns(
+	return bypass_impl.NewBypass(
 		cfg.Reverse,
 		cfg.Matchers,
 		bypass_impl.LoggerOption(logger.Default().WithFields(map[string]any{

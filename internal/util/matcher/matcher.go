@@ -13,87 +13,128 @@ type Matcher interface {
 	Match(v string) bool
 }
 
-// NewMatcher creates a Matcher for the given pattern.
-// The acutal Matcher depends on the pattern:
-// IP Matcher if pattern is a valid IP address.
-// CIDR Matcher if pattern is a valid CIDR address.
-// Domain Matcher if both of the above are not.
-func NewMatcher(pattern string) Matcher {
-	if pattern == "" {
-		return nil
-	}
-	if ip := net.ParseIP(pattern); ip != nil {
-		return IPMatcher(ip)
-	}
-	if _, inet, err := net.ParseCIDR(pattern); err == nil {
-		return CIDRMatcher(inet)
-	}
-	return DomainMatcher(pattern)
-}
-
 type ipMatcher struct {
-	ip net.IP
+	ips map[string]struct{}
 }
 
-// IPMatcher creates a Matcher for a specific IP address.
-func IPMatcher(ip net.IP) Matcher {
-	return &ipMatcher{
-		ip: ip,
+// IPMatcher creates a Matcher with a list of IP addresses.
+func IPMatcher(ips []net.IP) Matcher {
+	matcher := &ipMatcher{
+		ips: make(map[string]struct{}),
 	}
+	for _, ip := range ips {
+		matcher.ips[ip.String()] = struct{}{}
+	}
+	return matcher
 }
 
 func (m *ipMatcher) Match(ip string) bool {
-	if m == nil {
+	if m == nil || len(m.ips) == 0 {
 		return false
 	}
-	return m.ip.Equal(net.ParseIP(ip))
+	_, ok := m.ips[ip]
+	return ok
 }
 
 type cidrMatcher struct {
-	ipNet *net.IPNet
+	inets []*net.IPNet
 }
 
-// CIDRMatcher creates a Matcher for a specific CIDR notation IP address.
-func CIDRMatcher(inet *net.IPNet) Matcher {
+// CIDRMatcher creates a Matcher for a list of CIDR notation IP addresses.
+func CIDRMatcher(inets []*net.IPNet) Matcher {
 	return &cidrMatcher{
-		ipNet: inet,
+		inets: inets,
 	}
 }
 
 func (m *cidrMatcher) Match(ip string) bool {
-	if m == nil || m.ipNet == nil {
+	if m == nil || len(m.inets) == 0 {
 		return false
 	}
-	return m.ipNet.Contains(net.ParseIP(ip))
+	for _, inet := range m.inets {
+		if inet.Contains(net.ParseIP(ip)) {
+			return true
+		}
+	}
+	return false
 }
 
 type domainMatcher struct {
-	pattern string
-	glob    glob.Glob
+	domains map[string]struct{}
 }
 
-// DomainMatcher creates a Matcher for a specific domain pattern,
-// the pattern can be a plain domain such as 'example.com',
-// a wildcard such as '*.exmaple.com' or a special wildcard '.example.com'.
-func DomainMatcher(pattern string) Matcher {
-	p := pattern
-	if strings.HasPrefix(pattern, ".") {
-		p = pattern[1:] // trim the prefix '.'
-		pattern = "*" + p
+// DomainMatcher creates a Matcher for a list of domains,
+// the domain should be a plain domain such as 'example.com',
+// or a special pattern '.example.com' that matches 'example.com'
+// and any subdomain 'abc.example.com', 'def.abc.example.com' etc.
+func DomainMatcher(domains []string) Matcher {
+	matcher := &domainMatcher{
+		domains: make(map[string]struct{}),
 	}
-	return &domainMatcher{
-		pattern: p,
-		glob:    glob.MustCompile(pattern),
+	for _, domain := range domains {
+		matcher.domains[domain] = struct{}{}
 	}
+	return matcher
 }
 
 func (m *domainMatcher) Match(domain string) bool {
-	if m == nil || m.glob == nil {
+	if m == nil || len(m.domains) == 0 {
 		return false
 	}
 
-	if domain == m.pattern {
+	if _, ok := m.domains[domain]; ok {
 		return true
 	}
-	return m.glob.Match(domain)
+
+	if _, ok := m.domains["."+domain]; ok {
+		return true
+	}
+
+	for {
+		if index := strings.IndexByte(domain, '.'); index > 0 {
+			if _, ok := m.domains[domain[index:]]; ok {
+				return true
+			}
+			domain = domain[index+1:]
+			continue
+		}
+		break
+	}
+	return false
+}
+
+type wildcardMatcherPattern struct {
+	pattern string
+	glob    glob.Glob
+}
+type wildcardMatcher struct {
+	patterns []wildcardMatcherPattern
+}
+
+// WildcardMatcher creates a Matcher for a specific wildcard domain pattern,
+// the pattern should be a wildcard such as '*.exmaple.com'.
+func WildcardMatcher(patterns []string) Matcher {
+	matcher := &wildcardMatcher{}
+	for _, pattern := range patterns {
+		matcher.patterns = append(matcher.patterns, wildcardMatcherPattern{
+			pattern: pattern,
+			glob:    glob.MustCompile(pattern),
+		})
+	}
+
+	return matcher
+}
+
+func (m *wildcardMatcher) Match(domain string) bool {
+	if m == nil || len(m.patterns) == 0 {
+		return false
+	}
+
+	for _, pattern := range m.patterns {
+		if pattern.glob.Match(domain) {
+			return true
+		}
+	}
+
+	return false
 }

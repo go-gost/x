@@ -2,7 +2,7 @@ package bypass
 
 import (
 	"net"
-	"strconv"
+	"strings"
 
 	bypass_pkg "github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
@@ -22,59 +22,63 @@ func LoggerOption(logger logger.Logger) Option {
 }
 
 type bypass struct {
-	matchers []matcher.Matcher
-	reversed bool
-	options  options
-}
-
-// NewBypass creates and initializes a new Bypass using matchers as its match rules.
-// The rules will be reversed if the reversed is true.
-func NewBypass(reversed bool, matchers []matcher.Matcher, opts ...Option) bypass_pkg.Bypass {
-	options := options{}
-	for _, opt := range opts {
-		opt(&options)
-	}
-	return &bypass{
-		matchers: matchers,
-		reversed: reversed,
-		options:  options,
-	}
+	ipMatcher       matcher.Matcher
+	cidrMatcher     matcher.Matcher
+	domainMatcher   matcher.Matcher
+	wildcardMatcher matcher.Matcher
+	reversed        bool
+	options         options
 }
 
 // NewBypassPatterns creates and initializes a new Bypass using matcher patterns as its match rules.
 // The rules will be reversed if the reverse is true.
-func NewBypassPatterns(reversed bool, patterns []string, opts ...Option) bypass_pkg.Bypass {
-	var matchers []matcher.Matcher
-	for _, pattern := range patterns {
-		if m := matcher.NewMatcher(pattern); m != nil {
-			matchers = append(matchers, m)
-		}
+func NewBypass(reversed bool, patterns []string, opts ...Option) bypass_pkg.Bypass {
+	var options options
+	for _, opt := range opts {
+		opt(&options)
 	}
-	return NewBypass(reversed, matchers, opts...)
+
+	var ips []net.IP
+	var inets []*net.IPNet
+	var domains []string
+	var wildcards []string
+	for _, pattern := range patterns {
+		if ip := net.ParseIP(pattern); ip != nil {
+			ips = append(ips, ip)
+			continue
+		}
+		if _, inet, err := net.ParseCIDR(pattern); err == nil {
+			inets = append(inets, inet)
+			continue
+		}
+		if strings.ContainsAny(pattern, "*?") {
+			wildcards = append(wildcards, pattern)
+			continue
+		}
+		domains = append(domains, pattern)
+
+	}
+	return &bypass{
+		reversed:        reversed,
+		options:         options,
+		ipMatcher:       matcher.IPMatcher(ips),
+		cidrMatcher:     matcher.CIDRMatcher(inets),
+		domainMatcher:   matcher.DomainMatcher(domains),
+		wildcardMatcher: matcher.WildcardMatcher(wildcards),
+	}
 }
 
 func (bp *bypass) Contains(addr string) bool {
-	if addr == "" || bp == nil || len(bp.matchers) == 0 {
+	if addr == "" || bp == nil {
 		return false
 	}
 
 	// try to strip the port
-	if host, port, _ := net.SplitHostPort(addr); host != "" && port != "" {
-		if p, _ := strconv.Atoi(port); p > 0 { // port is valid
-			addr = host
-		}
+	if host, _, _ := net.SplitHostPort(addr); host != "" {
+		addr = host
 	}
 
-	var matched bool
-	for _, matcher := range bp.matchers {
-		if matcher == nil {
-			continue
-		}
-		if matcher.Match(addr) {
-			matched = true
-			break
-		}
-	}
+	matched := bp.matched(addr)
 
 	b := !bp.reversed && matched ||
 		bp.reversed && !matched
@@ -82,4 +86,14 @@ func (bp *bypass) Contains(addr string) bool {
 		bp.options.logger.Debugf("bypass: %s", addr)
 	}
 	return b
+}
+
+func (bp *bypass) matched(addr string) bool {
+	if ip := net.ParseIP(addr); ip != nil {
+		return bp.ipMatcher.Match(addr) ||
+			bp.cidrMatcher.Match(addr)
+	}
+
+	return bp.domainMatcher.Match(addr) ||
+		bp.wildcardMatcher.Match(addr)
 }
