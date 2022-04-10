@@ -74,11 +74,11 @@ type TLSConfig struct {
 }
 
 type AutherConfig struct {
-	Name string `json:"name"`
-	// inline, file, redis, etc.
-	Type  string        `yaml:",omitempty" json:"type,omitempty"`
-	Auths []*AuthConfig `yaml:",omitempty" json:"auths"`
-	// File string        `yaml:",omitempty" json:"file"`
+	Name   string        `json:"name"`
+	Auths  []*AuthConfig `yaml:",omitempty" json:"auths"`
+	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type AuthConfig struct {
@@ -93,19 +93,32 @@ type SelectorConfig struct {
 }
 
 type AdmissionConfig struct {
-	Name string `json:"name"`
-	// inline, file, etc.
-	Type     string   `yaml:",omitempty" json:"type,omitempty"`
-	Reverse  bool     `yaml:",omitempty" json:"reverse,omitempty"`
-	Matchers []string `json:"matchers"`
+	Name     string        `json:"name"`
+	Reverse  bool          `yaml:",omitempty" json:"reverse,omitempty"`
+	Matchers []string      `json:"matchers"`
+	Reload   time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File     *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis    *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type BypassConfig struct {
-	Name string `json:"name"`
-	// inline, file, etc.
-	Type     string   `yaml:",omitempty" json:"type,omitempty"`
-	Reverse  bool     `yaml:",omitempty" json:"reverse,omitempty"`
-	Matchers []string `json:"matchers"`
+	Name     string        `json:"name"`
+	Reverse  bool          `yaml:",omitempty" json:"reverse,omitempty"`
+	Matchers []string      `json:"matchers"`
+	Reload   time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File     *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis    *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+}
+
+type FileLoader struct {
+	Path string `json:"path"`
+}
+
+type RedisLoader struct {
+	Addr     string `yaml:",omitempty" json:"addr,omitempty"`
+	DB       int    `yaml:",omitempty" json:"db,omitempty"`
+	Password string `yaml:",omitempty" json:"password,omitempty"`
+	Key      string `yaml:",omitempty" json:"key,omitempty"`
 }
 
 type NameserverConfig struct {

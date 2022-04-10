@@ -94,19 +94,23 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		if _, err := req.WriteTo(conn); err != nil {
 			return nil, err
 		}
+		// drain the response
+		if err := readResponse(conn); err != nil {
+			return nil, err
+		}
 	}
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		cc := &tcpConn{
-			Conn: conn,
-		}
 		if !c.md.noDelay {
+			cc := &tcpConn{
+				Conn: conn,
+			}
 			if _, err := req.WriteTo(&cc.wbuf); err != nil {
 				return nil, err
 			}
+			conn = cc
 		}
-		conn = cc
 	case "udp", "udp4", "udp6":
 		cc := &udpConn{
 			Conn: conn,

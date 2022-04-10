@@ -2,6 +2,7 @@ package registry
 
 import (
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/go-gost/core/admission"
@@ -55,7 +56,12 @@ func (r *registry) Register(name string, v any) error {
 }
 
 func (r *registry) Unregister(name string) {
-	r.m.Delete(name)
+	if v, ok := r.m.Load(name); ok {
+		if closer, ok := v.(io.Closer); ok {
+			closer.Close()
+		}
+		r.m.Delete(name)
+	}
 }
 
 func (r *registry) IsRegistered(name string) bool {

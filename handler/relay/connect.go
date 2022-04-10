@@ -68,16 +68,16 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		}
 		conn = rc
 	default:
-		rc := &tcpConn{
-			Conn: conn,
-		}
 		if !h.md.noDelay {
+			rc := &tcpConn{
+				Conn: conn,
+			}
 			// cache the header
 			if _, err := resp.WriteTo(&rc.wbuf); err != nil {
 				return err
 			}
+			conn = rc
 		}
-		conn = rc
 	}
 
 	t := time.Now()
