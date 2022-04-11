@@ -11,6 +11,7 @@ type fileLoader struct {
 	filename string
 }
 
+// FileLoader loads data from file.
 func FileLoader(filename string) Loader {
 	return &fileLoader{
 		filename: filename,

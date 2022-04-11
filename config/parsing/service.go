@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -104,6 +105,13 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		}
 	}
 
+	var recorders []recorder.RecorderObject
+	for _, r := range cfg.Recorders {
+		recorders = append(recorders, recorder.RecorderObject{
+			Recorder: registry.RecorderRegistry().Get(r.Name),
+			Record:   r.Record,
+		})
+	}
 	router := (&chain.Router{}).
 		WithRetries(cfg.Handler.Retries).
 		// WithTimeout(timeout time.Duration).
@@ -112,6 +120,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		WithChain(registry.ChainRegistry().Get(cfg.Handler.Chain)).
 		WithResolver(registry.ResolverRegistry().Get(cfg.Resolver)).
 		WithHosts(registry.HostsRegistry().Get(cfg.Hosts)).
+		WithRecorder(recorders...).
 		WithLogger(handlerLogger)
 
 	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(

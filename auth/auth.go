@@ -180,11 +180,11 @@ func (p *authenticator) parseAuths(r io.Reader) (auths map[string]string, err er
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if n := strings.IndexByte(line, '#'); n >= 0 {
-			line = line[:n]
+		line := strings.TrimSpace(scanner.Text())
+		if n := strings.IndexByte(line, '#'); n == 0 {
+			continue
 		}
-		sp := strings.SplitN(strings.TrimSpace(line), " ", 2)
+		sp := strings.SplitN(line, " ", 2)
 		if len(sp) == 1 {
 			if k := strings.TrimSpace(sp[0]); k != "" {
 				auths[k] = ""

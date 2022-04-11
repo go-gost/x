@@ -45,7 +45,7 @@ type redisSetLoader struct {
 	key    string
 }
 
-// RedisSetLoader loads values from redis set.
+// RedisSetLoader loads data from redis set.
 func RedisSetLoader(addr string, opts ...RedisLoaderOption) Loader {
 	var options redisLoaderOptions
 	for _, opt := range opts {
@@ -84,7 +84,7 @@ type redisHashLoader struct {
 	key    string
 }
 
-// RedisHashLoader loads values from redis hash.
+// RedisHashLoader loads data from redis hash.
 func RedisHashLoader(addr string, opts ...RedisLoaderOption) Loader {
 	var options redisLoaderOptions
 	for _, opt := range opts {

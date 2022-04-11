@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
 	admission_impl "github.com/go-gost/x/admission"
 	auth_impl "github.com/go-gost/x/auth"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-gost/x/config"
 	hosts_impl "github.com/go-gost/x/hosts"
 	"github.com/go-gost/x/internal/loader"
+	recorder_impl "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	resolver_impl "github.com/go-gost/x/resolver"
 )
@@ -210,4 +212,36 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 		hosts.Map(ip, host.Hostname, host.Aliases...)
 	}
 	return hosts
+}
+
+func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
+	if cfg == nil {
+		return nil
+	}
+
+	if cfg.File != nil && cfg.File.Path != "" {
+		return recorder_impl.FileRecorder(cfg.File.Path,
+			recorder_impl.SepRecorderOption(cfg.File.Sep))
+	}
+
+	if cfg.Redis != nil &&
+		cfg.Redis.Addr != "" &&
+		cfg.Redis.Key != "" {
+		switch cfg.Redis.Type {
+		case "list": // redis list
+			return recorder_impl.RedisListRecorder(cfg.Redis.Addr,
+				recorder_impl.DBRedisRecorderOption(cfg.Redis.DB),
+				recorder_impl.KeyRedisRecorderOption(cfg.Redis.Key),
+				recorder_impl.PasswordRedisRecorderOption(cfg.Redis.Password),
+			)
+		default: // redis set
+			return recorder_impl.RedisSetRecorder(cfg.Redis.Addr,
+				recorder_impl.DBRedisRecorderOption(cfg.Redis.DB),
+				recorder_impl.KeyRedisRecorderOption(cfg.Redis.Key),
+				recorder_impl.PasswordRedisRecorderOption(cfg.Redis.Password),
+			)
+		}
+	}
+
+	return
 }
