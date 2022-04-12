@@ -119,6 +119,7 @@ type RedisLoader struct {
 	DB       int    `yaml:",omitempty" json:"db,omitempty"`
 	Password string `yaml:",omitempty" json:"password,omitempty"`
 	Key      string `yaml:",omitempty" json:"key,omitempty"`
+	Type     string `yaml:",omitempty" json:"type,omitempty"`
 }
 
 type NameserverConfig struct {
@@ -145,6 +146,9 @@ type HostMappingConfig struct {
 type HostsConfig struct {
 	Name     string               `json:"name"`
 	Mappings []*HostMappingConfig `json:"mappings"`
+	Reload   time.Duration        `yaml:",omitempty" json:"reload,omitempty"`
+	File     *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
+	Redis    *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type RecorderConfig struct {

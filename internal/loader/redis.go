@@ -79,6 +79,45 @@ func (p *redisSetLoader) Close() error {
 	return p.client.Close()
 }
 
+type redisListLoader struct {
+	client *redis.Client
+	key    string
+}
+
+// RedisListLoader loads data from redis list.
+func RedisListLoader(addr string, opts ...RedisLoaderOption) Loader {
+	var options redisLoaderOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	key := options.key
+	if key == "" {
+		key = DefaultRedisKey
+	}
+
+	return &redisListLoader{
+		client: redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: options.password,
+			DB:       options.db,
+		}),
+		key: key,
+	}
+}
+
+func (p *redisListLoader) Load(ctx context.Context) (io.Reader, error) {
+	v, err := p.client.LRange(ctx, p.key, 0, -1).Result()
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader([]byte(strings.Join(v, "\n"))), nil
+}
+
+func (p *redisListLoader) Close() error {
+	return p.client.Close()
+}
+
 type redisHashLoader struct {
 	client *redis.Client
 	key    string

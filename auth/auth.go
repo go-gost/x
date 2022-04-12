@@ -120,16 +120,13 @@ func (p *authenticator) periodReload(ctx context.Context) error {
 	}
 }
 
-func (p *authenticator) reload(ctx context.Context) error {
+func (p *authenticator) reload(ctx context.Context) (err error) {
 	kvs := make(map[string]string)
 	for k, v := range p.options.auths {
 		kvs[k] = v
 	}
 
 	m, err := p.load(ctx)
-	if err != nil {
-		return err
-	}
 	for k, v := range m {
 		kvs[k] = v
 	}
@@ -139,7 +136,7 @@ func (p *authenticator) reload(ctx context.Context) error {
 
 	p.kvs = kvs
 
-	return nil
+	return
 }
 
 func (p *authenticator) load(ctx context.Context) (m map[string]string, err error) {
@@ -180,7 +177,8 @@ func (p *authenticator) parseAuths(r io.Reader) (auths map[string]string, err er
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+		line := strings.Replace(scanner.Text(), "\t", " ", -1)
+		line = strings.TrimSpace(line)
 		if n := strings.IndexByte(line, '#'); n == 0 {
 			continue
 		}

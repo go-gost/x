@@ -191,27 +191,55 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 }
 
 func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
-	if cfg == nil || len(cfg.Mappings) == 0 {
+	if cfg == nil {
 		return nil
 	}
-	hosts := hosts_impl.NewHosts()
-	hosts.Logger = logger.Default().WithFields(map[string]any{
-		"kind":  "hosts",
-		"hosts": cfg.Name,
-	})
 
-	for _, host := range cfg.Mappings {
-		if host.IP == "" || host.Hostname == "" {
+	var mappings []hosts_impl.Mapping
+	for _, mapping := range cfg.Mappings {
+		if mapping.IP == "" || mapping.Hostname == "" {
 			continue
 		}
 
-		ip := net.ParseIP(host.IP)
+		ip := net.ParseIP(mapping.IP)
 		if ip == nil {
 			continue
 		}
-		hosts.Map(ip, host.Hostname, host.Aliases...)
+		mappings = append(mappings, hosts_impl.Mapping{
+			Hostname: mapping.Hostname,
+			IP:       ip,
+		})
 	}
-	return hosts
+	opts := []hosts_impl.Option{
+		hosts_impl.MappingsOption(mappings),
+		hosts_impl.ReloadPeriodOption(cfg.Reload),
+		hosts_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind":  "hosts",
+			"hosts": cfg.Name,
+		})),
+	}
+	if cfg.File != nil && cfg.File.Path != "" {
+		opts = append(opts, hosts_impl.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+	}
+	if cfg.Redis != nil && cfg.Redis.Addr != "" {
+		switch cfg.Redis.Type {
+		case "list": // redis list
+			opts = append(opts, hosts_impl.RedisLoaderOption(loader.RedisListLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		default: // redis set
+			opts = append(opts, hosts_impl.RedisLoaderOption(loader.RedisSetLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		}
+	}
+	return hosts_impl.NewHostMapper(opts...)
 }
 
 func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
