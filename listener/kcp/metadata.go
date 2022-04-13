@@ -19,9 +19,17 @@ type metadata struct {
 
 func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		backlog = "backlog"
-		config  = "config"
+		backlog    = "backlog"
+		config     = "config"
+		configFile = "c"
 	)
+
+	if file := mdx.GetString(md, configFile); file != "" {
+		l.md.config, err = kcp_util.ParseFromFile(file)
+		if err != nil {
+			return
+		}
+	}
 
 	if m := mdx.GetStringMap(md, config); len(m) > 0 {
 		b, err := json.Marshal(m)

@@ -2,6 +2,8 @@ package kcp
 
 import (
 	"crypto/sha1"
+	"encoding/json"
+	"os"
 
 	"github.com/xtaci/kcp-go/v5"
 	"golang.org/x/crypto/pbkdf2"
@@ -31,6 +33,9 @@ var (
 		Resend:       0,
 		NoCongestion: 0,
 		SockBuf:      4194304,
+		SmuxVer:      1,
+		SmuxBuf:      4194304,
+		StreamBuf:    2097152,
 		KeepAlive:    10,
 		SnmpLog:      "",
 		SnmpPeriod:   60,
@@ -57,11 +62,31 @@ type Config struct {
 	Resend       int    `json:"resend"`
 	NoCongestion int    `json:"nc"`
 	SockBuf      int    `json:"sockbuf"`
+	SmuxBuf      int    `json:"smuxbuf"`
+	StreamBuf    int    `json:"streambuf"`
+	SmuxVer      int    `json:"smuxver"`
 	KeepAlive    int    `json:"keepalive"`
 	SnmpLog      string `json:"snmplog"`
 	SnmpPeriod   int    `json:"snmpperiod"`
 	Signal       bool   `json:"signal"` // Signal enables the signal SIGUSR1 feature.
 	TCP          bool   `json:"tcp"`
+}
+
+func ParseFromFile(filename string) (*Config, error) {
+	if filename == "" {
+		return nil, nil
+	}
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	config := &Config{}
+	if err = json.NewDecoder(file).Decode(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 // Init initializes the KCP config.
@@ -75,6 +100,15 @@ func (c *Config) Init() {
 		c.NoDelay, c.Interval, c.Resend, c.NoCongestion = 1, 20, 2, 1
 	case "fast3":
 		c.NoDelay, c.Interval, c.Resend, c.NoCongestion = 1, 10, 2, 1
+	}
+	if c.SmuxVer <= 0 {
+		c.SmuxVer = 1
+	}
+	if c.SmuxBuf <= 0 {
+		c.SmuxBuf = c.SockBuf
+	}
+	if c.StreamBuf <= 0 {
+		c.StreamBuf = c.SockBuf / 2
 	}
 }
 

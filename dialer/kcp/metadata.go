@@ -17,8 +17,16 @@ type metadata struct {
 func (d *kcpDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		config           = "config"
+		configFile       = "c"
 		handshakeTimeout = "handshakeTimeout"
 	)
+
+	if file := mdx.GetString(md, configFile); file != "" {
+		d.md.config, err = kcp_util.ParseFromFile(file)
+		if err != nil {
+			return
+		}
+	}
 
 	if m := mdx.GetStringMap(md, config); len(m) > 0 {
 		b, err := json.Marshal(m)

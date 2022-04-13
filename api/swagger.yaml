@@ -19,9 +19,11 @@ definitions:
         type: string
         x-go-name: PathPrefix
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   AdmissionConfig:
     properties:
+      file:
+        $ref: '#/definitions/FileLoader'
       matchers:
         items:
           type: string
@@ -30,15 +32,15 @@ definitions:
       name:
         type: string
         x-go-name: Name
+      redis:
+        $ref: '#/definitions/RedisLoader'
+      reload:
+        $ref: '#/definitions/Duration'
       reverse:
         type: boolean
         x-go-name: Reverse
-      type:
-        description: inline, file, etc.
-        type: string
-        x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   AuthConfig:
     properties:
       password:
@@ -48,7 +50,7 @@ definitions:
         type: string
         x-go-name: Username
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   AutherConfig:
     properties:
       auths:
@@ -56,17 +58,21 @@ definitions:
           $ref: '#/definitions/AuthConfig'
         type: array
         x-go-name: Auths
+      file:
+        $ref: '#/definitions/FileLoader'
       name:
         type: string
         x-go-name: Name
-      type:
-        description: inline, file, redis, etc.
-        type: string
-        x-go-name: Type
+      redis:
+        $ref: '#/definitions/RedisLoader'
+      reload:
+        $ref: '#/definitions/Duration'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   BypassConfig:
     properties:
+      file:
+        $ref: '#/definitions/FileLoader'
       matchers:
         items:
           type: string
@@ -75,15 +81,15 @@ definitions:
       name:
         type: string
         x-go-name: Name
+      redis:
+        $ref: '#/definitions/RedisLoader'
+      reload:
+        $ref: '#/definitions/Duration'
       reverse:
         type: boolean
         x-go-name: Reverse
-      type:
-        description: inline, file, etc.
-        type: string
-        x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   ChainConfig:
     properties:
       hops:
@@ -97,7 +103,7 @@ definitions:
       selector:
         $ref: '#/definitions/SelectorConfig'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   Config:
     properties:
       admissions:
@@ -133,6 +139,11 @@ definitions:
         $ref: '#/definitions/MetricsConfig'
       profiling:
         $ref: '#/definitions/ProfilingConfig'
+      recorders:
+        items:
+          $ref: '#/definitions/RecorderConfig'
+        type: array
+        x-go-name: Recorders
       resolvers:
         items:
           $ref: '#/definitions/ResolverConfig'
@@ -146,7 +157,7 @@ definitions:
       tls:
         $ref: '#/definitions/TLSConfig'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   ConnectorConfig:
     properties:
       auth:
@@ -162,7 +173,7 @@ definitions:
         type: string
         x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   DialerConfig:
     properties:
       auth:
@@ -178,7 +189,7 @@ definitions:
         type: string
         x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   Duration:
     description: |-
       A Duration represents the elapsed time between two instants
@@ -187,6 +198,23 @@ definitions:
     format: int64
     type: integer
     x-go-package: time
+  FileLoader:
+    properties:
+      path:
+        type: string
+        x-go-name: Path
+    type: object
+    x-go-package: github.com/go-gost/x/config
+  FileRecorder:
+    properties:
+      path:
+        type: string
+        x-go-name: Path
+      sep:
+        type: string
+        x-go-name: Sep
+    type: object
+    x-go-package: github.com/go-gost/x/config
   ForwarderConfig:
     properties:
       selector:
@@ -197,7 +225,7 @@ definitions:
         type: array
         x-go-name: Targets
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   HandlerConfig:
     properties:
       auth:
@@ -223,7 +251,7 @@ definitions:
         type: string
         x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   HopConfig:
     properties:
       bypass:
@@ -232,6 +260,9 @@ definitions:
       hosts:
         type: string
         x-go-name: Hosts
+      interface:
+        type: string
+        x-go-name: Interface
       name:
         type: string
         x-go-name: Name
@@ -245,8 +276,10 @@ definitions:
         x-go-name: Resolver
       selector:
         $ref: '#/definitions/SelectorConfig'
+      sockopts:
+        $ref: '#/definitions/SockOptsConfig'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   HostMappingConfig:
     properties:
       aliases:
@@ -261,9 +294,11 @@ definitions:
         type: string
         x-go-name: IP
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   HostsConfig:
     properties:
+      file:
+        $ref: '#/definitions/FileLoader'
       mappings:
         items:
           $ref: '#/definitions/HostMappingConfig'
@@ -272,12 +307,12 @@ definitions:
       name:
         type: string
         x-go-name: Name
-      type:
-        description: inline, file, etc.
-        type: string
-        x-go-name: Type
+      redis:
+        $ref: '#/definitions/RedisLoader'
+      reload:
+        $ref: '#/definitions/Duration'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   ListenerConfig:
     properties:
       auth:
@@ -299,7 +334,7 @@ definitions:
         type: string
         x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   LogConfig:
     properties:
       format:
@@ -312,20 +347,17 @@ definitions:
         type: string
         x-go-name: Output
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   MetricsConfig:
     properties:
       addr:
         type: string
         x-go-name: Addr
-      enable:
-        type: boolean
-        x-go-name: Enable
       path:
         type: string
         x-go-name: Path
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   NameserverConfig:
     properties:
       addr:
@@ -348,7 +380,7 @@ definitions:
       ttl:
         $ref: '#/definitions/Duration'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   NodeConfig:
     properties:
       addr:
@@ -364,24 +396,87 @@ definitions:
       hosts:
         type: string
         x-go-name: Hosts
+      interface:
+        type: string
+        x-go-name: Interface
       name:
         type: string
         x-go-name: Name
       resolver:
         type: string
         x-go-name: Resolver
+      sockopts:
+        $ref: '#/definitions/SockOptsConfig'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   ProfilingConfig:
     properties:
       addr:
         type: string
         x-go-name: Addr
-      enable:
-        type: boolean
-        x-go-name: Enable
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
+  RecorderConfig:
+    properties:
+      file:
+        $ref: '#/definitions/FileRecorder'
+      name:
+        type: string
+        x-go-name: Name
+      redis:
+        $ref: '#/definitions/RedisRecorder'
+    type: object
+    x-go-package: github.com/go-gost/x/config
+  RecorderObject:
+    properties:
+      name:
+        type: string
+        x-go-name: Name
+      record:
+        type: string
+        x-go-name: Record
+    type: object
+    x-go-package: github.com/go-gost/x/config
+  RedisLoader:
+    properties:
+      addr:
+        type: string
+        x-go-name: Addr
+      db:
+        format: int64
+        type: integer
+        x-go-name: DB
+      key:
+        type: string
+        x-go-name: Key
+      password:
+        type: string
+        x-go-name: Password
+      type:
+        type: string
+        x-go-name: Type
+    type: object
+    x-go-package: github.com/go-gost/x/config
+  RedisRecorder:
+    properties:
+      addr:
+        type: string
+        x-go-name: Addr
+      db:
+        format: int64
+        type: integer
+        x-go-name: DB
+      key:
+        type: string
+        x-go-name: Key
+      password:
+        type: string
+        x-go-name: Password
+      type:
+        type: string
+        x-go-name: Type
+    type: object
+    x-go-package: github.com/go-gost/x/config
   ResolverConfig:
     properties:
       name:
@@ -392,12 +487,8 @@ definitions:
           $ref: '#/definitions/NameserverConfig'
         type: array
         x-go-name: Nameservers
-      type:
-        description: inline, file, etc.
-        type: string
-        x-go-name: Type
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   Response:
     properties:
       code:
@@ -408,7 +499,7 @@ definitions:
         type: string
         x-go-name: Msg
     type: object
-    x-go-package: github.com/go-gost/core/api
+    x-go-package: github.com/go-gost/x/api
   SelectorConfig:
     properties:
       failTimeout:
@@ -421,7 +512,7 @@ definitions:
         type: string
         x-go-name: Strategy
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
   ServiceConfig:
     properties:
       addr:
@@ -440,16 +531,34 @@ definitions:
       hosts:
         type: string
         x-go-name: Hosts
+      interface:
+        type: string
+        x-go-name: Interface
       listener:
         $ref: '#/definitions/ListenerConfig'
       name:
         type: string
         x-go-name: Name
+      recorders:
+        items:
+          $ref: '#/definitions/RecorderObject'
+        type: array
+        x-go-name: Recorders
       resolver:
         type: string
         x-go-name: Resolver
+      sockopts:
+        $ref: '#/definitions/SockOptsConfig'
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
+  SockOptsConfig:
+    properties:
+      mark:
+        format: int64
+        type: integer
+        x-go-name: Mark
+    type: object
+    x-go-package: github.com/go-gost/x/config
   TLSConfig:
     properties:
       caFile:
@@ -468,7 +577,7 @@ definitions:
         type: string
         x-go-name: ServerName
     type: object
-    x-go-package: github.com/go-gost/core/config
+    x-go-package: github.com/go-gost/x/config
 info:
   title: Documentation of Web API.
   version: 1.0.0
