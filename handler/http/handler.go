@@ -84,7 +84,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 }
 
 func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, log logger.Logger) error {
-	if h.md.sni && !req.URL.IsAbs() && govalidator.IsDNSName(req.Host) {
+	if !req.URL.IsAbs() && govalidator.IsDNSName(req.Host) {
 		req.URL.Scheme = "http"
 	}
 

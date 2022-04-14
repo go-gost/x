@@ -10,7 +10,6 @@ import (
 
 type metadata struct {
 	probeResistance *probeResistance
-	sni             bool
 	enableUDP       bool
 	header          http.Header
 }
@@ -20,7 +19,6 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		header         = "header"
 		probeResistKey = "probeResistance"
 		knock          = "knock"
-		sni            = "sni"
 		enableUDP      = "udp"
 	)
 
@@ -41,7 +39,6 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 			}
 		}
 	}
-	h.md.sni = mdx.GetBool(md, sni)
 	h.md.enableUDP = mdx.GetBool(md, enableUDP)
 
 	return nil
