@@ -218,20 +218,40 @@ func (h *Hosts) reload(ctx context.Context) (err error) {
 
 func (h *Hosts) load(ctx context.Context) (mappings []Mapping, err error) {
 	if h.options.fileLoader != nil {
-		r, er := h.options.fileLoader.Load(ctx)
-		if er != nil {
-			h.options.logger.Warnf("file loader: %v", er)
+		if lister, ok := h.options.fileLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				h.options.logger.Warnf("file loader: %v", er)
+			}
+			for _, s := range list {
+				mappings = append(mappings, h.parseLine(s)...)
+			}
+		} else {
+			r, er := h.options.fileLoader.Load(ctx)
+			if er != nil {
+				h.options.logger.Warnf("file loader: %v", er)
+			}
+			mappings, _ = h.parseMapping(r)
 		}
-		mappings, _ = h.parseMapping(r)
 	}
 
 	if h.options.redisLoader != nil {
-		r, er := h.options.redisLoader.Load(ctx)
-		if er != nil {
-			h.options.logger.Warnf("redis loader: %v", er)
-		}
-		if m, _ := h.parseMapping(r); m != nil {
-			mappings = append(mappings, m...)
+		if lister, ok := h.options.redisLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				h.options.logger.Warnf("redis loader: %v", er)
+			}
+			for _, s := range list {
+				mappings = append(mappings, h.parseLine(s)...)
+			}
+		} else {
+			r, er := h.options.redisLoader.Load(ctx)
+			if er != nil {
+				h.options.logger.Warnf("redis loader: %v", er)
+			}
+			if m, _ := h.parseMapping(r); m != nil {
+				mappings = append(mappings, m...)
+			}
 		}
 	}
 
@@ -245,35 +265,39 @@ func (h *Hosts) parseMapping(r io.Reader) (mappings []Mapping, err error) {
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := strings.Replace(scanner.Text(), "\t", " ", -1)
-		line = strings.TrimSpace(line)
-		if n := strings.IndexByte(line, '#'); n >= 0 {
-			line = line[:n]
-		}
-		var sp []string
-		for _, s := range strings.Split(line, " ") {
-			if s = strings.TrimSpace(s); s != "" {
-				sp = append(sp, s)
-			}
-		}
-		if len(sp) < 2 {
-			continue // invalid lines are ignored
-		}
+		mappings = append(mappings, h.parseLine(scanner.Text())...)
+	}
+	err = scanner.Err()
+	return
+}
 
-		ip := net.ParseIP(sp[0])
-		if ip == nil {
-			continue // invalid IP addresses are ignored
-		}
-
-		for _, v := range sp[1:] {
-			mappings = append(mappings, Mapping{
-				Hostname: v,
-				IP:       ip,
-			})
+func (h *Hosts) parseLine(s string) (mappings []Mapping) {
+	line := strings.Replace(s, "\t", " ", -1)
+	line = strings.TrimSpace(line)
+	if n := strings.IndexByte(line, '#'); n >= 0 {
+		line = line[:n]
+	}
+	var sp []string
+	for _, s := range strings.Split(line, " ") {
+		if s = strings.TrimSpace(s); s != "" {
+			sp = append(sp, s)
 		}
 	}
+	if len(sp) < 2 {
+		return // invalid lines are ignored
+	}
 
-	err = scanner.Err()
+	ip := net.ParseIP(sp[0])
+	if ip == nil {
+		return // invalid IP addresses are ignored
+	}
+
+	for _, v := range sp[1:] {
+		mappings = append(mappings, Mapping{
+			Hostname: v,
+			IP:       ip,
+		})
+	}
 	return
 }
 

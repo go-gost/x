@@ -68,11 +68,16 @@ func RedisSetLoader(addr string, opts ...RedisLoaderOption) Loader {
 }
 
 func (p *redisSetLoader) Load(ctx context.Context) (io.Reader, error) {
-	v, err := p.client.SMembers(ctx, p.key).Result()
+	v, err := p.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return bytes.NewReader([]byte(strings.Join(v, "\n"))), nil
+}
+
+// List implements Lister interface{}
+func (p *redisSetLoader) List(ctx context.Context) ([]string, error) {
+	return p.client.SMembers(ctx, p.key).Result()
 }
 
 func (p *redisSetLoader) Close() error {
@@ -107,11 +112,16 @@ func RedisListLoader(addr string, opts ...RedisLoaderOption) Loader {
 }
 
 func (p *redisListLoader) Load(ctx context.Context) (io.Reader, error) {
-	v, err := p.client.LRange(ctx, p.key, 0, -1).Result()
+	v, err := p.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return bytes.NewReader([]byte(strings.Join(v, "\n"))), nil
+}
+
+// List implements Lister interface{}
+func (p *redisListLoader) List(ctx context.Context) ([]string, error) {
+	return p.client.LRange(ctx, p.key, 0, -1).Result()
 }
 
 func (p *redisListLoader) Close() error {
@@ -146,7 +156,7 @@ func RedisHashLoader(addr string, opts ...RedisLoaderOption) Loader {
 }
 
 func (p *redisHashLoader) Load(ctx context.Context) (io.Reader, error) {
-	m, err := p.client.HGetAll(ctx, p.key).Result()
+	m, err := p.Map(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +166,25 @@ func (p *redisHashLoader) Load(ctx context.Context) (io.Reader, error) {
 		fmt.Fprintf(&b, "%s %s\n", k, v)
 	}
 	return bytes.NewBufferString(b.String()), nil
+}
+
+// List implements Lister interface{}
+func (p *redisHashLoader) List(ctx context.Context) (list []string, err error) {
+	m, err := p.Map(ctx)
+	if err != nil {
+		return
+	}
+
+	for k, v := range m {
+		list = append(list, fmt.Sprintf("%s %s", k, v))
+	}
+
+	return
+}
+
+// Map implements Mapper interface{}
+func (p *redisHashLoader) Map(ctx context.Context) (map[string]string, error) {
+	return p.client.HGetAll(ctx, p.key).Result()
 }
 
 func (p *redisHashLoader) Close() error {

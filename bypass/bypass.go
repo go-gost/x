@@ -159,21 +159,41 @@ func (bp *bypass) reload(ctx context.Context) error {
 
 func (bp *bypass) load(ctx context.Context) (patterns []string, err error) {
 	if bp.options.fileLoader != nil {
-		r, er := bp.options.fileLoader.Load(ctx)
-		if er != nil {
-			bp.options.logger.Warnf("file loader: %v", er)
-		}
-		if v, _ := bp.parsePatterns(r); v != nil {
-			patterns = append(patterns, v...)
+		if lister, ok := bp.options.fileLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				bp.options.logger.Warnf("file loader: %v", er)
+			}
+			for _, s := range list {
+				if line := bp.parseLine(s); line != "" {
+					patterns = append(patterns, line)
+				}
+			}
+		} else {
+			r, er := bp.options.fileLoader.Load(ctx)
+			if er != nil {
+				bp.options.logger.Warnf("file loader: %v", er)
+			}
+			if v, _ := bp.parsePatterns(r); v != nil {
+				patterns = append(patterns, v...)
+			}
 		}
 	}
 	if bp.options.redisLoader != nil {
-		r, er := bp.options.redisLoader.Load(ctx)
-		if er != nil {
-			bp.options.logger.Warnf("redis loader: %v", er)
-		}
-		if v, _ := bp.parsePatterns(r); v != nil {
-			patterns = append(patterns, v...)
+		if lister, ok := bp.options.redisLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				bp.options.logger.Warnf("redis loader: %v", er)
+			}
+			patterns = append(patterns, list...)
+		} else {
+			r, er := bp.options.redisLoader.Load(ctx)
+			if er != nil {
+				bp.options.logger.Warnf("redis loader: %v", er)
+			}
+			if v, _ := bp.parsePatterns(r); v != nil {
+				patterns = append(patterns, v...)
+			}
 		}
 	}
 
@@ -187,12 +207,7 @@ func (bp *bypass) parsePatterns(r io.Reader) (patterns []string, err error) {
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if n := strings.IndexByte(line, '#'); n >= 0 {
-			line = line[:n]
-		}
-		line = strings.TrimSpace(line)
-		if line != "" {
+		if line := bp.parseLine(scanner.Text()); line != "" {
 			patterns = append(patterns, line)
 		}
 	}
@@ -219,6 +234,13 @@ func (bp *bypass) Contains(addr string) bool {
 		bp.options.logger.Debugf("bypass: %s", addr)
 	}
 	return b
+}
+
+func (bp *bypass) parseLine(s string) string {
+	if n := strings.IndexByte(s, '#'); n >= 0 {
+		s = s[:n]
+	}
+	return strings.TrimSpace(s)
 }
 
 func (bp *bypass) matched(addr string) bool {

@@ -143,24 +143,40 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 	m = make(map[string]string)
 
 	if p.options.fileLoader != nil {
-		r, er := p.options.fileLoader.Load(ctx)
-		if er != nil {
-			p.options.logger.Warnf("file loader: %v", er)
-		}
-		if auths, _ := p.parseAuths(r); auths != nil {
-			for k, v := range auths {
-				m[k] = v
+		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
+			auths, er := mapper.Map(ctx)
+			if er != nil {
+				p.options.logger.Warnf("file loader: %v", er)
+			}
+			m = auths
+		} else {
+			r, er := p.options.fileLoader.Load(ctx)
+			if er != nil {
+				p.options.logger.Warnf("file loader: %v", er)
+			}
+			if auths, _ := p.parseAuths(r); auths != nil {
+				m = auths
 			}
 		}
 	}
 	if p.options.redisLoader != nil {
-		r, er := p.options.redisLoader.Load(ctx)
-		if er != nil {
-			p.options.logger.Warnf("redis loader: %v", er)
-		}
-		if auths, _ := p.parseAuths(r); auths != nil {
+		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
+			auths, er := mapper.Map(ctx)
+			if er != nil {
+				p.options.logger.Warnf("file loader: %v", er)
+			}
 			for k, v := range auths {
 				m[k] = v
+			}
+		} else {
+			r, er := p.options.redisLoader.Load(ctx)
+			if er != nil {
+				p.options.logger.Warnf("redis loader: %v", er)
+			}
+			if auths, _ := p.parseAuths(r); auths != nil {
+				for k, v := range auths {
+					m[k] = v
+				}
 			}
 		}
 	}

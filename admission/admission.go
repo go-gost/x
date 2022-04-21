@@ -164,21 +164,41 @@ func (p *admission) reload(ctx context.Context) error {
 
 func (p *admission) load(ctx context.Context) (patterns []string, err error) {
 	if p.options.fileLoader != nil {
-		r, er := p.options.fileLoader.Load(ctx)
-		if er != nil {
-			p.options.logger.Warnf("file loader: %v", er)
-		}
-		if v, _ := p.parsePatterns(r); v != nil {
-			patterns = append(patterns, v...)
+		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				p.options.logger.Warnf("file loader: %v", er)
+			}
+			for _, s := range list {
+				if line := p.parseLine(s); line != "" {
+					patterns = append(patterns, line)
+				}
+			}
+		} else {
+			r, er := p.options.fileLoader.Load(ctx)
+			if er != nil {
+				p.options.logger.Warnf("file loader: %v", er)
+			}
+			if v, _ := p.parsePatterns(r); v != nil {
+				patterns = append(patterns, v...)
+			}
 		}
 	}
 	if p.options.redisLoader != nil {
-		r, er := p.options.redisLoader.Load(ctx)
-		if er != nil {
-			p.options.logger.Warnf("redis loader: %v", er)
-		}
-		if v, _ := p.parsePatterns(r); v != nil {
-			patterns = append(patterns, v...)
+		if lister, ok := p.options.redisLoader.(loader.Lister); ok {
+			list, er := lister.List(ctx)
+			if er != nil {
+				p.options.logger.Warnf("redis loader: %v", er)
+			}
+			patterns = append(patterns, list...)
+		} else {
+			r, er := p.options.redisLoader.Load(ctx)
+			if er != nil {
+				p.options.logger.Warnf("redis loader: %v", er)
+			}
+			if v, _ := p.parsePatterns(r); v != nil {
+				patterns = append(patterns, v...)
+			}
 		}
 	}
 
@@ -192,18 +212,20 @@ func (p *admission) parsePatterns(r io.Reader) (patterns []string, err error) {
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if n := strings.IndexByte(line, '#'); n >= 0 {
-			line = line[:n]
-		}
-		line = strings.TrimSpace(line)
-		if line != "" {
+		if line := p.parseLine(scanner.Text()); line != "" {
 			patterns = append(patterns, line)
 		}
 	}
 
 	err = scanner.Err()
 	return
+}
+
+func (p *admission) parseLine(s string) string {
+	if n := strings.IndexByte(s, '#'); n >= 0 {
+		s = s[:n]
+	}
+	return strings.TrimSpace(s)
 }
 
 func (p *admission) matched(addr string) bool {
