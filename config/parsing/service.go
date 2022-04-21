@@ -75,6 +75,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.TLSConfigOption(tlsConfig),
 		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
 		listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
+		listener.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.Limiter)),
 		listener.LoggerOption(listenerLogger),
 		listener.ServiceOption(cfg.Name),
 	)

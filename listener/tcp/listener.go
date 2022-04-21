@@ -3,6 +3,7 @@ package tcp
 import (
 	"net"
 
+	limiter "github.com/go-gost/core/limiter/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -47,7 +48,8 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	l.ln = metrics.WrapListener(l.options.Service, ln)
+	ln = metrics.WrapListener(l.options.Service, ln)
+	l.ln = limiter.WrapListener(l.options.RateLimiter, ln)
 
 	return
 }

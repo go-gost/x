@@ -4,11 +4,13 @@ import (
 	"net"
 	"net/url"
 
+	"github.com/alecthomas/units"
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
@@ -17,9 +19,10 @@ import (
 	auth_impl "github.com/go-gost/x/auth"
 	bypass_impl "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
-	hosts_impl "github.com/go-gost/x/hosts"
+	xhosts "github.com/go-gost/x/hosts"
 	"github.com/go-gost/x/internal/loader"
-	recorder_impl "github.com/go-gost/x/recorder"
+	xlimiter "github.com/go-gost/x/limiter"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	resolver_impl "github.com/go-gost/x/resolver"
 	xs "github.com/go-gost/x/selector"
@@ -224,7 +227,7 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 		return nil
 	}
 
-	var mappings []hosts_impl.Mapping
+	var mappings []xhosts.Mapping
 	for _, mapping := range cfg.Mappings {
 		if mapping.IP == "" || mapping.Hostname == "" {
 			continue
@@ -234,33 +237,33 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 		if ip == nil {
 			continue
 		}
-		mappings = append(mappings, hosts_impl.Mapping{
+		mappings = append(mappings, xhosts.Mapping{
 			Hostname: mapping.Hostname,
 			IP:       ip,
 		})
 	}
-	opts := []hosts_impl.Option{
-		hosts_impl.MappingsOption(mappings),
-		hosts_impl.ReloadPeriodOption(cfg.Reload),
-		hosts_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+	opts := []xhosts.Option{
+		xhosts.MappingsOption(mappings),
+		xhosts.ReloadPeriodOption(cfg.Reload),
+		xhosts.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":  "hosts",
 			"hosts": cfg.Name,
 		})),
 	}
 	if cfg.File != nil && cfg.File.Path != "" {
-		opts = append(opts, hosts_impl.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+		opts = append(opts, xhosts.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
 	}
 	if cfg.Redis != nil && cfg.Redis.Addr != "" {
 		switch cfg.Redis.Type {
 		case "list": // redis list
-			opts = append(opts, hosts_impl.RedisLoaderOption(loader.RedisListLoader(
+			opts = append(opts, xhosts.RedisLoaderOption(loader.RedisListLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
 		default: // redis set
-			opts = append(opts, hosts_impl.RedisLoaderOption(loader.RedisSetLoader(
+			opts = append(opts, xhosts.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
@@ -268,7 +271,7 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 			)))
 		}
 	}
-	return hosts_impl.NewHostMapper(opts...)
+	return xhosts.NewHostMapper(opts...)
 }
 
 func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
@@ -277,8 +280,8 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 	}
 
 	if cfg.File != nil && cfg.File.Path != "" {
-		return recorder_impl.FileRecorder(cfg.File.Path,
-			recorder_impl.SepRecorderOption(cfg.File.Sep))
+		return xrecorder.FileRecorder(cfg.File.Path,
+			xrecorder.SepRecorderOption(cfg.File.Sep))
 	}
 
 	if cfg.Redis != nil &&
@@ -286,16 +289,16 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		cfg.Redis.Key != "" {
 		switch cfg.Redis.Type {
 		case "list": // redis list
-			return recorder_impl.RedisListRecorder(cfg.Redis.Addr,
-				recorder_impl.DBRedisRecorderOption(cfg.Redis.DB),
-				recorder_impl.KeyRedisRecorderOption(cfg.Redis.Key),
-				recorder_impl.PasswordRedisRecorderOption(cfg.Redis.Password),
+			return xrecorder.RedisListRecorder(cfg.Redis.Addr,
+				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
+				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
+				xrecorder.PasswordRedisRecorderOption(cfg.Redis.Password),
 			)
 		default: // redis set
-			return recorder_impl.RedisSetRecorder(cfg.Redis.Addr,
-				recorder_impl.DBRedisRecorderOption(cfg.Redis.DB),
-				recorder_impl.KeyRedisRecorderOption(cfg.Redis.Key),
-				recorder_impl.PasswordRedisRecorderOption(cfg.Redis.Password),
+			return xrecorder.RedisSetRecorder(cfg.Redis.Addr,
+				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
+				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
+				xrecorder.PasswordRedisRecorderOption(cfg.Redis.Password),
 			)
 		}
 	}
@@ -317,4 +320,36 @@ func defaultChainSelector() selector.Selector[chain.Chainer] {
 		xs.FailFilter[chain.Chainer](xs.DefaultMaxFails, xs.DefaultFailTimeout),
 		xs.BackupFilter[chain.Chainer](),
 	)
+}
+
+func ParseRateLimiter(cfg *config.LimiterConfig) (lim limiter.RateLimiter) {
+	if cfg == nil || cfg.RateLimit == nil {
+		return nil
+	}
+
+	var rlimiters []limiter.Limiter
+	var wlimiters []limiter.Limiter
+	if cfg.RateLimit.Conn != nil {
+		if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Conn.Input); v > 0 {
+			rlimiters = append(rlimiters, xlimiter.Limiter(int(v)))
+		}
+		if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Conn.Output); v > 0 {
+			wlimiters = append(wlimiters, xlimiter.Limiter(int(v)))
+		}
+	}
+	if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Input); v > 0 {
+		rlimiters = append(rlimiters, xlimiter.Limiter(int(v)))
+	}
+	if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Output); v > 0 {
+		wlimiters = append(wlimiters, xlimiter.Limiter(int(v)))
+	}
+
+	var input, output limiter.Limiter
+	if len(rlimiters) > 0 {
+		input = xlimiter.MultiLimiter(rlimiters...)
+	}
+	if len(wlimiters) > 0 {
+		output = xlimiter.MultiLimiter(wlimiters...)
+	}
+	return xlimiter.RateLimiter(input, output)
 }

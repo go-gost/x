@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/service"
@@ -33,6 +34,7 @@ var (
 	resolverReg  Registry[resolver.Resolver]   = &resolverRegistry{}
 	hostsReg     Registry[hosts.HostMapper]    = &hostsRegistry{}
 	recorderReg  Registry[recorder.Recorder]   = &recorderRegistry{}
+	rlimiterReg  Registry[limiter.RateLimiter] = &rlimiterRegistry{}
 )
 
 type Registry[T any] interface {
@@ -125,4 +127,8 @@ func HostsRegistry() Registry[hosts.HostMapper] {
 
 func RecorderRegistry() Registry[recorder.Recorder] {
 	return recorderReg
+}
+
+func RateLimiterRegistry() Registry[limiter.RateLimiter] {
+	return rlimiterReg
 }

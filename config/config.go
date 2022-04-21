@@ -184,6 +184,22 @@ type RecorderObject struct {
 	Record string `json:"record"`
 }
 
+type LimiterConfig struct {
+	Name      string           `json:"name"`
+	RateLimit *RateLimitConfig `yaml:"rate" json:"rate"`
+}
+
+type RateLimitConfig struct {
+	Input  string       `yaml:",omitempty" json:"input,omitempty"`
+	Output string       `yaml:",omitempty" json:"output,omitempty"`
+	Conn   *LimitConfig `yaml:",omitempty" json:"conn,omitempty"`
+}
+
+type LimitConfig struct {
+	Input  string `yaml:",omitempty" json:"input,omitempty"`
+	Output string `yaml:",omitempty" json:"output,omitempty"`
+}
+
 type ListenerConfig struct {
 	Type       string            `json:"type"`
 	Chain      string            `yaml:",omitempty" json:"chain,omitempty"`
@@ -247,6 +263,7 @@ type ServiceConfig struct {
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
+	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
@@ -297,6 +314,7 @@ type Config struct {
 	Resolvers  []*ResolverConfig  `yaml:",omitempty" json:"resolvers,omitempty"`
 	Hosts      []*HostsConfig     `yaml:",omitempty" json:"hosts,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
+	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	TLS        *TLSConfig         `yaml:",omitempty" json:"tls,omitempty"`
 	Log        *LogConfig         `yaml:",omitempty" json:"log,omitempty"`
 	Profiling  *ProfilingConfig   `yaml:",omitempty" json:"profiling,omitempty"`

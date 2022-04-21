@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"github.com/go-gost/core/common/net/udp"
+	limiter "github.com/go-gost/core/limiter/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -54,6 +55,7 @@ func (l *udpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
+	conn = limiter.WrapPacketConn(l.options.RateLimiter, conn)
 
 	l.ln = udp.NewListener(conn, &udp.ListenConfig{
 		Backlog:        l.md.backlog,
