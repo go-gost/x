@@ -8,7 +8,7 @@ import (
 )
 
 type quicSession struct {
-	session quic.Session
+	session quic.EarlyConnection
 }
 
 func (session *quicSession) GetConn() (*quicConn, error) {
