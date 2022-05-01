@@ -123,17 +123,27 @@ func (r *resolver) resolve(ctx context.Context, server *NameServer, host string)
 	}
 
 	if server.Prefer == "ipv6" { // prefer ipv6
-		mq := dns.Msg{}
-		mq.SetQuestion(dns.Fqdn(host), dns.TypeAAAA)
-		ips, err = r.resolveIPs(ctx, server, &mq)
-		if err != nil || len(ips) > 0 {
+		if ips, err = r.resolve6(ctx, server, host); len(ips) > 0 {
 			return
 		}
+		return r.resolve4(ctx, server, host)
 	}
 
-	// fallback to ipv4
+	if ips, err = r.resolve4(ctx, server, host); len(ips) > 0 {
+		return
+	}
+	return r.resolve6(ctx, server, host)
+}
+
+func (r *resolver) resolve4(ctx context.Context, server *NameServer, host string) (ips []net.IP, err error) {
 	mq := dns.Msg{}
 	mq.SetQuestion(dns.Fqdn(host), dns.TypeA)
+	return r.resolveIPs(ctx, server, &mq)
+}
+
+func (r *resolver) resolve6(ctx context.Context, server *NameServer, host string) (ips []net.IP, err error) {
+	mq := dns.Msg{}
+	mq.SetQuestion(dns.Fqdn(host), dns.TypeAAAA)
 	return r.resolveIPs(ctx, server, &mq)
 }
 
