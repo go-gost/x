@@ -21,7 +21,7 @@ func (c *shadowCipher) PacketConn(conn net.PacketConn) net.PacketConn {
 }
 
 func ShadowCipher(method, password string, key string) (core.Cipher, error) {
-	if method == "" && password == "" {
+	if method == "" || password == "" {
 		return nil, nil
 	}
 
@@ -37,14 +37,15 @@ func ShadowCipher(method, password string, key string) (core.Cipher, error) {
 // we wrap around it to make io.Copy happy.
 type shadowConn struct {
 	net.Conn
-	wbuf *bytes.Buffer
+	wbuf bytes.Buffer
 }
 
 func ShadowConn(conn net.Conn, header []byte) net.Conn {
-	return &shadowConn{
+	c := &shadowConn{
 		Conn: conn,
-		wbuf: bytes.NewBuffer(header),
 	}
+	c.wbuf.Write(header)
+	return c
 }
 
 func (c *shadowConn) Write(b []byte) (n int, err error) {

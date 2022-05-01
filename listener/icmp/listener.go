@@ -20,7 +20,7 @@ func init() {
 }
 
 type icmpListener struct {
-	ln      quic.Listener
+	ln      quic.EarlyListener
 	cqueue  chan net.Conn
 	errChan chan error
 	logger  logger.Logger
@@ -71,7 +71,7 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 	tlsCfg := l.options.TLSConfig
 	tlsCfg.NextProtos = []string{"http/3", "quic/v1"}
 
-	ln, err := quic.Listen(conn, tlsCfg, config)
+	ln, err := quic.ListenEarly(conn, tlsCfg, config)
 	if err != nil {
 		return
 	}
@@ -120,7 +120,7 @@ func (l *icmpListener) listenLoop() {
 	}
 }
 
-func (l *icmpListener) mux(ctx context.Context, session quic.Connection) {
+func (l *icmpListener) mux(ctx context.Context, session quic.EarlyConnection) {
 	defer session.CloseWithError(0, "closed")
 
 	for {
