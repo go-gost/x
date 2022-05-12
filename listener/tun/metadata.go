@@ -23,6 +23,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		netKey  = "net"
 		peer    = "peer"
 		mtu     = "mtu"
+		route   = "route"
 		routes  = "routes"
 		gateway = "gw"
 	)
@@ -39,6 +40,18 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	gw := net.ParseIP(config.Gateway)
+
+	for _, s := range strings.Split(mdx.GetString(md, route), ",") {
+		var route tun_util.Route
+		_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(s))
+		if ipNet == nil {
+			continue
+		}
+		route.Net = *ipNet
+		route.Gateway = gw
+
+		config.Routes = append(config.Routes, route)
+	}
 
 	for _, s := range mdx.GetStrings(md, routes) {
 		ss := strings.SplitN(s, " ", 2)
