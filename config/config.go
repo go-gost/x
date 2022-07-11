@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-gost/core/common/util"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 )
@@ -23,6 +24,7 @@ func init() {
 
 var (
 	global    = &Config{}
+	globals   = make(map[string]*Config)
 	globalMux sync.RWMutex
 )
 
@@ -30,7 +32,14 @@ func Global() *Config {
 	globalMux.RLock()
 	defer globalMux.RUnlock()
 
-	cfg := &Config{}
+	cfg, exists := globals[util.GetGoroutineID()]
+
+	if exists {
+		return cfg
+	}
+
+	cfg = &Config{}
+
 	*cfg = *global
 	return cfg
 }
@@ -40,6 +49,7 @@ func SetGlobal(c *Config) {
 	defer globalMux.Unlock()
 
 	global = c
+	globals[util.GetGoroutineID()] = c
 }
 
 type LogConfig struct {
