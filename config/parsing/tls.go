@@ -11,12 +11,23 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/common/util"
 	"github.com/go-gost/x/config"
 )
 
 var (
 	defaultTLSConfig *tls.Config
+	defaultTLSConfigs = make(map[string]*tls.Config)
 )
+
+func DefaultTLSConfig() *tls.Config {
+	tlsConfig, exists := defaultTLSConfigs[util.GetGoroutineID()]
+
+	if exists {
+		return tlsConfig
+	}
+	return defaultTLSConfig
+}
 
 func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 	log := logger.Default()
@@ -42,7 +53,9 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 	} else {
 		log.Info("load global TLS certificate files OK")
 	}
+
 	defaultTLSConfig = tlsConfig
+	defaultTLSConfigs[util.GetGoroutineID()] = tlsConfig
 }
 
 func loadConfig(certFile, keyFile string) (*tls.Config, error) {

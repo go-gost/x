@@ -48,7 +48,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 	if tlsConfig == nil {
-		tlsConfig = defaultTLSConfig.Clone()
+		tlsConfig = DefaultTLSConfig().Clone()
 	}
 
 	auther := ParseAutherFromAuth(cfg.Listener.Auth)
@@ -90,7 +90,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 	if tlsConfig == nil {
-		tlsConfig = defaultTLSConfig.Clone()
+		tlsConfig = DefaultTLSConfig().Clone()
 	}
 
 	auther = ParseAutherFromAuth(cfg.Handler.Auth)
