@@ -12,12 +12,14 @@ const (
 type metadata struct {
 	backlog  int
 	insecure bool
+	path     string
 }
 
 func (l *grpcListener) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		backlog  = "backlog"
 		insecure = "grpcInsecure"
+		path     = "path"
 	)
 
 	l.md.backlog = mdx.GetInt(md, backlog)
@@ -26,5 +28,6 @@ func (l *grpcListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.insecure = mdx.GetBool(md, insecure)
+	l.md.path = mdx.GetString(md, path)
 	return
 }

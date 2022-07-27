@@ -66,11 +66,11 @@ func (l *grpcListener) Init(md md.Metadata) (err error) {
 	l.cqueue = make(chan net.Conn, l.md.backlog)
 	l.errChan = make(chan error, 1)
 
-	pb.RegisterGostTunelServer(l.server, &server{
+	pb.RegisterGostTunelServerX(l.server, &server{
 		cqueue:    l.cqueue,
 		localAddr: l.addr,
 		logger:    l.options.Logger,
-	})
+	}, l.md.path)
 
 	go func() {
 		err := l.server.Serve(ln)
