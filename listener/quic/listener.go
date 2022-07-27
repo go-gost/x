@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	quic_util "github.com/go-gost/x/internal/util/quic"
 	"github.com/go-gost/x/registry"
 	"github.com/lucas-clemente/quic-go"
@@ -47,14 +48,18 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 		addr = net.JoinHostPort(addr, "0")
 	}
 
+	network := "udp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "udp4"
+	}
 	var laddr *net.UDPAddr
-	laddr, err = net.ResolveUDPAddr("udp", addr)
+	laddr, err = net.ResolveUDPAddr(network, addr)
 	if err != nil {
 		return
 	}
 
 	var conn net.PacketConn
-	conn, err = net.ListenUDP("udp", laddr)
+	conn, err = net.ListenUDP(network, laddr)
 	if err != nil {
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 )
@@ -40,7 +41,11 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 		return
 	}
 
-	l.addr, err = net.ResolveUDPAddr("udp", l.options.Addr)
+	network := "udp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "udp4"
+	}
+	l.addr, err = net.ResolveUDPAddr(network, l.options.Addr)
 	if err != nil {
 		return
 	}

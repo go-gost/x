@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 	"github.com/xtaci/tcpraw"
 )
@@ -40,7 +41,11 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 	}
 
 	var conn net.PacketConn
-	conn, err = tcpraw.Listen("tcp", l.options.Addr)
+	network := "tcp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "tcp4"
+	}
+	conn, err = tcpraw.Listen(network, l.options.Addr)
 	if err != nil {
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 
@@ -44,7 +45,11 @@ func (l *rudpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	laddr, err := net.ResolveUDPAddr("udp", l.options.Addr)
+	network := "udp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "udp4"
+	}
+	laddr, err := net.ResolveUDPAddr(network, l.options.Addr)
 	if err != nil {
 		return
 	}

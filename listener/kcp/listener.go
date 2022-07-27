@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
 	"github.com/go-gost/x/registry"
 	"github.com/xtaci/kcp-go/v5"
@@ -51,14 +52,22 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 
 	var conn net.PacketConn
 	if config.TCP {
-		conn, err = tcpraw.Listen("tcp", l.options.Addr)
+		network := "tcp"
+		if xnet.IsIPv4(l.options.Addr) {
+			network = "tcp4"
+		}
+		conn, err = tcpraw.Listen(network, l.options.Addr)
 	} else {
+		network := "udp"
+		if xnet.IsIPv4(l.options.Addr) {
+			network = "udp4"
+		}
 		var udpAddr *net.UDPAddr
-		udpAddr, err = net.ResolveUDPAddr("udp", l.options.Addr)
+		udpAddr, err = net.ResolveUDPAddr(network, l.options.Addr)
 		if err != nil {
 			return
 		}
-		conn, err = net.ListenUDP("udp", udpAddr)
+		conn, err = net.ListenUDP(network, udpAddr)
 	}
 	if err != nil {
 		return

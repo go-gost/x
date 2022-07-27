@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 	"github.com/go-gost/x/registry"
 )
@@ -55,7 +56,11 @@ func (l *phtListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	l.addr, err = net.ResolveTCPAddr("tcp", l.options.Addr)
+	network := "tcp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "tcp4"
+	}
+	l.addr, err = net.ResolveTCPAddr(network, l.options.Addr)
 	if err != nil {
 		return
 	}

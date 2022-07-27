@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/rs/xid"
@@ -143,7 +144,11 @@ func NewHTTP3Server(addr string, quicConfig *quic.Config, opts ...ServerOption) 
 
 func (s *Server) ListenAndServe() error {
 	if s.http3Server != nil {
-		addr, err := net.ResolveUDPAddr("udp", s.http3Server.Addr)
+		network := "udp"
+		if xnet.IsIPv4(s.httpServer.Addr) {
+			network = "udp4"
+		}
+		addr, err := net.ResolveUDPAddr(network, s.http3Server.Addr)
 		if err != nil {
 			return err
 		}
@@ -152,7 +157,11 @@ func (s *Server) ListenAndServe() error {
 		return s.http3Server.ListenAndServe()
 	}
 
-	ln, err := net.Listen("tcp", s.httpServer.Addr)
+	network := "tcp"
+	if xnet.IsIPv4(s.httpServer.Addr) {
+		network = "tcp4"
+	}
+	ln, err := net.Listen(network, s.httpServer.Addr)
 	if err != nil {
 		s.options.logger.Error(err)
 		return err

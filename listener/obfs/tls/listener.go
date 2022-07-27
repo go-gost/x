@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 
@@ -38,7 +39,11 @@ func (l *obfsListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	ln, err := net.Listen("tcp", l.options.Addr)
+	network := "tcp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "tcp4"
+	}
+	ln, err := net.Listen(network, l.options.Addr)
 	if err != nil {
 		return
 	}

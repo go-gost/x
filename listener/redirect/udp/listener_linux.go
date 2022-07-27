@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/go-gost/core/common/bufpool"
+	xnet "github.com/go-gost/x/internal/net"
 	"golang.org/x/sys/unix"
 )
 
@@ -28,7 +29,12 @@ func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
 			})
 		},
 	}
-	pc, err := lc.ListenPacket(context.Background(), "udp", addr)
+
+	network := "udp"
+	if xnet.IsIPv4(addr) {
+		network = "udp4"
+	}
+	pc, err := lc.ListenPacket(context.Background(), network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +53,11 @@ func (l *redirectListener) accept() (conn net.Conn, err error) {
 
 	l.logger.Infof("%s >> %s", raddr.String(), dstAddr.String())
 
-	c, err := dialUDP("udp", dstAddr, raddr)
+	network := "udp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "udp4"
+	}
+	c, err := dialUDP(network, dstAddr, raddr)
 	if err != nil {
 		l.logger.Error(err)
 		return

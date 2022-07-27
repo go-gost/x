@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	metrics "github.com/go-gost/core/metrics/wrapper"
+	xnet "github.com/go-gost/x/internal/net"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 	"github.com/go-gost/x/registry"
 	"github.com/lucas-clemente/quic-go"
@@ -41,7 +42,11 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	l.addr, err = net.ResolveUDPAddr("udp", l.options.Addr)
+	network := "udp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "udp4"
+	}
+	l.addr, err = net.ResolveUDPAddr(network, l.options.Addr)
 	if err != nil {
 		return
 	}

@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	xnet "github.com/go-gost/x/internal/net"
 )
 
 type Server interface {
@@ -22,7 +24,11 @@ type dohServer struct {
 }
 
 func (s *dohServer) ListenAndServe() error {
-	ln, err := net.Listen("tcp", s.addr)
+	network := "tcp"
+	if xnet.IsIPv4(s.addr) {
+		network = "tcp4"
+	}
+	ln, err := net.Listen(network, s.addr)
 	if err != nil {
 		return err
 	}
