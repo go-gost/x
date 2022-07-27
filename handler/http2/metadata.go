@@ -15,9 +15,10 @@ type metadata struct {
 
 func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 	const (
-		header         = "header"
-		probeResistKey = "probeResistance"
-		knock          = "knock"
+		header          = "header"
+		probeResistKey  = "probeResistance"
+		probeResistKeyX = "probe_resist"
+		knock           = "knock"
 	)
 
 	if m := mdx.GetStringMapString(md, header); len(m) > 0 {
@@ -28,8 +29,12 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		h.md.header = hd
 	}
 
-	if v := mdx.GetString(md, probeResistKey); v != "" {
-		if ss := strings.SplitN(v, ":", 2); len(ss) == 2 {
+	pr := mdx.GetString(md, probeResistKey)
+	if pr == "" {
+		pr = mdx.GetString(md, probeResistKeyX)
+	}
+	if pr != "" {
+		if ss := strings.SplitN(pr, ":", 2); len(ss) == 2 {
 			h.md.probeResistance = &probeResistance{
 				Type:  ss[0],
 				Value: ss[1],

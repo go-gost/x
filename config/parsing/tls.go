@@ -31,7 +31,7 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 	tlsConfig, err := loadConfig(cfg.CertFile, cfg.KeyFile)
 	if err != nil {
 		// generate random self-signed certificate.
-		cert, err := genCertificate()
+		cert, err := genCertificate(cfg.Validity, cfg.Organization, cfg.CommonName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -58,15 +58,15 @@ func loadConfig(certFile, keyFile string) (*tls.Config, error) {
 	return cfg, nil
 }
 
-func genCertificate() (cert tls.Certificate, err error) {
-	rawCert, rawKey, err := generateKeyPair()
+func genCertificate(validity time.Duration, org string, cn string) (cert tls.Certificate, err error) {
+	rawCert, rawKey, err := generateKeyPair(validity, org, cn)
 	if err != nil {
 		return
 	}
 	return tls.X509KeyPair(rawCert, rawKey)
 }
 
-func generateKeyPair() (rawCert, rawKey []byte, err error) {
+func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, rawKey []byte, err error) {
 	// Create private key and self-signed certificate
 	// Adapted from https://golang.org/src/crypto/tls/generate_cert.go
 
@@ -74,7 +74,18 @@ func generateKeyPair() (rawCert, rawKey []byte, err error) {
 	if err != nil {
 		return
 	}
-	validFor := time.Hour * 24 * 365 * 10 // ten years
+
+	if validity <= 0 {
+		validity = time.Hour * 24 * 365 // one year
+	}
+	if org == "" {
+		org = "GOST"
+	}
+	if cn == "" {
+		cn = "gost.run"
+	}
+
+	validFor := validity
 	notBefore := time.Now()
 	notAfter := notBefore.Add(validFor)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
@@ -86,7 +97,8 @@ func generateKeyPair() (rawCert, rawKey []byte, err error) {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"gost"},
+			Organization: []string{org},
+			CommonName:   cn,
 		},
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
@@ -96,7 +108,7 @@ func generateKeyPair() (rawCert, rawKey []byte, err error) {
 		BasicConstraintsValid: true,
 	}
 
-	template.DNSNames = append(template.DNSNames, "gost.run")
+	template.DNSNames = append(template.DNSNames, cn)
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
 		return

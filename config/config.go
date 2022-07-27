@@ -71,6 +71,11 @@ type TLSConfig struct {
 	CAFile     string `yaml:"caFile,omitempty" json:"caFile,omitempty"`
 	Secure     bool   `yaml:",omitempty" json:"secure,omitempty"`
 	ServerName string `yaml:"serverName,omitempty" json:"serverName,omitempty"`
+
+	// for auto-generated default certificate.
+	Validity     time.Duration `yaml:",omitempty" json:"validity,omitempty"`
+	CommonName   string        `yaml:"commonName,omitempty" json:"commonName,omitempty"`
+	Organization string        `yaml:",omitempty" json:"organization,omitempty"`
 }
 
 type AutherConfig struct {
