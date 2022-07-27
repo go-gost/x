@@ -92,6 +92,7 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		client = &http.Client{}
 		if d.h2c {
 			client.Transport = &http2.Transport{
+				AllowHTTP: true,
 				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 					return options.NetDialer.Dial(ctx, network, addr)
 				},
@@ -119,10 +120,14 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		host = address
 	}
 
+	scheme := "https"
+	if d.h2c {
+		scheme = "http"
+	}
 	pr, pw := io.Pipe()
 	req := &http.Request{
 		Method:     http.MethodConnect,
-		URL:        &url.URL{Scheme: "https", Host: host},
+		URL:        &url.URL{Scheme: scheme, Host: host},
 		Header:     d.md.header,
 		ProtoMajor: 2,
 		ProtoMinor: 0,
