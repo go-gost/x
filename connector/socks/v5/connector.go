@@ -151,6 +151,10 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 		return nil, err
 	}
 
+	if c.md.relay == "udp" {
+		return c.relayUDP(ctx, conn, addr, log)
+	}
+
 	req := gosocks5.NewRequest(socks.CmdUDPTun, nil)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
@@ -170,4 +174,37 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 	}
 
 	return socks.UDPTunClientConn(conn, addr), nil
+}
+
+func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.Addr, log logger.Logger) (net.Conn, error) {
+	req := gosocks5.NewRequest(gosocks5.CmdUdp, nil)
+	if err := req.Write(conn); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	log.Debug(req)
+
+	reply, err := gosocks5.ReadReply(conn)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	log.Debug(reply)
+
+	if reply.Rep != gosocks5.Succeeded {
+		return nil, errors.New("get socks5 UDP tunnel failure")
+	}
+
+	cc, err := (&net.Dialer{}).DialContext(ctx, "udp", reply.Addr.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return &udpRelayConn{
+		udpConn:    cc.(*net.UDPConn),
+		tcpConn:    conn,
+		taddr:      addr,
+		bufferSize: c.md.udpBufferSize,
+		logger:     log,
+	}, nil
 }
