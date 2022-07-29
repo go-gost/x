@@ -145,7 +145,7 @@ func NewHTTP3Server(addr string, quicConfig *quic.Config, opts ...ServerOption) 
 func (s *Server) ListenAndServe() error {
 	if s.http3Server != nil {
 		network := "udp"
-		if xnet.IsIPv4(s.httpServer.Addr) {
+		if xnet.IsIPv4(s.http3Server.Addr) {
 			network = "udp4"
 		}
 		addr, err := net.ResolveUDPAddr(network, s.http3Server.Addr)
