@@ -8,7 +8,7 @@ import (
 )
 
 type metadata struct {
-	keepAlive        bool
+	keepAlive        time.Duration
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
 }
@@ -22,7 +22,7 @@ func (d *icmpDialer) parseMetadata(md mdata.Metadata) (err error) {
 
 	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 
-	d.md.keepAlive = mdx.GetBool(md, keepAlive)
+	d.md.keepAlive = mdx.GetDuration(md, keepAlive)
 	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 

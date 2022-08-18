@@ -68,7 +68,7 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 	}
 
 	config := &quic.Config{
-		KeepAlive:            l.md.keepAlive,
+		KeepAlivePeriod:      l.md.keepAlive,
 		HandshakeIdleTimeout: l.md.handshakeTimeout,
 		MaxIdleTimeout:       l.md.maxIdleTimeout,
 		Versions: []quic.VersionNumber{

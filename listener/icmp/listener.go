@@ -59,7 +59,7 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
 
 	config := &quic.Config{
-		KeepAlive:            l.md.keepAlive,
+		KeepAlivePeriod:      l.md.keepAlive,
 		HandshakeIdleTimeout: l.md.handshakeTimeout,
 		MaxIdleTimeout:       l.md.maxIdleTimeout,
 		Versions: []quic.VersionNumber{

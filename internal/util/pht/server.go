@@ -121,11 +121,8 @@ func NewHTTP3Server(addr string, quicConfig *quic.Config, opts ...ServerOption) 
 
 	s := &Server{
 		http3Server: &http3.Server{
-			Server: &http.Server{
-				Addr:              addr,
-				TLSConfig:         options.tlsConfig,
-				ReadHeaderTimeout: 30 * time.Second,
-			},
+			Addr:       addr,
+			TLSConfig:  options.tlsConfig,
 			QuicConfig: quicConfig,
 		},
 		cqueue:  make(chan net.Conn, options.backlog),

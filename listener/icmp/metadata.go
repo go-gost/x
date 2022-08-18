@@ -12,7 +12,7 @@ const (
 )
 
 type metadata struct {
-	keepAlive        bool
+	keepAlive        time.Duration
 	handshakeTimeout time.Duration
 	maxIdleTimeout   time.Duration
 
@@ -34,7 +34,7 @@ func (l *icmpListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 
-	l.md.keepAlive = mdx.GetBool(md, keepAlive)
+	l.md.keepAlive = mdx.GetDuration(md, keepAlive)
 	l.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 
