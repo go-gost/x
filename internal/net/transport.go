@@ -9,7 +9,7 @@ import (
 )
 
 func Transport(rw1, rw2 io.ReadWriter) error {
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() {
 		errc <- copyBuffer(rw1, rw2)
 	}()
@@ -19,10 +19,16 @@ func Transport(rw1, rw2 io.ReadWriter) error {
 	}()
 
 	err := <-errc
-	if err != nil && err == io.EOF {
-		err = nil
+	err2 := <-errc
+	if err != nil && err != io.EOF {
+		return err
 	}
-	return err
+
+	if err2 != nil && err2 != io.EOF {
+		return err2
+	}
+
+	return nil
 }
 
 func copyBuffer(dst io.Writer, src io.Reader) error {
