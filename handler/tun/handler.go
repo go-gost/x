@@ -241,7 +241,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 
 				addr := h.findRouteFor(dst, config.Routes...)
 				if addr == nil {
-					log.Warnf("no route for %s -> %s", src, dst)
+					log.Debugf("no route for %s -> %s", src, dst)
 					return nil
 				}
 
@@ -317,7 +317,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 						h.routes.Store(rkey, addr)
 					}
 				} else {
-					log.Warnf("no route for %s -> %s", src, addr)
+					log.Debugf("no route for %s -> %s", src, addr)
 				}
 
 				if addr := h.findRouteFor(dst, config.Routes...); addr != nil {

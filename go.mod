@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
-	github.com/docker/libcontainer v2.2.1+incompatible
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-gost/core v0.0.0-20220818022848-2cc1d6f52c41
@@ -18,7 +17,6 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/lucas-clemente/quic-go v0.28.1
 	github.com/miekg/dns v1.1.47
-	github.com/milosgajdos/tenus v0.0.3
 	github.com/prometheus/client_golang v1.12.1
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5

@@ -1,22 +1,15 @@
 package tap
 
 import (
+	"fmt"
 	"net"
+	"os/exec"
+	"strings"
 
-	"github.com/docker/libcontainer/netlink"
-	"github.com/milosgajdos/tenus"
 	"github.com/songgao/water"
 )
 
 func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) {
-	var ipNet *net.IPNet
-	if l.md.config.Net != "" {
-		ip, ipNet, err = net.ParseCIDR(l.md.config.Net)
-		if err != nil {
-			return
-		}
-	}
-
 	ifce, err = water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
@@ -27,28 +20,18 @@ func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) 
 		return
 	}
 
-	link, err := tenus.NewLinkFrom(ifce.Name())
-	if err != nil {
-		return
-	}
-
-	l.logger.Debugf("ip link set dev %s mtu %d", ifce.Name(), l.md.config.MTU)
-
-	if err = link.SetLinkMTU(l.md.config.MTU); err != nil {
-		return
+	if err = l.exeCmd(fmt.Sprintf("ip link set dev %s mtu %d", ifce.Name(), l.md.config.MTU)); err != nil {
+		l.logger.Warn(err)
 	}
 
 	if l.md.config.Net != "" {
-		l.logger.Debugf("ip address add %s dev %s", l.md.config.Net, ifce.Name())
-
-		if err = link.SetLinkIp(ip, ipNet); err != nil {
-			return
+		if err = l.exeCmd(fmt.Sprintf("ip address add %s dev %s", l.md.config.Net, ifce.Name())); err != nil {
+			l.logger.Warn(err)
 		}
 	}
 
-	l.logger.Debugf("ip link set dev %s up", ifce.Name())
-	if err = link.SetLinkUp(); err != nil {
-		return
+	if err = l.exeCmd(fmt.Sprintf("ip link set dev %s up", ifce.Name())); err != nil {
+		l.logger.Warn(err)
 	}
 
 	if err = l.addRoutes(ifce.Name(), l.md.config.Gateway, l.md.config.Routes...); err != nil {
@@ -58,11 +41,25 @@ func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) 
 	return
 }
 
+func (l *tapListener) exeCmd(cmd string) error {
+	l.logger.Debug(cmd)
+
+	args := strings.Split(cmd, " ")
+	if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
+		return fmt.Errorf("%s: %v", cmd, err)
+	}
+
+	return nil
+}
+
 func (l *tapListener) addRoutes(ifName string, gw string, routes ...string) error {
 	for _, route := range routes {
-		l.logger.Debugf("ip route add %s via %s dev %s", route, gw, ifName)
-		if err := netlink.AddRoute(route, "", gw, ifName); err != nil {
-			return err
+		cmd := fmt.Sprintf("ip route add %s via %s dev %s", route, gw, ifName)
+		l.logger.Debug(cmd)
+
+		args := strings.Split(cmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+			l.logger.Warnf("%s: %v", cmd, er)
 		}
 	}
 	return nil

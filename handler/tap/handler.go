@@ -227,7 +227,7 @@ func (h *tapHandler) transport(tap net.Conn, conn net.PacketConn, raddr net.Addr
 					addr = v.(net.Addr)
 				}
 				if addr == nil {
-					log.Warnf("no route for %s -> %s %s %d", src, dst, eType, n)
+					log.Debugf("no route for %s -> %s %s %d", src, dst, eType, n)
 					return nil
 				}
 
