@@ -22,7 +22,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 
 	if !h.md.enableUDP {
 		reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
-		log.Debug(reply)
+		log.Trace(reply)
 		log.Error("socks5: UDP relay is disabled")
 		return reply.Write(conn)
 	}
@@ -31,8 +31,8 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
+		log.Trace(reply)
 		reply.Write(conn)
-		log.Debug(reply)
 		return err
 	}
 	defer cc.Close()
@@ -42,11 +42,11 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 	saddr.Type = 0
 	saddr.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String()) // replace the IP to the out-going interface's
 	reply := gosocks5.NewReply(gosocks5.Succeeded, &saddr)
+	log.Trace(reply)
 	if err := reply.Write(conn); err != nil {
 		log.Error(err)
 		return err
 	}
-	log.Debug(reply)
 
 	log = log.WithFields(map[string]any{
 		"bind": fmt.Sprintf("%s/%s", cc.LocalAddr(), cc.LocalAddr().Network()),
@@ -76,10 +76,10 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 	go r.Run()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), cc.LocalAddr())
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.LocalAddr())
 	io.Copy(ioutil.Discard, conn)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
-		Infof("%s >-< %s", conn.RemoteAddr(), cc.LocalAddr())
+		Debugf("%s >-< %s", conn.RemoteAddr(), cc.LocalAddr())
 
 	return nil
 }

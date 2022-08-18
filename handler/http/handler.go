@@ -122,11 +122,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	log = log.WithFields(fields)
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
-	log.Infof("%s >> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	resp := &http.Response{
 		ProtoMajor: 1,
@@ -140,11 +140,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
 		resp.StatusCode = http.StatusForbidden
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(resp, false)
-			log.Debug(string(dump))
+			log.Trace(string(dump))
 		}
-		log.Info("bypass: ", addr)
+		log.Debug("bypass: ", addr)
 
 		return resp.Write(conn)
 	}
@@ -161,9 +161,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
 		resp.StatusCode = http.StatusBadRequest
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(resp, false)
-			log.Debug(string(dump))
+			log.Trace(string(dump))
 		}
 
 		return resp.Write(conn)
@@ -175,9 +175,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if err != nil {
 		resp.StatusCode = http.StatusServiceUnavailable
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(resp, false)
-			log.Debug(string(dump))
+			log.Trace(string(dump))
 		}
 		resp.Write(conn)
 		return err
@@ -188,9 +188,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.StatusCode = http.StatusOK
 		resp.Status = "200 Connection established"
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(resp, false)
-			log.Debug(string(dump))
+			log.Trace(string(dump))
 		}
 		if err = resp.Write(conn); err != nil {
 			log.Error(err)
@@ -205,11 +205,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	start := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }
@@ -318,7 +318,7 @@ func (h *httpHandler) authenticate(conn net.Conn, req *http.Request, resp *http.
 			resp.Header.Add("Proxy-Connection", "close")
 		}
 
-		log.Info("proxy authentication required")
+		log.Debug("proxy authentication required")
 	} else {
 		resp.Header.Set("Server", "nginx/1.20.1")
 		resp.Header.Set("Date", time.Now().Format(http.TimeFormat))
@@ -327,9 +327,9 @@ func (h *httpHandler) authenticate(conn net.Conn, req *http.Request, resp *http.
 		}
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	resp.Write(conn)

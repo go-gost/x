@@ -126,7 +126,7 @@ func (p *admission) periodReload(ctx context.Context) error {
 				p.options.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			p.options.logger.Debugf("admission reload done")
+			p.options.logger.Debug("admission reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}

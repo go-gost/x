@@ -21,7 +21,7 @@ func (p *tcpListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.logger.Debug(rep)
+	p.logger.Trace(rep)
 
 	if rep.Rep != gosocks5.Succeeded {
 		return nil, fmt.Errorf("peer connect failed")
@@ -74,7 +74,7 @@ func (p *tcpMuxListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.logger.Debug(rep)
+	p.logger.Trace(rep)
 
 	if rep.Rep != gosocks5.Succeeded {
 		err = fmt.Errorf("peer connect failed")

@@ -93,7 +93,7 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	if c.md.connectTimeout > 0 {
 		conn.SetDeadline(time.Now().Add(c.md.connectTimeout))
@@ -122,18 +122,18 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 	}
 
 	req := gosocks5.NewRequest(gosocks5.CmdConnect, &addr)
+	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(req)
 
 	reply, err := gosocks5.ReadReply(conn)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(reply)
+	log.Trace(reply)
 
 	if reply.Rep != gosocks5.Succeeded {
 		err = errors.New("host unreachable")
@@ -156,18 +156,18 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 	}
 
 	req := gosocks5.NewRequest(socks.CmdUDPTun, nil)
+	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(req)
 
 	reply, err := gosocks5.ReadReply(conn)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(reply)
+	log.Trace(reply)
 
 	if reply.Rep != gosocks5.Succeeded {
 		return nil, errors.New("get socks5 UDP tunnel failure")
@@ -178,18 +178,18 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 
 func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.Addr, log logger.Logger) (net.Conn, error) {
 	req := gosocks5.NewRequest(gosocks5.CmdUdp, nil)
+	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(req)
 
 	reply, err := gosocks5.ReadReply(conn)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(reply)
+	log.Trace(reply)
 
 	if reply.Rep != gosocks5.Succeeded {
 		return nil, errors.New("get socks5 UDP tunnel failure")

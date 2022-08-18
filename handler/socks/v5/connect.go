@@ -16,19 +16,19 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		"dst": fmt.Sprintf("%s/%s", address, network),
 		"cmd": "connect",
 	})
-	log.Infof("%s >> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
 		resp := gosocks5.NewReply(gosocks5.NotAllowed, nil)
-		log.Debug(resp)
-		log.Info("bypass: ", address)
+		log.Trace(resp)
+		log.Debug("bypass: ", address)
 		return resp.Write(conn)
 	}
 
 	cc, err := h.router.Dial(ctx, network, address)
 	if err != nil {
 		resp := gosocks5.NewReply(gosocks5.NetUnreachable, nil)
-		log.Debug(resp)
+		log.Trace(resp)
 		resp.Write(conn)
 		return err
 	}
@@ -36,18 +36,18 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	defer cc.Close()
 
 	resp := gosocks5.NewReply(gosocks5.Succeeded, nil)
+	log.Trace(resp)
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)
 		return err
 	}
-	log.Debug(resp)
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), address)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), address)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), address)
 
 	return nil
 }

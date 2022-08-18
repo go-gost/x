@@ -49,18 +49,18 @@ func (s *clientSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, erro
 		}
 
 		req := gosocks5.NewUserPassRequest(gosocks5.UserPassVer, username, password)
+		s.logger.Trace(req)
 		if err := req.Write(conn); err != nil {
 			s.logger.Error(err)
 			return nil, err
 		}
-		s.logger.Debug(req)
 
 		resp, err := gosocks5.ReadUserPassResponse(conn)
 		if err != nil {
 			s.logger.Error(err)
 			return nil, err
 		}
-		s.logger.Debug(resp)
+		s.logger.Trace(resp)
 
 		if resp.Status != gosocks5.Succeeded {
 			return nil, gosocks5.ErrAuthFailure

@@ -49,7 +49,7 @@ func (c *httpConnector) Connect(ctx context.Context, conn net.Conn, network, add
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	req := &http.Request{
 		Method:     http.MethodConnect,
@@ -87,9 +87,9 @@ func (c *httpConnector) Connect(ctx context.Context, conn net.Conn, network, add
 		return nil, err
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	if c.md.connectTimeout > 0 {
@@ -111,9 +111,9 @@ func (c *httpConnector) Connect(ctx context.Context, conn net.Conn, network, add
 	// in this case, close body will be blocked, so we leave it untouched.
 	// defer resp.Body.Close()
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	if resp.StatusCode != http.StatusOK {

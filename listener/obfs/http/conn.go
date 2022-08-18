@@ -49,9 +49,9 @@ func (c *obfsHTTPConn) handshake() (err error) {
 		return
 	}
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		c.logger.Debug(string(dump))
+		c.logger.Trace(string(dump))
 	}
 
 	if r.ContentLength > 0 {
@@ -82,9 +82,9 @@ func (c *obfsHTTPConn) handshake() (err error) {
 	if r.Method != http.MethodGet || r.Header.Get("Upgrade") != "websocket" {
 		resp.StatusCode = http.StatusBadRequest
 
-		if c.logger.IsLevelEnabled(logger.DebugLevel) {
+		if c.logger.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(&resp, false)
-			c.logger.Debug(string(dump))
+			c.logger.Trace(string(dump))
 		}
 
 		resp.Write(c.Conn)
@@ -96,9 +96,9 @@ func (c *obfsHTTPConn) handshake() (err error) {
 	resp.Header.Set("Upgrade", "websocket")
 	resp.Header.Set("Sec-WebSocket-Accept", c.computeAcceptKey(r.Header.Get("Sec-WebSocket-Key")))
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(&resp, false)
-		c.logger.Debug(string(dump))
+		c.logger.Trace(string(dump))
 	}
 
 	if c.rbuf.Len() > 0 {

@@ -200,9 +200,9 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
-	if s.options.logger.IsLevelEnabled(logger.DebugLevel) {
+	if s.options.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		s.options.logger.Debug(string(dump))
+		s.options.logger.Trace(string(dump))
 	}
 
 	raddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
@@ -234,9 +234,9 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
-	if s.options.logger.IsLevelEnabled(logger.DebugLevel) {
+	if s.options.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		s.options.logger.Debug(string(dump))
+		s.options.logger.Trace(string(dump))
 	}
 
 	if r.Method != http.MethodPost {
@@ -293,9 +293,9 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
-	if s.options.logger.IsLevelEnabled(logger.DebugLevel) {
+	if s.options.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		s.options.logger.Debug(string(dump))
+		s.options.logger.Trace(string(dump))
 	}
 
 	if r.Method != http.MethodGet {

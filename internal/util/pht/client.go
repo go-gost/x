@@ -74,9 +74,9 @@ func (c *Client) authorize(ctx context.Context, addr string) (token string, err 
 		return
 	}
 
-	if c.Logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.Logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		c.Logger.Debug(string(dump))
+		c.Logger.Trace(string(dump))
 	}
 
 	resp, err := c.Client.Do(r)
@@ -85,9 +85,9 @@ func (c *Client) authorize(ctx context.Context, addr string) (token string, err 
 	}
 	defer resp.Body.Close()
 
-	if c.Logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.Logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		c.Logger.Debug(string(dump))
+		c.Logger.Trace(string(dump))
 	}
 
 	data, err := io.ReadAll(resp.Body)

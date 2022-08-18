@@ -81,14 +81,14 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		log.Error(err)
 		return err
 	}
-	log.Debug(req)
+	log.Trace(req)
 
 	conn.SetReadDeadline(time.Time{})
 
 	if h.options.Auther != nil &&
 		!h.options.Auther.Authenticate(string(req.Userid), "") {
 		resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
-		log.Debug(resp)
+		log.Trace(resp)
 		return resp.Write(conn)
 	}
 
@@ -110,38 +110,38 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	log = log.WithFields(map[string]any{
 		"dst": addr,
 	})
-	log.Infof("%s >> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
 		resp := gosocks4.NewReply(gosocks4.Rejected, nil)
-		log.Debug(resp)
-		log.Info("bypass: ", addr)
+		log.Trace(resp)
+		log.Debug("bypass: ", addr)
 		return resp.Write(conn)
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", addr)
 	if err != nil {
 		resp := gosocks4.NewReply(gosocks4.Failed, nil)
+		log.Trace(resp)
 		resp.Write(conn)
-		log.Debug(resp)
 		return err
 	}
 
 	defer cc.Close()
 
 	resp := gosocks4.NewReply(gosocks4.Granted, nil)
+	log.Trace(resp)
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)
 		return err
 	}
-	log.Debug(resp)
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }

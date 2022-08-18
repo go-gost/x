@@ -46,7 +46,7 @@ func (c *socks4Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
@@ -100,18 +100,18 @@ func (c *socks4Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		userid = []byte(c.options.Auth.Username())
 	}
 	req := gosocks4.NewRequest(gosocks4.CmdConnect, addr, userid)
+	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(req)
 
 	reply, err := gosocks4.ReadReply(conn)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.Debug(reply)
+	log.Trace(reply)
 
 	if reply.Code != gosocks4.Granted {
 		err = errors.New("host unreachable")

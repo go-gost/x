@@ -20,7 +20,7 @@ func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, addre
 		"network": network,
 		"address": address,
 	})
-	log.Infof("bind on %s/%s", address, network)
+	log.Debugf("bind on %s/%s", address, network)
 
 	options := connector.BindOptions{}
 	for _, opt := range opts {

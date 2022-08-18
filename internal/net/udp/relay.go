@@ -69,7 +69,7 @@ func (r *Relay) Run() (err error) {
 				}
 
 				if r.logger != nil {
-					r.logger.Debugf("%s >>> %s data: %d",
+					r.logger.Tracef("%s >>> %s data: %d",
 						r.pc2.LocalAddr(), raddr, n)
 
 				}
@@ -107,7 +107,7 @@ func (r *Relay) Run() (err error) {
 				}
 
 				if r.logger != nil {
-					r.logger.Debugf("%s <<< %s data: %d",
+					r.logger.Tracef("%s <<< %s data: %d",
 						r.pc2.LocalAddr(), raddr, n)
 
 				}

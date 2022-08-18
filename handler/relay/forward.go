@@ -31,7 +31,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		"cmd": "forward",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
 	cc, err := h.router.Dial(ctx, network, target.Addr)
 	if err != nil {
@@ -81,11 +81,11 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
 
 	return nil
 }

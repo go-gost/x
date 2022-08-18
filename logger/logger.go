@@ -61,11 +61,13 @@ func NewLogger(opts ...LoggerOption) logger.Logger {
 		log.SetFormatter(&logrus.JSONFormatter{
 			DisableHTMLEscape: true,
 			// PrettyPrint:       true,
+			TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
 		})
 	}
 
 	switch options.Level {
-	case logger.DebugLevel,
+	case logger.TraceLevel,
+		logger.DebugLevel,
 		logger.InfoLevel,
 		logger.WarnLevel,
 		logger.ErrorLevel,
@@ -86,6 +88,16 @@ func (l *logrusLogger) WithFields(fields map[string]any) logger.Logger {
 	return &logrusLogger{
 		logger: l.logger.WithFields(logrus.Fields(fields)),
 	}
+}
+
+// Trace logs a message at level Trace.
+func (l *logrusLogger) Trace(args ...any) {
+	l.log(logrus.TraceLevel, args...)
+}
+
+// Tracef logs a message at level Trace.
+func (l *logrusLogger) Tracef(format string, args ...any) {
+	l.logf(logrus.TraceLevel, format, args...)
 }
 
 // Debug logs a message at level Debug.

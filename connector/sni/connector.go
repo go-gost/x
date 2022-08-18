@@ -40,7 +40,7 @@ func (c *sniConnector) Connect(ctx context.Context, conn net.Conn, network, addr
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	return &sniClientConn{Conn: conn, host: c.md.host}, nil
 }

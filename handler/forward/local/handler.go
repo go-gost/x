@@ -93,7 +93,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		"dst": fmt.Sprintf("%s/%s", target.Addr, network),
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
 	cc, err := h.router.Dial(ctx, network, target.Addr)
 	if err != nil {
@@ -107,11 +107,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	target.Marker.Reset()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
 
 	return nil
 }

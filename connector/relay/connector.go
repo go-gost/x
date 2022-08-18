@@ -44,7 +44,7 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	if c.md.connectTimeout > 0 {
 		conn.SetDeadline(time.Now().Add(c.md.connectTimeout))

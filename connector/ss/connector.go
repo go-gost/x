@@ -57,7 +57,7 @@ func (c *ssConnector) Connect(ctx context.Context, conn net.Conn, network, addre
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":

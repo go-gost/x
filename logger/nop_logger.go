@@ -18,6 +18,12 @@ func (l *nopLogger) WithFields(fields map[string]any) logger.Logger {
 	return l
 }
 
+func (l *nopLogger) Trace(args ...any) {
+}
+
+func (l *nopLogger) Tracef(format string, args ...any) {
+}
+
 func (l *nopLogger) Debug(args ...any) {
 }
 

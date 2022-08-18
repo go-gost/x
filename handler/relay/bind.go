@@ -20,7 +20,7 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 		"cmd": "bind",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -119,11 +119,11 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	r.SetBufferSize(h.md.udpBufferSize)
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
 	r.Run()
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
 	return nil
 }
 
@@ -184,10 +184,10 @@ func (h *relayHandler) serveTCPBind(ctx context.Context, conn net.Conn, ln net.L
 			}
 
 			t := time.Now()
-			log.Infof("%s <-> %s", c.LocalAddr(), c.RemoteAddr())
+			log.Debugf("%s <-> %s", c.LocalAddr(), c.RemoteAddr())
 			netpkg.Transport(sc, c)
 			log.WithFields(map[string]any{"duration": time.Since(t)}).
-				Infof("%s >-< %s", c.LocalAddr(), c.RemoteAddr())
+				Debugf("%s >-< %s", c.LocalAddr(), c.RemoteAddr())
 		}(rc)
 	}
 }

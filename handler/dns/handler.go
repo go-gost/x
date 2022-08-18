@@ -149,16 +149,16 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 
 	resolver_util.AddSubnetOpt(&mq, h.md.clientIP)
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
-		log.Debug(mq.String())
+	if log.IsLevelEnabled(logger.TraceLevel) {
+		log.Trace(mq.String())
 	}
 
 	var mr *dns.Msg
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		defer func() {
 			if mr != nil {
-				log.Debug(mr.String())
+				log.Trace(mr.String())
 			}
 		}()
 	}

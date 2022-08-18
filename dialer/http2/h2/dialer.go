@@ -143,9 +143,9 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		req.URL.Path = d.md.path
 	}
 
-	if d.logger.IsLevelEnabled(logger.DebugLevel) {
+	if d.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		d.logger.Debug(string(dump))
+		d.logger.Trace(string(dump))
 	}
 
 	resp, err := client.Do(req)
@@ -153,9 +153,9 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		return nil, err
 	}
 
-	if d.logger.IsLevelEnabled(logger.DebugLevel) {
+	if d.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		d.logger.Debug(string(dump))
+		d.logger.Trace(string(dump))
 	}
 
 	if resp.StatusCode != http.StatusOK {

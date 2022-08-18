@@ -131,9 +131,9 @@ func (l *h2Listener) Close() (err error) {
 }
 
 func (l *h2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
-	if l.logger.IsLevelEnabled(logger.DebugLevel) {
+	if l.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		l.logger.Debug(string(dump))
+		l.logger.Trace(string(dump))
 	}
 	conn, err := l.upgrade(w, r)
 	if err != nil {

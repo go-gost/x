@@ -142,7 +142,7 @@ func (l *sshdListener) serveConn(conn net.Conn) {
 				p := directForward{}
 				ssh.Unmarshal(newChannel.ExtraData(), &p)
 
-				l.logger.Debug(p.String())
+				l.logger.Trace(p.String())
 
 				if p.Host1 == "<nil>" {
 					p.Host1 = ""

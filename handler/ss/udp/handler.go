@@ -108,10 +108,10 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.LocalAddr(), cc.LocalAddr())
+	log.Debugf("%s <-> %s", conn.LocalAddr(), cc.LocalAddr())
 	h.relayPacket(pc, cc, log)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
-		Infof("%s >-< %s", conn.LocalAddr(), cc.LocalAddr())
+		Debugf("%s >-< %s", conn.LocalAddr(), cc.LocalAddr())
 
 	return nil
 }
@@ -140,7 +140,7 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				log.Debugf("%s >>> %s data: %d",
+				log.Tracef("%s >>> %s data: %d",
 					pc2.LocalAddr(), addr, n)
 				return nil
 			}()
@@ -172,7 +172,7 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				log.Debugf("%s <<< %s data: %d",
+				log.Tracef("%s <<< %s data: %d",
 					pc2.LocalAddr(), raddr, n)
 				return nil
 			}()

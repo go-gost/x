@@ -95,10 +95,10 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		"dst": addr.String(),
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(addr.String()) {
-		log.Info("bypass: ", addr.String())
+		log.Debug("bypass: ", addr.String())
 		return nil
 	}
 
@@ -109,11 +109,11 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }

@@ -88,7 +88,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		log.Error(err)
 		return err
 	}
-	log.Debug(req)
+	log.Trace(req)
 	conn.SetReadDeadline(time.Time{})
 
 	address := req.Addr.String()
@@ -108,8 +108,8 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		err = ErrUnknownCmd
 		log.Error(err)
 		resp := gosocks5.NewReply(gosocks5.CmdUnsupported, nil)
+		log.Trace(resp)
 		resp.Write(conn)
-		log.Debug(resp)
 		return err
 	}
 }

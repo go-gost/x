@@ -122,11 +122,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 	log = log.WithFields(fields)
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
-	log.Infof("%s >> %s", req.RemoteAddr, addr)
+	log.Debugf("%s >> %s", req.RemoteAddr, addr)
 
 	for k := range h.md.header {
 		w.Header().Set(k, h.md.header.Get(k))
@@ -134,7 +134,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
 		w.WriteHeader(http.StatusForbidden)
-		log.Info("bypass: ", addr)
+		log.Debug("bypass: ", addr)
 		return nil
 	}
 
@@ -179,21 +179,21 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			defer conn.Close()
 
 			start := time.Now()
-			log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+			log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
 			netpkg.Transport(conn, cc)
 			log.WithFields(map[string]any{
 				"duration": time.Since(start),
-			}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+			}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 			return nil
 		}
 
 		start := time.Now()
-		log.Infof("%s <-> %s", req.RemoteAddr, addr)
+		log.Debugf("%s <-> %s", req.RemoteAddr, addr)
 		netpkg.Transport(&readWriter{r: req.Body, w: flushWriter{w}}, cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
-		}).Infof("%s >-< %s", req.RemoteAddr, addr)
+		}).Debugf("%s >-< %s", req.RemoteAddr, addr)
 		return nil
 	}
 
@@ -302,7 +302,7 @@ func (h *http2Handler) authenticate(w http.ResponseWriter, r *http.Request, resp
 			resp.Header.Add("Proxy-Connection", "close")
 		}
 
-		log.Info("proxy authentication required")
+		log.Debug("proxy authentication required")
 	} else {
 		resp.Header = http.Header{}
 		resp.Header.Set("Server", "nginx/1.20.1")
@@ -312,9 +312,9 @@ func (h *http2Handler) authenticate(w http.ResponseWriter, r *http.Request, resp
 		}
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	h.writeResponse(w, resp)

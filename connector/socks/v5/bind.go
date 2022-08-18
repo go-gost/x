@@ -21,7 +21,7 @@ func (c *socks5Connector) Bind(ctx context.Context, conn net.Conn, network, addr
 		"network": network,
 		"address": address,
 	})
-	log.Infof("bind on %s/%s", address, network)
+	log.Debugf("bind on %s/%s", address, network)
 
 	options := connector.BindOptions{}
 	for _, opt := range opts {
@@ -98,18 +98,17 @@ func (l *socks5Connector) bind(conn net.Conn, cmd uint8, network, address string
 	addr := gosocks5.Addr{}
 	addr.ParseFrom(address)
 	req := gosocks5.NewRequest(cmd, &addr)
+	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		return nil, err
 	}
-	log.Debug(req)
 
 	// first reply, bind status
 	reply, err := gosocks5.ReadReply(conn)
 	if err != nil {
 		return nil, err
 	}
-
-	log.Debug(reply)
+	log.Trace(reply)
 
 	if reply.Rep != gosocks5.Succeeded {
 		return nil, fmt.Errorf("bind on %s/%s failed", address, network)

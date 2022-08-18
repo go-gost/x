@@ -65,9 +65,9 @@ func (c *obfsHTTPConn) handshake() (err error) {
 		return
 	}
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		c.logger.Debug(string(dump))
+		c.logger.Trace(string(dump))
 	}
 
 	return nil
@@ -109,8 +109,8 @@ func (c *obfsHTTPConn) drainHeader() (err error) {
 		}
 	}
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
-		c.logger.Debug(buf.String())
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
+		c.logger.Trace(buf.String())
 	}
 
 	// cache the extra data for next read.

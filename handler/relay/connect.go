@@ -18,7 +18,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		"cmd": "connect",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -34,7 +34,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
-		log.Info("bypass: ", address)
+		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
 		return err
@@ -81,11 +81,11 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), address)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), address)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), address)
 
 	return nil
 }

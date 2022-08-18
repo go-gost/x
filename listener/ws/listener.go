@@ -130,13 +130,13 @@ func (l *wsListener) Addr() net.Addr {
 }
 
 func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
-	if l.logger.IsLevelEnabled(logger.DebugLevel) {
+	if l.logger.IsLevelEnabled(logger.TraceLevel) {
 		log := l.logger.WithFields(map[string]any{
 			"local":  l.addr.String(),
 			"remote": r.RemoteAddr,
 		})
 		dump, _ := httputil.DumpRequest(r, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	conn, err := l.upgrader.Upgrade(w, r, l.md.header)

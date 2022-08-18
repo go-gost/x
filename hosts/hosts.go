@@ -174,7 +174,7 @@ func (h *Hosts) periodReload(ctx context.Context) error {
 				h.options.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			h.options.logger.Debugf("hosts reload done")
+			h.options.logger.Debug("hosts reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}

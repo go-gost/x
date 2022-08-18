@@ -86,10 +86,10 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 		"cmd": "connect",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), targetAddr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), targetAddr)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(targetAddr) {
-		log.Infof("bypass %s", targetAddr)
+		log.Debugf("bypass %s", targetAddr)
 		return nil
 	}
 
@@ -100,11 +100,11 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", cc.LocalAddr(), targetAddr)
+	log.Debugf("%s <-> %s", cc.LocalAddr(), targetAddr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", cc.LocalAddr(), targetAddr)
+	}).Debugf("%s >-< %s", cc.LocalAddr(), targetAddr)
 
 	return nil
 }
@@ -126,7 +126,7 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 		"cmd": "bind",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	// tie to the client connection
 	ln, err := net.Listen(network, addr)
@@ -198,21 +198,21 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 				go ssh.DiscardRequests(reqs)
 
 				t := time.Now()
-				log.Infof("%s <-> %s", conn.LocalAddr(), conn.RemoteAddr())
+				log.Debugf("%s <-> %s", conn.LocalAddr(), conn.RemoteAddr())
 				netpkg.Transport(ch, conn)
 				log.WithFields(map[string]any{
 					"duration": time.Since(t),
-				}).Infof("%s >-< %s", conn.LocalAddr(), conn.RemoteAddr())
+				}).Debugf("%s >-< %s", conn.LocalAddr(), conn.RemoteAddr())
 			}(cc)
 		}
 	}()
 
 	tm := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
 	<-conn.Done()
 	log.WithFields(map[string]any{
 		"duration": time.Since(tm),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }

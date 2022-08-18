@@ -61,7 +61,7 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, erro
 			s.logger.Error(err)
 			return nil, err
 		}
-		s.logger.Debug(req)
+		s.logger.Trace(req)
 
 		if s.Authenticator != nil &&
 			!s.Authenticator.Authenticate(req.Username, req.Password) {
@@ -76,11 +76,11 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, erro
 		}
 
 		resp := gosocks5.NewUserPassResponse(gosocks5.UserPassVer, gosocks5.Succeeded)
+		s.logger.Trace(resp)
 		if err := resp.Write(conn); err != nil {
 			s.logger.Error(err)
 			return nil, err
 		}
-		s.logger.Debug(resp)
 
 	case gosocks5.MethodNoAcceptable:
 		return nil, gosocks5.ErrBadMethod

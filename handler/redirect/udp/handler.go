@@ -69,10 +69,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), dstAddr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(dstAddr.String()) {
-		log.Info("bypass: ", dstAddr)
+		log.Debug("bypass: ", dstAddr)
 		return nil
 	}
 
@@ -84,11 +84,11 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), dstAddr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), dstAddr)
 
 	return nil
 }

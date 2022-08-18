@@ -49,7 +49,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	v, _ := conn.(md.Metadatable)
 	if v == nil {
@@ -80,9 +80,9 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 			"Basic "+base64.StdEncoding.EncodeToString([]byte(u+":"+p)))
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	if c.md.connectTimeout > 0 {
@@ -98,9 +98,9 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		return nil, err
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()

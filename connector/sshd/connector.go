@@ -41,7 +41,7 @@ func (c *sshdConnector) Connect(ctx context.Context, conn net.Conn, network, add
 		"network": network,
 		"address": address,
 	})
-	log.Infof("connect %s/%s", address, network)
+	log.Debugf("connect %s/%s", address, network)
 
 	cc, ok := conn.(*ssh_util.ClientConn)
 	if !ok {
@@ -65,7 +65,7 @@ func (c *sshdConnector) Bind(ctx context.Context, conn net.Conn, network, addres
 		"network": network,
 		"address": address,
 	})
-	log.Infof("bind on %s/%s", address, network)
+	log.Debugf("bind on %s/%s", address, network)
 
 	cc, ok := conn.(*ssh_util.ClientConn)
 	if !ok {

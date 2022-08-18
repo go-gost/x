@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
 	"github.com/go-gost/gosocks5"
@@ -37,17 +38,17 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	if f := registry.HandlerRegistry().Get("http"); f != nil {
 		v := append(opts,
-			handler.LoggerOption(options.Logger.WithFields(map[string]any{"type": "http"})))
+			handler.LoggerOption(options.Logger.WithFields(map[string]any{"handler": "http"})))
 		h.httpHandler = f(v...)
 	}
 	if f := registry.HandlerRegistry().Get("socks4"); f != nil {
 		v := append(opts,
-			handler.LoggerOption(options.Logger.WithFields(map[string]any{"type": "socks4"})))
+			handler.LoggerOption(options.Logger.WithFields(map[string]any{"handler": "socks4"})))
 		h.socks4Handler = f(v...)
 	}
 	if f := registry.HandlerRegistry().Get("socks5"); f != nil {
 		v := append(opts,
-			handler.LoggerOption(options.Logger.WithFields(map[string]any{"type": "socks5"})))
+			handler.LoggerOption(options.Logger.WithFields(map[string]any{"handler": "socks5"})))
 		h.socks5Handler = f(v...)
 	}
 
@@ -80,13 +81,15 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		"local":  conn.LocalAddr().String(),
 	})
 
-	start := time.Now()
-	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
-	defer func() {
-		log.WithFields(map[string]any{
-			"duration": time.Since(start),
-		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
-	}()
+	if log.IsLevelEnabled(logger.DebugLevel) {
+		start := time.Now()
+		log.Debugf("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+		defer func() {
+			log.WithFields(map[string]any{
+				"duration": time.Since(start),
+			}).Debugf("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
+		}()
+	}
 
 	br := bufio.NewReader(conn)
 	b, err := br.Peek(1)

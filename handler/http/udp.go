@@ -30,9 +30,9 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.L
 	if !h.md.enableUDP {
 		resp.StatusCode = http.StatusForbidden
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpResponse(resp, false)
-			log.Debug(string(dump))
+			log.Trace(string(dump))
 		}
 
 		log.Error("http: UDP relay is disabled")
@@ -41,9 +41,9 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.L
 	}
 
 	resp.StatusCode = http.StatusOK
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)

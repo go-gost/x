@@ -54,9 +54,9 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 		return
 	}
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
-		c.logger.Debug(string(dump))
+		c.logger.Trace(string(dump))
 	}
 
 	resp, err := c.client.Do(r)
@@ -65,9 +65,9 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 	}
 	defer resp.Body.Close()
 
-	if c.logger.IsLevelEnabled(logger.DebugLevel) {
+	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		c.logger.Debug(string(dump))
+		c.logger.Trace(string(dump))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -89,9 +89,9 @@ func (c *clientConn) readLoop() {
 				return err
 			}
 
-			if c.logger.IsLevelEnabled(logger.DebugLevel) {
+			if c.logger.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpRequest(r, false)
-				c.logger.Debug(string(dump))
+				c.logger.Trace(string(dump))
 			}
 
 			resp, err := c.client.Do(r)
@@ -100,9 +100,9 @@ func (c *clientConn) readLoop() {
 			}
 			defer resp.Body.Close()
 
-			if c.logger.IsLevelEnabled(logger.DebugLevel) {
+			if c.logger.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpResponse(resp, false)
-				c.logger.Debug(string(dump))
+				c.logger.Trace(string(dump))
 			}
 
 			if resp.StatusCode != http.StatusOK {

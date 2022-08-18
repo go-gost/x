@@ -17,11 +17,11 @@ func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, 
 		"cmd": "bind",
 	})
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
 	if !h.md.enableBind {
 		reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
-		log.Debug(reply)
+		log.Trace(reply)
 		log.Error("socks5: BIND is disabled")
 		return reply.Write(conn)
 	}
@@ -51,12 +51,12 @@ func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, a
 	socksAddr.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String())
 	socksAddr.Type = 0
 	reply := gosocks5.NewReply(gosocks5.Succeeded, &socksAddr)
+	log.Trace(reply)
 	if err := reply.Write(conn); err != nil {
 		log.Error(err)
 		ln.Close()
 		return err
 	}
-	log.Debug(reply)
 
 	log = log.WithFields(map[string]any{
 		"bind": fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
@@ -109,10 +109,10 @@ func (h *socks5Handler) serveBind(ctx context.Context, conn net.Conn, ln net.Lis
 			log.Error(err)
 
 			reply := gosocks5.NewReply(gosocks5.Failure, nil)
+			log.Trace(reply)
 			if err := reply.Write(pc2); err != nil {
 				log.Error(err)
 			}
-			log.Debug(reply)
 
 			return
 		}
@@ -128,16 +128,16 @@ func (h *socks5Handler) serveBind(ctx context.Context, conn net.Conn, ln net.Lis
 		raddr := gosocks5.Addr{}
 		raddr.ParseFrom(rc.RemoteAddr().String())
 		reply := gosocks5.NewReply(gosocks5.Succeeded, &raddr)
+		log.Trace(reply)
 		if err := reply.Write(pc2); err != nil {
 			log.Error(err)
 		}
-		log.Debug(reply)
 
 		start := time.Now()
-		log.Infof("%s <-> %s", rc.LocalAddr(), rc.RemoteAddr())
+		log.Debugf("%s <-> %s", rc.LocalAddr(), rc.RemoteAddr())
 		netpkg.Transport(pc2, rc)
 		log.WithFields(map[string]any{"duration": time.Since(start)}).
-			Infof("%s >-< %s", rc.LocalAddr(), rc.RemoteAddr())
+			Debugf("%s >-< %s", rc.LocalAddr(), rc.RemoteAddr())
 
 	case err := <-pipe():
 		if err != nil {

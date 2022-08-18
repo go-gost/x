@@ -25,7 +25,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		// relay mode
 		if !h.md.enableUDP {
 			reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
-			log.Debug(reply)
+			log.Trace(reply)
 			log.Error("socks5: UDP relay is disabled")
 			return reply.Write(conn)
 		}
@@ -33,7 +33,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		// BIND mode
 		if !h.md.enableBind {
 			reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
-			log.Debug(reply)
+			log.Trace(reply)
 			log.Error("socks5: BIND is disabled")
 			return reply.Write(conn)
 		}
@@ -49,11 +49,11 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(pc.LocalAddr().String())
 	reply := gosocks5.NewReply(gosocks5.Succeeded, &saddr)
+	log.Trace(reply)
 	if err := reply.Write(conn); err != nil {
 		log.Error(err)
 		return err
 	}
-	log.Debug(reply)
 	log.Debugf("bind on %s OK", pc.LocalAddr())
 
 	r := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
@@ -62,11 +62,11 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	r.SetBufferSize(h.md.udpBufferSize)
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
 	r.Run()
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
 
 	return nil
 }

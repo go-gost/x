@@ -115,7 +115,7 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log = log.WithFields(map[string]any{
 			"dst": fmt.Sprintf("%s/%s", raddr.String(), raddr.Network()),
 		})
-		log.Infof("%s >> %s", conn.RemoteAddr(), target.Addr)
+		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 	}
 
 	config := v.GetMetadata().Get("config").(*tap_util.Config)

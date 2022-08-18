@@ -117,10 +117,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}
 	}
 
-	log.Infof("%s >> %s", conn.RemoteAddr(), dstAddr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(dstAddr.String()) {
-		log.Info("bypass: ", dstAddr)
+		log.Debug("bypass: ", dstAddr)
 		return nil
 	}
 
@@ -132,11 +132,11 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), dstAddr)
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), dstAddr)
 
 	return nil
 }
@@ -147,9 +147,9 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		return err
 	}
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	host := req.Host
@@ -161,7 +161,7 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	})
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(host) {
-		log.Info("bypass: ", host)
+		log.Debug("bypass: ", host)
 		return nil
 	}
 
@@ -173,11 +173,11 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", raddr, host)
+	log.Debugf("%s <-> %s", raddr, host)
 	defer func() {
 		log.WithFields(map[string]any{
 			"duration": time.Since(t),
-		}).Infof("%s >-< %s", raddr, host)
+		}).Debugf("%s >-< %s", raddr, host)
 	}()
 
 	if err := req.Write(cc); err != nil {
@@ -192,9 +192,9 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	}
 	defer resp.Body.Close()
 
-	if log.IsLevelEnabled(logger.DebugLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		log.Debug(string(dump))
+		log.Trace(string(dump))
 	}
 
 	return resp.Write(rw)
@@ -224,7 +224,7 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	})
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(host) {
-		log.Info("bypass: ", host)
+		log.Debug("bypass: ", host)
 		return nil
 	}
 
@@ -236,14 +236,14 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	defer cc.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", raddr, host)
+	log.Debugf("%s <-> %s", raddr, host)
 	netpkg.Transport(&readWriter{
 		Reader: io.MultiReader(buf, rw),
 		Writer: rw,
 	}, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", raddr, host)
+	}).Debugf("%s >-< %s", raddr, host)
 
 	return nil
 }

@@ -118,7 +118,7 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log = log.WithFields(map[string]any{
 			"dst": fmt.Sprintf("%s/%s", raddr.String(), raddr.Network()),
 		})
-		log.Infof("%s >> %s", conn.RemoteAddr(), target.Addr)
+		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 	}
 
 	config := v.GetMetadata().Get("config").(*tun_util.Config)
@@ -211,7 +211,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 						log.Error(err)
 						return nil
 					}
-					log.Debugf("%s >> %s %-4s %d/%-4d %-4x %d",
+					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
 						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
 
@@ -222,7 +222,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 						log.Warn(err)
 						return nil
 					}
-					log.Debugf("%s >> %s %s %d %d",
+					log.Tracef("%s >> %s %s %d %d",
 						header.Src, header.Dst,
 						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
 						header.PayloadLen, header.TrafficClass)
@@ -280,7 +280,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 						return nil
 					}
 
-					log.Debugf("%s >> %s %-4s %d/%-4d %-4x %d",
+					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
 						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
 
@@ -292,7 +292,7 @@ func (h *tunHandler) transport(tun net.Conn, conn net.PacketConn, raddr net.Addr
 						return nil
 					}
 
-					log.Debugf("%s > %s %s %d %d",
+					log.Tracef("%s > %s %s %d %d",
 						header.Src, header.Dst,
 						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
 						header.PayloadLen, header.TrafficClass)
