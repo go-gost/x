@@ -99,7 +99,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		d.clients[addr] = client
 	}
 
-	cli, err := client.TunnelX(ctx, d.md.path)
+	cli, err := client.TunnelX(context.Background(), d.md.path)
 	if err != nil {
 		return nil, err
 	}

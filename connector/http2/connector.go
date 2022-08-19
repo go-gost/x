@@ -91,7 +91,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 	}
 
 	client := v.GetMetadata().Get("client").(*http.Client)
-	resp, err := client.Do(req.WithContext(ctx))
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Error(err)
 		conn.Close()

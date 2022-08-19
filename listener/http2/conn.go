@@ -37,7 +37,7 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) LocalAddr() net.Addr {
-	return c.raddr
+	return c.laddr
 }
 
 func (c *conn) RemoteAddr() net.Addr {
