@@ -12,12 +12,19 @@ import (
 	tun_util "github.com/go-gost/x/internal/util/tun"
 )
 
+const (
+	defaultTunName = "tun0"
+)
+
 func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.IP, err error) {
 	ip, _, err = net.ParseCIDR(l.md.config.Net)
 	if err != nil {
 		return
 	}
 
+	if l.md.config.Name == "" {
+		l.md.config.Name = defaultTunName
+	}
 	ifce, name, err = l.createTunDevice()
 	if err != nil {
 		return
