@@ -4,29 +4,27 @@ package tun
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os/exec"
 	"strings"
 
 	tun_util "github.com/go-gost/x/internal/util/tun"
-	"github.com/songgao/water"
 )
 
-func (l *tunListener) createTun() (ifce *water.Interface, ip net.IP, err error) {
+func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.IP, err error) {
 	ip, _, err = net.ParseCIDR(l.md.config.Net)
 	if err != nil {
 		return
 	}
 
-	ifce, err = water.New(water.Config{
-		DeviceType: water.TUN,
-	})
+	ifce, name, err = l.createTunDevice()
 	if err != nil {
 		return
 	}
 
 	cmd := fmt.Sprintf("ifconfig %s inet %s mtu %d up",
-		ifce.Name(), l.md.config.Net, l.md.config.MTU)
+		name, l.md.config.Net, l.md.config.MTU)
 	l.logger.Debug(cmd)
 
 	args := strings.Split(cmd, " ")
@@ -35,7 +33,7 @@ func (l *tunListener) createTun() (ifce *water.Interface, ip net.IP, err error) 
 		return
 	}
 
-	if err = l.addRoutes(ifce.Name(), l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(name, l.md.config.Routes...); err != nil {
 		return
 	}
 

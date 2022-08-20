@@ -2,15 +2,15 @@ package tun
 
 import (
 	"errors"
+	"io"
 	"net"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	"github.com/songgao/water"
 )
 
 type conn struct {
-	ifce  *water.Interface
+	ifce  io.ReadWriteCloser
 	laddr net.Addr
 	raddr net.Addr
 }

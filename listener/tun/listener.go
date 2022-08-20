@@ -50,7 +50,7 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 		return
 	}
 
-	ifce, ip, err := l.createTun()
+	ifce, name, ip, err := l.createTun()
 	if err != nil {
 		if ifce != nil {
 			ifce.Close()
@@ -58,7 +58,7 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 		return
 	}
 
-	itf, err := net.InterfaceByName(ifce.Name())
+	itf, err := net.InterfaceByName(name)
 	if err != nil {
 		return
 	}
