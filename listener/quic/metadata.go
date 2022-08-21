@@ -12,7 +12,8 @@ const (
 )
 
 type metadata struct {
-	keepAlive        time.Duration
+	// keepAlive        bool
+	keepAlivePeriod  time.Duration
 	handshakeTimeout time.Duration
 	maxIdleTimeout   time.Duration
 
@@ -23,6 +24,7 @@ type metadata struct {
 func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		keepAlive        = "keepAlive"
+		keepAlivePeriod  = "ttl"
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
 
@@ -39,7 +41,12 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.cipherKey = []byte(key)
 	}
 
-	l.md.keepAlive = mdx.GetDuration(md, keepAlive)
+	if mdx.GetBool(md, keepAlive) {
+		l.md.keepAlivePeriod = mdx.GetDuration(md, keepAlivePeriod)
+		if l.md.keepAlivePeriod <= 0 {
+			l.md.keepAlivePeriod = 10 * time.Second
+		}
+	}
 	l.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 

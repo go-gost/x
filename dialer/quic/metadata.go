@@ -8,7 +8,7 @@ import (
 )
 
 type metadata struct {
-	keepAlive        time.Duration
+	keepAlivePeriod  time.Duration
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
 
@@ -18,19 +18,23 @@ type metadata struct {
 func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		keepAlive        = "keepAlive"
+		keepAlivePeriod  = "ttl"
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
 
 		cipherKey = "cipherKey"
 	)
 
-	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
-
 	if key := mdx.GetString(md, cipherKey); key != "" {
 		d.md.cipherKey = []byte(key)
 	}
 
-	d.md.keepAlive = mdx.GetDuration(md, keepAlive)
+	if mdx.GetBool(md, keepAlive) {
+		d.md.keepAlivePeriod = mdx.GetDuration(md, keepAlivePeriod)
+		if d.md.keepAlivePeriod <= 0 {
+			d.md.keepAlivePeriod = 10 * time.Second
+		}
+	}
 	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
 

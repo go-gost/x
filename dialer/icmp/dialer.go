@@ -105,7 +105,7 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 
 func (d *icmpDialer) initSession(ctx context.Context, addr net.Addr, conn net.PacketConn) (*quicSession, error) {
 	quicConfig := &quic.Config{
-		KeepAlivePeriod:      d.md.keepAlive,
+		KeepAlivePeriod:      d.md.keepAlivePeriod,
 		HandshakeIdleTimeout: d.md.handshakeTimeout,
 		MaxIdleTimeout:       d.md.maxIdleTimeout,
 		Versions: []quic.VersionNumber{
