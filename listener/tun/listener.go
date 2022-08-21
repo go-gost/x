@@ -1,7 +1,9 @@
 package tun
 
 import (
+	"context"
 	"net"
+	"time"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
@@ -49,41 +51,65 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 	if err != nil {
 		return
 	}
-
-	ifce, name, ip, err := l.createTun()
-	if err != nil {
-		if ifce != nil {
-			ifce.Close()
-		}
-		return
-	}
-
-	itf, err := net.InterfaceByName(name)
-	if err != nil {
-		return
-	}
-
-	addrs, _ := itf.Addrs()
-	l.logger.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
-		itf.Name, ip, itf.MTU, addrs)
-
-	l.cqueue = make(chan net.Conn, 1)
+	l.cqueue = make(chan net.Conn)
 	l.closed = make(chan struct{})
 
-	var c net.Conn
-	c = &conn{
-		ifce:  ifce,
-		laddr: l.addr,
-		raddr: &net.IPAddr{IP: ip},
-	}
-	c = metrics.WrapConn(l.options.Service, c)
-	c = withMetadata(mdx.NewMetadata(map[string]any{
-		"config": l.md.config,
-	}), c)
-
-	l.cqueue <- c
+	go l.listenLoop()
 
 	return
+}
+
+func (l *tunListener) listenLoop() {
+	for {
+		ctx, cancel := context.WithCancel(context.Background())
+		err := func() error {
+			ifce, name, ip, err := l.createTun()
+			if err != nil {
+				if ifce != nil {
+					ifce.Close()
+				}
+				return err
+			}
+
+			itf, err := net.InterfaceByName(name)
+			if err != nil {
+				return err
+			}
+
+			addrs, _ := itf.Addrs()
+			l.logger.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
+				itf.Name, ip, itf.MTU, addrs)
+
+			var c net.Conn
+			c = &conn{
+				ifce:   ifce,
+				laddr:  l.addr,
+				raddr:  &net.IPAddr{IP: ip},
+				cancel: cancel,
+			}
+			c = metrics.WrapConn(l.options.Service, c)
+			c = withMetadata(mdx.NewMetadata(map[string]any{
+				"config": l.md.config,
+			}), c)
+
+			l.cqueue <- c
+
+			return nil
+		}()
+		if err != nil {
+			l.logger.Error(err)
+			cancel()
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+		case <-l.closed:
+			return
+		}
+
+		time.Sleep(time.Second)
+	}
 }
 
 func (l *tunListener) Accept() (net.Conn, error) {

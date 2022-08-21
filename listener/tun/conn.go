@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -10,9 +11,10 @@ import (
 )
 
 type conn struct {
-	ifce  io.ReadWriteCloser
-	laddr net.Addr
-	raddr net.Addr
+	ifce   io.ReadWriteCloser
+	laddr  net.Addr
+	raddr  net.Addr
+	cancel context.CancelFunc
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -44,6 +46,9 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *conn) Close() (err error) {
+	if c.cancel != nil {
+		c.cancel()
+	}
 	return c.ifce.Close()
 }
 

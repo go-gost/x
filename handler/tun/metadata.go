@@ -6,17 +6,14 @@ import (
 )
 
 type metadata struct {
-	key        string
 	bufferSize int
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		key        = "key"
 		bufferSize = "bufferSize"
 	)
 
-	h.md.key = mdx.GetString(md, key)
 	h.md.bufferSize = mdx.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = 1500
