@@ -23,7 +23,6 @@ func init() {
 type tunHandler struct {
 	group   *chain.NodeGroup
 	routes  sync.Map
-	exit    chan struct{}
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -36,7 +35,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 
 	return &tunHandler{
-		exit:    make(chan struct{}, 1),
 		options: options,
 	}
 }

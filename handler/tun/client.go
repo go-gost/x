@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
@@ -13,14 +14,55 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+const (
+	// 4-byte magic header followed by 16-byte IP address
+	keepAliveDataLength = 20
+)
+
+var (
+	keepAliveHeader = []byte("GOST")
+)
+
 func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.Addr, config *tun_util.Config, log logger.Logger) error {
+	ip, _, err := net.ParseCIDR(config.Net)
+	if err != nil {
+		return err
+	}
+
 	cc, err := h.router.Dial(ctx, addr.Network(), addr.String())
 	if err != nil {
 		return err
 	}
 	defer cc.Close()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if h.md.keepAlivePeriod > 0 {
+		go h.keepAlive(ctx, cc, ip)
+	}
+
 	return h.transportClient(conn, cc, config, log)
+}
+
+func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
+	var keepAliveData [keepAliveDataLength]byte
+	copy(keepAliveData[:4], keepAliveHeader) // magic header
+	copy(keepAliveData[4:], ip.To16())
+
+	ticker := time.NewTicker(h.md.keepAlivePeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if _, err := conn.Write(keepAliveData[:]); err != nil {
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (h *tunHandler) transportClient(tun net.Conn, conn net.Conn, config *tun_util.Config, log logger.Logger) error {

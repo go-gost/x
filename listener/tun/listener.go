@@ -99,7 +99,6 @@ func (l *tunListener) listenLoop() {
 		if err != nil {
 			l.logger.Error(err)
 			cancel()
-			continue
 		}
 
 		select {

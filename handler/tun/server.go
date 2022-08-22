@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -41,7 +42,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 				if waterutil.IsIPv4((*b)[:n]) {
 					header, err := ipv4.ParseHeader((*b)[:n])
 					if err != nil {
-						log.Warn(err)
+						log.Warnf("parse ipv4 packet header: %v", err)
 						return nil
 					}
 					src, dst = header.Src, header.Dst
@@ -52,7 +53,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 				} else if waterutil.IsIPv6((*b)[:n]) {
 					header, err := ipv6.ParseHeader((*b)[:n])
 					if err != nil {
-						log.Warn(err)
+						log.Warnf("parse ipv6 packet header: %v", err)
 						return nil
 					}
 					src, dst = header.Src, header.Dst
@@ -97,12 +98,18 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 				if err != nil {
 					return err
 				}
+				if n == keepAliveDataLength && bytes.Equal((*b)[:4], keepAliveHeader) {
+					peerIP := net.IP((*b)[4:keepAliveDataLength])
+					log.Debugf("keepalive from %v => %v", peerIP, addr)
+					h.updateRoute(peerIP, addr, log)
+					return nil
+				}
 
 				var src, dst net.IP
 				if waterutil.IsIPv4((*b)[:n]) {
 					header, err := ipv4.ParseHeader((*b)[:n])
 					if err != nil {
-						log.Warn(err)
+						log.Warnf("parse ipv4 packet header: %v", err)
 						return nil
 					}
 					src, dst = header.Src, header.Dst
@@ -113,7 +120,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 				} else if waterutil.IsIPv6((*b)[:n]) {
 					header, err := ipv6.ParseHeader((*b)[:n])
 					if err != nil {
-						log.Warn(err)
+						log.Warnf("parse ipv6 packet header: %v", err)
 						return nil
 					}
 					src, dst = header.Src, header.Dst
@@ -127,16 +134,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 					return nil
 				}
 
-				rkey := ipToTunRouteKey(src)
-				if actual, loaded := h.routes.LoadOrStore(rkey, addr); loaded {
-					if actual.(net.Addr).String() != addr.String() {
-						h.routes.Store(rkey, addr)
-						log.Debugf("update route: %s -> %s (old %s)",
-							src, addr, actual.(net.Addr))
-					}
-				} else {
-					log.Debugf("new route: %s -> %s", src, addr)
-				}
+				h.updateRoute(src, addr, log)
 
 				if addr := h.findRouteFor(dst, config.Routes...); addr != nil {
 					log.Debugf("find route: %s -> %s", dst, addr)
@@ -163,4 +161,17 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 		err = nil
 	}
 	return err
+}
+
+func (h *tunHandler) updateRoute(ip net.IP, addr net.Addr, log logger.Logger) {
+	rkey := ipToTunRouteKey(ip)
+	if actual, loaded := h.routes.LoadOrStore(rkey, addr); loaded {
+		if actual.(net.Addr).String() != addr.String() {
+			h.routes.Store(rkey, addr)
+			log.Debugf("update route: %s -> %s (old %s)",
+				ip, addr, actual.(net.Addr))
+		}
+	} else {
+		log.Debugf("new route: %s -> %s", ip, addr)
+	}
 }
