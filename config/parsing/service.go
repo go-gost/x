@@ -3,6 +3,9 @@ package parsing
 import (
 	"strings"
 
+	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
@@ -51,17 +54,37 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		tlsConfig = defaultTLSConfig.Clone()
 	}
 
-	auther := ParseAutherFromAuth(cfg.Listener.Auth)
-	if cfg.Listener.Auther != "" {
-		auther = registry.AutherRegistry().Get(cfg.Listener.Auther)
+	var authers []auth.Authenticator
+	if auther := registry.AutherRegistry().Get(cfg.Listener.Auther); auther != nil {
+		authers = append(authers, auther)
+	}
+	for _, s := range cfg.Listener.Authers {
+		if auther := registry.AutherRegistry().Get(s); auther != nil {
+			authers = append(authers, auther)
+		}
+	}
+	if len(authers) == 0 {
+		if auther := ParseAutherFromAuth(cfg.Listener.Auth); auther != nil {
+			authers = append(authers, auther)
+		}
+	}
+
+	var admissions []admission.Admission
+	if adm := registry.AdmissionRegistry().Get(cfg.Admission); adm != nil {
+		admissions = append(admissions, adm)
+	}
+	for _, s := range cfg.Admissions {
+		if adm := registry.AdmissionRegistry().Get(s); adm != nil {
+			admissions = append(admissions, adm)
+		}
 	}
 
 	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
 		listener.AddrOption(cfg.Addr),
-		listener.AutherOption(auther),
+		listener.AutherOption(auth.AuthenticatorList(authers...)),
 		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
-		listener.AdmissionOption(registry.AdmissionRegistry().Get(cfg.Admission)),
+		listener.AdmissionOption(admission.AdmissionList(admissions...)),
 		listener.ChainOption(registry.ChainRegistry().Get(cfg.Listener.Chain)),
 		listener.LoggerOption(listenerLogger),
 		listener.ServiceOption(cfg.Name),
@@ -93,9 +116,19 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		tlsConfig = defaultTLSConfig.Clone()
 	}
 
-	auther = ParseAutherFromAuth(cfg.Handler.Auth)
-	if cfg.Handler.Auther != "" {
-		auther = registry.AutherRegistry().Get(cfg.Handler.Auther)
+	authers = nil
+	if auther := registry.AutherRegistry().Get(cfg.Handler.Auther); auther != nil {
+		authers = append(authers, auther)
+	}
+	for _, s := range cfg.Handler.Authers {
+		if auther := registry.AutherRegistry().Get(s); auther != nil {
+			authers = append(authers, auther)
+		}
+	}
+	if len(authers) == 0 {
+		if auther := ParseAutherFromAuth(cfg.Handler.Auth); auther != nil {
+			authers = append(authers, auther)
+		}
 	}
 
 	var sockOpts *chain.SockOpts
@@ -123,11 +156,20 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		WithRecorder(recorders...).
 		WithLogger(handlerLogger)
 
+	var bypasses []bypass.Bypass
+	if bp := registry.BypassRegistry().Get(cfg.Bypass); bp != nil {
+		bypasses = append(bypasses, bp)
+	}
+	for _, s := range cfg.Bypasses {
+		if bp := registry.BypassRegistry().Get(s); bp != nil {
+			bypasses = append(bypasses, bp)
+		}
+	}
 	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(
 		handler.RouterOption(router),
-		handler.AutherOption(auther),
+		handler.AutherOption(auth.AuthenticatorList(authers...)),
 		handler.AuthOption(parseAuth(cfg.Handler.Auth)),
-		handler.BypassOption(registry.BypassRegistry().Get(cfg.Bypass)),
+		handler.BypassOption(bypass.BypassList(bypasses...)),
 		handler.TLSConfigOption(tlsConfig),
 		handler.LoggerOption(handlerLogger),
 	)
@@ -145,7 +187,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	s := service.NewService(cfg.Name, ln, h,
-		service.AdmissionOption(registry.AdmissionRegistry().Get(cfg.Admission)),
+		service.AdmissionOption(admission.AdmissionList(admissions...)),
 		service.LoggerOption(serviceLogger),
 	)
 

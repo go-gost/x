@@ -16,7 +16,7 @@ import (
 )
 
 type options struct {
-	reverse     bool
+	whitelist   bool
 	matchers    []string
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
@@ -26,9 +26,9 @@ type options struct {
 
 type Option func(opts *options)
 
-func ReverseOption(reverse bool) Option {
+func WhitelistOption(whitelist bool) Option {
 	return func(opts *options) {
-		opts.reverse = reverse
+		opts.whitelist = whitelist
 	}
 }
 
@@ -96,7 +96,7 @@ func NewAdmission(opts ...Option) admission_pkg.Admission {
 
 func (p *admission) Admit(addr string) bool {
 	if addr == "" || p == nil {
-		return false
+		return true
 	}
 
 	// try to strip the port
@@ -106,9 +106,8 @@ func (p *admission) Admit(addr string) bool {
 
 	matched := p.matched(addr)
 
-	b := !p.options.reverse && matched ||
-		p.options.reverse && !matched
-	return b
+	return !p.options.whitelist && !matched ||
+		p.options.whitelist && matched
 }
 
 func (p *admission) periodReload(ctx context.Context) error {

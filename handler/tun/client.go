@@ -50,6 +50,10 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
 	copy(keepAliveData[:4], keepAliveHeader) // magic header
 	copy(keepAliveData[4:], ip.To16())
 
+	if _, err := conn.Write(keepAliveData[:]); err != nil {
+		return
+	}
+
 	ticker := time.NewTicker(h.md.keepAlivePeriod)
 	defer ticker.Stop()
 

@@ -113,7 +113,7 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	}
 	opts := []admission_impl.Option{
 		admission_impl.MatchersOption(cfg.Matchers),
-		admission_impl.ReverseOption(cfg.Reverse),
+		admission_impl.WhitelistOption(cfg.Reverse || cfg.Whitelist),
 		admission_impl.ReloadPeriodOption(cfg.Reload),
 		admission_impl.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":      "admission",
@@ -141,7 +141,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 
 	opts := []bypass_impl.Option{
 		bypass_impl.MatchersOption(cfg.Matchers),
-		bypass_impl.ReverseOption(cfg.Reverse),
+		bypass_impl.WhitelistOption(cfg.Reverse || cfg.Whitelist),
 		bypass_impl.ReloadPeriodOption(cfg.Reload),
 		bypass_impl.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":   "bypass",

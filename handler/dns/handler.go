@@ -1,12 +1,10 @@
 package dns
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
@@ -114,7 +112,7 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	b := bufpool.Get(defaultBufferSize)
+	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
 	n, err := conn.Read(*b)
@@ -165,7 +163,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 
 	mr = h.lookupHosts(&mq, log)
 	if mr != nil {
-		b := bufpool.Get(defaultBufferSize)
+		b := bufpool.Get(h.md.bufferSize)
 		return mr.PackBuffer(*b)
 	}
 
@@ -177,7 +175,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 			log.Debugf("exchange message %d (cached): %s", mq.Id, mq.Question[0].String())
 			mr.Id = mq.Id
 
-			b := bufpool.Get(defaultBufferSize)
+			b := bufpool.Get(h.md.bufferSize)
 			return mr.PackBuffer(*b)
 		}
 
@@ -188,7 +186,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 		}()
 	}
 
-	b := bufpool.Get(defaultBufferSize)
+	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
 	query, err := mq.PackBuffer(*b)
@@ -267,14 +265,4 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 	}
 
 	return
-}
-
-func (h *dnsHandler) dumpMsgHeader(m *dns.Msg) string {
-	buf := new(bytes.Buffer)
-	buf.WriteString(m.MsgHdr.String() + " ")
-	buf.WriteString("QUERY: " + strconv.Itoa(len(m.Question)) + ", ")
-	buf.WriteString("ANSWER: " + strconv.Itoa(len(m.Answer)) + ", ")
-	buf.WriteString("AUTHORITY: " + strconv.Itoa(len(m.Ns)) + ", ")
-	buf.WriteString("ADDITIONAL: " + strconv.Itoa(len(m.Extra)))
-	return buf.String()
 }

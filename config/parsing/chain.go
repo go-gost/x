@@ -1,6 +1,7 @@
 package parsing
 
 import (
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/dialer"
@@ -96,6 +97,9 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if v.Bypass == "" {
 				v.Bypass = hop.Bypass
 			}
+			if v.Bypasses == nil {
+				v.Bypasses = hop.Bypasses
+			}
 			if v.Resolver == "" {
 				v.Resolver = hop.Resolver
 			}
@@ -123,10 +127,20 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				WithInterface(v.Interface).
 				WithSockOpts(sockOpts)
 
+			var bypasses []bypass.Bypass
+			if bp := registry.BypassRegistry().Get(v.Bypass); bp != nil {
+				bypasses = append(bypasses, bp)
+			}
+			for _, s := range v.Bypasses {
+				if bp := registry.BypassRegistry().Get(s); bp != nil {
+					bypasses = append(bypasses, bp)
+				}
+			}
+
 			node := &chain.Node{
 				Name:      v.Name,
 				Addr:      v.Addr,
-				Bypass:    registry.BypassRegistry().Get(v.Bypass),
+				Bypass:    bypass.BypassList(bypasses...),
 				Resolver:  registry.ResolverRegistry().Get(v.Resolver),
 				Hosts:     registry.HostsRegistry().Get(v.Hosts),
 				Marker:    &chain.FailMarker{},

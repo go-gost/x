@@ -16,7 +16,7 @@ import (
 )
 
 type options struct {
-	reverse     bool
+	whitelist   bool
 	matchers    []string
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
@@ -26,9 +26,9 @@ type options struct {
 
 type Option func(opts *options)
 
-func ReverseOption(reverse bool) Option {
+func WhitelistOption(whitelist bool) Option {
 	return func(opts *options) {
-		opts.reverse = reverse
+		opts.whitelist = whitelist
 	}
 }
 
@@ -67,9 +67,9 @@ type bypass struct {
 	cidrMatcher     matcher.Matcher
 	domainMatcher   matcher.Matcher
 	wildcardMatcher matcher.Matcher
-	mu              sync.RWMutex
 	cancelFunc      context.CancelFunc
 	options         options
+	mu              sync.RWMutex
 }
 
 // NewBypass creates and initializes a new Bypass.
@@ -228,8 +228,8 @@ func (bp *bypass) Contains(addr string) bool {
 
 	matched := bp.matched(addr)
 
-	b := !bp.options.reverse && matched ||
-		bp.options.reverse && !matched
+	b := !bp.options.whitelist && matched ||
+		bp.options.whitelist && !matched
 	if b {
 		bp.options.logger.Debugf("bypass: %s", addr)
 	}

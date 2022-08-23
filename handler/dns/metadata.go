@@ -19,7 +19,8 @@ type metadata struct {
 	timeout     time.Duration
 	clientIP    net.IP
 	// nameservers
-	dns []string
+	dns        []string
+	bufferSize int
 }
 
 func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -29,6 +30,7 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 		timeout     = "timeout"
 		clientIP    = "clientIP"
 		dns         = "dns"
+		bufferSize  = "bufferSize"
 	)
 
 	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
@@ -42,6 +44,10 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 		h.md.clientIP = net.ParseIP(sip)
 	}
 	h.md.dns = mdx.GetStrings(md, dns)
+	h.md.bufferSize = mdx.GetInt(md, bufferSize)
+	if h.md.bufferSize <= 0 {
+		h.md.bufferSize = defaultBufferSize
+	}
 
 	return
 }

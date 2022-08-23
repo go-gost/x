@@ -98,21 +98,25 @@ type SelectorConfig struct {
 }
 
 type AdmissionConfig struct {
-	Name     string        `json:"name"`
-	Reverse  bool          `yaml:",omitempty" json:"reverse,omitempty"`
-	Matchers []string      `json:"matchers"`
-	Reload   time.Duration `yaml:",omitempty" json:"reload,omitempty"`
-	File     *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
-	Redis    *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	Name string `json:"name"`
+	// DEPRECATED by whitelist since beta.4
+	Reverse   bool          `yaml:",omitempty" json:"reverse,omitempty"`
+	Whitelist bool          `yaml:",omitempty" json:"whitelist,omitempty"`
+	Matchers  []string      `json:"matchers"`
+	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type BypassConfig struct {
-	Name     string        `json:"name"`
-	Reverse  bool          `yaml:",omitempty" json:"reverse,omitempty"`
-	Matchers []string      `json:"matchers"`
-	Reload   time.Duration `yaml:",omitempty" json:"reload,omitempty"`
-	File     *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
-	Redis    *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	Name string `json:"name"`
+	// DEPRECATED by whitelist since beta.4
+	Reverse   bool          `yaml:",omitempty" json:"reverse,omitempty"`
+	Whitelist bool          `yaml:",omitempty" json:"whitelist,omitempty"`
+	Matchers  []string      `json:"matchers"`
+	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type FileLoader struct {
@@ -184,6 +188,7 @@ type ListenerConfig struct {
 	Type     string         `json:"type"`
 	Chain    string         `yaml:",omitempty" json:"chain,omitempty"`
 	Auther   string         `yaml:",omitempty" json:"auther,omitempty"`
+	Authers  []string       `yaml:",omitempty" json:"authers,omitempty"`
 	Auth     *AuthConfig    `yaml:",omitempty" json:"auth,omitempty"`
 	TLS      *TLSConfig     `yaml:",omitempty" json:"tls,omitempty"`
 	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
@@ -194,6 +199,7 @@ type HandlerConfig struct {
 	Retries  int            `yaml:",omitempty" json:"retries,omitempty"`
 	Chain    string         `yaml:",omitempty" json:"chain,omitempty"`
 	Auther   string         `yaml:",omitempty" json:"auther,omitempty"`
+	Authers  []string       `yaml:",omitempty" json:"authers,omitempty"`
 	Auth     *AuthConfig    `yaml:",omitempty" json:"auth,omitempty"`
 	TLS      *TLSConfig     `yaml:",omitempty" json:"tls,omitempty"`
 	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
@@ -223,18 +229,20 @@ type SockOptsConfig struct {
 }
 
 type ServiceConfig struct {
-	Name      string            `json:"name"`
-	Addr      string            `yaml:",omitempty" json:"addr,omitempty"`
-	Interface string            `yaml:",omitempty" json:"interface,omitempty"`
-	SockOpts  *SockOptsConfig   `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
-	Admission string            `yaml:",omitempty" json:"admission,omitempty"`
-	Bypass    string            `yaml:",omitempty" json:"bypass,omitempty"`
-	Resolver  string            `yaml:",omitempty" json:"resolver,omitempty"`
-	Hosts     string            `yaml:",omitempty" json:"hosts,omitempty"`
-	Recorders []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
-	Handler   *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
-	Listener  *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
-	Forwarder *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
+	Name       string            `json:"name"`
+	Addr       string            `yaml:",omitempty" json:"addr,omitempty"`
+	Interface  string            `yaml:",omitempty" json:"interface,omitempty"`
+	SockOpts   *SockOptsConfig   `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
+	Admission  string            `yaml:",omitempty" json:"admission,omitempty"`
+	Admissions []string          `yaml:",omitempty" json:"admissions,omitempty"`
+	Bypass     string            `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses   []string          `yaml:",omitempty" json:"bypasses,omitempty"`
+	Resolver   string            `yaml:",omitempty" json:"resolver,omitempty"`
+	Hosts      string            `yaml:",omitempty" json:"hosts,omitempty"`
+	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
+	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
+	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
+	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
 }
 
 type ChainConfig struct {
@@ -249,6 +257,7 @@ type HopConfig struct {
 	SockOpts  *SockOptsConfig `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Selector  *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
 	Bypass    string          `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses  []string        `yaml:",omitempty" json:"bypasses,omitempty"`
 	Resolver  string          `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts     string          `yaml:",omitempty" json:"hosts,omitempty"`
 	Nodes     []*NodeConfig   `json:"nodes"`
@@ -260,6 +269,7 @@ type NodeConfig struct {
 	Interface string           `yaml:",omitempty" json:"interface,omitempty"`
 	SockOpts  *SockOptsConfig  `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Bypass    string           `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses  []string         `yaml:",omitempty" json:"bypasses,omitempty"`
 	Resolver  string           `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts     string           `yaml:",omitempty" json:"hosts,omitempty"`
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
