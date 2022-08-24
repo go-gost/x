@@ -154,6 +154,18 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			sel = s
 		}
 		group.WithSelector(sel)
+
+		var bypasses []bypass.Bypass
+		if bp := registry.BypassRegistry().Get(hop.Bypass); bp != nil {
+			bypasses = append(bypasses, bp)
+		}
+		for _, s := range hop.Bypasses {
+			if bp := registry.BypassRegistry().Get(s); bp != nil {
+				bypasses = append(bypasses, bp)
+			}
+		}
+		group.WithBypass(bypass.BypassList(bypasses...))
+
 		c.AddNodeGroup(group)
 	}
 
