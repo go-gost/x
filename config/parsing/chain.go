@@ -94,12 +94,6 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				return nil, err
 			}
 
-			if v.Bypass == "" {
-				v.Bypass = hop.Bypass
-			}
-			if v.Bypasses == nil {
-				v.Bypasses = hop.Bypasses
-			}
 			if v.Resolver == "" {
 				v.Resolver = hop.Resolver
 			}
@@ -127,20 +121,10 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				WithInterface(v.Interface).
 				WithSockOpts(sockOpts)
 
-			var bypasses []bypass.Bypass
-			if bp := registry.BypassRegistry().Get(v.Bypass); bp != nil {
-				bypasses = append(bypasses, bp)
-			}
-			for _, s := range v.Bypasses {
-				if bp := registry.BypassRegistry().Get(s); bp != nil {
-					bypasses = append(bypasses, bp)
-				}
-			}
-
 			node := &chain.Node{
 				Name:      v.Name,
 				Addr:      v.Addr,
-				Bypass:    bypass.BypassList(bypasses...),
+				Bypass:    bypass.BypassList(bypassList(v.Bypass, v.Bypasses...)...),
 				Resolver:  registry.ResolverRegistry().Get(v.Resolver),
 				Hosts:     registry.HostsRegistry().Get(v.Hosts),
 				Marker:    &chain.FailMarker{},
@@ -153,18 +137,8 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 		if s := parseSelector(hop.Selector); s != nil {
 			sel = s
 		}
-		group.WithSelector(sel)
-
-		var bypasses []bypass.Bypass
-		if bp := registry.BypassRegistry().Get(hop.Bypass); bp != nil {
-			bypasses = append(bypasses, bp)
-		}
-		for _, s := range hop.Bypasses {
-			if bp := registry.BypassRegistry().Get(s); bp != nil {
-				bypasses = append(bypasses, bp)
-			}
-		}
-		group.WithBypass(bypass.BypassList(bypasses...))
+		group.WithSelector(sel).
+			WithBypass(bypass.BypassList(bypassList(hop.Bypass, hop.Bypasses...)...))
 
 		c.AddNodeGroup(group)
 	}

@@ -206,7 +206,9 @@ type HandlerConfig struct {
 }
 
 type ForwarderConfig struct {
-	Targets  []string        `json:"targets"`
+	// DEPRECATED by nodes since beta.4
+	Targets  []string        `yaml:",omitempty" json:"targets,omitempty"`
+	Nodes    []*NodeConfig   `json:"nodes"`
 	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
 }
 

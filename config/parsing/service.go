@@ -54,30 +54,14 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		tlsConfig = defaultTLSConfig.Clone()
 	}
 
-	var authers []auth.Authenticator
-	if auther := registry.AutherRegistry().Get(cfg.Listener.Auther); auther != nil {
-		authers = append(authers, auther)
-	}
-	for _, s := range cfg.Listener.Authers {
-		if auther := registry.AutherRegistry().Get(s); auther != nil {
-			authers = append(authers, auther)
-		}
-	}
+	authers := autherList(cfg.Listener.Auther, cfg.Listener.Authers...)
 	if len(authers) == 0 {
 		if auther := ParseAutherFromAuth(cfg.Listener.Auth); auther != nil {
 			authers = append(authers, auther)
 		}
 	}
 
-	var admissions []admission.Admission
-	if adm := registry.AdmissionRegistry().Get(cfg.Admission); adm != nil {
-		admissions = append(admissions, adm)
-	}
-	for _, s := range cfg.Admissions {
-		if adm := registry.AdmissionRegistry().Get(s); adm != nil {
-			admissions = append(admissions, adm)
-		}
-	}
+	admissions := admissionList(cfg.Admission, cfg.Admissions...)
 
 	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
 		listener.AddrOption(cfg.Addr),
@@ -116,15 +100,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		tlsConfig = defaultTLSConfig.Clone()
 	}
 
-	authers = nil
-	if auther := registry.AutherRegistry().Get(cfg.Handler.Auther); auther != nil {
-		authers = append(authers, auther)
-	}
-	for _, s := range cfg.Handler.Authers {
-		if auther := registry.AutherRegistry().Get(s); auther != nil {
-			authers = append(authers, auther)
-		}
-	}
+	authers = autherList(cfg.Handler.Auther, cfg.Handler.Authers...)
 	if len(authers) == 0 {
 		if auther := ParseAutherFromAuth(cfg.Handler.Auth); auther != nil {
 			authers = append(authers, auther)
@@ -156,20 +132,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		WithRecorder(recorders...).
 		WithLogger(handlerLogger)
 
-	var bypasses []bypass.Bypass
-	if bp := registry.BypassRegistry().Get(cfg.Bypass); bp != nil {
-		bypasses = append(bypasses, bp)
-	}
-	for _, s := range cfg.Bypasses {
-		if bp := registry.BypassRegistry().Get(s); bp != nil {
-			bypasses = append(bypasses, bp)
-		}
-	}
 	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(
 		handler.RouterOption(router),
 		handler.AutherOption(auth.AuthenticatorList(authers...)),
 		handler.AuthOption(parseAuth(cfg.Handler.Auth)),
-		handler.BypassOption(bypass.BypassList(bypasses...)),
+		handler.BypassOption(bypass.BypassList(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
 		handler.TLSConfigOption(tlsConfig),
 		handler.LoggerOption(handlerLogger),
 	)
@@ -196,19 +163,74 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 }
 
 func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
-	if cfg == nil || len(cfg.Targets) == 0 {
+	if cfg == nil ||
+		(len(cfg.Targets) == 0 && len(cfg.Nodes) == 0) {
 		return nil
 	}
 
 	group := &chain.NodeGroup{}
-	for _, target := range cfg.Targets {
-		if v := strings.TrimSpace(target); v != "" {
-			group.AddNode(&chain.Node{
-				Name:   target,
-				Addr:   target,
-				Marker: &chain.FailMarker{},
-			})
+	if len(cfg.Nodes) > 0 {
+		for _, node := range cfg.Nodes {
+			if node != nil {
+				group.AddNode(&chain.Node{
+					Name:   node.Name,
+					Addr:   node.Addr,
+					Bypass: bypass.BypassList(bypassList(node.Bypass, node.Bypasses...)...),
+					Marker: &chain.FailMarker{},
+				})
+			}
+		}
+	} else {
+		for _, target := range cfg.Targets {
+			if v := strings.TrimSpace(target); v != "" {
+				group.AddNode(&chain.Node{
+					Name:   target,
+					Addr:   target,
+					Marker: &chain.FailMarker{},
+				})
+			}
 		}
 	}
+
 	return group.WithSelector(parseSelector(cfg.Selector))
+}
+
+func bypassList(name string, names ...string) []bypass.Bypass {
+	var bypasses []bypass.Bypass
+	if bp := registry.BypassRegistry().Get(name); bp != nil {
+		bypasses = append(bypasses, bp)
+	}
+	for _, s := range names {
+		if bp := registry.BypassRegistry().Get(s); bp != nil {
+			bypasses = append(bypasses, bp)
+		}
+	}
+	return bypasses
+}
+
+func autherList(name string, names ...string) []auth.Authenticator {
+	var authers []auth.Authenticator
+	if auther := registry.AutherRegistry().Get(name); auther != nil {
+		authers = append(authers, auther)
+	}
+	for _, s := range names {
+		if auther := registry.AutherRegistry().Get(s); auther != nil {
+			authers = append(authers, auther)
+		}
+	}
+	return authers
+}
+
+func admissionList(name string, names ...string) []admission.Admission {
+	var admissions []admission.Admission
+	if adm := registry.AdmissionRegistry().Get(name); adm != nil {
+		admissions = append(admissions, adm)
+	}
+	for _, s := range names {
+		if adm := registry.AdmissionRegistry().Get(s); adm != nil {
+			admissions = append(admissions, adm)
+		}
+	}
+
+	return admissions
 }
