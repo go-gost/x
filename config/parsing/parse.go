@@ -102,7 +102,6 @@ func parseSelector(cfg *config.SelectorConfig) chain.Selector {
 
 	return chain.NewSelector(
 		strategy,
-		chain.InvalidFilter(),
 		chain.FailFilter(cfg.MaxFails, cfg.FailTimeout),
 	)
 }

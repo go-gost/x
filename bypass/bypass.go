@@ -112,7 +112,6 @@ func (bp *bypass) periodReload(ctx context.Context) error {
 				bp.options.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			bp.options.logger.Debug("bypass reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -197,6 +196,7 @@ func (bp *bypass) load(ctx context.Context) (patterns []string, err error) {
 		}
 	}
 
+	bp.options.logger.Debugf("load items %d", len(patterns))
 	return
 }
 

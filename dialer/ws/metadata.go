@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	defaultPath = "/ws"
+	defaultPath            = "/ws"
+	defaultKeepAlivePeriod = 15 * time.Second
 )
 
 type metadata struct {
@@ -37,8 +38,9 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		writeBufferSize   = "writeBufferSize"
 		enableCompression = "enableCompression"
 
-		header    = "header"
-		keepAlive = "keepAlive"
+		header          = "header"
+		keepAlive       = "keepAlive"
+		keepAlivePeriod = "ttl"
 	)
 
 	d.md.host = mdx.GetString(md, host)
@@ -61,7 +63,13 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		d.md.header = h
 	}
-	d.md.keepAlive = mdx.GetDuration(md, keepAlive)
+
+	if mdx.GetBool(md, keepAlive) {
+		d.md.keepAlive = mdx.GetDuration(md, keepAlivePeriod)
+		if d.md.keepAlive <= 0 {
+			d.md.keepAlive = defaultKeepAlivePeriod
+		}
+	}
 
 	return
 }

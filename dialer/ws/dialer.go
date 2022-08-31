@@ -109,7 +109,7 @@ func (d *wsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dial
 		c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
 		c.SetPongHandler(func(string) error {
 			c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
-			d.options.Logger.Infof("pong: set read deadline: %v", d.md.keepAlive*2)
+			d.options.Logger.Debugf("pong: set read deadline: %v", d.md.keepAlive*2)
 			return nil
 		})
 		go d.keepAlive(cc)
@@ -127,6 +127,6 @@ func (d *wsDialer) keepAlive(conn ws_util.WebsocketConn) {
 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 			return
 		}
-		d.options.Logger.Infof("send ping")
+		d.options.Logger.Debug("send ping")
 	}
 }

@@ -255,6 +255,7 @@ func (h *Hosts) load(ctx context.Context) (mappings []Mapping, err error) {
 		}
 	}
 
+	h.options.logger.Debugf("load items %d", len(mappings))
 	return
 }
 

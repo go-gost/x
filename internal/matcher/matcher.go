@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
+	"github.com/yl2chen/cidranger"
 )
 
 // Matcher is a generic pattern matcher,
@@ -37,24 +38,25 @@ func (m *ipMatcher) Match(ip string) bool {
 }
 
 type cidrMatcher struct {
-	inets []*net.IPNet
+	ranger cidranger.Ranger
 }
 
 // CIDRMatcher creates a Matcher for a list of CIDR notation IP addresses.
 func CIDRMatcher(inets []*net.IPNet) Matcher {
-	return &cidrMatcher{
-		inets: inets,
+	ranger := cidranger.NewPCTrieRanger()
+	for _, inet := range inets {
+		ranger.Insert(cidranger.NewBasicRangerEntry(*inet))
 	}
+	return &cidrMatcher{ranger: ranger}
 }
 
 func (m *cidrMatcher) Match(ip string) bool {
-	if m == nil || len(m.inets) == 0 {
+	if m == nil || m.ranger == nil {
 		return false
 	}
-	for _, inet := range m.inets {
-		if inet.Contains(net.ParseIP(ip)) {
-			return true
-		}
+	if netIP := net.ParseIP(ip); netIP != nil {
+		b, _ := m.ranger.Contains(netIP)
+		return b
 	}
 	return false
 }

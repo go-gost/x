@@ -113,7 +113,6 @@ func (p *authenticator) periodReload(ctx context.Context) error {
 				p.options.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			p.options.logger.Debug("auther reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -181,6 +180,7 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		}
 	}
 
+	p.options.logger.Debugf("load items %d", len(m))
 	return
 }
 
