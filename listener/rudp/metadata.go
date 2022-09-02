@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -29,21 +29,21 @@ func (l *rudpListener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog        = "backlog"
 	)
 
-	l.md.ttl = mdx.GetDuration(md, ttl)
+	l.md.ttl = mdutil.GetDuration(md, ttl)
 	if l.md.ttl <= 0 {
 		l.md.ttl = defaultTTL
 	}
-	l.md.readBufferSize = mdx.GetInt(md, readBufferSize)
+	l.md.readBufferSize = mdutil.GetInt(md, readBufferSize)
 	if l.md.readBufferSize <= 0 {
 		l.md.readBufferSize = defaultReadBufferSize
 	}
 
-	l.md.readQueueSize = mdx.GetInt(md, readQueueSize)
+	l.md.readQueueSize = mdutil.GetInt(md, readQueueSize)
 	if l.md.readQueueSize <= 0 {
 		l.md.readQueueSize = defaultReadQueueSize
 	}
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

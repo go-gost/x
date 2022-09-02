@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -21,10 +21,10 @@ func (h *ssuHandler) parseMetadata(md mdata.Metadata) (err error) {
 		bufferSize  = "bufferSize"
 	)
 
-	h.md.key = mdx.GetString(md, key)
-	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
+	h.md.key = mdutil.GetString(md, key)
+	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
 
-	if bs := mdx.GetInt(md, bufferSize); bs > 0 {
+	if bs := mdutil.GetInt(md, bufferSize); bs > 0 {
 		h.md.bufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
 	} else {
 		h.md.bufferSize = 1500

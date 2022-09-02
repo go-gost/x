@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -21,7 +21,7 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		knock           = "knock"
 	)
 
-	if m := mdx.GetStringMapString(md, header); len(m) > 0 {
+	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
 		hd := http.Header{}
 		for k, v := range m {
 			hd.Add(k, v)
@@ -29,16 +29,16 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		h.md.header = hd
 	}
 
-	pr := mdx.GetString(md, probeResistKey)
+	pr := mdutil.GetString(md, probeResistKey)
 	if pr == "" {
-		pr = mdx.GetString(md, probeResistKeyX)
+		pr = mdutil.GetString(md, probeResistKeyX)
 	}
 	if pr != "" {
 		if ss := strings.SplitN(pr, ":", 2); len(ss) == 2 {
 			h.md.probeResistance = &probeResistance{
 				Type:  ss[0],
 				Value: ss[1],
-				Knock: mdx.GetString(md, knock),
+				Knock: mdutil.GetString(md, knock),
 			}
 		}
 	}

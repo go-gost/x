@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -27,18 +27,18 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 		compatibilityMode = "comp"
 	)
 
-	h.md.readTimeout = mdx.GetDuration(md, readTimeout)
-	h.md.noTLS = mdx.GetBool(md, noTLS)
-	h.md.enableBind = mdx.GetBool(md, enableBind)
-	h.md.enableUDP = mdx.GetBool(md, enableUDP)
+	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
+	h.md.noTLS = mdutil.GetBool(md, noTLS)
+	h.md.enableBind = mdutil.GetBool(md, enableBind)
+	h.md.enableUDP = mdutil.GetBool(md, enableUDP)
 
-	if bs := mdx.GetInt(md, udpBufferSize); bs > 0 {
+	if bs := mdutil.GetInt(md, udpBufferSize); bs > 0 {
 		h.md.udpBufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
 	} else {
 		h.md.udpBufferSize = 1500
 	}
 
-	h.md.compatibilityMode = mdx.GetBool(md, compatibilityMode)
+	h.md.compatibilityMode = mdutil.GetBool(md, compatibilityMode)
 
 	return nil
 }

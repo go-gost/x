@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -30,20 +30,20 @@ func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog = "backlog"
 	)
 
-	l.md.authorizePath = mdx.GetString(md, authorizePath)
+	l.md.authorizePath = mdutil.GetString(md, authorizePath)
 	if !strings.HasPrefix(l.md.authorizePath, "/") {
 		l.md.authorizePath = defaultAuthorizePath
 	}
-	l.md.pushPath = mdx.GetString(md, pushPath)
+	l.md.pushPath = mdutil.GetString(md, pushPath)
 	if !strings.HasPrefix(l.md.pushPath, "/") {
 		l.md.pushPath = defaultPushPath
 	}
-	l.md.pullPath = mdx.GetString(md, pullPath)
+	l.md.pullPath = mdutil.GetString(md, pullPath)
 	if !strings.HasPrefix(l.md.pullPath, "/") {
 		l.md.pullPath = defaultPullPath
 	}
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

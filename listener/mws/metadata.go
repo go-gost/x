@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -52,30 +52,30 @@ func (l *mwsListener) parseMetadata(md mdata.Metadata) (err error) {
 		muxMaxStreamBuffer   = "muxMaxStreamBuffer"
 	)
 
-	l.md.path = mdx.GetString(md, path)
+	l.md.path = mdutil.GetString(md, path)
 	if l.md.path == "" {
 		l.md.path = defaultPath
 	}
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
 
-	l.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
-	l.md.readHeaderTimeout = mdx.GetDuration(md, readHeaderTimeout)
-	l.md.readBufferSize = mdx.GetInt(md, readBufferSize)
-	l.md.writeBufferSize = mdx.GetInt(md, writeBufferSize)
-	l.md.enableCompression = mdx.GetBool(md, enableCompression)
+	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
+	l.md.readHeaderTimeout = mdutil.GetDuration(md, readHeaderTimeout)
+	l.md.readBufferSize = mdutil.GetInt(md, readBufferSize)
+	l.md.writeBufferSize = mdutil.GetInt(md, writeBufferSize)
+	l.md.enableCompression = mdutil.GetBool(md, enableCompression)
 
-	l.md.muxKeepAliveDisabled = mdx.GetBool(md, muxKeepAliveDisabled)
-	l.md.muxKeepAliveInterval = mdx.GetDuration(md, muxKeepAliveInterval)
-	l.md.muxKeepAliveTimeout = mdx.GetDuration(md, muxKeepAliveTimeout)
-	l.md.muxMaxFrameSize = mdx.GetInt(md, muxMaxFrameSize)
-	l.md.muxMaxReceiveBuffer = mdx.GetInt(md, muxMaxReceiveBuffer)
-	l.md.muxMaxStreamBuffer = mdx.GetInt(md, muxMaxStreamBuffer)
+	l.md.muxKeepAliveDisabled = mdutil.GetBool(md, muxKeepAliveDisabled)
+	l.md.muxKeepAliveInterval = mdutil.GetDuration(md, muxKeepAliveInterval)
+	l.md.muxKeepAliveTimeout = mdutil.GetDuration(md, muxKeepAliveTimeout)
+	l.md.muxMaxFrameSize = mdutil.GetInt(md, muxMaxFrameSize)
+	l.md.muxMaxReceiveBuffer = mdutil.GetInt(md, muxMaxReceiveBuffer)
+	l.md.muxMaxStreamBuffer = mdutil.GetInt(md, muxMaxStreamBuffer)
 
-	if mm := mdx.GetStringMapString(md, header); len(mm) > 0 {
+	if mm := mdutil.GetStringMapString(md, header); len(mm) > 0 {
 		hd := http.Header{}
 		for k, v := range mm {
 			hd.Add(k, v)

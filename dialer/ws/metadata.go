@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -43,20 +43,20 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		keepAlivePeriod = "ttl"
 	)
 
-	d.md.host = mdx.GetString(md, host)
+	d.md.host = mdutil.GetString(md, host)
 
-	d.md.path = mdx.GetString(md, path)
+	d.md.path = mdutil.GetString(md, path)
 	if d.md.path == "" {
 		d.md.path = defaultPath
 	}
 
-	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
-	d.md.readHeaderTimeout = mdx.GetDuration(md, readHeaderTimeout)
-	d.md.readBufferSize = mdx.GetInt(md, readBufferSize)
-	d.md.writeBufferSize = mdx.GetInt(md, writeBufferSize)
-	d.md.enableCompression = mdx.GetBool(md, enableCompression)
+	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
+	d.md.readHeaderTimeout = mdutil.GetDuration(md, readHeaderTimeout)
+	d.md.readBufferSize = mdutil.GetInt(md, readBufferSize)
+	d.md.writeBufferSize = mdutil.GetInt(md, writeBufferSize)
+	d.md.enableCompression = mdutil.GetBool(md, enableCompression)
 
-	if m := mdx.GetStringMapString(md, header); len(m) > 0 {
+	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
 		h := http.Header{}
 		for k, v := range m {
 			h.Add(k, v)
@@ -64,8 +64,8 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.header = h
 	}
 
-	if mdx.GetBool(md, keepAlive) {
-		d.md.keepAlive = mdx.GetDuration(md, keepAlivePeriod)
+	if mdutil.GetBool(md, keepAlive) {
+		d.md.keepAlive = mdutil.GetDuration(md, keepAlivePeriod)
 		if d.md.keepAlive <= 0 {
 			d.md.keepAlive = defaultKeepAlivePeriod
 		}

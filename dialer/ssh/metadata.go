@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -21,13 +21,13 @@ func (d *sshDialer) parseMetadata(md mdata.Metadata) (err error) {
 		passphrase       = "passphrase"
 	)
 
-	if key := mdx.GetString(md, privateKeyFile); key != "" {
+	if key := mdutil.GetString(md, privateKeyFile); key != "" {
 		data, err := ioutil.ReadFile(key)
 		if err != nil {
 			return err
 		}
 
-		pp := mdx.GetString(md, passphrase)
+		pp := mdutil.GetString(md, passphrase)
 		if pp == "" {
 			d.md.signer, err = ssh.ParsePrivateKey(data)
 		} else {
@@ -38,7 +38,7 @@ func (d *sshDialer) parseMetadata(md mdata.Metadata) (err error) {
 		}
 	}
 
-	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
+	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 
 	return
 }

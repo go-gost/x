@@ -102,6 +102,7 @@ func parseChainSelector(cfg *config.SelectorConfig) chain.Selector[chain.Selecta
 	return chain.NewSelector(
 		strategy,
 		chain.FailFilter[chain.SelectableChainer](cfg.MaxFails, cfg.FailTimeout),
+		chain.BackupFilter[chain.SelectableChainer](),
 	)
 }
 
@@ -125,6 +126,7 @@ func parseNodeSelector(cfg *config.SelectorConfig) chain.Selector[*chain.Node] {
 	return chain.NewSelector(
 		strategy,
 		chain.FailFilter[*chain.Node](cfg.MaxFails, cfg.FailTimeout),
+		chain.BackupFilter[*chain.Node](),
 	)
 }
 

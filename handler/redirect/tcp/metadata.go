@@ -2,7 +2,7 @@ package redirect
 
 import (
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -15,7 +15,7 @@ func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
 		sniffing = "sniffing"
 		tproxy   = "tproxy"
 	)
-	h.md.sniffing = mdx.GetBool(md, sniffing)
-	h.md.tproxy = mdx.GetBool(md, tproxy)
+	h.md.sniffing = mdutil.GetBool(md, sniffing)
+	h.md.tproxy = mdutil.GetBool(md, tproxy)
 	return
 }

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 	tun_util "github.com/go-gost/x/internal/util/tun"
-	mdx "github.com/go-gost/x/metadata"
 )
 
 const (
@@ -29,11 +29,11 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	)
 
 	config := &tun_util.Config{
-		Name:    mdx.GetString(md, name),
-		Net:     mdx.GetString(md, netKey),
-		Peer:    mdx.GetString(md, peer),
-		MTU:     mdx.GetInt(md, mtu),
-		Gateway: mdx.GetString(md, gateway),
+		Name:    mdutil.GetString(md, name),
+		Net:     mdutil.GetString(md, netKey),
+		Peer:    mdutil.GetString(md, peer),
+		MTU:     mdutil.GetInt(md, mtu),
+		Gateway: mdutil.GetString(md, gateway),
 	}
 	if config.MTU <= 0 {
 		config.MTU = DefaultMTU
@@ -41,7 +41,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 
 	gw := net.ParseIP(config.Gateway)
 
-	for _, s := range strings.Split(mdx.GetString(md, route), ",") {
+	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
 		var route tun_util.Route
 		_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(s))
 		if ipNet == nil {
@@ -53,7 +53,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		config.Routes = append(config.Routes, route)
 	}
 
-	for _, s := range mdx.GetStrings(md, routes) {
+	for _, s := range mdutil.GetStrings(md, routes) {
 		ss := strings.SplitN(s, " ", 2)
 		if len(ss) == 2 {
 			var route tun_util.Route

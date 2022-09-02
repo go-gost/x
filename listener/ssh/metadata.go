@@ -4,8 +4,8 @@ import (
 	"io/ioutil"
 
 	mdata "github.com/go-gost/core/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
-	mdx "github.com/go-gost/x/metadata"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -27,13 +27,13 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog        = "backlog"
 	)
 
-	if key := mdx.GetString(md, privateKeyFile); key != "" {
+	if key := mdutil.GetString(md, privateKeyFile); key != "" {
 		data, err := ioutil.ReadFile(key)
 		if err != nil {
 			return err
 		}
 
-		pp := mdx.GetString(md, passphrase)
+		pp := mdutil.GetString(md, passphrase)
 		if pp == "" {
 			l.md.signer, err = ssh.ParsePrivateKey(data)
 		} else {
@@ -51,7 +51,7 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.signer = signer
 	}
 
-	if name := mdx.GetString(md, authorizedKeys); name != "" {
+	if name := mdutil.GetString(md, authorizedKeys); name != "" {
 		m, err := ssh_util.ParseAuthorizedKeysFile(name)
 		if err != nil {
 			return err
@@ -59,7 +59,7 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.authorizedKeys = m
 	}
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}

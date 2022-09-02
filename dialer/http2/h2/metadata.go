@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -20,9 +20,9 @@ func (d *h2Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		header = "header"
 	)
 
-	d.md.host = mdx.GetString(md, host)
-	d.md.path = mdx.GetString(md, path)
-	if m := mdx.GetStringMapString(md, header); len(m) > 0 {
+	d.md.host = mdutil.GetString(md, host)
+	d.md.path = mdutil.GetString(md, path)
+	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
 		h := http.Header{}
 		for k, v := range m {
 			h.Add(k, v)

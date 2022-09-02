@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -19,8 +19,8 @@ func (c *http2Connector) parseMetadata(md mdata.Metadata) (err error) {
 		header         = "header"
 	)
 
-	c.md.connectTimeout = mdx.GetDuration(md, connectTimeout)
-	if mm := mdx.GetStringMapString(md, header); len(mm) > 0 {
+	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
+	if mm := mdutil.GetStringMapString(md, header); len(mm) > 0 {
 		hd := http.Header{}
 		for k, v := range mm {
 			hd.Add(k, v)

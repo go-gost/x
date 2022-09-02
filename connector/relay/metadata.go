@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -18,8 +18,8 @@ func (c *relayConnector) parseMetadata(md mdata.Metadata) (err error) {
 		noDelay        = "nodelay"
 	)
 
-	c.md.connectTimeout = mdx.GetDuration(md, connectTimeout)
-	c.md.noDelay = mdx.GetBool(md, noDelay)
+	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
+	c.md.noDelay = mdutil.GetBool(md, noDelay)
 
 	return
 }

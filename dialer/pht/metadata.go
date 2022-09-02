@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -35,19 +35,19 @@ func (d *phtDialer) parseMetadata(md mdata.Metadata) (err error) {
 		host          = "host"
 	)
 
-	d.md.authorizePath = mdx.GetString(md, authorizePath)
+	d.md.authorizePath = mdutil.GetString(md, authorizePath)
 	if !strings.HasPrefix(d.md.authorizePath, "/") {
 		d.md.authorizePath = defaultAuthorizePath
 	}
-	d.md.pushPath = mdx.GetString(md, pushPath)
+	d.md.pushPath = mdutil.GetString(md, pushPath)
 	if !strings.HasPrefix(d.md.pushPath, "/") {
 		d.md.pushPath = defaultPushPath
 	}
-	d.md.pullPath = mdx.GetString(md, pullPath)
+	d.md.pullPath = mdutil.GetString(md, pullPath)
 	if !strings.HasPrefix(d.md.pullPath, "/") {
 		d.md.pullPath = defaultPullPath
 	}
 
-	d.md.host = mdx.GetString(md, host)
+	d.md.host = mdutil.GetString(md, host)
 	return
 }

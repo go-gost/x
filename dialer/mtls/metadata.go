@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -30,14 +30,14 @@ func (d *mtlsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		muxMaxStreamBuffer   = "muxMaxStreamBuffer"
 	)
 
-	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
+	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 
-	d.md.muxKeepAliveDisabled = mdx.GetBool(md, muxKeepAliveDisabled)
-	d.md.muxKeepAliveInterval = mdx.GetDuration(md, muxKeepAliveInterval)
-	d.md.muxKeepAliveTimeout = mdx.GetDuration(md, muxKeepAliveTimeout)
-	d.md.muxMaxFrameSize = mdx.GetInt(md, muxMaxFrameSize)
-	d.md.muxMaxReceiveBuffer = mdx.GetInt(md, muxMaxReceiveBuffer)
-	d.md.muxMaxStreamBuffer = mdx.GetInt(md, muxMaxStreamBuffer)
+	d.md.muxKeepAliveDisabled = mdutil.GetBool(md, muxKeepAliveDisabled)
+	d.md.muxKeepAliveInterval = mdutil.GetDuration(md, muxKeepAliveInterval)
+	d.md.muxKeepAliveTimeout = mdutil.GetDuration(md, muxKeepAliveTimeout)
+	d.md.muxMaxFrameSize = mdutil.GetInt(md, muxMaxFrameSize)
+	d.md.muxMaxReceiveBuffer = mdutil.GetInt(md, muxMaxReceiveBuffer)
+	d.md.muxMaxStreamBuffer = mdutil.GetInt(md, muxMaxStreamBuffer)
 
 	return
 }

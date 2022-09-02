@@ -2,7 +2,7 @@ package tap
 
 import (
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -16,8 +16,8 @@ func (h *tapHandler) parseMetadata(md mdata.Metadata) (err error) {
 		bufferSize = "bufferSize"
 	)
 
-	h.md.key = mdx.GetString(md, key)
-	h.md.bufferSize = mdx.GetInt(md, bufferSize)
+	h.md.key = mdutil.GetString(md, key)
+	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = 1500
 	}

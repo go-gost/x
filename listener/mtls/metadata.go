@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -34,17 +34,17 @@ func (l *mtlsListener) parseMetadata(md mdata.Metadata) (err error) {
 		muxMaxStreamBuffer   = "muxMaxStreamBuffer"
 	)
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
 
-	l.md.muxKeepAliveDisabled = mdx.GetBool(md, muxKeepAliveDisabled)
-	l.md.muxKeepAliveInterval = mdx.GetDuration(md, muxKeepAliveInterval)
-	l.md.muxKeepAliveTimeout = mdx.GetDuration(md, muxKeepAliveTimeout)
-	l.md.muxMaxFrameSize = mdx.GetInt(md, muxMaxFrameSize)
-	l.md.muxMaxReceiveBuffer = mdx.GetInt(md, muxMaxReceiveBuffer)
-	l.md.muxMaxStreamBuffer = mdx.GetInt(md, muxMaxStreamBuffer)
+	l.md.muxKeepAliveDisabled = mdutil.GetBool(md, muxKeepAliveDisabled)
+	l.md.muxKeepAliveInterval = mdutil.GetDuration(md, muxKeepAliveInterval)
+	l.md.muxKeepAliveTimeout = mdutil.GetDuration(md, muxKeepAliveTimeout)
+	l.md.muxMaxFrameSize = mdutil.GetInt(md, muxMaxFrameSize)
+	l.md.muxMaxReceiveBuffer = mdutil.GetInt(md, muxMaxReceiveBuffer)
+	l.md.muxMaxStreamBuffer = mdutil.GetInt(md, muxMaxStreamBuffer)
 
 	return
 }

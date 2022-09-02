@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -26,10 +26,10 @@ func (c *socks5Connector) parseMetadata(md mdata.Metadata) (err error) {
 		udpBufferSize  = "udpBufferSize"
 	)
 
-	c.md.connectTimeout = mdx.GetDuration(md, connectTimeout)
-	c.md.noTLS = mdx.GetBool(md, noTLS)
-	c.md.relay = mdx.GetString(md, relay)
-	c.md.udpBufferSize = mdx.GetInt(md, udpBufferSize)
+	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
+	c.md.noTLS = mdutil.GetBool(md, noTLS)
+	c.md.relay = mdutil.GetString(md, relay)
+	c.md.udpBufferSize = mdutil.GetInt(md, udpBufferSize)
 	if c.md.udpBufferSize <= 0 {
 		c.md.udpBufferSize = defaultUDPBufferSize
 	}

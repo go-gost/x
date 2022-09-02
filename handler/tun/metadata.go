@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -23,13 +23,13 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 		keepAlivePeriod = "ttl"
 	)
 
-	h.md.bufferSize = mdx.GetInt(md, bufferSize)
+	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = 1500
 	}
 
-	if mdx.GetBool(md, keepAlive) {
-		h.md.keepAlivePeriod = mdx.GetDuration(md, keepAlivePeriod)
+	if mdutil.GetBool(md, keepAlive) {
+		h.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if h.md.keepAlivePeriod <= 0 {
 			h.md.keepAlivePeriod = defaultKeepAlivePeriod
 		}

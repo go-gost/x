@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 const (
@@ -32,23 +32,23 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 		cipherKey = "cipherKey"
 	)
 
-	l.md.backlog = mdx.GetInt(md, backlog)
+	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
 
-	if key := mdx.GetString(md, cipherKey); key != "" {
+	if key := mdutil.GetString(md, cipherKey); key != "" {
 		l.md.cipherKey = []byte(key)
 	}
 
-	if mdx.GetBool(md, keepAlive) {
-		l.md.keepAlivePeriod = mdx.GetDuration(md, keepAlivePeriod)
+	if mdutil.GetBool(md, keepAlive) {
+		l.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if l.md.keepAlivePeriod <= 0 {
 			l.md.keepAlivePeriod = 10 * time.Second
 		}
 	}
-	l.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
-	l.md.maxIdleTimeout = mdx.GetDuration(md, maxIdleTimeout)
+	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
+	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
 
 	return
 }

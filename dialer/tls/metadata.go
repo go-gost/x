@@ -4,7 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 )
 
 type metadata struct {
@@ -16,7 +16,7 @@ func (d *tlsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		handshakeTimeout = "handshakeTimeout"
 	)
 
-	d.md.handshakeTimeout = mdx.GetDuration(md, handshakeTimeout)
+	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 
 	return
 }
