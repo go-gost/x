@@ -65,11 +65,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
 		listener.AddrOption(cfg.Addr),
-		listener.AutherOption(auth.AuthenticatorList(authers...)),
+		listener.AutherOption(auth.AuthenticatorGroup(authers...)),
 		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
-		listener.AdmissionOption(admission.AdmissionList(admissions...)),
-		listener.ChainOption(registry.ChainRegistry().Get(cfg.Listener.Chain)),
+		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
+		listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
 		listener.LoggerOption(listenerLogger),
 		listener.ServiceOption(cfg.Name),
 	)
@@ -126,7 +126,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		// WithTimeout(timeout time.Duration).
 		WithInterface(cfg.Interface).
 		WithSockOpts(sockOpts).
-		WithChain(registry.ChainRegistry().Get(cfg.Handler.Chain)).
+		WithChain(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)).
 		WithResolver(registry.ResolverRegistry().Get(cfg.Resolver)).
 		WithHosts(registry.HostsRegistry().Get(cfg.Hosts)).
 		WithRecorder(recorders...).
@@ -134,9 +134,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(
 		handler.RouterOption(router),
-		handler.AutherOption(auth.AuthenticatorList(authers...)),
+		handler.AutherOption(auth.AuthenticatorGroup(authers...)),
 		handler.AuthOption(parseAuth(cfg.Handler.Auth)),
-		handler.BypassOption(bypass.BypassList(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
+		handler.BypassOption(bypass.BypassGroup(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
 		handler.TLSConfigOption(tlsConfig),
 		handler.LoggerOption(handlerLogger),
 	)
@@ -154,7 +154,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	s := service.NewService(cfg.Name, ln, h,
-		service.AdmissionOption(admission.AdmissionList(admissions...)),
+		service.AdmissionOption(admission.AdmissionGroup(admissions...)),
 		service.LoggerOption(serviceLogger),
 	)
 
@@ -172,27 +172,19 @@ func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
 	if len(cfg.Nodes) > 0 {
 		for _, node := range cfg.Nodes {
 			if node != nil {
-				group.AddNode(&chain.Node{
-					Name:   node.Name,
-					Addr:   node.Addr,
-					Bypass: bypass.BypassList(bypassList(node.Bypass, node.Bypasses...)...),
-					Marker: &chain.FailMarker{},
-				})
+				group.AddNode(chain.NewNode(node.Name, node.Addr).
+					WithBypass(bypass.BypassGroup(bypassList(node.Bypass, node.Bypasses...)...)))
 			}
 		}
 	} else {
 		for _, target := range cfg.Targets {
 			if v := strings.TrimSpace(target); v != "" {
-				group.AddNode(&chain.Node{
-					Name:   target,
-					Addr:   target,
-					Marker: &chain.FailMarker{},
-				})
+				group.AddNode(chain.NewNode(target, target))
 			}
 		}
 	}
 
-	return group.WithSelector(parseSelector(cfg.Selector))
+	return group.WithSelector(parseNodeSelector(cfg.Selector))
 }
 
 func bypassList(name string, names ...string) []bypass.Bypass {
@@ -233,4 +225,21 @@ func admissionList(name string, names ...string) []admission.Admission {
 	}
 
 	return admissions
+}
+
+func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
+	cg := &chain.ChainGroup{}
+	if c := registry.ChainRegistry().Get(name); c != nil {
+		cg.Chains = append(cg.Chains, c)
+	}
+	if group != nil {
+		for _, s := range group.Chains {
+			if c := registry.ChainRegistry().Get(s); c != nil {
+				cg.Chains = append(cg.Chains, c)
+			}
+		}
+		cg.Selector = parseChainSelector(group.Selector)
+	}
+
+	return cg
 }

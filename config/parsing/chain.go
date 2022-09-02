@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
+func ParseChain(cfg *config.ChainConfig) (chain.SelectableChainer, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -23,7 +23,11 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 	})
 
 	c := chain.NewChain(cfg.Name)
-	selector := parseSelector(cfg.Selector)
+	if cfg.Metadata != nil {
+		c.WithMetadata(metadata.NewMetadata(cfg.Metadata))
+	}
+
+	selector := parseNodeSelector(cfg.Selector)
 	for _, hop := range cfg.Hops {
 		group := &chain.NodeGroup{}
 		for _, v := range hop.Nodes {
@@ -121,24 +125,23 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				WithInterface(v.Interface).
 				WithSockOpts(sockOpts)
 
-			node := &chain.Node{
-				Name:      v.Name,
-				Addr:      v.Addr,
-				Bypass:    bypass.BypassList(bypassList(v.Bypass, v.Bypasses...)...),
-				Resolver:  registry.ResolverRegistry().Get(v.Resolver),
-				Hosts:     registry.HostsRegistry().Get(v.Hosts),
-				Marker:    &chain.FailMarker{},
-				Transport: tr,
+			node := chain.NewNode(v.Name, v.Addr).
+				WithTransport(tr).
+				WithBypass(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)).
+				WithResolver(registry.ResolverRegistry().Get(v.Resolver)).
+				WithHostMapper(registry.HostsRegistry().Get(v.Hosts))
+			if v.Metadata != nil {
+				node.WithMetadata(metadata.NewMetadata(v.Metadata))
 			}
 			group.AddNode(node)
 		}
 
 		sel := selector
-		if s := parseSelector(hop.Selector); s != nil {
+		if s := parseNodeSelector(hop.Selector); s != nil {
 			sel = s
 		}
 		group.WithSelector(sel).
-			WithBypass(bypass.BypassList(bypassList(hop.Bypass, hop.Bypasses...)...))
+			WithBypass(bypass.BypassGroup(bypassList(hop.Bypass, hop.Bypasses...)...))
 
 		c.AddNodeGroup(group)
 	}

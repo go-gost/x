@@ -100,11 +100,15 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		log.Error(err)
 		// TODO: the router itself may be failed due to the failed node in the router,
 		// the dead marker may be a wrong operation.
-		target.Marker.Mark()
+		if marker := target.Marker(); marker != nil {
+			marker.Mark()
+		}
 		return err
 	}
 	defer cc.Close()
-	target.Marker.Reset()
+	if marker := target.Marker(); marker != nil {
+		marker.Reset()
+	}
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)

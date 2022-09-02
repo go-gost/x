@@ -2,26 +2,27 @@ package registry
 
 import (
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/metadata"
 )
 
 type chainRegistry struct {
 	registry
 }
 
-func (r *chainRegistry) Register(name string, v chain.Chainer) error {
+func (r *chainRegistry) Register(name string, v chain.SelectableChainer) error {
 	return r.registry.Register(name, v)
 }
 
-func (r *chainRegistry) Get(name string) chain.Chainer {
+func (r *chainRegistry) Get(name string) chain.SelectableChainer {
 	if name != "" {
 		return &chainWrapper{name: name, r: r}
 	}
 	return nil
 }
 
-func (r *chainRegistry) get(name string) chain.Chainer {
+func (r *chainRegistry) get(name string) chain.SelectableChainer {
 	if v := r.registry.Get(name); v != nil {
-		return v.(chain.Chainer)
+		return v.(chain.SelectableChainer)
 	}
 	return nil
 }
@@ -29,6 +30,22 @@ func (r *chainRegistry) get(name string) chain.Chainer {
 type chainWrapper struct {
 	name string
 	r    *chainRegistry
+}
+
+func (w *chainWrapper) Marker() chain.Marker {
+	v := w.r.get(w.name)
+	if v == nil {
+		return nil
+	}
+	return v.Marker()
+}
+
+func (w *chainWrapper) Metadata() metadata.Metadata {
+	v := w.r.get(w.name)
+	if v == nil {
+		return nil
+	}
+	return v.Metadata()
 }
 
 func (w *chainWrapper) Route(network, address string) *chain.Route {

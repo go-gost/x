@@ -83,26 +83,48 @@ func parseAuth(cfg *config.AuthConfig) *url.Userinfo {
 	return url.UserPassword(cfg.Username, cfg.Password)
 }
 
-func parseSelector(cfg *config.SelectorConfig) chain.Selector {
+func parseChainSelector(cfg *config.SelectorConfig) chain.Selector[chain.SelectableChainer] {
 	if cfg == nil {
 		return nil
 	}
 
-	var strategy chain.Strategy
+	var strategy chain.Strategy[chain.SelectableChainer]
 	switch cfg.Strategy {
 	case "round", "rr":
-		strategy = chain.RoundRobinStrategy()
+		strategy = chain.RoundRobinStrategy[chain.SelectableChainer]()
 	case "random", "rand":
-		strategy = chain.RandomStrategy()
+		strategy = chain.RandomStrategy[chain.SelectableChainer]()
 	case "fifo", "ha":
-		strategy = chain.FIFOStrategy()
+		strategy = chain.FIFOStrategy[chain.SelectableChainer]()
 	default:
-		strategy = chain.RoundRobinStrategy()
+		strategy = chain.RoundRobinStrategy[chain.SelectableChainer]()
+	}
+	return chain.NewSelector(
+		strategy,
+		chain.FailFilter[chain.SelectableChainer](cfg.MaxFails, cfg.FailTimeout),
+	)
+}
+
+func parseNodeSelector(cfg *config.SelectorConfig) chain.Selector[*chain.Node] {
+	if cfg == nil {
+		return nil
+	}
+
+	var strategy chain.Strategy[*chain.Node]
+	switch cfg.Strategy {
+	case "round", "rr":
+		strategy = chain.RoundRobinStrategy[*chain.Node]()
+	case "random", "rand":
+		strategy = chain.RandomStrategy[*chain.Node]()
+	case "fifo", "ha":
+		strategy = chain.FIFOStrategy[*chain.Node]()
+	default:
+		strategy = chain.RoundRobinStrategy[*chain.Node]()
 	}
 
 	return chain.NewSelector(
 		strategy,
-		chain.FailFilter(cfg.MaxFails, cfg.FailTimeout),
+		chain.FailFilter[*chain.Node](cfg.MaxFails, cfg.FailTimeout),
 	)
 }
 

@@ -185,24 +185,26 @@ type RecorderObject struct {
 }
 
 type ListenerConfig struct {
-	Type     string         `json:"type"`
-	Chain    string         `yaml:",omitempty" json:"chain,omitempty"`
-	Auther   string         `yaml:",omitempty" json:"auther,omitempty"`
-	Authers  []string       `yaml:",omitempty" json:"authers,omitempty"`
-	Auth     *AuthConfig    `yaml:",omitempty" json:"auth,omitempty"`
-	TLS      *TLSConfig     `yaml:",omitempty" json:"tls,omitempty"`
-	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
+	Type       string            `json:"type"`
+	Chain      string            `yaml:",omitempty" json:"chain,omitempty"`
+	ChainGroup *ChainGroupConfig `yaml:"chainGroup,omitempty" json:"chainGroup,omitempty"`
+	Auther     string            `yaml:",omitempty" json:"auther,omitempty"`
+	Authers    []string          `yaml:",omitempty" json:"authers,omitempty"`
+	Auth       *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
+	TLS        *TLSConfig        `yaml:",omitempty" json:"tls,omitempty"`
+	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type HandlerConfig struct {
-	Type     string         `json:"type"`
-	Retries  int            `yaml:",omitempty" json:"retries,omitempty"`
-	Chain    string         `yaml:",omitempty" json:"chain,omitempty"`
-	Auther   string         `yaml:",omitempty" json:"auther,omitempty"`
-	Authers  []string       `yaml:",omitempty" json:"authers,omitempty"`
-	Auth     *AuthConfig    `yaml:",omitempty" json:"auth,omitempty"`
-	TLS      *TLSConfig     `yaml:",omitempty" json:"tls,omitempty"`
-	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
+	Type       string            `json:"type"`
+	Retries    int               `yaml:",omitempty" json:"retries,omitempty"`
+	Chain      string            `yaml:",omitempty" json:"chain,omitempty"`
+	ChainGroup *ChainGroupConfig `yaml:"chainGroup,omitempty" json:"chainGroup,omitempty"`
+	Auther     string            `yaml:",omitempty" json:"auther,omitempty"`
+	Authers    []string          `yaml:",omitempty" json:"authers,omitempty"`
+	Auth       *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
+	TLS        *TLSConfig        `yaml:",omitempty" json:"tls,omitempty"`
+	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type ForwarderConfig struct {
@@ -251,6 +253,12 @@ type ChainConfig struct {
 	Name     string          `json:"name"`
 	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
 	Hops     []*HopConfig    `json:"hops"`
+	Metadata map[string]any  `yaml:",omitempty", json:"metadata,omitempty"`
+}
+
+type ChainGroupConfig struct {
+	Chains   []string        `yaml:",omitempty" json:"chains,omitempty"`
+	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
 }
 
 type HopConfig struct {
@@ -276,6 +284,7 @@ type NodeConfig struct {
 	Hosts     string           `yaml:",omitempty" json:"hosts,omitempty"`
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
+	Metadata  map[string]any   `yaml:",omitempty", json:"metadata,omitempty"`
 }
 
 type Config struct {

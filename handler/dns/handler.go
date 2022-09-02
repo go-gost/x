@@ -71,11 +71,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 			if addr == "" {
 				continue
 			}
-			h.group.AddNode(&chain.Node{
-				Name:   fmt.Sprintf("target-%d", i),
-				Addr:   addr,
-				Marker: &chain.FailMarker{},
-			})
+			h.group.AddNode(chain.NewNode(fmt.Sprintf("target-%d", i), addr))
 		}
 	}
 	for _, node := range h.group.Nodes() {

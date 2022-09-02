@@ -37,7 +37,9 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	if err != nil {
 		// TODO: the router itself may be failed due to the failed node in the router,
 		// the dead marker may be a wrong operation.
-		target.Marker.Mark()
+		if marker := target.Marker(); marker != nil {
+			marker.Mark()
+		}
 
 		resp.Status = relay.StatusHostUnreachable
 		resp.WriteTo(conn)
@@ -46,7 +48,9 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		return err
 	}
 	defer cc.Close()
-	target.Marker.Reset()
+	if marker := target.Marker(); marker != nil {
+		marker.Reset()
+	}
 
 	if h.md.noDelay {
 		if _, err := resp.WriteTo(conn); err != nil {
