@@ -300,9 +300,17 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 }
 
 func defaultNodeSelector() selector.Selector[*chain.Node] {
-	return xs.NewSelector(xs.RoundRobinStrategy[*chain.Node]())
+	return xs.NewSelector(
+		xs.RoundRobinStrategy[*chain.Node](),
+		xs.FailFilter[*chain.Node](xs.DefaultMaxFails, xs.DefaultFailTimeout),
+		xs.BackupFilter[*chain.Node](),
+	)
 }
 
 func defaultChainSelector() selector.Selector[chain.SelectableChainer] {
-	return xs.NewSelector(xs.RoundRobinStrategy[chain.SelectableChainer]())
+	return xs.NewSelector(
+		xs.RoundRobinStrategy[chain.SelectableChainer](),
+		xs.FailFilter[chain.SelectableChainer](xs.DefaultMaxFails, xs.DefaultFailTimeout),
+		xs.BackupFilter[chain.SelectableChainer](),
+	)
 }

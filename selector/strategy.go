@@ -2,11 +2,14 @@ package selector
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/selector"
+	sx "github.com/go-gost/x/internal/util/selector"
 )
 
 type roundRobinStrategy[T selector.Selectable] struct {
@@ -76,4 +79,29 @@ func (s *fifoStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 		return
 	}
 	return vs[0]
+}
+
+type hashStrategy[T selector.Selectable] struct {
+	r  *rand.Rand
+	mu sync.Mutex
+}
+
+func HashStrategy[T selector.Selectable]() selector.Strategy[T] {
+	return &hashStrategy[T]{
+		r: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+}
+
+func (s *hashStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
+	if len(vs) == 0 {
+		return
+	}
+	if h := sx.HashFromContext(ctx); h != nil {
+		return vs[h.Value%len(vs)]
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return vs[s.r.Intn(len(vs))]
 }

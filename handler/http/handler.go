@@ -61,6 +61,8 @@ func (h *httpHandler) Init(md md.Metadata) error {
 func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
 	defer conn.Close()
 
+	// ctx = sx.ContextWithHash(ctx, &sx.Hash{})
+
 	start := time.Now()
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
