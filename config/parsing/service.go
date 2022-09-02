@@ -11,11 +11,13 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
+	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
+	xs "github.com/go-gost/x/selector"
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
@@ -184,7 +186,11 @@ func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
 		}
 	}
 
-	return group.WithSelector(parseNodeSelector(cfg.Selector))
+	sel := parseNodeSelector(cfg.Selector)
+	if sel == nil {
+		sel = xs.DefaultNodeSelector
+	}
+	return group.WithSelector(sel)
 }
 
 func bypassList(name string, names ...string) []bypass.Bypass {
@@ -228,18 +234,25 @@ func admissionList(name string, names ...string) []admission.Admission {
 }
 
 func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
-	cg := &chain.ChainGroup{}
+	var chains []chain.SelectableChainer
+	var sel selector.Selector[chain.SelectableChainer]
+
 	if c := registry.ChainRegistry().Get(name); c != nil {
-		cg.Chains = append(cg.Chains, c)
+		chains = append(chains, c)
 	}
 	if group != nil {
 		for _, s := range group.Chains {
 			if c := registry.ChainRegistry().Get(s); c != nil {
-				cg.Chains = append(cg.Chains, c)
+				chains = append(chains, c)
 			}
 		}
-		cg.Selector = parseChainSelector(group.Selector)
+		sel = parseChainSelector(group.Selector)
 	}
 
-	return cg
+	if sel == nil {
+		sel = xs.DefaultChainSelector
+	}
+
+	return chain.NewChainGroup(chains...).
+		WithSelector(sel)
 }

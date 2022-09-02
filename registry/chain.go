@@ -3,6 +3,7 @@ package registry
 import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/selector"
 )
 
 type chainRegistry struct {
@@ -32,7 +33,7 @@ type chainWrapper struct {
 	r    *chainRegistry
 }
 
-func (w *chainWrapper) Marker() chain.Marker {
+func (w *chainWrapper) Marker() selector.Marker {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
@@ -48,7 +49,7 @@ func (w *chainWrapper) Metadata() metadata.Metadata {
 	return v.Metadata()
 }
 
-func (w *chainWrapper) Route(network, address string) *chain.Route {
+func (w *chainWrapper) Route(network, address string) chain.Route {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil

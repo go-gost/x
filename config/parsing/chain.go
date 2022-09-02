@@ -10,6 +10,7 @@ import (
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
+	xs "github.com/go-gost/x/selector"
 )
 
 func ParseChain(cfg *config.ChainConfig) (chain.SelectableChainer, error) {
@@ -139,6 +140,9 @@ func ParseChain(cfg *config.ChainConfig) (chain.SelectableChainer, error) {
 		sel := selector
 		if s := parseNodeSelector(hop.Selector); s != nil {
 			sel = s
+		}
+		if sel == nil {
+			sel = xs.DefaultNodeSelector
 		}
 		group.WithSelector(sel).
 			WithBypass(bypass.BypassGroup(bypassList(hop.Bypass, hop.Bypasses...)...))

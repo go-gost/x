@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -71,7 +70,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 	if l.ln == nil {
 		l.ln, err = l.router.Bind(
 			context.Background(), "tcp", l.laddr.String(),
-			connector.MuxBindOption(true),
+			chain.MuxBindOption(true),
 		)
 		if err != nil {
 			return nil, listener.NewAcceptError(err)

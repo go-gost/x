@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -72,10 +71,10 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 	if l.ln == nil {
 		l.ln, err = l.router.Bind(
 			context.Background(), "udp", l.laddr.String(),
-			connector.BacklogBindOption(l.md.backlog),
-			connector.UDPConnTTLBindOption(l.md.ttl),
-			connector.UDPDataBufferSizeBindOption(l.md.readBufferSize),
-			connector.UDPDataQueueSizeBindOption(l.md.readQueueSize),
+			chain.BacklogBindOption(l.md.backlog),
+			chain.UDPConnTTLBindOption(l.md.ttl),
+			chain.UDPDataBufferSizeBindOption(l.md.readBufferSize),
+			chain.UDPDataQueueSizeBindOption(l.md.readQueueSize),
 		)
 		if err != nil {
 			return nil, listener.NewAcceptError(err)

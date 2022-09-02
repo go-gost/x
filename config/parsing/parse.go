@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
+	"github.com/go-gost/core/selector"
 	admission_impl "github.com/go-gost/x/admission"
 	auth_impl "github.com/go-gost/x/auth"
 	bypass_impl "github.com/go-gost/x/bypass"
@@ -21,6 +22,7 @@ import (
 	recorder_impl "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	resolver_impl "github.com/go-gost/x/resolver"
+	xs "github.com/go-gost/x/selector"
 )
 
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
@@ -83,50 +85,50 @@ func parseAuth(cfg *config.AuthConfig) *url.Userinfo {
 	return url.UserPassword(cfg.Username, cfg.Password)
 }
 
-func parseChainSelector(cfg *config.SelectorConfig) chain.Selector[chain.SelectableChainer] {
+func parseChainSelector(cfg *config.SelectorConfig) selector.Selector[chain.SelectableChainer] {
 	if cfg == nil {
 		return nil
 	}
 
-	var strategy chain.Strategy[chain.SelectableChainer]
+	var strategy selector.Strategy[chain.SelectableChainer]
 	switch cfg.Strategy {
 	case "round", "rr":
-		strategy = chain.RoundRobinStrategy[chain.SelectableChainer]()
+		strategy = xs.RoundRobinStrategy[chain.SelectableChainer]()
 	case "random", "rand":
-		strategy = chain.RandomStrategy[chain.SelectableChainer]()
+		strategy = xs.RandomStrategy[chain.SelectableChainer]()
 	case "fifo", "ha":
-		strategy = chain.FIFOStrategy[chain.SelectableChainer]()
+		strategy = xs.FIFOStrategy[chain.SelectableChainer]()
 	default:
-		strategy = chain.RoundRobinStrategy[chain.SelectableChainer]()
+		strategy = xs.RoundRobinStrategy[chain.SelectableChainer]()
 	}
-	return chain.NewSelector(
+	return xs.NewSelector(
 		strategy,
-		chain.FailFilter[chain.SelectableChainer](cfg.MaxFails, cfg.FailTimeout),
-		chain.BackupFilter[chain.SelectableChainer](),
+		xs.FailFilter[chain.SelectableChainer](cfg.MaxFails, cfg.FailTimeout),
+		xs.BackupFilter[chain.SelectableChainer](),
 	)
 }
 
-func parseNodeSelector(cfg *config.SelectorConfig) chain.Selector[*chain.Node] {
+func parseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node] {
 	if cfg == nil {
 		return nil
 	}
 
-	var strategy chain.Strategy[*chain.Node]
+	var strategy selector.Strategy[*chain.Node]
 	switch cfg.Strategy {
 	case "round", "rr":
-		strategy = chain.RoundRobinStrategy[*chain.Node]()
+		strategy = xs.RoundRobinStrategy[*chain.Node]()
 	case "random", "rand":
-		strategy = chain.RandomStrategy[*chain.Node]()
+		strategy = xs.RandomStrategy[*chain.Node]()
 	case "fifo", "ha":
-		strategy = chain.FIFOStrategy[*chain.Node]()
+		strategy = xs.FIFOStrategy[*chain.Node]()
 	default:
-		strategy = chain.RoundRobinStrategy[*chain.Node]()
+		strategy = xs.RoundRobinStrategy[*chain.Node]()
 	}
 
-	return chain.NewSelector(
+	return xs.NewSelector(
 		strategy,
-		chain.FailFilter[*chain.Node](cfg.MaxFails, cfg.FailTimeout),
-		chain.BackupFilter[*chain.Node](),
+		xs.FailFilter[*chain.Node](cfg.MaxFails, cfg.FailTimeout),
+		xs.BackupFilter[*chain.Node](),
 	)
 }
 
