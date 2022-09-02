@@ -298,3 +298,11 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 
 	return
 }
+
+func defaultNodeSelector() selector.Selector[*chain.Node] {
+	return xs.NewSelector(xs.RoundRobinStrategy[*chain.Node]())
+}
+
+func defaultChainSelector() selector.Selector[chain.SelectableChainer] {
+	return xs.NewSelector(xs.RoundRobinStrategy[chain.SelectableChainer]())
+}

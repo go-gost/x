@@ -71,7 +71,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	target := h.group.Next()
+	target := h.group.Next(ctx)
 	if target == nil {
 		err := errors.New("target not available")
 		log.Error(err)

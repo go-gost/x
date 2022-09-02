@@ -1,9 +1,9 @@
 package selector
 
 import (
+	"context"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/selector"
 )
 
@@ -20,17 +20,6 @@ const (
 	labelFailTimeout = "failTimeout"
 )
 
-var (
-	DefaultNodeSelector = NewSelector(
-		RoundRobinStrategy[*chain.Node](),
-		// FailFilter[*Node](1, DefaultFailTimeout),
-	)
-	DefaultChainSelector = NewSelector(
-		RoundRobinStrategy[chain.SelectableChainer](),
-		// FailFilter[SelectableChainer](1, DefaultFailTimeout),
-	)
-)
-
 type defaultSelector[T selector.Selectable] struct {
 	strategy selector.Strategy[T]
 	filters  []selector.Filter[T]
@@ -43,12 +32,12 @@ func NewSelector[T selector.Selectable](strategy selector.Strategy[T], filters .
 	}
 }
 
-func (s *defaultSelector[T]) Select(vs ...T) (v T) {
+func (s *defaultSelector[T]) Select(ctx context.Context, vs ...T) (v T) {
 	for _, filter := range s.filters {
-		vs = filter.Filter(vs...)
+		vs = filter.Filter(ctx, vs...)
 	}
 	if len(vs) == 0 {
 		return
 	}
-	return s.strategy.Apply(vs...)
+	return s.strategy.Apply(ctx, vs...)
 }

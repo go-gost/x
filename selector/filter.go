@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"context"
 	"time"
 
 	mdutil "github.com/go-gost/core/metadata/util"
@@ -22,7 +23,7 @@ func FailFilter[T selector.Selectable](maxFails int, timeout time.Duration) sele
 }
 
 // Filter filters dead objects.
-func (f *failFilter[T]) Filter(vs ...T) []T {
+func (f *failFilter[T]) Filter(ctx context.Context, vs ...T) []T {
 	if len(vs) <= 1 {
 		return vs
 	}
@@ -66,7 +67,7 @@ func BackupFilter[T selector.Selectable]() selector.Filter[T] {
 }
 
 // Filter filters backup objects.
-func (f *backupFilter[T]) Filter(vs ...T) []T {
+func (f *backupFilter[T]) Filter(ctx context.Context, vs ...T) []T {
 	if len(vs) <= 1 {
 		return vs
 	}

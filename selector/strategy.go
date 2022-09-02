@@ -1,11 +1,11 @@
 package selector
 
 import (
-	"math/rand"
+	"context"
 	"sync"
 	"sync/atomic"
-	"time"
 
+	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/selector"
 )
 
@@ -19,7 +19,7 @@ func RoundRobinStrategy[T selector.Selectable]() selector.Strategy[T] {
 	return &roundRobinStrategy[T]{}
 }
 
-func (s *roundRobinStrategy[T]) Apply(vs ...T) (v T) {
+func (s *roundRobinStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	if len(vs) == 0 {
 		return
 	}
@@ -29,29 +29,36 @@ func (s *roundRobinStrategy[T]) Apply(vs ...T) (v T) {
 }
 
 type randomStrategy[T selector.Selectable] struct {
-	rand *rand.Rand
-	mux  sync.Mutex
+	rw *randomWeighted[T]
+	mu sync.Mutex
 }
 
 // RandomStrategy is a strategy for node selector.
 // The node will be selected randomly.
 func RandomStrategy[T selector.Selectable]() selector.Strategy[T] {
 	return &randomStrategy[T]{
-		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
+		rw: newRandomWeighted[T](),
 	}
 }
 
-func (s *randomStrategy[T]) Apply(vs ...T) (v T) {
+func (s *randomStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	if len(vs) == 0 {
 		return
 	}
 
-	s.mux.Lock()
-	defer s.mux.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	r := s.rand.Int()
+	s.rw.Reset()
+	for i := range vs {
+		weight := mdutil.GetInt(vs[i].Metadata(), labelWeight)
+		if weight <= 0 {
+			weight = 1
+		}
+		s.rw.Add(vs[i], weight)
+	}
 
-	return vs[r%len(vs)]
+	return s.rw.Next()
 }
 
 type fifoStrategy[T selector.Selectable] struct{}
@@ -64,7 +71,7 @@ func FIFOStrategy[T selector.Selectable]() selector.Strategy[T] {
 }
 
 // Apply applies the fifo strategy for the nodes.
-func (s *fifoStrategy[T]) Apply(vs ...T) (v T) {
+func (s *fifoStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	if len(vs) == 0 {
 		return
 	}

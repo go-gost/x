@@ -17,7 +17,6 @@ import (
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
-	xs "github.com/go-gost/x/selector"
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
@@ -188,7 +187,7 @@ func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
 
 	sel := parseNodeSelector(cfg.Selector)
 	if sel == nil {
-		sel = xs.DefaultNodeSelector
+		sel = defaultNodeSelector()
 	}
 	return group.WithSelector(sel)
 }
@@ -250,7 +249,7 @@ func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
 	}
 
 	if sel == nil {
-		sel = xs.DefaultChainSelector
+		sel = defaultChainSelector()
 	}
 
 	return chain.NewChainGroup(chains...).

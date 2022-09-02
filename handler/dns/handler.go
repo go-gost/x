@@ -221,7 +221,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 		return nil, err
 	}
 
-	ex := h.selectExchanger(strings.Trim(mq.Question[0].Name, "."))
+	ex := h.selectExchanger(ctx, strings.Trim(mq.Question[0].Name, "."))
 	if ex == nil {
 		err := fmt.Errorf("exchange not found for %s", mq.Question[0].Name)
 		log.Error(err)
@@ -293,11 +293,11 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 	return
 }
 
-func (h *dnsHandler) selectExchanger(addr string) exchanger.Exchanger {
+func (h *dnsHandler) selectExchanger(ctx context.Context, addr string) exchanger.Exchanger {
 	if h.group == nil {
 		return nil
 	}
-	node := h.group.FilterAddr(addr).Next()
+	node := h.group.FilterAddr(addr).Next(ctx)
 	if node == nil {
 		return nil
 	}

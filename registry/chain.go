@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"context"
+
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/selector"
@@ -49,10 +51,10 @@ func (w *chainWrapper) Metadata() metadata.Metadata {
 	return v.Metadata()
 }
 
-func (w *chainWrapper) Route(network, address string) chain.Route {
+func (w *chainWrapper) Route(ctx context.Context, network, address string) chain.Route {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Route(network, address)
+	return v.Route(ctx, network, address)
 }

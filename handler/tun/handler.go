@@ -87,7 +87,7 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	var raddr net.Addr
 	var err error
 
-	target := h.group.Next()
+	target := h.group.Next(ctx)
 	if target != nil {
 		raddr, err = net.ResolveUDPAddr(network, target.Addr)
 		if err != nil {
