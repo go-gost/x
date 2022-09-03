@@ -247,13 +247,14 @@ type ServiceConfig struct {
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
+	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type ChainConfig struct {
 	Name     string          `json:"name"`
 	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
 	Hops     []*HopConfig    `json:"hops"`
-	Metadata map[string]any  `yaml:",omitempty", json:"metadata,omitempty"`
+	Metadata map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type ChainGroupConfig struct {
@@ -284,7 +285,7 @@ type NodeConfig struct {
 	Hosts     string           `yaml:",omitempty" json:"hosts,omitempty"`
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
-	Metadata  map[string]any   `yaml:",omitempty", json:"metadata,omitempty"`
+	Metadata  map[string]any   `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type Config struct {
