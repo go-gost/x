@@ -23,7 +23,7 @@ type options struct {
 
 type Option func(opts *options)
 
-func AuthsPeriodOption(auths map[string]string) Option {
+func AuthsOption(auths map[string]string) Option {
 	return func(opts *options) {
 		opts.auths = auths
 	}

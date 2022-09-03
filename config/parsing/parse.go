@@ -40,7 +40,7 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	}
 
 	opts := []auth_impl.Option{
-		auth_impl.AuthsPeriodOption(m),
+		auth_impl.AuthsOption(m),
 		auth_impl.ReloadPeriodOption(cfg.Reload),
 		auth_impl.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":   "auther",
@@ -67,11 +67,15 @@ func ParseAutherFromAuth(au *config.AuthConfig) auth.Authenticator {
 		return nil
 	}
 	return auth_impl.NewAuthenticator(
-		auth_impl.AuthsPeriodOption(
+		auth_impl.AuthsOption(
 			map[string]string{
 				au.Username: au.Password,
 			},
-		))
+		),
+		auth_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind": "auther",
+		})),
+	)
 }
 
 func parseAuth(cfg *config.AuthConfig) *url.Userinfo {
