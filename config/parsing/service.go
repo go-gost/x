@@ -61,12 +61,16 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			authers = append(authers, auther)
 		}
 	}
+	var auther auth.Authenticator
+	if len(authers) > 0 {
+		auther = auth.AuthenticatorGroup(authers...)
+	}
 
 	admissions := admissionList(cfg.Admission, cfg.Admissions...)
 
 	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
 		listener.AddrOption(cfg.Addr),
-		listener.AutherOption(auth.AuthenticatorGroup(authers...)),
+		listener.AutherOption(auther),
 		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
 		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
@@ -108,6 +112,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		}
 	}
 
+	auther = nil
+	if len(authers) > 0 {
+		auther = auth.AuthenticatorGroup(authers...)
+	}
+
 	var sockOpts *chain.SockOpts
 	if cfg.SockOpts != nil {
 		sockOpts = &chain.SockOpts{
@@ -135,7 +144,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(
 		handler.RouterOption(router),
-		handler.AutherOption(auth.AuthenticatorGroup(authers...)),
+		handler.AutherOption(auther),
 		handler.AuthOption(parseAuth(cfg.Handler.Auth)),
 		handler.BypassOption(bypass.BypassGroup(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
 		handler.TLSConfigOption(tlsConfig),
