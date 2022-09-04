@@ -25,14 +25,14 @@ var (
 	dialerReg    Registry[NewDialer]    = &dialerRegistry{}
 	connectorReg Registry[NewConnector] = &connectorRegistry{}
 
-	serviceReg   Registry[service.Service]         = &serviceRegistry{}
-	chainReg     Registry[chain.SelectableChainer] = &chainRegistry{}
-	autherReg    Registry[auth.Authenticator]      = &autherRegistry{}
-	admissionReg Registry[admission.Admission]     = &admissionRegistry{}
-	bypassReg    Registry[bypass.Bypass]           = &bypassRegistry{}
-	resolverReg  Registry[resolver.Resolver]       = &resolverRegistry{}
-	hostsReg     Registry[hosts.HostMapper]        = &hostsRegistry{}
-	recorderReg  Registry[recorder.Recorder]       = &recorderRegistry{}
+	serviceReg   Registry[service.Service]     = &serviceRegistry{}
+	chainReg     Registry[chain.Chainer]       = &chainRegistry{}
+	autherReg    Registry[auth.Authenticator]  = &autherRegistry{}
+	admissionReg Registry[admission.Admission] = &admissionRegistry{}
+	bypassReg    Registry[bypass.Bypass]       = &bypassRegistry{}
+	resolverReg  Registry[resolver.Resolver]   = &resolverRegistry{}
+	hostsReg     Registry[hosts.HostMapper]    = &hostsRegistry{}
+	recorderReg  Registry[recorder.Recorder]   = &recorderRegistry{}
 )
 
 type Registry[T any] interface {
@@ -99,7 +99,7 @@ func ServiceRegistry() Registry[service.Service] {
 	return serviceReg
 }
 
-func ChainRegistry() Registry[chain.SelectableChainer] {
+func ChainRegistry() Registry[chain.Chainer] {
 	return chainReg
 }
 

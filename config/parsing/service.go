@@ -242,8 +242,8 @@ func admissionList(name string, names ...string) []admission.Admission {
 }
 
 func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
-	var chains []chain.SelectableChainer
-	var sel selector.Selector[chain.SelectableChainer]
+	var chains []chain.Chainer
+	var sel selector.Selector[chain.Chainer]
 
 	if c := registry.ChainRegistry().Get(name); c != nil {
 		chains = append(chains, c)

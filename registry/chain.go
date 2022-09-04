@@ -12,20 +12,20 @@ type chainRegistry struct {
 	registry
 }
 
-func (r *chainRegistry) Register(name string, v chain.SelectableChainer) error {
+func (r *chainRegistry) Register(name string, v chain.Chainer) error {
 	return r.registry.Register(name, v)
 }
 
-func (r *chainRegistry) Get(name string) chain.SelectableChainer {
+func (r *chainRegistry) Get(name string) chain.Chainer {
 	if name != "" {
 		return &chainWrapper{name: name, r: r}
 	}
 	return nil
 }
 
-func (r *chainRegistry) get(name string) chain.SelectableChainer {
+func (r *chainRegistry) get(name string) chain.Chainer {
 	if v := r.registry.Get(name); v != nil {
-		return v.(chain.SelectableChainer)
+		return v.(chain.Chainer)
 	}
 	return nil
 }
@@ -40,7 +40,10 @@ func (w *chainWrapper) Marker() selector.Marker {
 	if v == nil {
 		return nil
 	}
-	return v.Marker()
+	if mi, ok := v.(selector.Markable); ok {
+		return mi.Marker()
+	}
+	return nil
 }
 
 func (w *chainWrapper) Metadata() metadata.Metadata {
@@ -48,7 +51,11 @@ func (w *chainWrapper) Metadata() metadata.Metadata {
 	if v == nil {
 		return nil
 	}
-	return v.Metadata()
+
+	if mi, ok := v.(metadata.Metadatable); ok {
+		return mi.Metadata()
+	}
+	return nil
 }
 
 func (w *chainWrapper) Route(ctx context.Context, network, address string) chain.Route {

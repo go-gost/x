@@ -81,7 +81,7 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		log.Error(err)
 		return err
 	}
-	md := v.GetMetadata()
+	md := v.Metadata()
 	return h.roundTrip(ctx,
 		md.Get("w").(http.ResponseWriter),
 		md.Get("r").(*http.Request),

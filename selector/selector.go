@@ -20,12 +20,12 @@ const (
 	labelFailTimeout = "failTimeout"
 )
 
-type defaultSelector[T selector.Selectable] struct {
+type defaultSelector[T any] struct {
 	strategy selector.Strategy[T]
 	filters  []selector.Filter[T]
 }
 
-func NewSelector[T selector.Selectable](strategy selector.Strategy[T], filters ...selector.Filter[T]) selector.Selector[T] {
+func NewSelector[T any](strategy selector.Strategy[T], filters ...selector.Filter[T]) selector.Selector[T] {
 	return &defaultSelector[T]{
 		filters:  filters,
 		strategy: strategy,

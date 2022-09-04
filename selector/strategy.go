@@ -7,18 +7,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/selector"
 	sx "github.com/go-gost/x/internal/util/selector"
 )
 
-type roundRobinStrategy[T selector.Selectable] struct {
+type roundRobinStrategy[T any] struct {
 	counter uint64
 }
 
 // RoundRobinStrategy is a strategy for node selector.
 // The node will be selected by round-robin algorithm.
-func RoundRobinStrategy[T selector.Selectable]() selector.Strategy[T] {
+func RoundRobinStrategy[T any]() selector.Strategy[T] {
 	return &roundRobinStrategy[T]{}
 }
 
@@ -31,14 +32,14 @@ func (s *roundRobinStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	return vs[int(n%uint64(len(vs)))]
 }
 
-type randomStrategy[T selector.Selectable] struct {
+type randomStrategy[T any] struct {
 	rw *randomWeighted[T]
 	mu sync.Mutex
 }
 
 // RandomStrategy is a strategy for node selector.
 // The node will be selected randomly.
-func RandomStrategy[T selector.Selectable]() selector.Strategy[T] {
+func RandomStrategy[T any]() selector.Strategy[T] {
 	return &randomStrategy[T]{
 		rw: newRandomWeighted[T](),
 	}
@@ -54,7 +55,10 @@ func (s *randomStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 
 	s.rw.Reset()
 	for i := range vs {
-		weight := mdutil.GetInt(vs[i].Metadata(), labelWeight)
+		weight := 0
+		if md, _ := any(vs[i]).(metadata.Metadatable); md != nil {
+			weight = mdutil.GetInt(md.Metadata(), labelWeight)
+		}
 		if weight <= 0 {
 			weight = 1
 		}
@@ -64,12 +68,12 @@ func (s *randomStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	return s.rw.Next()
 }
 
-type fifoStrategy[T selector.Selectable] struct{}
+type fifoStrategy[T any] struct{}
 
 // FIFOStrategy is a strategy for node selector.
 // The node will be selected from first to last,
 // and will stick to the selected node until it is failed.
-func FIFOStrategy[T selector.Selectable]() selector.Strategy[T] {
+func FIFOStrategy[T any]() selector.Strategy[T] {
 	return &fifoStrategy[T]{}
 }
 
@@ -81,12 +85,12 @@ func (s *fifoStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	return vs[0]
 }
 
-type hashStrategy[T selector.Selectable] struct {
+type hashStrategy[T any] struct {
 	r  *rand.Rand
 	mu sync.Mutex
 }
 
-func HashStrategy[T selector.Selectable]() selector.Strategy[T] {
+func HashStrategy[T any]() selector.Strategy[T] {
 	return &hashStrategy[T]{
 		r: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}

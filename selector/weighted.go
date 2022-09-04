@@ -3,22 +3,20 @@ package selector
 import (
 	"math/rand"
 	"time"
-
-	"github.com/go-gost/core/selector"
 )
 
-type randomWeightedItem[T selector.Selectable] struct {
+type randomWeightedItem[T any] struct {
 	item   T
 	weight int
 }
 
-type randomWeighted[T selector.Selectable] struct {
+type randomWeighted[T any] struct {
 	items []*randomWeightedItem[T]
 	sum   int
 	r     *rand.Rand
 }
 
-func newRandomWeighted[T selector.Selectable]() *randomWeighted[T] {
+func newRandomWeighted[T any]() *randomWeighted[T] {
 	return &randomWeighted[T]{
 		r: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}

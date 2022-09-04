@@ -118,7 +118,7 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 	}
 
-	config := v.GetMetadata().Get("config").(*tap_util.Config)
+	config := v.Metadata().Get("config").(*tap_util.Config)
 	h.handleLoop(ctx, conn, raddr, config, log)
 	return nil
 }

@@ -60,7 +60,7 @@ func (c *conn) Done() <-chan struct{} {
 	return c.closed
 }
 
-// GetMetadata implements metadata.Metadatable interface.
-func (c *conn) GetMetadata() mdata.Metadata {
+// Metadata implements metadata.Metadatable interface.
+func (c *conn) Metadata() mdata.Metadata {
 	return c.md
 }

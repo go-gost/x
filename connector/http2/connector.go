@@ -90,7 +90,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	client := v.GetMetadata().Get("client").(*http.Client)
+	client := v.Metadata().Get("client").(*http.Client)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error(err)

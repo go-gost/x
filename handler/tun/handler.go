@@ -68,7 +68,7 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log.Error(err)
 		return err
 	}
-	config := v.GetMetadata().Get("config").(*tun_util.Config)
+	config := v.Metadata().Get("config").(*tun_util.Config)
 
 	start := time.Now()
 	log = log.WithFields(map[string]any{

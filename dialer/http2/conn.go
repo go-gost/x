@@ -51,7 +51,7 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "nop", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
-// GetMetadata implements metadata.Metadatable interface.
-func (c *conn) GetMetadata() mdata.Metadata {
+// Metadata implements metadata.Metadatable interface.
+func (c *conn) Metadata() mdata.Metadata {
 	return c.md
 }

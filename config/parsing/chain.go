@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-func ParseChain(cfg *config.ChainConfig) (chain.SelectableChainer, error) {
+func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 	if cfg == nil {
 		return nil, nil
 	}

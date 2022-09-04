@@ -52,8 +52,8 @@ type metadataConn struct {
 	md mdata.Metadata
 }
 
-// GetMetadata implements metadata.Metadatable interface.
-func (c *metadataConn) GetMetadata() mdata.Metadata {
+// Metadata implements metadata.Metadatable interface.
+func (c *metadataConn) Metadata() mdata.Metadata {
 	return c.md
 }
 

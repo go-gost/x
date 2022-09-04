@@ -89,26 +89,26 @@ func parseAuth(cfg *config.AuthConfig) *url.Userinfo {
 	return url.UserPassword(cfg.Username, cfg.Password)
 }
 
-func parseChainSelector(cfg *config.SelectorConfig) selector.Selector[chain.SelectableChainer] {
+func parseChainSelector(cfg *config.SelectorConfig) selector.Selector[chain.Chainer] {
 	if cfg == nil {
 		return nil
 	}
 
-	var strategy selector.Strategy[chain.SelectableChainer]
+	var strategy selector.Strategy[chain.Chainer]
 	switch cfg.Strategy {
 	case "round", "rr":
-		strategy = xs.RoundRobinStrategy[chain.SelectableChainer]()
+		strategy = xs.RoundRobinStrategy[chain.Chainer]()
 	case "random", "rand":
-		strategy = xs.RandomStrategy[chain.SelectableChainer]()
+		strategy = xs.RandomStrategy[chain.Chainer]()
 	case "fifo", "ha":
-		strategy = xs.FIFOStrategy[chain.SelectableChainer]()
+		strategy = xs.FIFOStrategy[chain.Chainer]()
 	default:
-		strategy = xs.RoundRobinStrategy[chain.SelectableChainer]()
+		strategy = xs.RoundRobinStrategy[chain.Chainer]()
 	}
 	return xs.NewSelector(
 		strategy,
-		xs.FailFilter[chain.SelectableChainer](cfg.MaxFails, cfg.FailTimeout),
-		xs.BackupFilter[chain.SelectableChainer](),
+		xs.FailFilter[chain.Chainer](cfg.MaxFails, cfg.FailTimeout),
+		xs.BackupFilter[chain.Chainer](),
 	)
 }
 
@@ -311,10 +311,10 @@ func defaultNodeSelector() selector.Selector[*chain.Node] {
 	)
 }
 
-func defaultChainSelector() selector.Selector[chain.SelectableChainer] {
+func defaultChainSelector() selector.Selector[chain.Chainer] {
 	return xs.NewSelector(
-		xs.RoundRobinStrategy[chain.SelectableChainer](),
-		xs.FailFilter[chain.SelectableChainer](xs.DefaultMaxFails, xs.DefaultFailTimeout),
-		xs.BackupFilter[chain.SelectableChainer](),
+		xs.RoundRobinStrategy[chain.Chainer](),
+		xs.FailFilter[chain.Chainer](xs.DefaultMaxFails, xs.DefaultFailTimeout),
+		xs.BackupFilter[chain.Chainer](),
 	)
 }
