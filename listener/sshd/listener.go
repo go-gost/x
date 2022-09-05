@@ -7,14 +7,15 @@ import (
 	"strconv"
 	"time"
 
-	admission "github.com/go-gost/core/admission/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	sshd_util "github.com/go-gost/x/internal/util/sshd"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/crypto/ssh"
 )
@@ -66,6 +67,7 @@ func (l *sshdListener) Init(md md.Metadata) (err error) {
 
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = limiter.WrapListener(l.options.RateLimiter, ln)
 	l.Listener = ln
 
 	config := &ssh.ServerConfig{

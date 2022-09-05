@@ -8,9 +8,10 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter "github.com/go-gost/x/limiter/wrapper"
 	mdx "github.com/go-gost/x/metadata"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -88,6 +89,7 @@ func (l *tunListener) listenLoop() {
 				cancel: cancel,
 			}
 			c = metrics.WrapConn(l.options.Service, c)
+			c = limiter.WrapConn(l.options.RateLimiter, c)
 			c = withMetadata(mdx.NewMetadata(map[string]any{
 				"config": l.md.config,
 			}), c)

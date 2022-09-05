@@ -6,9 +6,11 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	pht_util "github.com/go-gost/x/internal/util/pht"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/lucas-clemente/quic-go"
 )
@@ -74,7 +76,11 @@ func (l *http3Listener) Accept() (conn net.Conn, err error) {
 	if err != nil {
 		return
 	}
-	return metrics.WrapConn(l.options.Service, conn), nil
+
+	conn = metrics.WrapConn(l.options.Service, conn)
+	conn = admission.WrapConn(l.options.Admission, conn)
+	conn = limiter.WrapConn(l.options.RateLimiter, conn)
+	return conn, nil
 }
 
 func (l *http3Listener) Addr() net.Addr {

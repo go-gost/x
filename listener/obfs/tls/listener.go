@@ -3,12 +3,13 @@ package tls
 import (
 	"net"
 
-	admission "github.com/go-gost/core/admission/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -49,6 +50,7 @@ func (l *obfsListener) Init(md md.Metadata) (err error) {
 	}
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = limiter.WrapListener(l.options.RateLimiter, ln)
 
 	l.Listener = ln
 	return

@@ -185,19 +185,20 @@ type RecorderObject struct {
 }
 
 type LimiterConfig struct {
-	Name      string           `json:"name"`
-	RateLimit *RateLimitConfig `yaml:"rate" json:"rate"`
+	Name string             `json:"name"`
+	Rate *RateLimiterConfig `yaml:"rate" json:"rate"`
 }
 
-type RateLimitConfig struct {
-	Input  string       `yaml:",omitempty" json:"input,omitempty"`
-	Output string       `yaml:",omitempty" json:"output,omitempty"`
-	Conn   *LimitConfig `yaml:",omitempty" json:"conn,omitempty"`
+type RateLimiterConfig struct {
+	Limits []string      `yaml:",omitempty" json:"limits,omitempty"`
+	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
+	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
+	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 }
 
 type LimitConfig struct {
-	Input  string `yaml:",omitempty" json:"input,omitempty"`
-	Output string `yaml:",omitempty" json:"output,omitempty"`
+	In  string `yaml:",omitempty" json:"in,omitempty"`
+	Out string `yaml:",omitempty" json:"out,omitempty"`
 }
 
 type ListenerConfig struct {

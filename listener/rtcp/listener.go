@@ -8,8 +8,10 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -76,6 +78,8 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 			return nil, listener.NewAcceptError(err)
 		}
 		l.ln = metrics.WrapListener(l.options.Service, l.ln)
+		l.ln = admission.WrapListener(l.options.Admission, l.ln)
+		l.ln = limiter.WrapListener(l.options.RateLimiter, l.ln)
 	}
 	conn, err = l.ln.Accept()
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/url"
 
-	"github.com/alecthomas/units"
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
@@ -323,33 +322,41 @@ func defaultChainSelector() selector.Selector[chain.Chainer] {
 }
 
 func ParseRateLimiter(cfg *config.LimiterConfig) (lim limiter.RateLimiter) {
-	if cfg == nil || cfg.RateLimit == nil {
+	if cfg == nil || cfg.Rate == nil {
 		return nil
 	}
 
-	var rlimiters []limiter.Limiter
-	var wlimiters []limiter.Limiter
-	if cfg.RateLimit.Conn != nil {
-		if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Conn.Input); v > 0 {
-			rlimiters = append(rlimiters, xlimiter.Limiter(int(v)))
-		}
-		if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Conn.Output); v > 0 {
-			wlimiters = append(wlimiters, xlimiter.Limiter(int(v)))
-		}
-	}
-	if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Input); v > 0 {
-		rlimiters = append(rlimiters, xlimiter.Limiter(int(v)))
-	}
-	if v, _ := units.ParseBase2Bytes(cfg.RateLimit.Output); v > 0 {
-		wlimiters = append(wlimiters, xlimiter.Limiter(int(v)))
-	}
+	var opts []xlimiter.Option
 
-	var input, output limiter.Limiter
-	if len(rlimiters) > 0 {
-		input = xlimiter.MultiLimiter(rlimiters...)
+	if cfg.Rate.File != nil && cfg.Rate.File.Path != "" {
+		opts = append(opts, xlimiter.FileLoaderOption(loader.FileLoader(cfg.Rate.File.Path)))
 	}
-	if len(wlimiters) > 0 {
-		output = xlimiter.MultiLimiter(wlimiters...)
+	if cfg.Rate.Redis != nil && cfg.Rate.Redis.Addr != "" {
+		switch cfg.Rate.Redis.Type {
+		case "list": // redis list
+			opts = append(opts, xlimiter.RedisLoaderOption(loader.RedisListLoader(
+				cfg.Rate.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Rate.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Rate.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Rate.Redis.Key),
+			)))
+		default: // redis set
+			opts = append(opts, xlimiter.RedisLoaderOption(loader.RedisSetLoader(
+				cfg.Rate.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Rate.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Rate.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Rate.Redis.Key),
+			)))
+		}
 	}
-	return xlimiter.RateLimiter(input, output)
+	opts = append(opts,
+		xlimiter.LimitsOption(cfg.Rate.Limits...),
+		xlimiter.ReloadPeriodOption(cfg.Rate.Reload),
+		xlimiter.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind":  "limiter",
+			"hosts": cfg.Name,
+		})),
+	)
+
+	return xlimiter.NewRateLimiter(opts...)
 }

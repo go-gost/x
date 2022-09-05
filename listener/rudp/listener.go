@@ -8,8 +8,10 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -88,7 +90,9 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 	}
 
 	if pc, ok := conn.(net.PacketConn); ok {
-		conn = metrics.WrapUDPConn(l.options.Service, pc)
+		uc := metrics.WrapUDPConn(l.options.Service, pc)
+		uc = admission.WrapUDPConn(l.options.Admission, uc)
+		conn = limiter.WrapUDPConn(l.options.RateLimiter, uc)
 	}
 
 	return

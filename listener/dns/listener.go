@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"strings"
 
+	admission "github.com/go-gost/x/admission/wrapper"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/miekg/dns"
 )
@@ -114,6 +117,8 @@ func (l *dnsListener) Accept() (conn net.Conn, err error) {
 	select {
 	case conn = <-l.cqueue:
 		conn = metrics.WrapConn(l.options.Service, conn)
+		conn = admission.WrapConn(l.options.Admission, conn)
+		conn = limiter.WrapConn(l.options.RateLimiter, conn)
 	case err, ok = <-l.errChan:
 		if !ok {
 			err = listener.ErrClosed

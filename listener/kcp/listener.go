@@ -4,13 +4,14 @@ import (
 	"net"
 	"time"
 
-	admission "github.com/go-gost/core/admission/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/xtaci/kcp-go/v5"
 	"github.com/xtaci/smux"
@@ -75,6 +76,7 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 
 	conn = metrics.WrapUDPConn(l.options.Service, conn)
 	conn = admission.WrapUDPConn(l.options.Admission, conn)
+	conn = limiter.WrapUDPConn(l.options.RateLimiter, conn)
 
 	ln, err := kcp.ServeConn(
 		kcp_util.BlockCrypt(config.Key, config.Crypt, kcp_util.DefaultSalt),

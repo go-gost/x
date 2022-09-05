@@ -31,18 +31,18 @@ type rlimiterWrapper struct {
 	r    *rlimiterRegistry
 }
 
-func (w *rlimiterWrapper) Input() limiter.Limiter {
+func (w *rlimiterWrapper) In(key string) limiter.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Input()
+	return v.In(key)
 }
 
-func (w *rlimiterWrapper) Output() limiter.Limiter {
+func (w *rlimiterWrapper) Out(key string) limiter.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Output()
+	return v.Out(key)
 }

@@ -6,7 +6,9 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -52,6 +54,8 @@ func (l *redirectListener) Accept() (conn net.Conn, err error) {
 		return
 	}
 	conn = metrics.WrapConn(l.options.Service, conn)
+	conn = admission.WrapConn(l.options.Admission, conn)
+	conn = limiter.WrapConn(l.options.RateLimiter, conn)
 	return
 }
 

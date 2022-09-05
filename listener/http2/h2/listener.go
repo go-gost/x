@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	admission "github.com/go-gost/core/admission/wrapper"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	metrics "github.com/go-gost/core/metrics/wrapper"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter "github.com/go-gost/x/limiter/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -77,6 +78,7 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 	l.addr = ln.Addr()
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = limiter.WrapListener(l.options.RateLimiter, ln)
 
 	if l.h2c {
 		l.server.Handler = h2c.NewHandler(
