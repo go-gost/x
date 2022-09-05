@@ -3,10 +3,11 @@ module github.com/go-gost/x
 go 1.18
 
 require (
+	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
-	github.com/go-gost/core v0.0.0-20220904052234-99adf4bb0692
+	github.com/go-gost/core v0.0.0-20220905144653-5c46613716c1
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
@@ -32,6 +33,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8
 	golang.org/x/net v0.0.0-20220812174116-3211cb980234
 	golang.org/x/sys v0.0.0-20220817070843-5a390386f1f2
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.zx2c4.com/wireguard v0.0.0-20220703234212-c31a7b1ab478
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.27.1
