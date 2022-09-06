@@ -24,7 +24,7 @@ type getConfigResponse struct {
 }
 
 func getConfig(ctx *gin.Context) {
-	// swagger:route GET /config ConfigManagement getConfigRequest
+	// swagger:route GET /config Config getConfigRequest
 	//
 	// Get current config.
 	//
@@ -71,7 +71,7 @@ type saveConfigResponse struct {
 }
 
 func saveConfig(ctx *gin.Context) {
-	// swagger:route POST /config ConfigManagement saveConfigRequest
+	// swagger:route POST /config Config saveConfigRequest
 	//
 	// Save current config to file (gost.yaml or gost.json).
 	//

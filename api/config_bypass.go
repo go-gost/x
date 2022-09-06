@@ -22,7 +22,7 @@ type createBypassResponse struct {
 }
 
 func createBypass(ctx *gin.Context) {
-	// swagger:route POST /config/bypasses ConfigManagement createBypassRequest
+	// swagger:route POST /config/bypasses Bypass createBypassRequest
 	//
 	// Create a new bypass, the name of bypass must be unique in bypass list.
 	//
@@ -72,7 +72,7 @@ type updateBypassResponse struct {
 }
 
 func updateBypass(ctx *gin.Context) {
-	// swagger:route PUT /config/bypasses/{bypass} ConfigManagement updateBypassRequest
+	// swagger:route PUT /config/bypasses/{bypass} Bypass updateBypassRequest
 	//
 	// Update bypass by name, the bypass must already exist.
 	//
@@ -130,7 +130,7 @@ type deleteBypassResponse struct {
 }
 
 func deleteBypass(ctx *gin.Context) {
-	// swagger:route DELETE /config/bypasses/{bypass} ConfigManagement deleteBypassRequest
+	// swagger:route DELETE /config/bypasses/{bypass} Bypass deleteBypassRequest
 	//
 	// Delete bypass by name.
 	//

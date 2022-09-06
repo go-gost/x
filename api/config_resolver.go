@@ -22,7 +22,7 @@ type createResolverResponse struct {
 }
 
 func createResolver(ctx *gin.Context) {
-	// swagger:route POST /config/resolvers ConfigManagement createResolverRequest
+	// swagger:route POST /config/resolvers Resolver createResolverRequest
 	//
 	// Create a new resolver, the name of the resolver must be unique in resolver list.
 	//
@@ -76,7 +76,7 @@ type updateResolverResponse struct {
 }
 
 func updateResolver(ctx *gin.Context) {
-	// swagger:route PUT /config/resolvers/{resolver} ConfigManagement updateResolverRequest
+	// swagger:route PUT /config/resolvers/{resolver} Resolver updateResolverRequest
 	//
 	// Update resolver by name, the resolver must already exist.
 	//
@@ -138,7 +138,7 @@ type deleteResolverResponse struct {
 }
 
 func deleteResolver(ctx *gin.Context) {
-	// swagger:route DELETE /config/resolvers/{resolver} ConfigManagement deleteResolverRequest
+	// swagger:route DELETE /config/resolvers/{resolver} Resolver deleteResolverRequest
 	//
 	// Delete resolver by name.
 	//

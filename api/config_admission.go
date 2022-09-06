@@ -22,7 +22,7 @@ type createAdmissionResponse struct {
 }
 
 func createAdmission(ctx *gin.Context) {
-	// swagger:route POST /config/admissions ConfigManagement createAdmissionRequest
+	// swagger:route POST /config/admissions Admission createAdmissionRequest
 	//
 	// Create a new admission, the name of admission must be unique in admission list.
 	//
@@ -72,7 +72,7 @@ type updateAdmissionResponse struct {
 }
 
 func updateAdmission(ctx *gin.Context) {
-	// swagger:route PUT /config/admissions/{admission} ConfigManagement updateAdmissionRequest
+	// swagger:route PUT /config/admissions/{admission} Admission updateAdmissionRequest
 	//
 	// Update admission by name, the admission must already exist.
 	//
@@ -130,7 +130,7 @@ type deleteAdmissionResponse struct {
 }
 
 func deleteAdmission(ctx *gin.Context) {
-	// swagger:route DELETE /config/admissions/{admission} ConfigManagement deleteAdmissionRequest
+	// swagger:route DELETE /config/admissions/{admission} Admission deleteAdmissionRequest
 	//
 	// Delete admission by name.
 	//

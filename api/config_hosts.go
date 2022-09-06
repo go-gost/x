@@ -22,7 +22,7 @@ type createHostsesponse struct {
 }
 
 func createHosts(ctx *gin.Context) {
-	// swagger:route POST /config/hosts ConfigManagement createHostsRequest
+	// swagger:route POST /config/hosts Hosts createHostsRequest
 	//
 	// Create a new hosts, the name of the hosts must be unique in hosts list.
 	//
@@ -72,7 +72,7 @@ type updateHostsResponse struct {
 }
 
 func updateHosts(ctx *gin.Context) {
-	// swagger:route PUT /config/hosts/{hosts} ConfigManagement updateHostsRequest
+	// swagger:route PUT /config/hosts/{hosts} Hosts updateHostsRequest
 	//
 	// Update hosts by name, the hosts must already exist.
 	//
@@ -130,7 +130,7 @@ type deleteHostsResponse struct {
 }
 
 func deleteHosts(ctx *gin.Context) {
-	// swagger:route DELETE /config/hosts/{hosts} ConfigManagement deleteHostsRequest
+	// swagger:route DELETE /config/hosts/{hosts} Hosts deleteHostsRequest
 	//
 	// Delete hosts by name.
 	//

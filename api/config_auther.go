@@ -22,7 +22,7 @@ type createAutherResponse struct {
 }
 
 func createAuther(ctx *gin.Context) {
-	// swagger:route POST /config/authers ConfigManagement createAutherRequest
+	// swagger:route POST /config/authers Auther createAutherRequest
 	//
 	// Create a new auther, the name of the auther must be unique in auther list.
 	//
@@ -71,7 +71,7 @@ type updateAutherResponse struct {
 }
 
 func updateAuther(ctx *gin.Context) {
-	// swagger:route PUT /config/authers/{auther} ConfigManagement updateAutherRequest
+	// swagger:route PUT /config/authers/{auther} Auther updateAutherRequest
 	//
 	// Update auther by name, the auther must already exist.
 	//
@@ -128,7 +128,7 @@ type deleteAutherResponse struct {
 }
 
 func deleteAuther(ctx *gin.Context) {
-	// swagger:route DELETE /config/authers/{auther} ConfigManagement deleteAutherRequest
+	// swagger:route DELETE /config/authers/{auther} Auther deleteAutherRequest
 	//
 	// Delete auther by name.
 	//

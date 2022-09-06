@@ -22,7 +22,7 @@ type createChainResponse struct {
 }
 
 func createChain(ctx *gin.Context) {
-	// swagger:route POST /config/chains ConfigManagement createChainRequest
+	// swagger:route POST /config/chains Chain createChainRequest
 	//
 	// Create a new chain, the name of chain must be unique in chain list.
 	//
@@ -77,7 +77,7 @@ type updateChainResponse struct {
 }
 
 func updateChain(ctx *gin.Context) {
-	// swagger:route PUT /config/chains/{chain} ConfigManagement updateChainRequest
+	// swagger:route PUT /config/chains/{chain} Chain updateChainRequest
 	//
 	// Update chain by name, the chain must already exist.
 	//
@@ -139,7 +139,7 @@ type deleteChainResponse struct {
 }
 
 func deleteChain(ctx *gin.Context) {
-	// swagger:route DELETE /config/chains/{chain} ConfigManagement deleteChainRequest
+	// swagger:route DELETE /config/chains/{chain} Chain deleteChainRequest
 	//
 	// Delete chain by name.
 	//

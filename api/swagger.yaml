@@ -156,6 +156,11 @@ definitions:
                     $ref: '#/definitions/HostsConfig'
                 type: array
                 x-go-name: Hosts
+            limiters:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: Limiters
             log:
                 $ref: '#/definitions/LogConfig'
             metrics:
@@ -351,6 +356,15 @@ definitions:
                 $ref: '#/definitions/Duration'
         type: object
         x-go-package: github.com/go-gost/x/config
+    LimiterConfig:
+        properties:
+            name:
+                type: string
+                x-go-name: Name
+            rate:
+                $ref: '#/definitions/RateLimiterConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
     ListenerConfig:
         properties:
             auth:
@@ -467,6 +481,21 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    RateLimiterConfig:
+        properties:
+            file:
+                $ref: '#/definitions/FileLoader'
+            limits:
+                items:
+                    type: string
+                type: array
+                x-go-name: Limits
+            redis:
+                $ref: '#/definitions/RedisLoader'
+            reload:
+                $ref: '#/definitions/Duration'
         type: object
         x-go-package: github.com/go-gost/x/config
     RecorderConfig:
@@ -597,6 +626,9 @@ definitions:
             interface:
                 type: string
                 x-go-name: Interface
+            limiter:
+                type: string
+                x-go-name: Limiter
             listener:
                 $ref: '#/definitions/ListenerConfig'
             metadata:
@@ -674,7 +706,7 @@ paths:
                     - '[]'
             summary: Get current config.
             tags:
-                - ConfigManagement
+                - Config
         post:
             operationId: saveConfigRequest
             parameters:
@@ -691,7 +723,7 @@ paths:
                     - '[]'
             summary: Save current config to file (gost.yaml or gost.json).
             tags:
-                - ConfigManagement
+                - Config
     /config/admissions:
         post:
             operationId: createAdmissionRequest
@@ -709,7 +741,7 @@ paths:
                     - '[]'
             summary: Create a new admission, the name of admission must be unique in admission list.
             tags:
-                - ConfigManagement
+                - Admission
     /config/admissions/{admission}:
         delete:
             operationId: deleteAdmissionRequest
@@ -727,7 +759,7 @@ paths:
                     - '[]'
             summary: Delete admission by name.
             tags:
-                - ConfigManagement
+                - Admission
         put:
             operationId: updateAdmissionRequest
             parameters:
@@ -749,7 +781,7 @@ paths:
                     - '[]'
             summary: Update admission by name, the admission must already exist.
             tags:
-                - ConfigManagement
+                - Admission
     /config/authers:
         post:
             operationId: createAutherRequest
@@ -767,7 +799,7 @@ paths:
                     - '[]'
             summary: Create a new auther, the name of the auther must be unique in auther list.
             tags:
-                - ConfigManagement
+                - Auther
     /config/authers/{auther}:
         delete:
             operationId: deleteAutherRequest
@@ -785,7 +817,7 @@ paths:
                     - '[]'
             summary: Delete auther by name.
             tags:
-                - ConfigManagement
+                - Auther
         put:
             operationId: updateAutherRequest
             parameters:
@@ -807,7 +839,7 @@ paths:
                     - '[]'
             summary: Update auther by name, the auther must already exist.
             tags:
-                - ConfigManagement
+                - Auther
     /config/bypasses:
         post:
             operationId: createBypassRequest
@@ -825,7 +857,7 @@ paths:
                     - '[]'
             summary: Create a new bypass, the name of bypass must be unique in bypass list.
             tags:
-                - ConfigManagement
+                - Bypass
     /config/bypasses/{bypass}:
         delete:
             operationId: deleteBypassRequest
@@ -843,7 +875,7 @@ paths:
                     - '[]'
             summary: Delete bypass by name.
             tags:
-                - ConfigManagement
+                - Bypass
         put:
             operationId: updateBypassRequest
             parameters:
@@ -865,7 +897,7 @@ paths:
                     - '[]'
             summary: Update bypass by name, the bypass must already exist.
             tags:
-                - ConfigManagement
+                - Bypass
     /config/chains:
         post:
             operationId: createChainRequest
@@ -883,7 +915,7 @@ paths:
                     - '[]'
             summary: Create a new chain, the name of chain must be unique in chain list.
             tags:
-                - ConfigManagement
+                - Chain
     /config/chains/{chain}:
         delete:
             operationId: deleteChainRequest
@@ -901,7 +933,7 @@ paths:
                     - '[]'
             summary: Delete chain by name.
             tags:
-                - ConfigManagement
+                - Chain
         put:
             operationId: updateChainRequest
             parameters:
@@ -923,7 +955,7 @@ paths:
                     - '[]'
             summary: Update chain by name, the chain must already exist.
             tags:
-                - ConfigManagement
+                - Chain
     /config/hosts:
         post:
             operationId: createHostsRequest
@@ -941,7 +973,7 @@ paths:
                     - '[]'
             summary: Create a new hosts, the name of the hosts must be unique in hosts list.
             tags:
-                - ConfigManagement
+                - Hosts
     /config/hosts/{hosts}:
         delete:
             operationId: deleteHostsRequest
@@ -959,7 +991,7 @@ paths:
                     - '[]'
             summary: Delete hosts by name.
             tags:
-                - ConfigManagement
+                - Hosts
         put:
             operationId: updateHostsRequest
             parameters:
@@ -981,7 +1013,64 @@ paths:
                     - '[]'
             summary: Update hosts by name, the hosts must already exist.
             tags:
-                - ConfigManagement
+                - Hosts
+    /config/limiters:
+        post:
+            operationId: createLimiterRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new limiter, the name of limiter must be unique in limiter list.
+            tags:
+                - Limiter
+    /config/limiters/{limiter}:
+        delete:
+            operationId: deleteLimiterRequest
+            parameters:
+                - in: path
+                  name: Limiter
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    $ref: '#/responses/deleteLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete limiter by name.
+            tags:
+                - Limiter
+        put:
+            operationId: updateLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update limiter by name, the limiter must already exist.
+            tags:
+                - Limiter
     /config/resolvers:
         post:
             operationId: createResolverRequest
@@ -999,7 +1088,7 @@ paths:
                     - '[]'
             summary: Create a new resolver, the name of the resolver must be unique in resolver list.
             tags:
-                - ConfigManagement
+                - Resolver
     /config/resolvers/{resolver}:
         delete:
             operationId: deleteResolverRequest
@@ -1017,7 +1106,7 @@ paths:
                     - '[]'
             summary: Delete resolver by name.
             tags:
-                - ConfigManagement
+                - Resolver
         put:
             operationId: updateResolverRequest
             parameters:
@@ -1039,7 +1128,7 @@ paths:
                     - '[]'
             summary: Update resolver by name, the resolver must already exist.
             tags:
-                - ConfigManagement
+                - Resolver
     /config/services:
         post:
             operationId: createServiceRequest
@@ -1057,7 +1146,7 @@ paths:
                     - '[]'
             summary: Create a new service, the name of the service must be unique in service list.
             tags:
-                - ConfigManagement
+                - Service
     /config/services/{service}:
         delete:
             operationId: deleteServiceRequest
@@ -1075,7 +1164,7 @@ paths:
                     - '[]'
             summary: Delete service by name.
             tags:
-                - ConfigManagement
+                - Service
         put:
             operationId: updateServiceRequest
             parameters:
@@ -1097,7 +1186,7 @@ paths:
                     - '[]'
             summary: Update service by name, the service must already exist.
             tags:
-                - ConfigManagement
+                - Service
 produces:
     - application/json
 responses:
@@ -1126,6 +1215,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     createHostsResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    createLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1168,6 +1263,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteHostsResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1222,6 +1323,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateHostsResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}

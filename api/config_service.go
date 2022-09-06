@@ -22,7 +22,7 @@ type createServiceResponse struct {
 }
 
 func createService(ctx *gin.Context) {
-	// swagger:route POST /config/services ConfigManagement createServiceRequest
+	// swagger:route POST /config/services Service createServiceRequest
 	//
 	// Create a new service, the name of the service must be unique in service list.
 	//
@@ -84,7 +84,7 @@ type updateServiceResponse struct {
 }
 
 func updateService(ctx *gin.Context) {
-	// swagger:route PUT /config/services/{service} ConfigManagement updateServiceRequest
+	// swagger:route PUT /config/services/{service} Service updateServiceRequest
 	//
 	// Update service by name, the service must already exist.
 	//
@@ -151,7 +151,7 @@ type deleteServiceResponse struct {
 }
 
 func deleteService(ctx *gin.Context) {
-	// swagger:route DELETE /config/services/{service} ConfigManagement deleteServiceRequest
+	// swagger:route DELETE /config/services/{service} Service deleteServiceRequest
 	//
 	// Delete service by name.
 	//

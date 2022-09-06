@@ -129,4 +129,9 @@ func registerConfig(config *gin.RouterGroup) {
 	config.POST("/hosts", createHosts)
 	config.PUT("/hosts/:hosts", updateHosts)
 	config.DELETE("/hosts/:hosts", deleteHosts)
+
+	config.POST("/limiters", createLimiter)
+	config.PUT("/limiters/:limiter", updateLimiter)
+	config.DELETE("/limiters/:limiter", deleteLimiter)
+
 }
