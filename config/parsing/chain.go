@@ -1,6 +1,8 @@
 package parsing
 
 import (
+	"time"
+
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/connector"
@@ -135,7 +137,8 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				WithDialer(d).
 				WithAddr(v.Addr).
 				WithInterface(v.Interface).
-				WithSockOpts(sockOpts)
+				WithSockOpts(sockOpts).
+				WithTimeout(10 * time.Second)
 
 			node := chain.NewNode(v.Name, v.Addr).
 				WithTransport(tr).
