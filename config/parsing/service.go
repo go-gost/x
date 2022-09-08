@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
+	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
@@ -68,6 +69,28 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	admissions := admissionList(cfg.Admission, cfg.Admissions...)
 
+	var sockOpts *chain.SockOpts
+	if cfg.SockOpts != nil {
+		sockOpts = &chain.SockOpts{
+			Mark: cfg.SockOpts.Mark,
+		}
+	}
+
+	var ppv int
+	ifce := cfg.Interface
+	if cfg.Metadata != nil {
+		md := metadata.NewMetadata(cfg.Metadata)
+		ppv = mdutil.GetInt(md, mdKeyProxyProtocol)
+		if v := mdutil.GetString(md, mdKeyInterface); v != "" {
+			ifce = v
+		}
+		if v := mdutil.GetInt(md, mdKeySoMark); v > 0 {
+			sockOpts = &chain.SockOpts{
+				Mark: v,
+			}
+		}
+	}
+
 	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
 		listener.AddrOption(cfg.Addr),
 		listener.AutherOption(auther),
@@ -78,6 +101,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.Limiter)),
 		listener.LoggerOption(listenerLogger),
 		listener.ServiceOption(cfg.Name),
+		listener.ProxyProtocolOption(ppv),
 	)
 
 	if cfg.Listener.Metadata == nil {
@@ -118,13 +142,6 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		auther = auth.AuthenticatorGroup(authers...)
 	}
 
-	var sockOpts *chain.SockOpts
-	if cfg.SockOpts != nil {
-		sockOpts = &chain.SockOpts{
-			Mark: cfg.SockOpts.Mark,
-		}
-	}
-
 	var recorders []recorder.RecorderObject
 	for _, r := range cfg.Recorders {
 		recorders = append(recorders, recorder.RecorderObject{
@@ -135,7 +152,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	router := (&chain.Router{}).
 		WithRetries(cfg.Handler.Retries).
 		// WithTimeout(timeout time.Duration).
-		WithInterface(cfg.Interface).
+		WithInterface(ifce).
 		WithSockOpts(sockOpts).
 		WithChain(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)).
 		WithResolver(registry.ResolverRegistry().Get(cfg.Resolver)).

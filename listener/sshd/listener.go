@@ -12,6 +12,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	sshd_util "github.com/go-gost/x/internal/util/sshd"
 	limiter "github.com/go-gost/x/limiter/wrapper"
@@ -68,6 +69,7 @@ func (l *sshdListener) Init(md md.Metadata) (err error) {
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	l.Listener = ln
 
 	config := &ssh.ServerConfig{

@@ -27,6 +27,12 @@ import (
 	xs "github.com/go-gost/x/selector"
 )
 
+const (
+	mdKeyProxyProtocol = "proxyProtocol"
+	mdKeyInterface     = "interface"
+	mdKeySoMark        = "so_mark"
+)
+
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	if cfg == nil {
 		return nil

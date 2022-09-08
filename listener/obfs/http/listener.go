@@ -2,6 +2,7 @@ package http
 
 import (
 	"net"
+	"time"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
@@ -11,6 +12,7 @@ import (
 	metrics "github.com/go-gost/x/metrics/wrapper"
 
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 )
 
@@ -52,6 +54,7 @@ func (l *obfsListener) Init(md md.Metadata) (err error) {
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 
 	l.Listener = ln
 	return

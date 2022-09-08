@@ -250,9 +250,11 @@ type SockOptsConfig struct {
 }
 
 type ServiceConfig struct {
-	Name       string            `json:"name"`
-	Addr       string            `yaml:",omitempty" json:"addr,omitempty"`
-	Interface  string            `yaml:",omitempty" json:"interface,omitempty"`
+	Name string `json:"name"`
+	Addr string `yaml:",omitempty" json:"addr,omitempty"`
+	// DEPRECATED by metadata.interface since beta.5
+	Interface string `yaml:",omitempty" json:"interface,omitempty"`
+	// DEPRECATED by metadata.so_mark since beta.5
 	SockOpts   *SockOptsConfig   `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Admission  string            `yaml:",omitempty" json:"admission,omitempty"`
 	Admissions []string          `yaml:",omitempty" json:"admissions,omitempty"`
@@ -260,11 +262,11 @@ type ServiceConfig struct {
 	Bypasses   []string          `yaml:",omitempty" json:"bypasses,omitempty"`
 	Resolver   string            `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts      string            `yaml:",omitempty" json:"hosts,omitempty"`
+	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
-	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 

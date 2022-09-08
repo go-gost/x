@@ -6,9 +6,11 @@ import (
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
-	"github.com/go-gost/x/metadata"
+	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 )
 
@@ -24,7 +26,7 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 
 	c := chain.NewChain(cfg.Name)
 	if cfg.Metadata != nil {
-		c.WithMetadata(metadata.NewMetadata(cfg.Metadata))
+		c.WithMetadata(mdx.NewMetadata(cfg.Metadata))
 	}
 
 	selector := parseNodeSelector(cfg.Selector)
@@ -54,6 +56,11 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				return nil, err
 			}
 
+			var nm metadata.Metadata
+			if v.Metadata != nil {
+				nm = mdx.NewMetadata(v.Metadata)
+			}
+
 			cr := registry.ConnectorRegistry().Get(v.Connector.Type)(
 				connector.AuthOption(parseAuth(v.Connector.Auth)),
 				connector.TLSConfigOption(tlsConfig),
@@ -63,7 +70,7 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if v.Connector.Metadata == nil {
 				v.Connector.Metadata = make(map[string]any)
 			}
-			if err := cr.Init(metadata.NewMetadata(v.Connector.Metadata)); err != nil {
+			if err := cr.Init(mdx.NewMetadata(v.Connector.Metadata)); err != nil {
 				connectorLogger.Error("init: ", err)
 				return nil, err
 			}
@@ -84,16 +91,21 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				return nil, err
 			}
 
+			var ppv int
+			if nm != nil {
+				ppv = mdutil.GetInt(nm, mdKeyProxyProtocol)
+			}
 			d := registry.DialerRegistry().Get(v.Dialer.Type)(
 				dialer.AuthOption(parseAuth(v.Dialer.Auth)),
 				dialer.TLSConfigOption(tlsConfig),
 				dialer.LoggerOption(dialerLogger),
+				dialer.ProxyProtocolOption(ppv),
 			)
 
 			if v.Dialer.Metadata == nil {
 				v.Dialer.Metadata = make(map[string]any)
 			}
-			if err := d.Init(metadata.NewMetadata(v.Dialer.Metadata)); err != nil {
+			if err := d.Init(mdx.NewMetadata(v.Dialer.Metadata)); err != nil {
 				dialerLogger.Error("init: ", err)
 				return nil, err
 			}
@@ -129,10 +141,9 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				WithTransport(tr).
 				WithBypass(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)).
 				WithResolver(registry.ResolverRegistry().Get(v.Resolver)).
-				WithHostMapper(registry.HostsRegistry().Get(v.Hosts))
-			if v.Metadata != nil {
-				node.WithMetadata(metadata.NewMetadata(v.Metadata))
-			}
+				WithHostMapper(registry.HostsRegistry().Get(v.Hosts)).
+				WithMetadata(nm)
+
 			group.AddNode(node)
 		}
 

@@ -59,12 +59,12 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-// Hosts is a static table lookup for hostnames.
+// hostMapper is a static table lookup for hostnames.
 // For each host a single line should be present with the following information:
 // IP_address canonical_hostname [aliases...]
 // Fields of the entry are separated by any number of blanks and/or tab characters.
 // Text from a "#" character until the end of the line is a comment, and is ignored.
-type Hosts struct {
+type hostMapper struct {
 	mappings   map[string][]net.IP
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
@@ -78,7 +78,7 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO())
-	p := &Hosts{
+	p := &hostMapper{
 		mappings:   make(map[string][]net.IP),
 		cancelFunc: cancel,
 		options:    options,
@@ -97,7 +97,7 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 // Lookup searches the IP address corresponds to the given network and host from the host table.
 // The network should be 'ip', 'ip4' or 'ip6', default network is 'ip'.
 // the host should be a hostname (example.org) or a hostname with dot prefix (.example.org).
-func (h *Hosts) Lookup(network, host string) (ips []net.IP, ok bool) {
+func (h *hostMapper) Lookup(network, host string) (ips []net.IP, ok bool) {
 	h.options.logger.Debugf("lookup %s/%s", host, network)
 	ips = h.lookup(host)
 	if ips == nil {
@@ -148,7 +148,7 @@ func (h *Hosts) Lookup(network, host string) (ips []net.IP, ok bool) {
 	return
 }
 
-func (h *Hosts) lookup(host string) []net.IP {
+func (h *hostMapper) lookup(host string) []net.IP {
 	if h == nil || len(h.mappings) == 0 {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (h *Hosts) lookup(host string) []net.IP {
 	return h.mappings[host]
 }
 
-func (h *Hosts) periodReload(ctx context.Context) error {
+func (h *hostMapper) periodReload(ctx context.Context) error {
 	period := h.options.period
 	if period < time.Second {
 		period = time.Second
@@ -181,7 +181,7 @@ func (h *Hosts) periodReload(ctx context.Context) error {
 	}
 }
 
-func (h *Hosts) reload(ctx context.Context) (err error) {
+func (h *hostMapper) reload(ctx context.Context) (err error) {
 	mappings := make(map[string][]net.IP)
 
 	mapf := func(hostname string, ip net.IP) {
@@ -216,7 +216,7 @@ func (h *Hosts) reload(ctx context.Context) (err error) {
 	return
 }
 
-func (h *Hosts) load(ctx context.Context) (mappings []Mapping, err error) {
+func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 	if h.options.fileLoader != nil {
 		if lister, ok := h.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -259,7 +259,7 @@ func (h *Hosts) load(ctx context.Context) (mappings []Mapping, err error) {
 	return
 }
 
-func (h *Hosts) parseMapping(r io.Reader) (mappings []Mapping, err error) {
+func (h *hostMapper) parseMapping(r io.Reader) (mappings []Mapping, err error) {
 	if r == nil {
 		return
 	}
@@ -272,7 +272,7 @@ func (h *Hosts) parseMapping(r io.Reader) (mappings []Mapping, err error) {
 	return
 }
 
-func (h *Hosts) parseLine(s string) (mappings []Mapping) {
+func (h *hostMapper) parseLine(s string) (mappings []Mapping) {
 	line := strings.Replace(s, "\t", " ", -1)
 	line = strings.TrimSpace(line)
 	if n := strings.IndexByte(line, '#'); n >= 0 {
@@ -302,7 +302,7 @@ func (h *Hosts) parseLine(s string) (mappings []Mapping) {
 	return
 }
 
-func (h *Hosts) Close() error {
+func (h *hostMapper) Close() error {
 	h.cancelFunc()
 	if h.options.fileLoader != nil {
 		h.options.fileLoader.Close()

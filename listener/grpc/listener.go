@@ -2,12 +2,14 @@ package grpc
 
 import (
 	"net"
+	"time"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
 	limiter "github.com/go-gost/x/limiter/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -57,6 +59,7 @@ func (l *grpcListener) Init(md md.Metadata) (err error) {
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 
 	var opts []grpc.ServerOption
 	if !l.md.insecure {

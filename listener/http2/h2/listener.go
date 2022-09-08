@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"time"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	limiter "github.com/go-gost/x/limiter/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
@@ -79,6 +81,7 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 
 	if l.h2c {
 		l.server.Handler = h2c.NewHandler(
