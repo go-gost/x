@@ -14,7 +14,8 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	climiter "github.com/go-gost/x/limiter/conn/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
@@ -80,7 +81,8 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 	l.addr = ln.Addr()
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
-	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
+	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 
 	if l.h2c {

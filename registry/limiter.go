@@ -1,37 +1,38 @@
 package registry
 
 import (
-	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/limiter/traffic"
 )
 
-type rlimiterRegistry struct {
+type trafficLimiterRegistry struct {
 	registry
 }
 
-func (r *rlimiterRegistry) Register(name string, v limiter.RateLimiter) error {
+func (r *trafficLimiterRegistry) Register(name string, v traffic.TrafficLimiter) error {
 	return r.registry.Register(name, v)
 }
 
-func (r *rlimiterRegistry) Get(name string) limiter.RateLimiter {
+func (r *trafficLimiterRegistry) Get(name string) traffic.TrafficLimiter {
 	if name != "" {
-		return &rlimiterWrapper{name: name, r: r}
+		return &trafficLimiterWrapper{name: name, r: r}
 	}
 	return nil
 }
 
-func (r *rlimiterRegistry) get(name string) limiter.RateLimiter {
+func (r *trafficLimiterRegistry) get(name string) traffic.TrafficLimiter {
 	if v := r.registry.Get(name); v != nil {
-		return v.(limiter.RateLimiter)
+		return v.(traffic.TrafficLimiter)
 	}
 	return nil
 }
 
-type rlimiterWrapper struct {
+type trafficLimiterWrapper struct {
 	name string
-	r    *rlimiterRegistry
+	r    *trafficLimiterRegistry
 }
 
-func (w *rlimiterWrapper) In(key string) limiter.Limiter {
+func (w *trafficLimiterWrapper) In(key string) traffic.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
@@ -39,10 +40,45 @@ func (w *rlimiterWrapper) In(key string) limiter.Limiter {
 	return v.In(key)
 }
 
-func (w *rlimiterWrapper) Out(key string) limiter.Limiter {
+func (w *trafficLimiterWrapper) Out(key string) traffic.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
 	return v.Out(key)
+}
+
+type connLimiterRegistry struct {
+	registry
+}
+
+func (r *connLimiterRegistry) Register(name string, v conn.ConnLimiter) error {
+	return r.registry.Register(name, v)
+}
+
+func (r *connLimiterRegistry) Get(name string) conn.ConnLimiter {
+	if name != "" {
+		return &connLimiterWrapper{name: name, r: r}
+	}
+	return nil
+}
+
+func (r *connLimiterRegistry) get(name string) conn.ConnLimiter {
+	if v := r.registry.Get(name); v != nil {
+		return v.(conn.ConnLimiter)
+	}
+	return nil
+}
+
+type connLimiterWrapper struct {
+	name string
+	r    *connLimiterRegistry
+}
+
+func (w *connLimiterWrapper) Limiter(key string) conn.Limiter {
+	v := w.r.get(w.name)
+	if v == nil {
+		return nil
+	}
+	return v.Limiter(key)
 }

@@ -9,7 +9,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	icmp_pkg "github.com/go-gost/x/internal/util/icmp"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/lucas-clemente/quic-go"
@@ -58,7 +58,7 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 	conn = icmp_pkg.ServerConn(conn)
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
-	conn = limiter.WrapPacketConn(l.options.RateLimiter, conn)
+	conn = limiter.WrapPacketConn(l.options.TrafficLimiter, conn)
 
 	config := &quic.Config{
 		KeepAlivePeriod:      l.md.keepAlivePeriod,

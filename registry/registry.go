@@ -10,7 +10,8 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
-	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/service"
@@ -26,15 +27,16 @@ var (
 	dialerReg    Registry[NewDialer]    = &dialerRegistry{}
 	connectorReg Registry[NewConnector] = &connectorRegistry{}
 
-	serviceReg   Registry[service.Service]     = &serviceRegistry{}
-	chainReg     Registry[chain.Chainer]       = &chainRegistry{}
-	autherReg    Registry[auth.Authenticator]  = &autherRegistry{}
-	admissionReg Registry[admission.Admission] = &admissionRegistry{}
-	bypassReg    Registry[bypass.Bypass]       = &bypassRegistry{}
-	resolverReg  Registry[resolver.Resolver]   = &resolverRegistry{}
-	hostsReg     Registry[hosts.HostMapper]    = &hostsRegistry{}
-	recorderReg  Registry[recorder.Recorder]   = &recorderRegistry{}
-	rlimiterReg  Registry[limiter.RateLimiter] = &rlimiterRegistry{}
+	serviceReg        Registry[service.Service]        = &serviceRegistry{}
+	chainReg          Registry[chain.Chainer]          = &chainRegistry{}
+	autherReg         Registry[auth.Authenticator]     = &autherRegistry{}
+	admissionReg      Registry[admission.Admission]    = &admissionRegistry{}
+	bypassReg         Registry[bypass.Bypass]          = &bypassRegistry{}
+	resolverReg       Registry[resolver.Resolver]      = &resolverRegistry{}
+	hostsReg          Registry[hosts.HostMapper]       = &hostsRegistry{}
+	recorderReg       Registry[recorder.Recorder]      = &recorderRegistry{}
+	trafficLimiterReg Registry[traffic.TrafficLimiter] = &trafficLimiterRegistry{}
+	connLimiterReg    Registry[conn.ConnLimiter]       = &connLimiterRegistry{}
 )
 
 type Registry[T any] interface {
@@ -129,6 +131,10 @@ func RecorderRegistry() Registry[recorder.Recorder] {
 	return recorderReg
 }
 
-func RateLimiterRegistry() Registry[limiter.RateLimiter] {
-	return rlimiterReg
+func TrafficLimiterRegistry() Registry[traffic.TrafficLimiter] {
+	return trafficLimiterReg
+}
+
+func ConnLimiterRegistry() Registry[conn.ConnLimiter] {
+	return connLimiterReg
 }

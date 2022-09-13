@@ -7,7 +7,7 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
@@ -80,7 +80,7 @@ func (l *tapListener) Init(md mdata.Metadata) (err error) {
 		raddr: &net.IPAddr{IP: ip},
 	}
 	c = metrics.WrapConn(l.options.Service, c)
-	c = limiter.WrapConn(l.options.RateLimiter, c)
+	c = limiter.WrapConn(l.options.TrafficLimiter, c)
 	c = withMetadata(mdx.NewMetadata(map[string]any{
 		"config": l.md.config,
 	}), c)

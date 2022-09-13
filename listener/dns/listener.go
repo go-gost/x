@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	admission "github.com/go-gost/x/admission/wrapper"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
@@ -118,7 +118,7 @@ func (l *dnsListener) Accept() (conn net.Conn, err error) {
 	case conn = <-l.cqueue:
 		conn = metrics.WrapConn(l.options.Service, conn)
 		conn = admission.WrapConn(l.options.Admission, conn)
-		conn = limiter.WrapConn(l.options.RateLimiter, conn)
+		conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
 	case err, ok = <-l.errChan:
 		if !ok {
 			err = listener.ErrClosed

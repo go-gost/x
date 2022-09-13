@@ -100,9 +100,14 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		defer conn.SetDeadline(time.Time{})
 	}
 
+	var cOpts connector.ConnectOptions
+	for _, opt := range opts {
+		opt(&cOpts)
+	}
+
 	switch network {
 	case "udp", "udp4", "udp6":
-		return c.connectUDP(ctx, conn, network, address, log)
+		return c.connectUDP(ctx, conn, network, address, log, &cOpts)
 	case "tcp", "tcp4", "tcp6":
 		if _, ok := conn.(net.PacketConn); ok {
 			err := fmt.Errorf("tcp over udp is unsupported")
@@ -144,7 +149,7 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 	return conn, nil
 }
 
-func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) (net.Conn, error) {
+func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger, opts *connector.ConnectOptions) (net.Conn, error) {
 	addr, err := net.ResolveUDPAddr(network, address)
 	if err != nil {
 		log.Error(err)
@@ -152,7 +157,7 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 	}
 
 	if c.md.relay == "udp" {
-		return c.relayUDP(ctx, conn, addr, log)
+		return c.relayUDP(ctx, conn, addr, log, opts)
 	}
 
 	req := gosocks5.NewRequest(socks.CmdUDPTun, nil)
@@ -176,7 +181,7 @@ func (c *socks5Connector) connectUDP(ctx context.Context, conn net.Conn, network
 	return socks.UDPTunClientConn(conn, addr), nil
 }
 
-func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.Addr, log logger.Logger) (net.Conn, error) {
+func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.Addr, log logger.Logger, opts *connector.ConnectOptions) (net.Conn, error) {
 	req := gosocks5.NewRequest(gosocks5.CmdUdp, nil)
 	log.Trace(req)
 	if err := req.Write(conn); err != nil {
@@ -191,11 +196,13 @@ func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.
 	}
 	log.Trace(reply)
 
+	log.Debugf("bind on: %v", reply.Addr)
+
 	if reply.Rep != gosocks5.Succeeded {
 		return nil, errors.New("get socks5 UDP tunnel failure")
 	}
 
-	cc, err := (&net.Dialer{}).DialContext(ctx, "udp", reply.Addr.String())
+	cc, err := opts.NetDialer.Dial(ctx, "udp", reply.Addr.String())
 	if err != nil {
 		return nil, err
 	}

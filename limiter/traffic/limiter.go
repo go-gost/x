@@ -1,9 +1,9 @@
-package limiter
+package traffic
 
 import (
 	"context"
 
-	"github.com/go-gost/core/limiter"
+	limiter "github.com/go-gost/core/limiter/traffic"
 	"golang.org/x/time/rate"
 )
 

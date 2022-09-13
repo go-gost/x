@@ -9,7 +9,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/xtaci/tcpraw"
@@ -53,7 +53,7 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 	}
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
-	conn = limiter.WrapPacketConn(l.options.RateLimiter, conn)
+	conn = limiter.WrapPacketConn(l.options.TrafficLimiter, conn)
 
 	l.ln = udp.NewListener(
 		conn,

@@ -134,4 +134,7 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/limiters/:limiter", updateLimiter)
 	config.DELETE("/limiters/:limiter", deleteLimiter)
 
+	config.POST("/climiters", createConnLimiter)
+	config.PUT("/climiters/:limiter", updateConnLimiter)
+	config.DELETE("/climiters/:limiter", deleteConnLimiter)
 }

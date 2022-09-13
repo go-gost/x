@@ -10,7 +10,7 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/xtaci/kcp-go/v5"
@@ -76,7 +76,7 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 
 	conn = metrics.WrapUDPConn(l.options.Service, conn)
 	conn = admission.WrapUDPConn(l.options.Admission, conn)
-	conn = limiter.WrapUDPConn(l.options.RateLimiter, conn)
+	conn = limiter.WrapUDPConn(l.options.TrafficLimiter, conn)
 
 	ln, err := kcp.ServeConn(
 		kcp_util.BlockCrypt(config.Key, config.Crypt, kcp_util.DefaultSalt),

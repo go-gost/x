@@ -185,20 +185,11 @@ type RecorderObject struct {
 }
 
 type LimiterConfig struct {
-	Name string             `json:"name"`
-	Rate *RateLimiterConfig `yaml:"rate" json:"rate"`
-}
-
-type RateLimiterConfig struct {
+	Name   string        `json:"name"`
 	Limits []string      `yaml:",omitempty" json:"limits,omitempty"`
 	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
-}
-
-type LimitConfig struct {
-	In  string `yaml:",omitempty" json:"in,omitempty"`
-	Out string `yaml:",omitempty" json:"out,omitempty"`
 }
 
 type ListenerConfig struct {
@@ -263,6 +254,7 @@ type ServiceConfig struct {
 	Resolver   string            `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts      string            `yaml:",omitempty" json:"hosts,omitempty"`
 	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
+	CLimiter   string            `yaml:"climiter,omitempty" json:"limiter,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
@@ -318,6 +310,7 @@ type Config struct {
 	Hosts      []*HostsConfig     `yaml:",omitempty" json:"hosts,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
+	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
 	TLS        *TLSConfig         `yaml:",omitempty" json:"tls,omitempty"`
 	Log        *LogConfig         `yaml:",omitempty" json:"log,omitempty"`
 	Profiling  *ProfilingConfig   `yaml:",omitempty" json:"profiling,omitempty"`

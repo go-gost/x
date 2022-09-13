@@ -8,7 +8,8 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
-	limiter "github.com/go-gost/x/limiter/wrapper"
+	climiter "github.com/go-gost/x/limiter/conn/wrapper"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 
 	xnet "github.com/go-gost/x/internal/net"
@@ -53,7 +54,8 @@ func (l *obfsListener) Init(md md.Metadata) (err error) {
 	}
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
-	ln = limiter.WrapListener(l.options.RateLimiter, ln)
+	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
+	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 
 	l.Listener = ln

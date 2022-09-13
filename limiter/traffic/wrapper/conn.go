@@ -8,7 +8,7 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/go-gost/core/limiter"
+	limiter "github.com/go-gost/core/limiter/traffic"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 )
@@ -22,10 +22,10 @@ type serverConn struct {
 	net.Conn
 	rbuf     bytes.Buffer
 	raddr    string
-	rlimiter limiter.RateLimiter
+	rlimiter limiter.TrafficLimiter
 }
 
-func WrapConn(rlimiter limiter.RateLimiter, c net.Conn) net.Conn {
+func WrapConn(rlimiter limiter.TrafficLimiter, c net.Conn) net.Conn {
 	if rlimiter == nil {
 		return c
 	}
@@ -100,16 +100,16 @@ func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 
 type packetConn struct {
 	net.PacketConn
-	rlimiter limiter.RateLimiter
+	limiter limiter.TrafficLimiter
 }
 
-func WrapPacketConn(rlimiter limiter.RateLimiter, pc net.PacketConn) net.PacketConn {
-	if rlimiter == nil {
+func WrapPacketConn(limiter limiter.TrafficLimiter, pc net.PacketConn) net.PacketConn {
+	if limiter == nil {
 		return pc
 	}
 	return &packetConn{
 		PacketConn: pc,
-		rlimiter:   rlimiter,
+		limiter:    limiter,
 	}
 }
 
@@ -122,11 +122,11 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 		host, _, _ := net.SplitHostPort(addr.String())
 
-		if c.rlimiter == nil || c.rlimiter.In(host) == nil {
+		if c.limiter == nil || c.limiter.In(host) == nil {
 			return
 		}
 
-		limiter := c.rlimiter.In(host)
+		limiter := c.limiter.In(host)
 		// discard when exceed the limit size.
 		if limiter.Wait(context.Background(), n) < n {
 			continue
@@ -137,10 +137,10 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	if c.rlimiter != nil {
+	if c.limiter != nil {
 		host, _, _ := net.SplitHostPort(addr.String())
 		// discard when exceed the limit size.
-		if limiter := c.rlimiter.Out(host); limiter != nil &&
+		if limiter := c.limiter.Out(host); limiter != nil &&
 			limiter.Wait(context.Background(), len(p)) < len(p) {
 			n = len(p)
 			return
@@ -152,13 +152,13 @@ func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 type udpConn struct {
 	net.PacketConn
-	rlimiter limiter.RateLimiter
+	limiter limiter.TrafficLimiter
 }
 
-func WrapUDPConn(rlimiter limiter.RateLimiter, pc net.PacketConn) udp.Conn {
+func WrapUDPConn(limiter limiter.TrafficLimiter, pc net.PacketConn) udp.Conn {
 	return &udpConn{
 		PacketConn: pc,
-		rlimiter:   rlimiter,
+		limiter:    limiter,
 	}
 }
 
@@ -200,10 +200,10 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		}
 		host, _, _ := net.SplitHostPort(addr.String())
 
-		if c.rlimiter == nil || c.rlimiter.In(host) == nil {
+		if c.limiter == nil || c.limiter.In(host) == nil {
 			return
 		}
-		limiter := c.rlimiter.In(host)
+		limiter := c.limiter.In(host)
 		// discard when exceed the limit size.
 		if limiter.Wait(context.Background(), n) < n {
 			continue
@@ -222,10 +222,10 @@ func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 
 			host, _, _ := net.SplitHostPort(addr.String())
 
-			if c.rlimiter == nil || c.rlimiter.In(host) == nil {
+			if c.limiter == nil || c.limiter.In(host) == nil {
 				return
 			}
-			limiter := c.rlimiter.In(host)
+			limiter := c.limiter.In(host)
 			// discard when exceed the limit size.
 			if limiter.Wait(context.Background(), n) < n {
 				continue
@@ -247,10 +247,10 @@ func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAd
 
 			host, _, _ := net.SplitHostPort(addr.String())
 
-			if c.rlimiter == nil || c.rlimiter.In(host) == nil {
+			if c.limiter == nil || c.limiter.In(host) == nil {
 				return
 			}
-			limiter := c.rlimiter.In(host)
+			limiter := c.limiter.In(host)
 			// discard when exceed the limit size.
 			if limiter.Wait(context.Background(), n) < n {
 				continue
@@ -272,10 +272,10 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	if c.rlimiter != nil {
+	if c.limiter != nil {
 		host, _, _ := net.SplitHostPort(addr.String())
 		// discard when exceed the limit size.
-		if limiter := c.rlimiter.Out(host); limiter != nil &&
+		if limiter := c.limiter.Out(host); limiter != nil &&
 			limiter.Wait(context.Background(), len(p)) < len(p) {
 			n = len(p)
 			return
@@ -287,10 +287,10 @@ func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 }
 
 func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
-	if c.rlimiter != nil {
+	if c.limiter != nil {
 		host, _, _ := net.SplitHostPort(addr.String())
 		// discard when exceed the limit size.
-		if limiter := c.rlimiter.Out(host); limiter != nil &&
+		if limiter := c.limiter.Out(host); limiter != nil &&
 			limiter.Wait(context.Background(), len(b)) < len(b) {
 			n = len(b)
 			return
@@ -306,10 +306,10 @@ func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
 }
 
 func (c *udpConn) WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
-	if c.rlimiter != nil {
+	if c.limiter != nil {
 		host, _, _ := net.SplitHostPort(addr.String())
 		// discard when exceed the limit size.
-		if limiter := c.rlimiter.Out(host); limiter != nil &&
+		if limiter := c.limiter.Out(host); limiter != nil &&
 			limiter.Wait(context.Background(), len(b)) < len(b) {
 			n = len(b)
 			return

@@ -40,9 +40,9 @@ func createLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseRateLimiter(&req.Data)
+	v := parsing.ParseTrafficLimiter(&req.Data)
 
-	if err := registry.RateLimiterRegistry().Register(req.Data.Name, v); err != nil {
+	if err := registry.TrafficLimiterRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
 		return
 	}
@@ -86,18 +86,18 @@ func updateLimiter(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
+	if !registry.TrafficLimiterRegistry().IsRegistered(req.Limiter) {
 		writeError(ctx, ErrNotFound)
 		return
 	}
 
 	req.Data.Name = req.Limiter
 
-	v := parsing.ParseRateLimiter(&req.Data)
+	v := parsing.ParseTrafficLimiter(&req.Data)
 
-	registry.RateLimiterRegistry().Unregister(req.Limiter)
+	registry.TrafficLimiterRegistry().Unregister(req.Limiter)
 
-	if err := registry.RateLimiterRegistry().Register(req.Limiter, v); err != nil {
+	if err := registry.TrafficLimiterRegistry().Register(req.Limiter, v); err != nil {
 		writeError(ctx, ErrDup)
 		return
 	}
@@ -143,11 +143,11 @@ func deleteLimiter(ctx *gin.Context) {
 	var req deleteLimiterRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
+	if !registry.TrafficLimiterRegistry().IsRegistered(req.Limiter) {
 		writeError(ctx, ErrNotFound)
 		return
 	}
-	registry.RateLimiterRegistry().Unregister(req.Limiter)
+	registry.TrafficLimiterRegistry().Unregister(req.Limiter)
 
 	cfg := config.Global()
 	limiteres := cfg.Limiters
