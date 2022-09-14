@@ -254,7 +254,8 @@ type ServiceConfig struct {
 	Resolver   string            `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts      string            `yaml:",omitempty" json:"hosts,omitempty"`
 	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
-	CLimiter   string            `yaml:"climiter,omitempty" json:"limiter,omitempty"`
+	CLimiter   string            `yaml:"climiter,omitempty" json:"climiter,omitempty"`
+	RLimiter   string            `yaml:"rlimiter,omitempty" json:"rlimiter,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
@@ -311,6 +312,7 @@ type Config struct {
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
+	RLimiters  []*LimiterConfig   `yaml:"rlimiters,omitempty" json:"rlimiters,omitempty"`
 	TLS        *TLSConfig         `yaml:",omitempty" json:"tls,omitempty"`
 	Log        *LogConfig         `yaml:",omitempty" json:"log,omitempty"`
 	Profiling  *ProfilingConfig   `yaml:",omitempty" json:"profiling,omitempty"`

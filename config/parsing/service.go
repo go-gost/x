@@ -1,6 +1,7 @@
 package parsing
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-gost/core/admission"
@@ -91,19 +92,24 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		}
 	}
 
-	ln := registry.ListenerRegistry().Get(cfg.Listener.Type)(
-		listener.AddrOption(cfg.Addr),
-		listener.AutherOption(auther),
-		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
-		listener.TLSConfigOption(tlsConfig),
-		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
-		listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
-		listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
-		listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
-		listener.LoggerOption(listenerLogger),
-		listener.ServiceOption(cfg.Name),
-		listener.ProxyProtocolOption(ppv),
-	)
+	var ln listener.Listener
+	if rf := registry.ListenerRegistry().Get(cfg.Listener.Type); rf != nil {
+		ln = rf(
+			listener.AddrOption(cfg.Addr),
+			listener.AutherOption(auther),
+			listener.AuthOption(parseAuth(cfg.Listener.Auth)),
+			listener.TLSConfigOption(tlsConfig),
+			listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
+			listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
+			listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
+			listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
+			listener.LoggerOption(listenerLogger),
+			listener.ServiceOption(cfg.Name),
+			listener.ProxyProtocolOption(ppv),
+		)
+	} else {
+		return nil, fmt.Errorf("unregistered listener: %s", cfg.Listener.Type)
+	}
 
 	if cfg.Listener.Metadata == nil {
 		cfg.Listener.Metadata = make(map[string]any)
@@ -161,14 +167,20 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		WithRecorder(recorders...).
 		WithLogger(handlerLogger)
 
-	h := registry.HandlerRegistry().Get(cfg.Handler.Type)(
-		handler.RouterOption(router),
-		handler.AutherOption(auther),
-		handler.AuthOption(parseAuth(cfg.Handler.Auth)),
-		handler.BypassOption(bypass.BypassGroup(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
-		handler.TLSConfigOption(tlsConfig),
-		handler.LoggerOption(handlerLogger),
-	)
+	var h handler.Handler
+	if rf := registry.HandlerRegistry().Get(cfg.Handler.Type); rf != nil {
+		h = rf(
+			handler.RouterOption(router),
+			handler.AutherOption(auther),
+			handler.AuthOption(parseAuth(cfg.Handler.Auth)),
+			handler.BypassOption(bypass.BypassGroup(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
+			handler.TLSConfigOption(tlsConfig),
+			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
+			handler.LoggerOption(handlerLogger),
+		)
+	} else {
+		return nil, fmt.Errorf("unregistered handler: %s", cfg.Handler.Type)
+	}
 
 	if forwarder, ok := h.(handler.Forwarder); ok {
 		forwarder.Forward(parseForwarder(cfg.Forwarder))

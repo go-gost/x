@@ -1,6 +1,7 @@
 package parsing
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -63,11 +64,16 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				nm = mdx.NewMetadata(v.Metadata)
 			}
 
-			cr := registry.ConnectorRegistry().Get(v.Connector.Type)(
-				connector.AuthOption(parseAuth(v.Connector.Auth)),
-				connector.TLSConfigOption(tlsConfig),
-				connector.LoggerOption(connectorLogger),
-			)
+			var cr connector.Connector
+			if rf := registry.ConnectorRegistry().Get(v.Connector.Type); rf != nil {
+				cr = rf(
+					connector.AuthOption(parseAuth(v.Connector.Auth)),
+					connector.TLSConfigOption(tlsConfig),
+					connector.LoggerOption(connectorLogger),
+				)
+			} else {
+				return nil, fmt.Errorf("unregistered connector: %s", v.Connector.Type)
+			}
 
 			if v.Connector.Metadata == nil {
 				v.Connector.Metadata = make(map[string]any)
@@ -97,12 +103,18 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 			if nm != nil {
 				ppv = mdutil.GetInt(nm, mdKeyProxyProtocol)
 			}
-			d := registry.DialerRegistry().Get(v.Dialer.Type)(
-				dialer.AuthOption(parseAuth(v.Dialer.Auth)),
-				dialer.TLSConfigOption(tlsConfig),
-				dialer.LoggerOption(dialerLogger),
-				dialer.ProxyProtocolOption(ppv),
-			)
+
+			var d dialer.Dialer
+			if rf := registry.DialerRegistry().Get(v.Dialer.Type); rf != nil {
+				d = rf(
+					dialer.AuthOption(parseAuth(v.Dialer.Auth)),
+					dialer.TLSConfigOption(tlsConfig),
+					dialer.LoggerOption(dialerLogger),
+					dialer.ProxyProtocolOption(ppv),
+				)
+			} else {
+				return nil, fmt.Errorf("unregistered dialer: %s", v.Dialer.Type)
+			}
 
 			if v.Dialer.Metadata == nil {
 				v.Dialer.Metadata = make(map[string]any)

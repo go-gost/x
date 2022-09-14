@@ -63,6 +63,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	dstAddr := conn.LocalAddr()
 
 	log = log.WithFields(map[string]any{
@@ -91,4 +95,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), dstAddr)
 
 	return nil
+}
+
+func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

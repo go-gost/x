@@ -120,7 +120,7 @@ func updateLimiter(ctx *gin.Context) {
 type deleteLimiterRequest struct {
 	// in: path
 	// required: true
-	Limiter string `uri:"Limiter" json:"Limiter"`
+	Limiter string `uri:"limiter" json:"limiter"`
 }
 
 // successful operation.

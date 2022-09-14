@@ -77,6 +77,10 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	pc, ok := conn.(net.PacketConn)
 	if ok {
 		if h.cipher != nil {
@@ -185,4 +189,16 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 	}()
 
 	return <-errc
+}
+
+func (h *ssuHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

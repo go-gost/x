@@ -102,7 +102,7 @@ type connLimiter struct {
 	ipLimits   map[string]ConnLimitGenerator
 	cidrLimits cidranger.Ranger
 	limits     map[string]limiter.Limiter
-	mu         sync.RWMutex
+	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
 }

@@ -75,6 +75,10 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	req, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
 		log.Error(err)
@@ -336,4 +340,16 @@ func (h *httpHandler) authenticate(conn net.Conn, req *http.Request, resp *http.
 
 	resp.Write(conn)
 	return
+}
+
+func (h *httpHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

@@ -72,6 +72,10 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	if h.md.readTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 	}
@@ -149,4 +153,16 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 func (h *socks4Handler) handleBind(ctx context.Context, conn net.Conn, req *gosocks4.Request) error {
 	// TODO: bind
 	return ErrUnimplemented
+}
+
+func (h *socks4Handler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

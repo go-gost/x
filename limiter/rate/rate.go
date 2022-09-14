@@ -1,4 +1,4 @@
-package traffic
+package rate
 
 import (
 	"bufio"
@@ -6,12 +6,12 @@ import (
 	"io"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/alecthomas/units"
-	limiter "github.com/go-gost/core/limiter/traffic"
+	limiter "github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/yl2chen/cidranger"
@@ -19,7 +19,7 @@ import (
 
 const (
 	GlobalLimitKey = "$"
-	ConnLimitKey   = "$$"
+	IPLimitKey     = "$$"
 )
 
 type limiterGroup struct {
@@ -33,16 +33,17 @@ func newLimiterGroup(limiters ...limiter.Limiter) *limiterGroup {
 	return &limiterGroup{limiters: limiters}
 }
 
-func (l *limiterGroup) Wait(ctx context.Context, n int) int {
+func (l *limiterGroup) Allow(n int) (b bool) {
+	b = true
 	for i := range l.limiters {
-		if v := l.limiters[i].Wait(ctx, n); v < n {
-			n = v
+		if v := l.limiters[i].Allow(n); !v {
+			b = false
 		}
 	}
-	return n
+	return
 }
 
-func (l *limiterGroup) Limit() int {
+func (l *limiterGroup) Limit() float64 {
 	if len(l.limiters) == 0 {
 		return 0
 	}
@@ -90,28 +91,26 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-type trafficLimiter struct {
-	ipLimits   map[string]TrafficLimitGenerator
+type rateLimiter struct {
+	ipLimits   map[string]RateLimitGenerator
 	cidrLimits cidranger.Ranger
-	inLimits   map[string]limiter.Limiter
-	outLimits  map[string]limiter.Limiter
+	limits     map[string]limiter.Limiter
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
 }
 
-func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
+func NewRateLimiter(opts ...Option) limiter.RateLimiter {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO())
-	lim := &trafficLimiter{
-		ipLimits:   make(map[string]TrafficLimitGenerator),
+	lim := &rateLimiter{
+		ipLimits:   make(map[string]RateLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
-		inLimits:   make(map[string]limiter.Limiter),
-		outLimits:  make(map[string]limiter.Limiter),
+		limits:     make(map[string]limiter.Limiter),
 		options:    options,
 		cancelFunc: cancel,
 	}
@@ -125,11 +124,11 @@ func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
 	return lim
 }
 
-func (l *trafficLimiter) In(key string) limiter.Limiter {
+func (l *rateLimiter) Limiter(key string) limiter.Limiter {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if lim, ok := l.inLimits[key]; ok {
+	if lim, ok := l.limits[key]; ok {
 		return lim
 	}
 
@@ -138,7 +137,7 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	if ip := net.ParseIP(key); ip != nil {
 		found := false
 		if p := l.ipLimits[key]; p != nil {
-			if lim := p.In(); lim != nil {
+			if lim := p.Limiter(); lim != nil {
 				lims = append(lims, lim)
 				found = true
 			}
@@ -146,7 +145,7 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 		if !found {
 			if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
 				if v, _ := p[0].(*cidrLimitEntry); v != nil {
-					if lim := v.limit.In(); lim != nil {
+					if lim := v.limit.Limiter(); lim != nil {
 						lims = append(lims, lim)
 					}
 				}
@@ -154,13 +153,16 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 		}
 	}
 
-	if p := l.ipLimits[ConnLimitKey]; p != nil {
-		if lim := p.In(); lim != nil {
-			lims = append(lims, lim)
+	if len(lims) == 0 {
+		if p := l.ipLimits[IPLimitKey]; p != nil {
+			if lim := p.Limiter(); lim != nil {
+				lims = append(lims, lim)
+			}
 		}
 	}
+
 	if p := l.ipLimits[GlobalLimitKey]; p != nil {
-		if lim := p.In(); lim != nil {
+		if lim := p.Limiter(); lim != nil {
 			lims = append(lims, lim)
 		}
 	}
@@ -169,7 +171,7 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	if len(lims) > 0 {
 		lim = newLimiterGroup(lims...)
 	}
-	l.inLimits[key] = lim
+	l.limits[key] = lim
 
 	if lim != nil && l.options.logger != nil {
 		l.options.logger.Debugf("input limit for %s: %d", key, lim.Limit())
@@ -178,60 +180,7 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	return lim
 }
 
-func (l *trafficLimiter) Out(key string) limiter.Limiter {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if lim, ok := l.outLimits[key]; ok {
-		return lim
-	}
-
-	var lims []limiter.Limiter
-
-	if ip := net.ParseIP(key); ip != nil {
-		found := false
-		if p := l.ipLimits[key]; p != nil {
-			if lim := p.Out(); lim != nil {
-				lims = append(lims, lim)
-				found = true
-			}
-		}
-		if !found {
-			if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
-				if v, _ := p[0].(*cidrLimitEntry); v != nil {
-					if lim := v.limit.Out(); lim != nil {
-						lims = append(lims, lim)
-					}
-				}
-			}
-		}
-	}
-
-	if p := l.ipLimits[ConnLimitKey]; p != nil {
-		if lim := p.Out(); lim != nil {
-			lims = append(lims, lim)
-		}
-	}
-	if p := l.ipLimits[GlobalLimitKey]; p != nil {
-		if lim := p.Out(); lim != nil {
-			lims = append(lims, lim)
-		}
-	}
-
-	var lim limiter.Limiter
-	if len(lims) > 0 {
-		lim = newLimiterGroup(lims...)
-	}
-	l.outLimits[key] = lim
-
-	if lim != nil && l.options.logger != nil {
-		l.options.logger.Debugf("output limit for %s: %d", key, lim.Limit())
-	}
-
-	return lim
-}
-
-func (l *trafficLimiter) periodReload(ctx context.Context) error {
+func (l *rateLimiter) periodReload(ctx context.Context) error {
 	period := l.options.period
 	if period < time.Second {
 		period = time.Second
@@ -252,7 +201,7 @@ func (l *trafficLimiter) periodReload(ctx context.Context) error {
 	}
 }
 
-func (l *trafficLimiter) reload(ctx context.Context) error {
+func (l *rateLimiter) reload(ctx context.Context) error {
 	v, err := l.load(ctx)
 	if err != nil {
 		return err
@@ -260,28 +209,28 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 
 	lines := append(l.options.limits, v...)
 
-	ipLimits := make(map[string]TrafficLimitGenerator)
+	ipLimits := make(map[string]RateLimitGenerator)
 	cidrLimits := cidranger.NewPCTrieRanger()
 
 	for _, s := range lines {
-		key, in, out := l.parseLimit(s)
-		if key == "" {
+		key, limit := l.parseLimit(s)
+		if key == "" || limit <= 0 {
 			continue
 		}
 		switch key {
 		case GlobalLimitKey:
-			ipLimits[key] = NewTrafficLimitSingleGenerator(in, out)
-		case ConnLimitKey:
-			ipLimits[key] = NewTrafficLimitGenerator(in, out)
+			ipLimits[key] = NewRateLimitSingleGenerator(limit)
+		case IPLimitKey:
+			ipLimits[key] = NewRateLimitGenerator(limit)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewTrafficLimitGenerator(in, out)
+				ipLimits[key] = NewRateLimitGenerator(limit)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
 				cidrLimits.Insert(&cidrLimitEntry{
 					ipNet: *ipNet,
-					limit: NewTrafficLimitGenerator(in, out),
+					limit: NewRateLimitGenerator(limit),
 				})
 			}
 		}
@@ -292,13 +241,12 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 
 	l.ipLimits = ipLimits
 	l.cidrLimits = cidrLimits
-	l.inLimits = make(map[string]limiter.Limiter)
-	l.outLimits = make(map[string]limiter.Limiter)
+	l.limits = make(map[string]limiter.Limiter)
 
 	return nil
 }
 
-func (l *trafficLimiter) load(ctx context.Context) (patterns []string, err error) {
+func (l *rateLimiter) load(ctx context.Context) (patterns []string, err error) {
 	if l.options.fileLoader != nil {
 		if lister, ok := l.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -342,7 +290,7 @@ func (l *trafficLimiter) load(ctx context.Context) (patterns []string, err error
 	return
 }
 
-func (l *trafficLimiter) parsePatterns(r io.Reader) (patterns []string, err error) {
+func (l *rateLimiter) parsePatterns(r io.Reader) (patterns []string, err error) {
 	if r == nil {
 		return
 	}
@@ -358,14 +306,14 @@ func (l *trafficLimiter) parsePatterns(r io.Reader) (patterns []string, err erro
 	return
 }
 
-func (l *trafficLimiter) parseLine(s string) string {
+func (l *rateLimiter) parseLine(s string) string {
 	if n := strings.IndexByte(s, '#'); n >= 0 {
 		s = s[:n]
 	}
 	return strings.TrimSpace(s)
 }
 
-func (l *trafficLimiter) parseLimit(s string) (key string, in, out int) {
+func (l *rateLimiter) parseLimit(s string) (key string, limit float64) {
 	s = strings.Replace(s, "\t", " ", -1)
 	s = strings.TrimSpace(s)
 	var ss []string
@@ -379,19 +327,12 @@ func (l *trafficLimiter) parseLimit(s string) (key string, in, out int) {
 	}
 
 	key = ss[0]
-	if v, _ := units.ParseBase2Bytes(ss[1]); v > 0 {
-		in = int(v)
-	}
-	if len(ss) > 2 {
-		if v, _ := units.ParseBase2Bytes(ss[2]); v > 0 {
-			out = int(v)
-		}
-	}
+	limit, _ = strconv.ParseFloat(ss[1], 64)
 
 	return
 }
 
-func (l *trafficLimiter) Close() error {
+func (l *rateLimiter) Close() error {
 	l.cancelFunc()
 	if l.options.fileLoader != nil {
 		l.options.fileLoader.Close()
@@ -404,7 +345,7 @@ func (l *trafficLimiter) Close() error {
 
 type cidrLimitEntry struct {
 	ipNet net.IPNet
-	limit TrafficLimitGenerator
+	limit RateLimitGenerator
 }
 
 func (p *cidrLimitEntry) Network() net.IPNet {

@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/resolver"
@@ -27,16 +28,18 @@ var (
 	dialerReg    Registry[NewDialer]    = &dialerRegistry{}
 	connectorReg Registry[NewConnector] = &connectorRegistry{}
 
-	serviceReg        Registry[service.Service]        = &serviceRegistry{}
-	chainReg          Registry[chain.Chainer]          = &chainRegistry{}
-	autherReg         Registry[auth.Authenticator]     = &autherRegistry{}
-	admissionReg      Registry[admission.Admission]    = &admissionRegistry{}
-	bypassReg         Registry[bypass.Bypass]          = &bypassRegistry{}
-	resolverReg       Registry[resolver.Resolver]      = &resolverRegistry{}
-	hostsReg          Registry[hosts.HostMapper]       = &hostsRegistry{}
-	recorderReg       Registry[recorder.Recorder]      = &recorderRegistry{}
+	serviceReg   Registry[service.Service]     = &serviceRegistry{}
+	chainReg     Registry[chain.Chainer]       = &chainRegistry{}
+	autherReg    Registry[auth.Authenticator]  = &autherRegistry{}
+	admissionReg Registry[admission.Admission] = &admissionRegistry{}
+	bypassReg    Registry[bypass.Bypass]       = &bypassRegistry{}
+	resolverReg  Registry[resolver.Resolver]   = &resolverRegistry{}
+	hostsReg     Registry[hosts.HostMapper]    = &hostsRegistry{}
+	recorderReg  Registry[recorder.Recorder]   = &recorderRegistry{}
+
 	trafficLimiterReg Registry[traffic.TrafficLimiter] = &trafficLimiterRegistry{}
 	connLimiterReg    Registry[conn.ConnLimiter]       = &connLimiterRegistry{}
+	rateLimiterReg    Registry[rate.RateLimiter]       = &rateLimiterRegistry{}
 )
 
 type Registry[T any] interface {
@@ -137,4 +140,8 @@ func TrafficLimiterRegistry() Registry[traffic.TrafficLimiter] {
 
 func ConnLimiterRegistry() Registry[conn.ConnLimiter] {
 	return connLimiterReg
+}
+
+func RateLimiterRegistry() Registry[rate.RateLimiter] {
+	return rateLimiterReg
 }

@@ -151,6 +151,11 @@ definitions:
                     $ref: '#/definitions/ChainConfig'
                 type: array
                 x-go-name: Chains
+            climiters:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: CLimiters
             hosts:
                 items:
                     $ref: '#/definitions/HostsConfig'
@@ -177,6 +182,11 @@ definitions:
                     $ref: '#/definitions/ResolverConfig'
                 type: array
                 x-go-name: Resolvers
+            rlimiters:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: RLimiters
             services:
                 items:
                     $ref: '#/definitions/ServiceConfig'
@@ -358,11 +368,20 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     LimiterConfig:
         properties:
+            file:
+                $ref: '#/definitions/FileLoader'
+            limits:
+                items:
+                    type: string
+                type: array
+                x-go-name: Limits
             name:
                 type: string
                 x-go-name: Name
-            rate:
-                $ref: '#/definitions/RateLimiterConfig'
+            redis:
+                $ref: '#/definitions/RedisLoader'
+            reload:
+                $ref: '#/definitions/Duration'
         type: object
         x-go-package: github.com/go-gost/x/config
     ListenerConfig:
@@ -483,21 +502,6 @@ definitions:
                 x-go-name: Addr
         type: object
         x-go-package: github.com/go-gost/x/config
-    RateLimiterConfig:
-        properties:
-            file:
-                $ref: '#/definitions/FileLoader'
-            limits:
-                items:
-                    type: string
-                type: array
-                x-go-name: Limits
-            redis:
-                $ref: '#/definitions/RedisLoader'
-            reload:
-                $ref: '#/definitions/Duration'
-        type: object
-        x-go-package: github.com/go-gost/x/config
     RecorderConfig:
         properties:
             file:
@@ -616,6 +620,9 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Bypasses
+            climiter:
+                type: string
+                x-go-name: CLimiter
             forwarder:
                 $ref: '#/definitions/ForwarderConfig'
             handler:
@@ -624,6 +631,7 @@ definitions:
                 type: string
                 x-go-name: Hosts
             interface:
+                description: DEPRECATED by metadata.interface since beta.5
                 type: string
                 x-go-name: Interface
             limiter:
@@ -646,6 +654,9 @@ definitions:
             resolver:
                 type: string
                 x-go-name: Resolver
+            rlimiter:
+                type: string
+                x-go-name: RLimiter
             sockopts:
                 $ref: '#/definitions/SockOptsConfig'
         type: object
@@ -956,6 +967,64 @@ paths:
             summary: Update chain by name, the chain must already exist.
             tags:
                 - Chain
+    /config/climiters:
+        post:
+            operationId: createConnLimiterRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createConnLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new conn limiter, the name of limiter must be unique in limiter list.
+            tags:
+                - Limiter
+    /config/climiters/{limiter}:
+        delete:
+            operationId: deleteConnLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+            responses:
+                "200":
+                    $ref: '#/responses/deleteConnLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete conn limiter by name.
+            tags:
+                - Limiter
+        put:
+            operationId: updateConnLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateConnLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update conn limiter by name, the limiter must already exist.
+            tags:
+                - Limiter
     /config/hosts:
         post:
             operationId: createHostsRequest
@@ -1037,9 +1106,10 @@ paths:
             operationId: deleteLimiterRequest
             parameters:
                 - in: path
-                  name: Limiter
+                  name: limiter
                   required: true
                   type: string
+                  x-go-name: Limiter
             responses:
                 "200":
                     $ref: '#/responses/deleteLimiterResponse'
@@ -1129,6 +1199,64 @@ paths:
             summary: Update resolver by name, the resolver must already exist.
             tags:
                 - Resolver
+    /config/rlimiters:
+        post:
+            operationId: createRateLimiterRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createRateLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new rate limiter, the name of limiter must be unique in limiter list.
+            tags:
+                - Limiter
+    /config/rlimiters/{limiter}:
+        delete:
+            operationId: deleteRateLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+            responses:
+                "200":
+                    $ref: '#/responses/deleteRateLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete rate limiter by name.
+            tags:
+                - Limiter
+        put:
+            operationId: updateRateLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/LimiterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateRateLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update rate limiter by name, the limiter must already exist.
+            tags:
+                - Limiter
     /config/services:
         post:
             operationId: createServiceRequest
@@ -1214,6 +1342,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createConnLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createHostsResponse:
         description: successful operation.
         headers:
@@ -1221,6 +1355,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     createLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    createRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1262,6 +1402,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    deleteConnLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     deleteHostsResponse:
         description: successful operation.
         headers:
@@ -1269,6 +1415,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1322,6 +1474,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    updateConnLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     updateHostsResponse:
         description: successful operation.
         headers:
@@ -1329,6 +1487,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}

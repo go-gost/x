@@ -9,30 +9,30 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-// swagger:parameters createConnLimiterRequest
-type createConnLimiterRequest struct {
+// swagger:parameters createRateLimiterRequest
+type createRateLimiterRequest struct {
 	// in: body
 	Data config.LimiterConfig `json:"data"`
 }
 
 // successful operation.
-// swagger:response createConnLimiterResponse
-type createConnLimiterResponse struct {
+// swagger:response createRateLimiterResponse
+type createRateLimiterResponse struct {
 	Data Response
 }
 
-func createConnLimiter(ctx *gin.Context) {
-	// swagger:route POST /config/climiters Limiter createConnLimiterRequest
+func createRateLimiter(ctx *gin.Context) {
+	// swagger:route POST /config/rlimiters Limiter createRateLimiterRequest
 	//
-	// Create a new conn limiter, the name of limiter must be unique in limiter list.
+	// Create a new rate limiter, the name of limiter must be unique in limiter list.
 	//
 	//     Security:
 	//       basicAuth: []
 	//
 	//     Responses:
-	//       200: createConnLimiterResponse
+	//       200: createRateLimiterResponse
 
-	var req createConnLimiterRequest
+	var req createRateLimiterRequest
 	ctx.ShouldBindJSON(&req.Data)
 
 	if req.Data.Name == "" {
@@ -40,9 +40,9 @@ func createConnLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseConnLimiter(&req.Data)
+	v := parsing.ParseRateLimiter(&req.Data)
 
-	if err := registry.ConnLimiterRegistry().Register(req.Data.Name, v); err != nil {
+	if err := registry.RateLimiterRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
 		return
 	}
@@ -56,8 +56,8 @@ func createConnLimiter(ctx *gin.Context) {
 	})
 }
 
-// swagger:parameters updateConnLimiterRequest
-type updateConnLimiterRequest struct {
+// swagger:parameters updateRateLimiterRequest
+type updateRateLimiterRequest struct {
 	// in: path
 	// required: true
 	Limiter string `uri:"limiter" json:"limiter"`
@@ -66,38 +66,38 @@ type updateConnLimiterRequest struct {
 }
 
 // successful operation.
-// swagger:response updateConnLimiterResponse
-type updateConnLimiterResponse struct {
+// swagger:response updateRateLimiterResponse
+type updateRateLimiterResponse struct {
 	Data Response
 }
 
-func updateConnLimiter(ctx *gin.Context) {
-	// swagger:route PUT /config/climiters/{limiter} Limiter updateConnLimiterRequest
+func updateRateLimiter(ctx *gin.Context) {
+	// swagger:route PUT /config/rlimiters/{limiter} Limiter updateRateLimiterRequest
 	//
-	// Update conn limiter by name, the limiter must already exist.
+	// Update rate limiter by name, the limiter must already exist.
 	//
 	//     Security:
 	//       basicAuth: []
 	//
 	//     Responses:
-	//       200: updateConnLimiterResponse
+	//       200: updateRateLimiterResponse
 
-	var req updateConnLimiterRequest
+	var req updateRateLimiterRequest
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.ConnLimiterRegistry().IsRegistered(req.Limiter) {
+	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
 		writeError(ctx, ErrNotFound)
 		return
 	}
 
 	req.Data.Name = req.Limiter
 
-	v := parsing.ParseConnLimiter(&req.Data)
+	v := parsing.ParseRateLimiter(&req.Data)
 
-	registry.ConnLimiterRegistry().Unregister(req.Limiter)
+	registry.RateLimiterRegistry().Unregister(req.Limiter)
 
-	if err := registry.ConnLimiterRegistry().Register(req.Limiter, v); err != nil {
+	if err := registry.RateLimiterRegistry().Register(req.Limiter, v); err != nil {
 		writeError(ctx, ErrDup)
 		return
 	}
@@ -116,38 +116,38 @@ func updateConnLimiter(ctx *gin.Context) {
 	})
 }
 
-// swagger:parameters deleteConnLimiterRequest
-type deleteConnLimiterRequest struct {
+// swagger:parameters deleteRateLimiterRequest
+type deleteRateLimiterRequest struct {
 	// in: path
 	// required: true
 	Limiter string `uri:"limiter" json:"limiter"`
 }
 
 // successful operation.
-// swagger:response deleteConnLimiterResponse
-type deleteConnLimiterResponse struct {
+// swagger:response deleteRateLimiterResponse
+type deleteRateLimiterResponse struct {
 	Data Response
 }
 
-func deleteConnLimiter(ctx *gin.Context) {
-	// swagger:route DELETE /config/climiters/{limiter} Limiter deleteConnLimiterRequest
+func deleteRateLimiter(ctx *gin.Context) {
+	// swagger:route DELETE /config/rlimiters/{limiter} Limiter deleteRateLimiterRequest
 	//
-	// Delete conn limiter by name.
+	// Delete rate limiter by name.
 	//
 	//     Security:
 	//       basicAuth: []
 	//
 	//     Responses:
-	//       200: deleteConnLimiterResponse
+	//       200: deleteRateLimiterResponse
 
-	var req deleteConnLimiterRequest
+	var req deleteRateLimiterRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.ConnLimiterRegistry().IsRegistered(req.Limiter) {
+	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
 		writeError(ctx, ErrNotFound)
 		return
 	}
-	registry.ConnLimiterRegistry().Unregister(req.Limiter)
+	registry.RateLimiterRegistry().Unregister(req.Limiter)
 
 	cfg := config.Global()
 	limiteres := cfg.Limiters

@@ -75,6 +75,10 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	if h.md.readTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 	}
@@ -144,4 +148,16 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		return h.handleBind(ctx, conn, network, address, log)
 	}
 	return ErrUnknownCmd
+}
+
+func (h *relayHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

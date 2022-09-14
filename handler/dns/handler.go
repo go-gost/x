@@ -130,6 +130,10 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
@@ -150,6 +154,18 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return err
 	}
 	return nil
+}
+
+func (h *dnsHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }
 
 func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger) ([]byte, error) {

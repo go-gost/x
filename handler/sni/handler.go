@@ -76,6 +76,10 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	var hdr [dissector.RecordHeaderLen]byte
 	if _, err := io.ReadFull(conn, hdr[:]); err != nil {
 		log.Error(err)
@@ -250,4 +254,16 @@ func (h *sniHandler) decodeServerName(s string) (string, error) {
 		return "", errors.New("invalid name")
 	}
 	return string(v), nil
+}
+
+func (h *sniHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

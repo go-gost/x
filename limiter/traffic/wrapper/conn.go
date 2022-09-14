@@ -20,9 +20,9 @@ var (
 // serverConn is a server side Conn with metrics supported.
 type serverConn struct {
 	net.Conn
-	rbuf     bytes.Buffer
-	raddr    string
-	rlimiter limiter.TrafficLimiter
+	rbuf    bytes.Buffer
+	raddr   string
+	limiter limiter.TrafficLimiter
 }
 
 func WrapConn(rlimiter limiter.TrafficLimiter, c net.Conn) net.Conn {
@@ -31,19 +31,19 @@ func WrapConn(rlimiter limiter.TrafficLimiter, c net.Conn) net.Conn {
 	}
 	host, _, _ := net.SplitHostPort(c.RemoteAddr().String())
 	return &serverConn{
-		Conn:     c,
-		rlimiter: rlimiter,
-		raddr:    host,
+		Conn:    c,
+		limiter: rlimiter,
+		raddr:   host,
 	}
 }
 
 func (c *serverConn) Read(b []byte) (n int, err error) {
-	if c.rlimiter == nil ||
-		c.rlimiter.In(c.raddr) == nil {
+	if c.limiter == nil ||
+		c.limiter.In(c.raddr) == nil {
 		return c.Conn.Read(b)
 	}
 
-	limiter := c.rlimiter.In(c.raddr)
+	limiter := c.limiter.In(c.raddr)
 
 	if c.rbuf.Len() > 0 {
 		burst := len(b)
@@ -70,12 +70,12 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *serverConn) Write(b []byte) (n int, err error) {
-	if c.rlimiter == nil ||
-		c.rlimiter.Out(c.raddr) == nil {
+	if c.limiter == nil ||
+		c.limiter.Out(c.raddr) == nil {
 		return c.Conn.Write(b)
 	}
 
-	limiter := c.rlimiter.Out(c.raddr)
+	limiter := c.limiter.Out(c.raddr)
 	nn := 0
 	for len(b) > 0 {
 		nn, err = c.Conn.Write(b[:limiter.Wait(context.Background(), len(b))])

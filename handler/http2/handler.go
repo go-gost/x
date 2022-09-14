@@ -75,6 +75,10 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	v, ok := conn.(md.Metadatable)
 	if !ok || v == nil {
 		err := errors.New("wrong connection type")
@@ -344,4 +348,16 @@ func (h *http2Handler) writeResponse(w http.ResponseWriter, resp *http.Response)
 	w.WriteHeader(resp.StatusCode)
 	_, err := io.Copy(flushWriter{w}, resp.Body)
 	return err
+}
+
+func (h *http2Handler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }

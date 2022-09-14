@@ -66,6 +66,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		"local":  conn.LocalAddr().String(),
 	})
 
+	if !h.checkRateLimit(conn.RemoteAddr()) {
+		return nil
+	}
+
 	switch cc := conn.(type) {
 	case *sshd_util.DirectForwardConn:
 		return h.handleDirectForward(ctx, cc, log)
@@ -215,6 +219,18 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
+}
+
+func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
+	if h.options.RateLimiter == nil {
+		return true
+	}
+	host, _, _ := net.SplitHostPort(addr.String())
+	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
+		return limiter.Allow(1)
+	}
+
+	return true
 }
 
 func getHostPortFromAddr(addr net.Addr) (host string, port int, err error) {

@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
@@ -22,6 +23,7 @@ import (
 	xhosts "github.com/go-gost/x/hosts"
 	"github.com/go-gost/x/internal/loader"
 	xconn "github.com/go-gost/x/limiter/conn"
+	xrate "github.com/go-gost/x/limiter/rate"
 	xtraffic "github.com/go-gost/x/limiter/traffic"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -407,4 +409,44 @@ func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 	)
 
 	return xconn.NewConnLimiter(opts...)
+}
+
+func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
+	if cfg == nil {
+		return nil
+	}
+
+	var opts []xrate.Option
+
+	if cfg.File != nil && cfg.File.Path != "" {
+		opts = append(opts, xrate.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+	}
+	if cfg.Redis != nil && cfg.Redis.Addr != "" {
+		switch cfg.Redis.Type {
+		case "list": // redis list
+			opts = append(opts, xrate.RedisLoaderOption(loader.RedisListLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		default: // redis set
+			opts = append(opts, xrate.RedisLoaderOption(loader.RedisSetLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		}
+	}
+	opts = append(opts,
+		xrate.LimitsOption(cfg.Limits...),
+		xrate.ReloadPeriodOption(cfg.Reload),
+		xrate.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind":    "limiter",
+			"limiter": cfg.Name,
+		})),
+	)
+
+	return xrate.NewRateLimiter(opts...)
 }
