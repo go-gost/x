@@ -28,7 +28,7 @@ func init() {
 }
 
 type tapHandler struct {
-	group   *chain.NodeGroup
+	hop     chain.Hop
 	routes  sync.Map
 	exit    chan struct{}
 	cipher  core.Cipher
@@ -65,15 +65,15 @@ func (h *tapHandler) Init(md md.Metadata) (err error) {
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(h.options.Logger)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
 }
 
 // Forward implements handler.Forwarder.
-func (h *tapHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *tapHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -105,7 +105,10 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	var raddr net.Addr
 	var err error
 
-	target := h.group.Next(ctx)
+	var target *chain.Node
+	if h.hop != nil {
+		target = h.hop.Select(ctx)
+	}
 	if target != nil {
 		raddr, err = net.ResolveUDPAddr(network, target.Addr)
 		if err != nil {

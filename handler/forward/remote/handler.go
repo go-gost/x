@@ -20,7 +20,7 @@ func init() {
 }
 
 type forwardHandler struct {
-	group   *chain.NodeGroup
+	hop     chain.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -44,15 +44,15 @@ func (h *forwardHandler) Init(md md.Metadata) (err error) {
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(h.options.Logger)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
 }
 
 // Forward implements handler.Forwarder.
-func (h *forwardHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *forwardHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -75,7 +75,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return nil
 	}
 
-	target := h.group.Next(ctx)
+	var target *chain.Node
+	if h.hop != nil {
+		target = h.hop.Select(ctx)
+	}
 	if target == nil {
 		err := errors.New("target not available")
 		log.Error(err)

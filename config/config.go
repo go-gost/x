@@ -217,9 +217,16 @@ type HandlerConfig struct {
 
 type ForwarderConfig struct {
 	// DEPRECATED by nodes since beta.4
-	Targets  []string        `yaml:",omitempty" json:"targets,omitempty"`
-	Nodes    []*NodeConfig   `json:"nodes"`
-	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
+	Targets  []string             `yaml:",omitempty" json:"targets,omitempty"`
+	Nodes    []*ForwardNodeConfig `json:"nodes"`
+	Selector *SelectorConfig      `yaml:",omitempty" json:"selector,omitempty"`
+}
+
+type ForwardNodeConfig struct {
+	Name     string   `yaml:",omitempty" json:"name,omitempty"`
+	Addr     string   `yaml:",omitempty" json:"addr,omitempty"`
+	Bypass   string   `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses []string `yaml:",omitempty" json:"bypasses,omitempty"`
 }
 
 type DialerConfig struct {

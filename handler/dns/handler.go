@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	xchain "github.com/go-gost/x/chain"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/resolver/exchanger"
@@ -29,11 +30,11 @@ func init() {
 }
 
 type dnsHandler struct {
-	group      *chain.NodeGroup
+	hop        chain.Hop
 	exchangers map[string]exchanger.Exchanger
 	cache      *resolver_util.Cache
 	router     *chain.Router
-	hosts      hosts.HostMapper
+	hostMapper hosts.HostMapper
 	md         metadata
 	options    handler.Options
 }
@@ -60,21 +61,19 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(log)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(log))
 	}
-	h.hosts = h.router.Hosts()
+	h.hostMapper = h.router.Options().HostMapper
 
-	if h.group == nil {
-		h.group = &chain.NodeGroup{}
+	if h.hop == nil {
+		var nodes []*chain.Node
 		for i, addr := range h.md.dns {
-			addr = strings.TrimSpace(addr)
-			if addr == "" {
-				continue
-			}
-			h.group.AddNode(chain.NewNode(fmt.Sprintf("target-%d", i), addr))
+			nodes = append(nodes, chain.NewNode(fmt.Sprintf("target-%d", i), addr))
 		}
+		h.hop = xchain.NewChainHop(nodes)
 	}
-	for _, node := range h.group.Nodes() {
+
+	for _, node := range h.hop.Nodes() {
 		addr := strings.TrimSpace(node.Addr)
 		if addr == "" {
 			continue
@@ -99,7 +98,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 			exchanger.TimeoutOption(h.md.timeout),
 			exchanger.LoggerOption(log),
 		)
-		log.Warnf("resolver not found, default to %s", defaultNameserver)
+		log.Warnf("resolver not found, use default %s", defaultNameserver)
 		if err != nil {
 			return err
 		}
@@ -110,8 +109,8 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *dnsHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *dnsHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -261,7 +260,7 @@ func (h *dnsHandler) exchange(ctx context.Context, msg []byte, log logger.Logger
 
 // lookup host mapper
 func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
-	if h.hosts == nil ||
+	if h.hostMapper == nil ||
 		r.Question[0].Qclass != dns.ClassINET ||
 		(r.Question[0].Qtype != dns.TypeA && r.Question[0].Qtype != dns.TypeAAAA) {
 		return nil
@@ -274,7 +273,7 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 
 	switch r.Question[0].Qtype {
 	case dns.TypeA:
-		ips, _ := h.hosts.Lookup("ip4", host)
+		ips, _ := h.hostMapper.Lookup("ip4", host)
 		if len(ips) == 0 {
 			return nil
 		}
@@ -290,7 +289,7 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 		}
 
 	case dns.TypeAAAA:
-		ips, _ := h.hosts.Lookup("ip6", host)
+		ips, _ := h.hostMapper.Lookup("ip6", host)
 		if len(ips) == 0 {
 			return nil
 		}
@@ -310,10 +309,10 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 }
 
 func (h *dnsHandler) selectExchanger(ctx context.Context, addr string) exchanger.Exchanger {
-	if h.group == nil {
+	if h.hop == nil {
 		return nil
 	}
-	node := h.group.FilterAddr(addr).Next(ctx)
+	node := h.hop.Select(ctx, chain.AddrSelectOption(addr))
 	if node == nil {
 		return nil
 	}

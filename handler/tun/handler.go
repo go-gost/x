@@ -21,7 +21,7 @@ func init() {
 }
 
 type tunHandler struct {
-	group   *chain.NodeGroup
+	hop     chain.Hop
 	routes  sync.Map
 	router  *chain.Router
 	md      metadata
@@ -46,15 +46,15 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(h.options.Logger)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
 }
 
 // Forward implements handler.Forwarder.
-func (h *tunHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *tunHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -87,7 +87,10 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	var raddr net.Addr
 	var err error
 
-	target := h.group.Next(ctx)
+	var target *chain.Node
+	if h.hop != nil {
+		target = h.hop.Select(ctx)
+	}
 	if target != nil {
 		raddr, err = net.ResolveUDPAddr(network, target.Addr)
 		if err != nil {

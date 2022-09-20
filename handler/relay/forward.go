@@ -17,7 +17,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
 	}
-	target := h.group.Next(ctx)
+	target := h.hop.Select(ctx)
 	if target == nil {
 		resp.Status = relay.StatusServiceUnavailable
 		resp.WriteTo(conn)

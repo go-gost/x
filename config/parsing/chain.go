@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	mdx "github.com/go-gost/x/metadata"
@@ -27,14 +28,14 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 		"chain": cfg.Name,
 	})
 
-	c := chain.NewChain(cfg.Name)
+	c := xchain.NewChain(cfg.Name)
 	if cfg.Metadata != nil {
 		c.WithMetadata(mdx.NewMetadata(cfg.Metadata))
 	}
 
-	selector := parseNodeSelector(cfg.Selector)
+	sel := parseNodeSelector(cfg.Selector)
 	for _, hop := range cfg.Hops {
-		group := &chain.NodeGroup{}
+		var nodes []*chain.Node
 		for _, v := range hop.Nodes {
 			nodeLogger := chainLogger.WithFields(map[string]any{
 				"kind":      "node",
@@ -144,35 +145,35 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 				}
 			}
 
-			tr := (&chain.Transport{}).
-				WithConnector(cr).
-				WithDialer(d).
-				WithAddr(v.Addr).
-				WithInterface(v.Interface).
-				WithSockOpts(sockOpts).
-				WithTimeout(10 * time.Second)
+			tr := chain.NewTransport(d, cr,
+				chain.AddrTransportOption(v.Addr),
+				chain.InterfaceTransportOption(v.Interface),
+				chain.SockOptsTransportOption(sockOpts),
+				chain.TimeoutTransportOption(10*time.Second),
+			)
 
-			node := chain.NewNode(v.Name, v.Addr).
-				WithTransport(tr).
-				WithBypass(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)).
-				WithResolver(registry.ResolverRegistry().Get(v.Resolver)).
-				WithHostMapper(registry.HostsRegistry().Get(v.Hosts)).
-				WithMetadata(nm)
-
-			group.AddNode(node)
+			node := chain.NewNode(v.Name, v.Addr,
+				chain.TransportNodeOption(tr),
+				chain.BypassNodeOption(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)),
+				chain.ResoloverNodeOption(registry.ResolverRegistry().Get(v.Resolver)),
+				chain.HostMapperNodeOption(registry.HostsRegistry().Get(v.Hosts)),
+				chain.MetadataNodeOption(nm),
+			)
+			nodes = append(nodes, node)
 		}
 
-		sel := selector
+		sl := sel
 		if s := parseNodeSelector(hop.Selector); s != nil {
-			sel = s
+			sl = s
 		}
-		if sel == nil {
-			sel = defaultNodeSelector()
+		if sl == nil {
+			sl = defaultNodeSelector()
 		}
-		group.WithSelector(sel).
-			WithBypass(bypass.BypassGroup(bypassList(hop.Bypass, hop.Bypasses...)...))
 
-		c.AddNodeGroup(group)
+		c.AddHop(xchain.NewChainHop(nodes,
+			xchain.SelectorHopOption(sl),
+			xchain.BypassHopOption(bypass.BypassGroup(bypassList(hop.Bypass, hop.Bypasses...)...))),
+		)
 	}
 
 	return c, nil

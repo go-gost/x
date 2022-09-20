@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
+	xchain "github.com/go-gost/x/chain"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
@@ -21,7 +22,7 @@ func init() {
 }
 
 type forwardHandler struct {
-	group   *chain.NodeGroup
+	hop     chain.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -43,22 +44,24 @@ func (h *forwardHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	if h.group == nil {
+	if h.hop == nil {
 		// dummy node used by relay connector.
-		h.group = chain.NewNodeGroup(&chain.Node{Name: "dummy", Addr: ":0"})
+		h.hop = xchain.NewChainHop([]*chain.Node{
+			{Name: "dummy", Addr: ":0"},
+		})
 	}
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(h.options.Logger)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
 }
 
 // Forward implements handler.Forwarder.
-func (h *forwardHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *forwardHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -81,7 +84,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return nil
 	}
 
-	target := h.group.Next(ctx)
+	target := h.hop.Select(ctx)
 	if target == nil {
 		err := errors.New("target not available")
 		log.Error(err)

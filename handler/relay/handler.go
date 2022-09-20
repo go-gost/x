@@ -24,7 +24,7 @@ func init() {
 }
 
 type relayHandler struct {
-	group   *chain.NodeGroup
+	hop     chain.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -48,15 +48,15 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 
 	h.router = h.options.Router
 	if h.router == nil {
-		h.router = (&chain.Router{}).WithLogger(h.options.Logger)
+		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return nil
 }
 
 // Forward implements handler.Forwarder.
-func (h *relayHandler) Forward(group *chain.NodeGroup) {
-	h.group = group
+func (h *relayHandler) Forward(hop chain.Hop) {
+	h.hop = hop
 }
 
 func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
@@ -130,7 +130,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		network = "udp"
 	}
 
-	if h.group != nil {
+	if h.hop != nil {
 		if address != "" {
 			resp.Status = relay.StatusForbidden
 			log.Error("forward mode, connect is forbidden")

@@ -56,9 +56,10 @@ func (l *rudpListener) Init(md md.Metadata) (err error) {
 	}
 
 	l.laddr = laddr
-	l.router = (&chain.Router{}).
-		WithChain(l.options.Chain).
-		WithLogger(l.logger)
+	l.router = chain.NewRouter(
+		chain.ChainRouterOption(l.options.Chain),
+		chain.LoggerRouterOption(l.logger),
+	)
 
 	return
 }

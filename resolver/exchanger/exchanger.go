@@ -102,7 +102,7 @@ func NewExchanger(addr string, opts ...Option) (Exchanger, error) {
 		ex.addr = net.JoinHostPort(ex.addr, "53")
 	}
 	if ex.router == nil {
-		ex.router = (&chain.Router{}).WithLogger(options.logger)
+		ex.router = chain.NewRouter(chain.LoggerRouterOption(options.logger))
 	}
 
 	switch ex.network {

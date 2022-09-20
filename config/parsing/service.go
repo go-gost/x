@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
+	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
@@ -156,16 +157,17 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			Record:   r.Record,
 		})
 	}
-	router := (&chain.Router{}).
-		WithRetries(cfg.Handler.Retries).
-		// WithTimeout(timeout time.Duration).
-		WithInterface(ifce).
-		WithSockOpts(sockOpts).
-		WithChain(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)).
-		WithResolver(registry.ResolverRegistry().Get(cfg.Resolver)).
-		WithHosts(registry.HostsRegistry().Get(cfg.Hosts)).
-		WithRecorder(recorders...).
-		WithLogger(handlerLogger)
+	router := chain.NewRouter(
+		chain.RetriesRouterOption(cfg.Handler.Retries),
+		// chain.TimeoutRouterOption(10*time.Second),
+		chain.InterfaceRouterOption(ifce),
+		chain.SockOptsRouterOption(sockOpts),
+		chain.ChainRouterOption(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)),
+		chain.ResolverRouterOption(registry.ResolverRegistry().Get(cfg.Resolver)),
+		chain.HostMapperRouterOption(registry.HostsRegistry().Get(cfg.Hosts)),
+		chain.RecordersRouterOption(recorders...),
+		chain.LoggerRouterOption(handlerLogger),
+	)
 
 	var h handler.Handler
 	if rf := registry.HandlerRegistry().Get(cfg.Handler.Type); rf != nil {
@@ -203,24 +205,27 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	return s, nil
 }
 
-func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
+func parseForwarder(cfg *config.ForwarderConfig) chain.Hop {
 	if cfg == nil ||
 		(len(cfg.Targets) == 0 && len(cfg.Nodes) == 0) {
 		return nil
 	}
 
-	group := &chain.NodeGroup{}
+	var nodes []*chain.Node
 	if len(cfg.Nodes) > 0 {
 		for _, node := range cfg.Nodes {
 			if node != nil {
-				group.AddNode(chain.NewNode(node.Name, node.Addr).
-					WithBypass(bypass.BypassGroup(bypassList(node.Bypass, node.Bypasses...)...)))
+				nodes = append(nodes,
+					chain.NewNode(node.Name, node.Addr,
+						chain.BypassNodeOption(bypass.BypassGroup(bypassList(node.Bypass, node.Bypasses...)...)),
+					),
+				)
 			}
 		}
 	} else {
 		for _, target := range cfg.Targets {
 			if v := strings.TrimSpace(target); v != "" {
-				group.AddNode(chain.NewNode(target, target))
+				nodes = append(nodes, chain.NewNode(target, target))
 			}
 		}
 	}
@@ -229,7 +234,7 @@ func parseForwarder(cfg *config.ForwarderConfig) *chain.NodeGroup {
 	if sel == nil {
 		sel = defaultNodeSelector()
 	}
-	return group.WithSelector(sel)
+	return xchain.NewChainHop(nodes, xchain.SelectorHopOption(sel))
 }
 
 func bypassList(name string, names ...string) []bypass.Bypass {
@@ -292,6 +297,6 @@ func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
 		sel = defaultChainSelector()
 	}
 
-	return chain.NewChainGroup(chains...).
+	return xchain.NewChainGroup(chains...).
 		WithSelector(sel)
 }
