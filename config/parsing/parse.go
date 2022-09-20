@@ -70,6 +70,12 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 			loader.KeyRedisLoaderOption(cfg.Redis.Key),
 		)))
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, auth_impl.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
 
 	return auth_impl.NewAuthenticator(opts...)
 }
@@ -172,6 +178,13 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 			loader.KeyRedisLoaderOption(cfg.Redis.Key),
 		)))
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, admission_impl.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
+
 	return admission_impl.NewAdmission(opts...)
 }
 
@@ -200,6 +213,13 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 			loader.KeyRedisLoaderOption(cfg.Redis.Key),
 		)))
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, bypass_impl.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
+
 	return bypass_impl.NewBypass(opts...)
 }
 
@@ -280,6 +300,12 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 			)))
 		}
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, xhosts.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
 	return xhosts.NewHostMapper(opts...)
 }
 
@@ -359,6 +385,12 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 			)))
 		}
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, xtraffic.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
 	opts = append(opts,
 		xtraffic.LimitsOption(cfg.Limits...),
 		xtraffic.ReloadPeriodOption(cfg.Reload),
@@ -399,6 +431,12 @@ func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 			)))
 		}
 	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, xconn.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
 	opts = append(opts,
 		xconn.LimitsOption(cfg.Limits...),
 		xconn.ReloadPeriodOption(cfg.Reload),
@@ -438,6 +476,12 @@ func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
 		}
+	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, xrate.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
 	}
 	opts = append(opts,
 		xrate.LimitsOption(cfg.Limits...),

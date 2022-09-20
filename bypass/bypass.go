@@ -20,6 +20,7 @@ type options struct {
 	matchers    []string
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
+	httpLoader  loader.Loader
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -53,6 +54,12 @@ func FileLoaderOption(fileLoader loader.Loader) Option {
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
+	}
+}
+
+func HTTPLoaderOption(httpLoader loader.Loader) Option {
+	return func(opts *options) {
+		opts.httpLoader = httpLoader
 	}
 }
 
@@ -193,6 +200,15 @@ func (bp *bypass) load(ctx context.Context) (patterns []string, err error) {
 			if v, _ := bp.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
 			}
+		}
+	}
+	if bp.options.httpLoader != nil {
+		r, er := bp.options.httpLoader.Load(ctx)
+		if er != nil {
+			bp.options.logger.Warnf("http loader: %v", er)
+		}
+		if v, _ := bp.parsePatterns(r); v != nil {
+			patterns = append(patterns, v...)
 		}
 	}
 

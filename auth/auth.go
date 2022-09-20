@@ -17,6 +17,7 @@ type options struct {
 	auths       map[string]string
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
+	httpLoader  loader.Loader
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -44,6 +45,12 @@ func FileLoaderOption(fileLoader loader.Loader) Option {
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
+	}
+}
+
+func HTTPLoaderOption(httpLoader loader.Loader) Option {
+	return func(opts *options) {
+		opts.httpLoader = httpLoader
 	}
 }
 
@@ -176,6 +183,17 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 				for k, v := range auths {
 					m[k] = v
 				}
+			}
+		}
+	}
+	if p.options.httpLoader != nil {
+		r, er := p.options.httpLoader.Load(ctx)
+		if er != nil {
+			p.options.logger.Warnf("http loader: %v", er)
+		}
+		if auths, _ := p.parseAuths(r); auths != nil {
+			for k, v := range auths {
+				m[k] = v
 			}
 		}
 	}

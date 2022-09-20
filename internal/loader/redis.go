@@ -49,7 +49,9 @@ type redisSetLoader struct {
 func RedisSetLoader(addr string, opts ...RedisLoaderOption) Loader {
 	var options redisLoaderOptions
 	for _, opt := range opts {
-		opt(&options)
+		if opt != nil {
+			opt(&options)
+		}
 	}
 
 	key := options.key

@@ -55,6 +55,7 @@ type options struct {
 	limits      []string
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
+	httpLoader  loader.Loader
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -82,6 +83,12 @@ func FileLoaderOption(fileLoader loader.Loader) Option {
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
+	}
+}
+
+func HTTPLoaderOption(httpLoader loader.Loader) Option {
+	return func(opts *options) {
+		opts.httpLoader = httpLoader
 	}
 }
 
@@ -283,6 +290,15 @@ func (l *rateLimiter) load(ctx context.Context) (patterns []string, err error) {
 			if v, _ := l.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
 			}
+		}
+	}
+	if l.options.httpLoader != nil {
+		r, er := l.options.httpLoader.Load(ctx)
+		if er != nil {
+			l.options.logger.Warnf("http loader: %v", er)
+		}
+		if v, _ := l.parsePatterns(r); v != nil {
+			patterns = append(patterns, v...)
 		}
 	}
 

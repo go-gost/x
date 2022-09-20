@@ -23,6 +23,7 @@ type options struct {
 	mappings    []Mapping
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
+	httpLoader  loader.Loader
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -50,6 +51,12 @@ func FileLoaderOption(fileLoader loader.Loader) Option {
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
+	}
+}
+
+func HTTPLoaderOption(httpLoader loader.Loader) Option {
+	return func(opts *options) {
+		opts.httpLoader = httpLoader
 	}
 }
 
@@ -252,6 +259,15 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 			if m, _ := h.parseMapping(r); m != nil {
 				mappings = append(mappings, m...)
 			}
+		}
+	}
+	if h.options.httpLoader != nil {
+		r, er := h.options.httpLoader.Load(ctx)
+		if er != nil {
+			h.options.logger.Warnf("http loader: %v", er)
+		}
+		if m, _ := h.parseMapping(r); m != nil {
+			mappings = append(mappings, m...)
 		}
 	}
 

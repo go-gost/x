@@ -84,6 +84,7 @@ type AutherConfig struct {
 	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP   *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
 type AuthConfig struct {
@@ -106,6 +107,7 @@ type AdmissionConfig struct {
 	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP      *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
 type BypassConfig struct {
@@ -117,6 +119,7 @@ type BypassConfig struct {
 	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP      *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
 type FileLoader struct {
@@ -129,6 +132,11 @@ type RedisLoader struct {
 	Password string `yaml:",omitempty" json:"password,omitempty"`
 	Key      string `yaml:",omitempty" json:"key,omitempty"`
 	Type     string `yaml:",omitempty" json:"type,omitempty"`
+}
+
+type HTTPLoader struct {
+	URL     string        `yaml:"url" json:"url"`
+	Timeout time.Duration `yaml:",omitempty" json:"timeout,omitempty"`
 }
 
 type NameserverConfig struct {
@@ -158,6 +166,7 @@ type HostsConfig struct {
 	Reload   time.Duration        `yaml:",omitempty" json:"reload,omitempty"`
 	File     *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
 	Redis    *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP     *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
 type RecorderConfig struct {
@@ -190,6 +199,7 @@ type LimiterConfig struct {
 	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP   *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
 type ListenerConfig struct {
