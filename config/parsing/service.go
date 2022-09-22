@@ -185,7 +185,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	if forwarder, ok := h.(handler.Forwarder); ok {
-		forwarder.Forward(parseForwarder(cfg.Forwarder))
+		hop, err := parseForwarder(cfg.Forwarder)
+		if err != nil {
+			return nil, err
+		}
+		forwarder.Forward(hop)
 	}
 
 	if cfg.Handler.Metadata == nil {
@@ -205,36 +209,45 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	return s, nil
 }
 
-func parseForwarder(cfg *config.ForwarderConfig) chain.Hop {
-	if cfg == nil ||
-		(len(cfg.Targets) == 0 && len(cfg.Nodes) == 0) {
-		return nil
+func parseForwarder(cfg *config.ForwarderConfig) (chain.Hop, error) {
+	if cfg == nil {
+		return nil, nil
 	}
 
-	var nodes []*chain.Node
+	hc := config.HopConfig{
+		Name:     cfg.Name,
+		Selector: cfg.Selector,
+	}
 	if len(cfg.Nodes) > 0 {
 		for _, node := range cfg.Nodes {
 			if node != nil {
-				nodes = append(nodes,
-					chain.NewNode(node.Name, node.Addr,
-						chain.BypassNodeOption(bypass.BypassGroup(bypassList(node.Bypass, node.Bypasses...)...)),
-					),
+				hc.Nodes = append(hc.Nodes,
+					&config.NodeConfig{
+						Name:     node.Name,
+						Addr:     node.Addr,
+						Bypass:   node.Bypass,
+						Bypasses: node.Bypasses,
+					},
 				)
 			}
 		}
 	} else {
 		for _, target := range cfg.Targets {
 			if v := strings.TrimSpace(target); v != "" {
-				nodes = append(nodes, chain.NewNode(target, target))
+				hc.Nodes = append(hc.Nodes,
+					&config.NodeConfig{
+						Name: target,
+						Addr: target,
+					},
+				)
 			}
 		}
 	}
 
-	sel := parseNodeSelector(cfg.Selector)
-	if sel == nil {
-		sel = defaultNodeSelector()
+	if len(hc.Nodes) > 0 {
+		return ParseHop(&hc)
 	}
-	return xchain.NewChainHop(nodes, xchain.SelectorHopOption(sel))
+	return registry.HopRegistry().Get(hc.Name), nil
 }
 
 func bypassList(name string, names ...string) []bypass.Bypass {

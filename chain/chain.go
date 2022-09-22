@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/selector"
 )
@@ -11,6 +12,25 @@ import (
 var (
 	_ chain.Chainer = (*chainGroup)(nil)
 )
+
+type ChainOptions struct {
+	Metadata metadata.Metadata
+	Logger   logger.Logger
+}
+
+type ChainOption func(*ChainOptions)
+
+func MetadataChainOption(md metadata.Metadata) ChainOption {
+	return func(opts *ChainOptions) {
+		opts.Metadata = md
+	}
+}
+
+func LoggerChainOption(logger logger.Logger) ChainOption {
+	return func(opts *ChainOptions) {
+		opts.Logger = logger
+	}
+}
 
 type chainNamer interface {
 	Name() string
@@ -21,22 +41,27 @@ type Chain struct {
 	hops     []chain.Hop
 	marker   selector.Marker
 	metadata metadata.Metadata
+	logger   logger.Logger
 }
 
-func NewChain(name string, hops ...chain.Hop) *Chain {
+func NewChain(name string, opts ...ChainOption) *Chain {
+	var options ChainOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+
 	return &Chain{
-		name:   name,
-		hops:   hops,
-		marker: selector.NewFailMarker(),
+		name:     name,
+		metadata: options.Metadata,
+		marker:   selector.NewFailMarker(),
+		logger:   options.Logger,
 	}
 }
 
 func (c *Chain) AddHop(hop chain.Hop) {
 	c.hops = append(c.hops, hop)
-}
-
-func (c *Chain) WithMetadata(md metadata.Metadata) {
-	c.metadata = md
 }
 
 // Metadata implements metadata.Metadatable interface.

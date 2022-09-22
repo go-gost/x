@@ -110,6 +110,10 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/chains/:chain", updateChain)
 	config.DELETE("/chains/:chain", deleteChain)
 
+	config.POST("/hops", createHop)
+	config.PUT("/hops/:hop", updateHop)
+	config.DELETE("/hops/:hop", deleteHop)
+
 	config.POST("/authers", createAuther)
 	config.PUT("/authers/:auther", updateAuther)
 	config.DELETE("/authers/:auther", deleteAuther)

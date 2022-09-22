@@ -24,6 +24,8 @@ definitions:
         properties:
             file:
                 $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
             matchers:
                 items:
                     type: string
@@ -64,6 +66,8 @@ definitions:
                 x-go-name: Auths
             file:
                 $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
             name:
                 type: string
                 x-go-name: Name
@@ -77,6 +81,8 @@ definitions:
         properties:
             file:
                 $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
             matchers:
                 items:
                     type: string
@@ -101,6 +107,9 @@ definitions:
     ChainConfig:
         properties:
             hops:
+                description: |-
+                    REMOVED since beta.6
+                    Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
                 items:
                     $ref: '#/definitions/HopConfig'
                 type: array
@@ -112,8 +121,6 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
-            selector:
-                $ref: '#/definitions/SelectorConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
     ChainGroupConfig:
@@ -156,6 +163,11 @@ definitions:
                     $ref: '#/definitions/LimiterConfig'
                 type: array
                 x-go-name: CLimiters
+            hops:
+                items:
+                    $ref: '#/definitions/HopConfig'
+                type: array
+                x-go-name: Hops
             hosts:
                 items:
                     $ref: '#/definitions/HostsConfig'
@@ -251,11 +263,32 @@ definitions:
                 x-go-name: Sep
         type: object
         x-go-package: github.com/go-gost/x/config
+    ForwardNodeConfig:
+        properties:
+            addr:
+                type: string
+                x-go-name: Addr
+            bypass:
+                type: string
+                x-go-name: Bypass
+            bypasses:
+                items:
+                    type: string
+                type: array
+                x-go-name: Bypasses
+            name:
+                type: string
+                x-go-name: Name
+        type: object
+        x-go-package: github.com/go-gost/x/config
     ForwarderConfig:
         properties:
+            name:
+                type: string
+                x-go-name: Name
             nodes:
                 items:
-                    $ref: '#/definitions/NodeConfig'
+                    $ref: '#/definitions/ForwardNodeConfig'
                 type: array
                 x-go-name: Nodes
             selector:
@@ -266,6 +299,15 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Targets
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    HTTPLoader:
+        properties:
+            timeout:
+                $ref: '#/definitions/Duration'
+            url:
+                type: string
+                x-go-name: URL
         type: object
         x-go-package: github.com/go-gost/x/config
     HandlerConfig:
@@ -352,6 +394,8 @@ definitions:
         properties:
             file:
                 $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
             mappings:
                 items:
                     $ref: '#/definitions/HostMappingConfig'
@@ -370,6 +414,8 @@ definitions:
         properties:
             file:
                 $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
             limits:
                 items:
                     type: string
@@ -1025,6 +1071,64 @@ paths:
             summary: Update conn limiter by name, the limiter must already exist.
             tags:
                 - Limiter
+    /config/hops:
+        post:
+            operationId: createHopRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/HopConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createHopResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new hop, the name of hop must be unique in hop list.
+            tags:
+                - Hop
+    /config/hops/{hop}:
+        delete:
+            operationId: deleteHopRequest
+            parameters:
+                - in: path
+                  name: hop
+                  required: true
+                  type: string
+                  x-go-name: Hop
+            responses:
+                "200":
+                    $ref: '#/responses/deleteHopResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete hop by name.
+            tags:
+                - Hop
+        put:
+            operationId: updateHopRequest
+            parameters:
+                - in: path
+                  name: hop
+                  required: true
+                  type: string
+                  x-go-name: Hop
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/HopConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateHopResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update hop by name, the hop must already exist.
+            tags:
+                - Hop
     /config/hosts:
         post:
             operationId: createHostsRequest
@@ -1348,6 +1452,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createHopResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createHostsResponse:
         description: successful operation.
         headers:
@@ -1403,6 +1513,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteConnLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteHopResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1475,6 +1591,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateConnLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateHopResponse:
         description: successful operation.
         headers:
             Data: {}

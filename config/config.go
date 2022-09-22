@@ -226,10 +226,11 @@ type HandlerConfig struct {
 }
 
 type ForwarderConfig struct {
-	// DEPRECATED by nodes since beta.4
-	Targets  []string             `yaml:",omitempty" json:"targets,omitempty"`
-	Nodes    []*ForwardNodeConfig `json:"nodes"`
+	Name     string               `yaml:",omitempty" json:"name,omitempty"`
 	Selector *SelectorConfig      `yaml:",omitempty" json:"selector,omitempty"`
+	Nodes    []*ForwardNodeConfig `json:"nodes"`
+	// DEPRECATED by nodes since beta.4
+	Targets []string `yaml:",omitempty" json:"targets,omitempty"`
 }
 
 type ForwardNodeConfig struct {
@@ -281,10 +282,11 @@ type ServiceConfig struct {
 }
 
 type ChainConfig struct {
-	Name     string          `json:"name"`
-	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
-	Hops     []*HopConfig    `json:"hops"`
-	Metadata map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
+	Name string `json:"name"`
+	// REMOVED since beta.6
+	// Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
+	Hops     []*HopConfig   `json:"hops"`
+	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type ChainGroupConfig struct {
@@ -301,7 +303,7 @@ type HopConfig struct {
 	Bypasses  []string        `yaml:",omitempty" json:"bypasses,omitempty"`
 	Resolver  string          `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts     string          `yaml:",omitempty" json:"hosts,omitempty"`
-	Nodes     []*NodeConfig   `json:"nodes"`
+	Nodes     []*NodeConfig   `yaml:",omitempty" json:"nodes,omitempty"`
 }
 
 type NodeConfig struct {
@@ -321,6 +323,7 @@ type NodeConfig struct {
 type Config struct {
 	Services   []*ServiceConfig   `json:"services"`
 	Chains     []*ChainConfig     `yaml:",omitempty" json:"chains,omitempty"`
+	Hops       []*HopConfig       `yaml:",omitempty" json:"hops,omitempty"`
 	Authers    []*AutherConfig    `yaml:",omitempty" json:"authers,omitempty"`
 	Admissions []*AdmissionConfig `yaml:",omitempty" json:"admissions,omitempty"`
 	Bypasses   []*BypassConfig    `yaml:",omitempty" json:"bypasses,omitempty"`

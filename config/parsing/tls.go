@@ -38,9 +38,9 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 		tlsConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
 		}
-		log.Warn("load global TLS certificate files failed, use random generated certificate")
+		log.Debug("load global TLS certificate files failed, use random generated certificate")
 	} else {
-		log.Info("load global TLS certificate files OK")
+		log.Debug("load global TLS certificate files OK")
 	}
 	defaultTLSConfig = tlsConfig
 }

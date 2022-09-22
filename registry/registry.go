@@ -30,6 +30,7 @@ var (
 
 	serviceReg   Registry[service.Service]     = &serviceRegistry{}
 	chainReg     Registry[chain.Chainer]       = &chainRegistry{}
+	hopReg       Registry[chain.Hop]           = &hopRegistry{}
 	autherReg    Registry[auth.Authenticator]  = &autherRegistry{}
 	admissionReg Registry[admission.Admission] = &admissionRegistry{}
 	bypassReg    Registry[bypass.Bypass]       = &bypassRegistry{}
@@ -108,6 +109,10 @@ func ServiceRegistry() Registry[service.Service] {
 
 func ChainRegistry() Registry[chain.Chainer] {
 	return chainReg
+}
+
+func HopRegistry() Registry[chain.Hop] {
+	return hopReg
 }
 
 func AutherRegistry() Registry[auth.Authenticator] {
