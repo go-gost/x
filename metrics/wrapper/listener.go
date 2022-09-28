@@ -3,7 +3,7 @@ package wrapper
 import (
 	"net"
 
-	"github.com/go-gost/core/metrics"
+	xmetrics "github.com/go-gost/x/metrics"
 )
 
 type listener struct {
@@ -12,7 +12,7 @@ type listener struct {
 }
 
 func WrapListener(service string, ln net.Listener) net.Listener {
-	if !metrics.IsEnabled() {
+	if !xmetrics.IsEnabled() {
 		return ln
 	}
 

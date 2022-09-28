@@ -12,6 +12,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/internal/util/ss"
 	"github.com/go-gost/x/registry"
 	"github.com/shadowsocks/go-shadowsocks2/core"
@@ -104,6 +105,11 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	if h.options.Bypass != nil && h.options.Bypass.Contains(addr.String()) {
 		log.Debug("bypass: ", addr.String())
 		return nil
+	}
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr.String()})
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", addr.String())

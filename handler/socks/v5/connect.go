@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 )
 
 func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -23,6 +24,11 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		log.Trace(resp)
 		log.Debug("bypass: ", address)
 		return resp.Write(conn)
+	}
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: address})
 	}
 
 	cc, err := h.router.Dial(ctx, network, address)

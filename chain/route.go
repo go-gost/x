@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/selector"
+	xmetrics "github.com/go-gost/x/metrics"
 )
 
 type RouteOptions struct {
@@ -124,7 +125,7 @@ func (r *route) connect(ctx context.Context, logger logger.Logger) (conn net.Con
 				if marker != nil {
 					marker.Mark()
 				}
-				if v := metrics.GetCounter(metrics.MetricChainErrorsCounter,
+				if v := xmetrics.GetCounter(xmetrics.MetricChainErrorsCounter,
 					metrics.Labels{"chain": name, "node": node.Name}); v != nil {
 					v.Inc()
 				}
@@ -171,7 +172,7 @@ func (r *route) connect(ctx context.Context, logger logger.Logger) (conn net.Con
 		if cn, _ := r.options.Chain.(chainNamer); cn != nil {
 			name = cn.Name()
 		}
-		if v := metrics.GetObserver(metrics.MetricNodeConnectDurationObserver,
+		if v := xmetrics.GetObserver(xmetrics.MetricNodeConnectDurationObserver,
 			metrics.Labels{"chain": name, "node": node.Name}); v != nil {
 			v.Observe(time.Since(start).Seconds())
 		}

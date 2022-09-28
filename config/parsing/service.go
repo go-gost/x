@@ -20,6 +20,7 @@ import (
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
+	xservice "github.com/go-gost/x/service"
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
@@ -200,9 +201,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 
-	s := service.NewService(cfg.Name, ln, h,
-		service.AdmissionOption(admission.AdmissionGroup(admissions...)),
-		service.LoggerOption(serviceLogger),
+	s := xservice.NewService(cfg.Name, ln, h,
+		xservice.AdmissionOption(admission.AdmissionGroup(admissions...)),
+		xservice.LoggerOption(serviceLogger),
 	)
 
 	serviceLogger.Infof("listening on %s/%s", s.Addr().String(), s.Addr().Network())

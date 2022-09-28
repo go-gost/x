@@ -8,7 +8,6 @@ type hashKey struct{}
 
 type Hash struct {
 	Source string
-	Value  int
 }
 
 var (

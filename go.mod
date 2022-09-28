@@ -7,7 +7,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
-	github.com/go-gost/core v0.0.0-20220914115321-50d443049f3b
+	github.com/go-gost/core v0.0.0-20220928034632-6e7a8f461903
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
 	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7

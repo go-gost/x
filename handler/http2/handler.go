@@ -23,6 +23,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
 
@@ -156,6 +157,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	// delete the proxy related headers.
 	req.Header.Del("Proxy-Authorization")
 	req.Header.Del("Proxy-Connection")
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
+	}
 
 	cc, err := h.router.Dial(ctx, "tcp", addr)
 	if err != nil {

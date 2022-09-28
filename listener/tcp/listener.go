@@ -55,10 +55,10 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 	l.logger.Debugf("pp: %d", l.options.ProxyProtocol)
 
 	ln = metrics.WrapListener(l.options.Service, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
-	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	l.ln = ln
 
 	return

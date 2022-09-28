@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/metrics"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
+	xmetrics "github.com/go-gost/x/metrics"
 )
 
 var (
@@ -22,7 +23,7 @@ type serverConn struct {
 }
 
 func WrapConn(service string, c net.Conn) net.Conn {
-	if !metrics.IsEnabled() {
+	if !xmetrics.IsEnabled() {
 		return c
 	}
 	return &serverConn{
@@ -33,8 +34,8 @@ func WrapConn(service string, c net.Conn) net.Conn {
 
 func (c *serverConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferInputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -45,8 +46,8 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 
 func (c *serverConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferOutputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -70,7 +71,7 @@ type packetConn struct {
 }
 
 func WrapPacketConn(service string, pc net.PacketConn) net.PacketConn {
-	if !metrics.IsEnabled() {
+	if !xmetrics.IsEnabled() {
 		return pc
 	}
 	return &packetConn{
@@ -81,8 +82,8 @@ func WrapPacketConn(service string, pc net.PacketConn) net.PacketConn {
 
 func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.PacketConn.ReadFrom(p)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferInputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -93,8 +94,8 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	n, err = c.PacketConn.WriteTo(p, addr)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferOutputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -139,8 +140,8 @@ func (c *udpConn) SetWriteBuffer(n int) error {
 func (c *udpConn) Read(b []byte) (n int, err error) {
 	if nc, ok := c.PacketConn.(io.Reader); ok {
 		n, err = nc.Read(b)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferInputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {
@@ -154,8 +155,8 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 
 func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.PacketConn.ReadFrom(p)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferInputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -167,8 +168,8 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
 		n, addr, err = nc.ReadFromUDP(b)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferInputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {
@@ -183,8 +184,8 @@ func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
 	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
 		n, oobn, flags, addr, err = nc.ReadMsgUDP(b, oob)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferInputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {
@@ -199,8 +200,8 @@ func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAd
 func (c *udpConn) Write(b []byte) (n int, err error) {
 	if nc, ok := c.PacketConn.(io.Writer); ok {
 		n, err = nc.Write(b)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferOutputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {
@@ -214,8 +215,8 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 
 func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	n, err = c.PacketConn.WriteTo(p, addr)
-	if counter := metrics.GetCounter(
-		metrics.MetricServiceTransferOutputBytesCounter,
+	if counter := xmetrics.GetCounter(
+		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
 		}); counter != nil {
@@ -227,8 +228,8 @@ func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
 	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
 		n, err = nc.WriteToUDP(b, addr)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferOutputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {
@@ -243,8 +244,8 @@ func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
 func (c *udpConn) WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
 	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
 		n, oobn, err = nc.WriteMsgUDP(b, oob, addr)
-		if counter := metrics.GetCounter(
-			metrics.MetricServiceTransferOutputBytesCounter,
+		if counter := xmetrics.GetCounter(
+			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
 			}); counter != nil {

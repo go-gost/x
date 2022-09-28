@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 )
 
 func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -40,6 +41,10 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		return err
 	}
 
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: address})
+	}
 	cc, err := h.router.Dial(ctx, network, address)
 	if err != nil {
 		resp.Status = relay.StatusNetworkUnreachable

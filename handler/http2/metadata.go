@@ -11,6 +11,7 @@ import (
 type metadata struct {
 	probeResistance *probeResistance
 	header          http.Header
+	hash            string
 }
 
 func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
@@ -19,6 +20,7 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		probeResistKey  = "probeResistance"
 		probeResistKeyX = "probe_resist"
 		knock           = "knock"
+		hash            = "hash"
 	)
 
 	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
@@ -42,6 +44,7 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 			}
 		}
 	}
+	h.md.hash = mdutil.GetString(md, hash)
 
 	return nil
 }

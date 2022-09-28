@@ -2,11 +2,13 @@ package selector
 
 import (
 	"context"
+	"hash/crc32"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/selector"
@@ -101,7 +103,9 @@ func (s *hashStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 		return
 	}
 	if h := sx.HashFromContext(ctx); h != nil {
-		return vs[h.Value%len(vs)]
+		value := uint64(crc32.ChecksumIEEE([]byte(h.Source)))
+		logger.Default().Tracef("hash %s %d", h.Source, value)
+		return vs[value%uint64(len(vs))]
 	}
 
 	s.mu.Lock()

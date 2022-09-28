@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/go-gost/core/service"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -23,12 +24,12 @@ func PathOption(path string) Option {
 	}
 }
 
-type Service struct {
+type metricService struct {
 	s  *http.Server
 	ln net.Listener
 }
 
-func NewService(addr string, opts ...Option) (*Service, error) {
+func NewService(addr string, opts ...Option) (service.Service, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -44,7 +45,7 @@ func NewService(addr string, opts ...Option) (*Service, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle(options.path, promhttp.Handler())
-	return &Service{
+	return &metricService{
 		s: &http.Server{
 			Handler: mux,
 		},
@@ -52,14 +53,14 @@ func NewService(addr string, opts ...Option) (*Service, error) {
 	}, nil
 }
 
-func (s *Service) Serve() error {
+func (s *metricService) Serve() error {
 	return s.s.Serve(s.ln)
 }
 
-func (s *Service) Addr() net.Addr {
+func (s *metricService) Addr() net.Addr {
 	return s.ln.Addr()
 }
 
-func (s *Service) Close() error {
+func (s *metricService) Close() error {
 	return s.s.Close()
 }

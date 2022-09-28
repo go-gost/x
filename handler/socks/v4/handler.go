@@ -12,6 +12,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
 
@@ -121,6 +122,11 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		log.Trace(resp)
 		log.Debug("bypass: ", addr)
 		return resp.Write(conn)
+	}
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", addr)

@@ -21,6 +21,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
 
@@ -176,6 +177,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	req.Header.Del("Proxy-Authorization")
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
+	}
 
 	cc, err := h.router.Dial(ctx, network, addr)
 	if err != nil {

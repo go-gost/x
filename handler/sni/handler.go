@@ -21,6 +21,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	dissector "github.com/go-gost/tls-dissector"
 	netpkg "github.com/go-gost/x/internal/net"
+	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
 
@@ -121,6 +122,11 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		return nil
 	}
 
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: host})
+	}
+
 	cc, err := h.router.Dial(ctx, "tcp", host)
 	if err != nil {
 		log.Error(err)
@@ -177,6 +183,11 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 	if h.options.Bypass != nil && h.options.Bypass.Contains(host) {
 		log.Debug("bypass: ", host)
 		return nil
+	}
+
+	switch h.md.hash {
+	case "host":
+		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: host})
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", host)

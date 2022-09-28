@@ -13,6 +13,7 @@ type metadata struct {
 	enableBind    bool
 	udpBufferSize int
 	noDelay       bool
+	hash          string
 }
 
 func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -21,6 +22,7 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 		enableBind    = "bind"
 		udpBufferSize = "udpBufferSize"
 		noDelay       = "nodelay"
+		hash          = "hash"
 	)
 
 	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
@@ -32,5 +34,7 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 	} else {
 		h.md.udpBufferSize = 1500
 	}
+
+	h.md.hash = mdutil.GetString(md, hash)
 	return
 }

@@ -35,6 +35,7 @@ const (
 	mdKeyProxyProtocol = "proxyProtocol"
 	mdKeyInterface     = "interface"
 	mdKeySoMark        = "so_mark"
+	mdKeyHash          = "hash"
 )
 
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
@@ -120,6 +121,8 @@ func parseChainSelector(cfg *config.SelectorConfig) selector.Selector[chain.Chai
 		strategy = xs.RandomStrategy[chain.Chainer]()
 	case "fifo", "ha":
 		strategy = xs.FIFOStrategy[chain.Chainer]()
+	case "hash":
+		strategy = xs.HashStrategy[chain.Chainer]()
 	default:
 		strategy = xs.RoundRobinStrategy[chain.Chainer]()
 	}
@@ -143,6 +146,8 @@ func parseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node
 		strategy = xs.RandomStrategy[*chain.Node]()
 	case "fifo", "ha":
 		strategy = xs.FIFOStrategy[*chain.Node]()
+	case "hash":
+		strategy = xs.HashStrategy[*chain.Node]()
 	default:
 		strategy = xs.RoundRobinStrategy[*chain.Node]()
 	}

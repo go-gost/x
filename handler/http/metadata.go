@@ -12,6 +12,7 @@ type metadata struct {
 	probeResistance *probeResistance
 	enableUDP       bool
 	header          http.Header
+	hash            string
 }
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
@@ -21,6 +22,7 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		probeResistKeyX = "probe_resist"
 		knock           = "knock"
 		enableUDP       = "udp"
+		hash            = "hash"
 	)
 
 	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
@@ -45,6 +47,7 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		}
 	}
 	h.md.enableUDP = mdutil.GetBool(md, enableUDP)
+	h.md.hash = mdutil.GetString(md, hash)
 
 	return nil
 }

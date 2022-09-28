@@ -15,6 +15,7 @@ type metadata struct {
 	enableUDP         bool
 	udpBufferSize     int
 	compatibilityMode bool
+	hash              string
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
@@ -25,6 +26,7 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 		enableUDP         = "udp"
 		udpBufferSize     = "udpBufferSize"
 		compatibilityMode = "comp"
+		hash              = "hash"
 	)
 
 	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
@@ -39,6 +41,7 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	h.md.compatibilityMode = mdutil.GetBool(md, compatibilityMode)
+	h.md.hash = mdutil.GetString(md, hash)
 
 	return nil
 }

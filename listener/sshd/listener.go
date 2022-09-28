@@ -68,10 +68,10 @@ func (l *sshdListener) Init(md md.Metadata) (err error) {
 	}
 
 	ln = metrics.WrapListener(l.options.Service, ln)
+	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
-	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	l.Listener = ln
 
 	config := &ssh.ServerConfig{
