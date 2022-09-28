@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"hash/crc32"
 	"net"
 	"time"
 
@@ -140,10 +139,8 @@ func (s *defaultService) Serve() error {
 				}()
 			}
 
-			ctx := sx.ContextWithHash(context.Background(), &sx.Hash{
-				Source: conn.RemoteAddr().String(),
-				Value:  ipHash(conn.RemoteAddr()),
-			})
+			host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+			ctx := sx.ContextWithHash(context.Background(), &sx.Hash{Source: host})
 
 			if err := s.handler.Handle(ctx, conn); err != nil {
 				s.options.logger.Error(err)
@@ -154,16 +151,4 @@ func (s *defaultService) Serve() error {
 			}
 		}()
 	}
-}
-
-func ipHash(addr net.Addr) uint64 {
-	if addr == nil {
-		return 0
-	}
-
-	host, _, _ := net.SplitHostPort(addr.String())
-	if ip := net.ParseIP(host); ip != nil {
-		return uint64(crc32.ChecksumIEEE(ip.To16()))
-	}
-	return 0
 }
