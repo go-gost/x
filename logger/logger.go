@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	"github.com/go-gost/core/logger"
-
 	"github.com/sirupsen/logrus"
 )
 

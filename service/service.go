@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/service"
 	sx "github.com/go-gost/x/internal/util/selector"
 	xmetrics "github.com/go-gost/x/metrics"
+	"github.com/rs/xid"
 )
 
 type options struct {
@@ -141,6 +142,7 @@ func (s *defaultService) Serve() error {
 
 			host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 			ctx := sx.ContextWithHash(context.Background(), &sx.Hash{Source: host})
+			ctx = ContextWithSid(ctx, xid.New().String())
 
 			if err := s.handler.Handle(ctx, conn); err != nil {
 				s.options.logger.Error(err)
@@ -151,4 +153,19 @@ func (s *defaultService) Serve() error {
 			}
 		}()
 	}
+}
+
+type sidKey struct{}
+
+var (
+	ssid sidKey
+)
+
+func ContextWithSid(ctx context.Context, sid string) context.Context {
+	return context.WithValue(ctx, ssid, sid)
+}
+
+func SidFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ssid).(string)
+	return v
 }
