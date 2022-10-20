@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -15,12 +16,12 @@ import (
 )
 
 const (
-	// 4-byte magic header followed by 16-byte IP address
-	keepAliveDataLength = 20
+	// 4-byte magic header followed by 16-byte IP address followed by 16-byte key.
+	keepAliveDataLength = 36
 )
 
 var (
-	keepAliveHeader = []byte("GOST")
+	magicHeader = []byte("GOST")
 )
 
 func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.Addr, config *tun_util.Config, log logger.Logger) error {
@@ -38,21 +39,25 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.A
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if h.md.keepAlivePeriod > 0 {
-		go h.keepAlive(ctx, cc, ip)
-	}
+	go h.keepAlive(ctx, cc, ip)
 
 	return h.transportClient(conn, cc, config, log)
 }
 
 func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
+	// handshake
 	var keepAliveData [keepAliveDataLength]byte
-	copy(keepAliveData[:4], keepAliveHeader) // magic header
-	copy(keepAliveData[4:], ip.To16())
-
+	copy(keepAliveData[:4], magicHeader) // magic header
+	copy(keepAliveData[4:20], ip.To16())
+	copy(keepAliveData[20:36], []byte(h.md.passphrase))
 	if _, err := conn.Write(keepAliveData[:]); err != nil {
 		return
 	}
+
+	if h.md.keepAlivePeriod <= 0 {
+		return
+	}
+	conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
 
 	ticker := time.NewTicker(h.md.keepAlivePeriod)
 	defer ticker.Stop()
@@ -63,6 +68,7 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
 			if _, err := conn.Write(keepAliveData[:]); err != nil {
 				return
 			}
+			h.options.Logger.Debugf("keepalive sended")
 		case <-ctx.Done():
 			return
 		}
@@ -129,6 +135,16 @@ func (h *tunHandler) transportClient(tun net.Conn, conn net.Conn, config *tun_ut
 				n, err := conn.Read(*b)
 				if err != nil {
 					return err
+				}
+
+				if n == keepAliveDataLength && bytes.Equal((*b)[:4], magicHeader) {
+					ip := net.IP((*b)[4:20])
+					log.Debugf("keepalive received at %v", ip)
+
+					if h.md.keepAlivePeriod > 0 {
+						conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
+					}
+					return nil
 				}
 
 				if waterutil.IsIPv4((*b)[:n]) {

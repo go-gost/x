@@ -14,6 +14,7 @@ const (
 type metadata struct {
 	bufferSize      int
 	keepAlivePeriod time.Duration
+	passphrase      string
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -21,6 +22,7 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 		bufferSize      = "bufferSize"
 		keepAlive       = "keepAlive"
 		keepAlivePeriod = "ttl"
+		passphrase      = "passphrase"
 	)
 
 	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
@@ -34,5 +36,7 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 			h.md.keepAlivePeriod = defaultKeepAlivePeriod
 		}
 	}
+
+	h.md.passphrase = mdutil.GetString(md, passphrase)
 	return
 }
