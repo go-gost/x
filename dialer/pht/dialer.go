@@ -61,6 +61,12 @@ func (d *phtDialer) Init(md md.Metadata) (err error) {
 	return nil
 }
 
+// Multiplex implements dialer.Multiplexer interface.
+// NOTE: PHT is not a real multiplexed tunnel.
+func (d *phtDialer) Multiplex() bool {
+	return true
+}
+
 func (d *phtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
 	d.clientMutex.Lock()
 	defer d.clientMutex.Unlock()
