@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"sync"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -20,6 +22,7 @@ type clientConn struct {
 	buf        []byte
 	rxc        chan []byte
 	closed     chan struct{}
+	mu         sync.Mutex
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	logger     logger.Logger
@@ -30,7 +33,7 @@ func (c *clientConn) Read(b []byte) (n int, err error) {
 		select {
 		case c.buf = <-c.rxc:
 		case <-c.closed:
-			err = net.ErrClosed
+			err = io.ErrClosedPipe
 			return
 		}
 	}
@@ -45,21 +48,35 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 	if len(b) == 0 {
 		return
 	}
+	return c.write(b)
+}
 
-	buf := bytes.NewBufferString(base64.StdEncoding.EncodeToString(b))
-	buf.WriteByte('\n')
+func (c *clientConn) write(b []byte) (n int, err error) {
+	if c.isClosed() {
+		err = io.ErrClosedPipe
+		return
+	}
 
-	r, err := http.NewRequest(http.MethodPost, c.pushURL, buf)
+	var r io.Reader
+	if len(b) > 0 {
+		buf := bytes.NewBufferString(base64.StdEncoding.EncodeToString(b))
+		buf.WriteByte('\n')
+		r = buf
+	}
+
+	req, err := http.NewRequest(http.MethodPost, c.pushURL, r)
 	if err != nil {
 		return
 	}
 
 	if c.logger.IsLevelEnabled(logger.TraceLevel) {
-		dump, _ := httputil.DumpRequest(r, false)
+		dump, _ := httputil.DumpRequest(req, false)
 		c.logger.Trace(string(dump))
+	} else if c.logger.IsLevelEnabled(logger.DebugLevel) {
+		c.logger.Debugf("%s %s", req.Method, req.URL)
 	}
 
-	resp, err := c.client.Do(r)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return
 	}
@@ -80,9 +97,12 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *clientConn) readLoop() {
-	defer c.Close()
-
 	for {
+		if c.isClosed() {
+			return
+		}
+
+		done := true
 		err := func() error {
 			r, err := http.NewRequest(http.MethodGet, c.pullURL, nil)
 			if err != nil {
@@ -92,6 +112,8 @@ func (c *clientConn) readLoop() {
 			if c.logger.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpRequest(r, false)
 				c.logger.Trace(string(dump))
+			} else if c.logger.IsLevelEnabled(logger.DebugLevel) {
+				c.logger.Debugf("%s %s", r.Method, r.URL)
 			}
 
 			resp, err := c.client.Do(r)
@@ -111,6 +133,11 @@ func (c *clientConn) readLoop() {
 
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
+				done = false
+				if scanner.Text() == "" {
+					continue
+				}
+
 				b, err := base64.StdEncoding.DecodeString(scanner.Text())
 				if err != nil {
 					return err
@@ -121,12 +148,15 @@ func (c *clientConn) readLoop() {
 					return net.ErrClosed
 				}
 			}
-
 			return scanner.Err()
 		}()
 
 		if err != nil {
-			c.logger.Error(err)
+			c.Close()
+			return
+		}
+
+		if done { // server connection closed
 			return
 		}
 	}
@@ -141,12 +171,32 @@ func (c *clientConn) RemoteAddr() net.Addr {
 }
 
 func (c *clientConn) Close() error {
+	c.mu.Lock()
+
 	select {
 	case <-c.closed:
+		c.mu.Unlock()
+		return nil
 	default:
 		close(c.closed)
 	}
-	return nil
+
+	c.mu.Unlock()
+
+	_, err := c.write(nil)
+
+	return err
+}
+
+func (c *clientConn) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	select {
+	case <-c.closed:
+		return true
+	default:
+	}
+	return false
 }
 
 func (c *clientConn) SetReadDeadline(t time.Time) error {

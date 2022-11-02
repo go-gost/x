@@ -77,6 +77,8 @@ func (c *Client) authorize(ctx context.Context, addr string) (token string, err 
 	if c.Logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
 		c.Logger.Trace(string(dump))
+	} else if c.Logger.IsLevelEnabled(logger.DebugLevel) {
+		c.Logger.Debugf("%s %s", r.Method, r.URL)
 	}
 
 	resp, err := c.Client.Do(r)
