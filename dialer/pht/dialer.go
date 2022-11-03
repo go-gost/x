@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-gost/core/dialer"
-	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 	"github.com/go-gost/x/registry"
@@ -24,7 +23,6 @@ type phtDialer struct {
 	clientMutex sync.Mutex
 	tlsEnabled  bool
 	md          metadata
-	logger      logger.Logger
 	options     dialer.Options
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 type trafficLimiterRegistry struct {
-	registry
+	registry[traffic.TrafficLimiter]
 }
 
 func (r *trafficLimiterRegistry) Register(name string, v traffic.TrafficLimiter) error {
@@ -50,7 +50,7 @@ func (w *trafficLimiterWrapper) Out(key string) traffic.Limiter {
 }
 
 type connLimiterRegistry struct {
-	registry
+	registry[conn.ConnLimiter]
 }
 
 func (r *connLimiterRegistry) Register(name string, v conn.ConnLimiter) error {
@@ -85,7 +85,7 @@ func (w *connLimiterWrapper) Limiter(key string) conn.Limiter {
 }
 
 type rateLimiterRegistry struct {
-	registry
+	registry[rate.RateLimiter]
 }
 
 func (r *rateLimiterRegistry) Register(name string, v rate.RateLimiter) error {

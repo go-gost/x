@@ -86,6 +86,15 @@ func (d *http3Dialer) Dial(ctx context.Context, addr string, opts ...dialer.Dial
 
 						return quic.DialEarly(udpConn.(net.PacketConn), udpAddr, host, tlsCfg, cfg)
 					},
+					QuicConfig: &quic.Config{
+						KeepAlivePeriod:      d.md.keepAlivePeriod,
+						HandshakeIdleTimeout: d.md.handshakeTimeout,
+						MaxIdleTimeout:       d.md.maxIdleTimeout,
+						Versions: []quic.VersionNumber{
+							quic.Version1,
+						},
+						MaxIncomingStreams: int64(d.md.maxStreams),
+					},
 				},
 			},
 			AuthorizePath: d.md.authorizePath,

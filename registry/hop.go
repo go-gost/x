@@ -7,7 +7,7 @@ import (
 )
 
 type hopRegistry struct {
-	registry
+	registry[chain.Hop]
 }
 
 func (r *hopRegistry) Register(name string, v chain.Hop) error {

@@ -2,7 +2,6 @@ package pht
 
 import (
 	"strings"
-	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
@@ -15,12 +14,7 @@ const (
 	defaultPullPath      = "/pull"
 )
 
-const (
-	defaultDialTimeout = 5 * time.Second
-)
-
 type metadata struct {
-	dialTimeout   time.Duration
 	authorizePath string
 	pushPath      string
 	pullPath      string

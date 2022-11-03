@@ -8,7 +8,7 @@ import (
 )
 
 type resolverRegistry struct {
-	registry
+	registry[resolver.Resolver]
 }
 
 func (r *resolverRegistry) Register(name string, v resolver.Resolver) error {

@@ -110,6 +110,7 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 			quic.Version1,
 			quic.VersionDraft29,
 		},
+		MaxIncomingStreams: int64(d.md.maxStreams),
 	}
 
 	tlsCfg := d.options.TLSConfig

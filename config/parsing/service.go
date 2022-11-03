@@ -81,6 +81,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	var ppv int
 	ifce := cfg.Interface
+	var preUp, preDown, postUp, postDown []string
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		ppv = mdutil.GetInt(md, mdKeyProxyProtocol)
@@ -92,6 +93,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 				Mark: v,
 			}
 		}
+		preUp = mdutil.GetStrings(md, mdKeyPreUp)
+		preDown = mdutil.GetStrings(md, mdKeyPreDown)
+		postUp = mdutil.GetStrings(md, mdKeyPostUp)
+		postDown = mdutil.GetStrings(md, mdKeyPostDown)
 	}
 
 	var ln listener.Listener
@@ -204,6 +209,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	s := xservice.NewService(cfg.Name, ln, h,
 		xservice.AdmissionOption(admission.AdmissionGroup(admissions...)),
 		xservice.LoggerOption(serviceLogger),
+		xservice.PreUpOption(preUp),
+		xservice.PreDownOption(preDown),
+		xservice.PostUpOption(postUp),
+		xservice.PostDownOption(postDown),
 	)
 
 	serviceLogger.Infof("listening on %s/%s", s.Addr().String(), s.Addr().Network())

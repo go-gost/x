@@ -55,7 +55,15 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 
 	l.server = pht_util.NewHTTP3Server(
 		l.options.Addr,
-		&quic.Config{},
+		&quic.Config{
+			KeepAlivePeriod:      l.md.keepAlivePeriod,
+			HandshakeIdleTimeout: l.md.handshakeTimeout,
+			MaxIdleTimeout:       l.md.maxIdleTimeout,
+			Versions: []quic.VersionNumber{
+				quic.Version1,
+			},
+			MaxIncomingStreams: int64(l.md.maxStreams),
+		},
 		pht_util.TLSConfigServerOption(l.options.TLSConfig),
 		pht_util.BacklogServerOption(l.md.backlog),
 		pht_util.PathServerOption(l.md.authorizePath, l.md.pushPath, l.md.pullPath),

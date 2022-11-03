@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"net"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/admission"
@@ -20,6 +22,10 @@ import (
 type options struct {
 	admission admission.Admission
 	recorders []recorder.RecorderObject
+	preUp     []string
+	postUp    []string
+	preDown   []string
+	postDown  []string
 	logger    logger.Logger
 }
 
@@ -34,6 +40,30 @@ func AdmissionOption(admission admission.Admission) Option {
 func RecordersOption(recorders ...recorder.RecorderObject) Option {
 	return func(opts *options) {
 		opts.recorders = recorders
+	}
+}
+
+func PreUpOption(cmds []string) Option {
+	return func(opts *options) {
+		opts.preUp = cmds
+	}
+}
+
+func PreDownOption(cmds []string) Option {
+	return func(opts *options) {
+		opts.preDown = cmds
+	}
+}
+
+func PostUpOption(cmds []string) Option {
+	return func(opts *options) {
+		opts.postUp = cmds
+	}
+}
+
+func PostDownOption(cmds []string) Option {
+	return func(opts *options) {
+		opts.postDown = cmds
 	}
 }
 
@@ -55,12 +85,16 @@ func NewService(name string, ln listener.Listener, h handler.Handler, opts ...Op
 	for _, opt := range opts {
 		opt(&options)
 	}
-	return &defaultService{
+	s := &defaultService{
 		name:     name,
 		listener: ln,
 		handler:  h,
 		options:  options,
 	}
+
+	s.execCmds("pre-up", s.options.preUp)
+
+	return s
 }
 
 func (s *defaultService) Addr() net.Addr {
@@ -68,10 +102,15 @@ func (s *defaultService) Addr() net.Addr {
 }
 
 func (s *defaultService) Close() error {
+	s.execCmds("pre-down", s.options.preDown)
+	defer s.execCmds("post-down", s.options.postDown)
+
 	return s.listener.Close()
 }
 
 func (s *defaultService) Serve() error {
+	s.execCmds("post-up", s.options.postUp)
+
 	if v := xmetrics.GetGauge(
 		xmetrics.MetricServicesGauge,
 		metrics.Labels{}); v != nil {
@@ -152,6 +191,20 @@ func (s *defaultService) Serve() error {
 				}
 			}
 		}()
+	}
+}
+
+func (s *defaultService) execCmds(phase string, cmds []string) {
+	for _, cmd := range cmds {
+		cmd := strings.TrimSpace(cmd)
+		if cmd == "" {
+			continue
+		}
+		s.options.logger.Info(cmd)
+
+		if err := exec.Command("/bin/sh", "-c", cmd).Run(); err != nil {
+			s.options.logger.Warnf("[%s] %s: %v", phase, cmd, err)
+		}
 	}
 }
 

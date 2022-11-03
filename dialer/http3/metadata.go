@@ -9,22 +9,22 @@ import (
 )
 
 const (
-	dialTimeout          = "dialTimeout"
 	defaultAuthorizePath = "/authorize"
 	defaultPushPath      = "/push"
 	defaultPullPath      = "/pull"
 )
 
-const (
-	defaultDialTimeout = 5 * time.Second
-)
-
 type metadata struct {
-	dialTimeout   time.Duration
 	authorizePath string
 	pushPath      string
 	pullPath      string
 	host          string
+
+	// QUIC config options
+	keepAlivePeriod  time.Duration
+	maxIdleTimeout   time.Duration
+	handshakeTimeout time.Duration
+	maxStreams       int
 }
 
 func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -33,6 +33,12 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		pushPath      = "pushPath"
 		pullPath      = "pullPath"
 		host          = "host"
+
+		keepAlive        = "keepAlive"
+		keepAlivePeriod  = "ttl"
+		handshakeTimeout = "handshakeTimeout"
+		maxIdleTimeout   = "maxIdleTimeout"
+		maxStreams       = "maxStreams"
 	)
 
 	d.md.authorizePath = mdutil.GetString(md, authorizePath)
@@ -49,5 +55,15 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	d.md.host = mdutil.GetString(md, host)
+	if !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
+		d.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
+		if d.md.keepAlivePeriod <= 0 {
+			d.md.keepAlivePeriod = 10 * time.Second
+		}
+	}
+	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
+	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
+
 	return
 }

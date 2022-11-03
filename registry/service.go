@@ -5,16 +5,5 @@ import (
 )
 
 type serviceRegistry struct {
-	registry
-}
-
-func (r *serviceRegistry) Register(name string, v service.Service) error {
-	return r.registry.Register(name, v)
-}
-
-func (r *serviceRegistry) Get(name string) service.Service {
-	if v := r.registry.Get(name); v != nil {
-		return v.(service.Service)
-	}
-	return nil
+	registry[service.Service]
 }

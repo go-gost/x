@@ -7,7 +7,7 @@ import (
 )
 
 type recorderRegistry struct {
-	registry
+	registry[recorder.Recorder]
 }
 
 func (r *recorderRegistry) Register(name string, v recorder.Recorder) error {

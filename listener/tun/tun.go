@@ -50,7 +50,9 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		return
 	}
 
-	dev = &tunDevice{dev: ifce}
+	dev = &tunDevice{
+		dev: ifce,
+	}
 	name, err = ifce.Name()
 
 	return

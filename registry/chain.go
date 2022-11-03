@@ -9,7 +9,7 @@ import (
 )
 
 type chainRegistry struct {
-	registry
+	registry[chain.Chainer]
 }
 
 func (r *chainRegistry) Register(name string, v chain.Chainer) error {

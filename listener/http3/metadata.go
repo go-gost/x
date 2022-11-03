@@ -2,6 +2,7 @@ package http3
 
 import (
 	"strings"
+	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
@@ -19,6 +20,12 @@ type metadata struct {
 	pushPath      string
 	pullPath      string
 	backlog       int
+
+	// QUIC config options
+	keepAlivePeriod  time.Duration
+	maxIdleTimeout   time.Duration
+	handshakeTimeout time.Duration
+	maxStreams       int
 }
 
 func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
@@ -26,6 +33,12 @@ func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
 		authorizePath = "authorizePath"
 		pushPath      = "pushPath"
 		pullPath      = "pullPath"
+
+		keepAlive        = "keepAlive"
+		keepAlivePeriod  = "ttl"
+		handshakeTimeout = "handshakeTimeout"
+		maxIdleTimeout   = "maxIdleTimeout"
+		maxStreams       = "maxStreams"
 
 		backlog = "backlog"
 	)
@@ -47,6 +60,16 @@ func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
+
+	if mdutil.GetBool(md, keepAlive) {
+		l.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
+		if l.md.keepAlivePeriod <= 0 {
+			l.md.keepAlivePeriod = 10 * time.Second
+		}
+	}
+	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
+	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	l.md.maxStreams = mdutil.GetInt(md, maxStreams)
 
 	return
 }

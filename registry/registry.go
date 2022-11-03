@@ -23,24 +23,24 @@ var (
 )
 
 var (
-	listenerReg  Registry[NewListener]  = &listenerRegistry{}
-	handlerReg   Registry[NewHandler]   = &handlerRegistry{}
-	dialerReg    Registry[NewDialer]    = &dialerRegistry{}
-	connectorReg Registry[NewConnector] = &connectorRegistry{}
+	listenerReg  Registry[NewListener]  = new(listenerRegistry)
+	handlerReg   Registry[NewHandler]   = new(handlerRegistry)
+	dialerReg    Registry[NewDialer]    = new(dialerRegistry)
+	connectorReg Registry[NewConnector] = new(connectorRegistry)
 
-	serviceReg   Registry[service.Service]     = &serviceRegistry{}
-	chainReg     Registry[chain.Chainer]       = &chainRegistry{}
-	hopReg       Registry[chain.Hop]           = &hopRegistry{}
-	autherReg    Registry[auth.Authenticator]  = &autherRegistry{}
-	admissionReg Registry[admission.Admission] = &admissionRegistry{}
-	bypassReg    Registry[bypass.Bypass]       = &bypassRegistry{}
-	resolverReg  Registry[resolver.Resolver]   = &resolverRegistry{}
-	hostsReg     Registry[hosts.HostMapper]    = &hostsRegistry{}
-	recorderReg  Registry[recorder.Recorder]   = &recorderRegistry{}
+	serviceReg   Registry[service.Service]     = new(serviceRegistry)
+	chainReg     Registry[chain.Chainer]       = new(chainRegistry)
+	hopReg       Registry[chain.Hop]           = new(hopRegistry)
+	autherReg    Registry[auth.Authenticator]  = new(autherRegistry)
+	admissionReg Registry[admission.Admission] = new(admissionRegistry)
+	bypassReg    Registry[bypass.Bypass]       = new(bypassRegistry)
+	resolverReg  Registry[resolver.Resolver]   = new(resolverRegistry)
+	hostsReg     Registry[hosts.HostMapper]    = new(hostsRegistry)
+	recorderReg  Registry[recorder.Recorder]   = new(recorderRegistry)
 
-	trafficLimiterReg Registry[traffic.TrafficLimiter] = &trafficLimiterRegistry{}
-	connLimiterReg    Registry[conn.ConnLimiter]       = &connLimiterRegistry{}
-	rateLimiterReg    Registry[rate.RateLimiter]       = &rateLimiterRegistry{}
+	trafficLimiterReg Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
+	connLimiterReg    Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
+	rateLimiterReg    Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
 )
 
 type Registry[T any] interface {
@@ -48,14 +48,15 @@ type Registry[T any] interface {
 	Unregister(name string)
 	IsRegistered(name string) bool
 	Get(name string) T
+	GetAll() map[string]T
 }
 
-type registry struct {
+type registry[T any] struct {
 	m sync.Map
 }
 
-func (r *registry) Register(name string, v any) error {
-	if name == "" || v == nil {
+func (r *registry[T]) Register(name string, v T) error {
+	if name == "" {
 		return nil
 	}
 	if _, loaded := r.m.LoadOrStore(name, v); loaded {
@@ -65,7 +66,7 @@ func (r *registry) Register(name string, v any) error {
 	return nil
 }
 
-func (r *registry) Unregister(name string) {
+func (r *registry[T]) Unregister(name string) {
 	if v, ok := r.m.Load(name); ok {
 		if closer, ok := v.(io.Closer); ok {
 			closer.Close()
@@ -74,17 +75,29 @@ func (r *registry) Unregister(name string) {
 	}
 }
 
-func (r *registry) IsRegistered(name string) bool {
+func (r *registry[T]) IsRegistered(name string) bool {
 	_, ok := r.m.Load(name)
 	return ok
 }
 
-func (r *registry) Get(name string) any {
+func (r *registry[T]) Get(name string) (t T) {
 	if name == "" {
-		return nil
+		return
 	}
 	v, _ := r.m.Load(name)
-	return v
+	t, _ = v.(T)
+	return
+}
+
+func (r *registry[T]) GetAll() (m map[string]T) {
+	m = make(map[string]T)
+	r.m.Range(func(key, value any) bool {
+		k, _ := key.(string)
+		v, _ := value.(T)
+		m[k] = v
+		return true
+	})
+	return
 }
 
 func ListenerRegistry() Registry[NewListener] {

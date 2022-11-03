@@ -11,6 +11,7 @@ type metadata struct {
 	keepAlivePeriod  time.Duration
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
+	maxStreams       int
 
 	cipherKey []byte
 }
@@ -21,6 +22,7 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 		keepAlivePeriod  = "ttl"
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
+		maxStreams       = "maxStreams"
 
 		cipherKey = "cipherKey"
 	)
@@ -29,7 +31,7 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.cipherKey = []byte(key)
 	}
 
-	if mdutil.GetBool(md, keepAlive) {
+	if !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
 		d.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if d.md.keepAlivePeriod <= 0 {
 			d.md.keepAlivePeriod = 10 * time.Second
@@ -37,6 +39,7 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
 
 	return
 }

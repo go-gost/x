@@ -16,6 +16,7 @@ type metadata struct {
 	keepAlivePeriod  time.Duration
 	handshakeTimeout time.Duration
 	maxIdleTimeout   time.Duration
+	maxStreams       int
 
 	cipherKey []byte
 	backlog   int
@@ -27,6 +28,7 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 		keepAlivePeriod  = "ttl"
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
+		maxStreams       = "maxStreams"
 
 		backlog   = "backlog"
 		cipherKey = "cipherKey"
@@ -49,6 +51,7 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	l.md.maxStreams = mdutil.GetInt(md, maxStreams)
 
 	return
 }

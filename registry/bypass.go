@@ -5,7 +5,7 @@ import (
 )
 
 type bypassRegistry struct {
-	registry
+	registry[bypass.Bypass]
 }
 
 func (r *bypassRegistry) Register(name string, v bypass.Bypass) error {

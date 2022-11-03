@@ -5,7 +5,7 @@ import (
 )
 
 type admissionRegistry struct {
-	registry
+	registry[admission.Admission]
 }
 
 func (r *admissionRegistry) Register(name string, v admission.Admission) error {

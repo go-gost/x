@@ -7,7 +7,7 @@ import (
 )
 
 type hostsRegistry struct {
-	registry
+	registry[hosts.HostMapper]
 }
 
 func (r *hostsRegistry) Register(name string, v hosts.HostMapper) error {

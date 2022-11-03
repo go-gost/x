@@ -5,7 +5,7 @@ import (
 )
 
 type autherRegistry struct {
-	registry
+	registry[auth.Authenticator]
 }
 
 func (r *autherRegistry) Register(name string, v auth.Authenticator) error {
