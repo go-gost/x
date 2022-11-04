@@ -173,8 +173,6 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 					return nil
 				}
 
-				// h.updateRoute(src, addr, log)
-
 				if addr := h.findRouteFor(dst, config.Routes...); addr != nil {
 					log.Debugf("find route: %s -> %s", dst, addr)
 

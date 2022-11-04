@@ -102,7 +102,9 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		})
 		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-		h.handleClient(ctx, conn, raddr, config, log)
+		if err := h.handleClient(ctx, conn, raddr, config, log); err != nil {
+			log.Error(err)
+		}
 		return nil
 	}
 

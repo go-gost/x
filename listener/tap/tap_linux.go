@@ -2,15 +2,16 @@ package tap
 
 import (
 	"fmt"
+	"io"
 	"net"
-	"os/exec"
-	"strings"
 
+	tap_util "github.com/go-gost/x/internal/util/tap"
 	"github.com/songgao/water"
+	"github.com/vishvananda/netlink"
 )
 
-func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) {
-	ifce, err = water.New(water.Config{
+func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
+	tap, err := water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
 			Name: l.md.config.Name,
@@ -20,46 +21,61 @@ func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) 
 		return
 	}
 
-	if err = l.exeCmd(fmt.Sprintf("ip link set dev %s mtu %d", ifce.Name(), l.md.config.MTU)); err != nil {
-		l.logger.Warn(err)
+	dev = tap
+	name = tap.Name()
+
+	ifce, err := net.InterfaceByName(name)
+	if err != nil {
+		return
+	}
+
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return
+	}
+
+	if err = netlink.LinkSetMTU(link, l.md.config.MTU); err != nil {
+		return
 	}
 
 	if l.md.config.Net != "" {
-		if err = l.exeCmd(fmt.Sprintf("ip address add %s dev %s", l.md.config.Net, ifce.Name())); err != nil {
-			l.logger.Warn(err)
+		var ipNet *net.IPNet
+		ip, ipNet, err = net.ParseCIDR(l.md.config.Net)
+		if err != nil {
+			return
+		}
+
+		if err = netlink.AddrAdd(link, &netlink.Addr{
+			IPNet: &net.IPNet{
+				IP:   ip,
+				Mask: ipNet.Mask,
+			},
+		}); err != nil {
+			return
 		}
 	}
-
-	if err = l.exeCmd(fmt.Sprintf("ip link set dev %s up", ifce.Name())); err != nil {
-		l.logger.Warn(err)
+	if err = netlink.LinkSetUp(link); err != nil {
+		return
 	}
 
-	if err = l.addRoutes(ifce.Name(), l.md.config.Gateway, l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(ifce, l.md.config.Routes...); err != nil {
 		return
 	}
 
 	return
 }
 
-func (l *tapListener) exeCmd(cmd string) error {
-	l.logger.Debug(cmd)
-
-	args := strings.Split(cmd, " ")
-	if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
-		return fmt.Errorf("%s: %v", cmd, err)
-	}
-
-	return nil
-}
-
-func (l *tapListener) addRoutes(ifName string, gw string, routes ...string) error {
+func (l *tapListener) addRoutes(ifce *net.Interface, routes ...tap_util.Route) error {
 	for _, route := range routes {
-		cmd := fmt.Sprintf("ip route add %s via %s dev %s", route, gw, ifName)
-		l.logger.Debug(cmd)
-
-		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
-			l.logger.Warnf("%s: %v", cmd, er)
+		r := netlink.Route{
+			Dst: &route.Net,
+			Gw:  route.Gateway,
+		}
+		if r.Gw == nil {
+			r.LinkIndex = ifce.Index
+		}
+		if err := netlink.RouteReplace(&r); err != nil {
+			return fmt.Errorf("add route %v %v: %v", r.Dst, r.Gw, err)
 		}
 	}
 	return nil

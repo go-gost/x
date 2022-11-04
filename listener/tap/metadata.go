@@ -1,6 +1,9 @@
 package tap
 
 import (
+	"net"
+	"strings"
+
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	tap_util "github.com/go-gost/x/internal/util/tap"
@@ -19,6 +22,7 @@ func (l *tapListener) parseMetadata(md mdata.Metadata) (err error) {
 		name    = "name"
 		netKey  = "net"
 		mtu     = "mtu"
+		route   = "route"
 		routes  = "routes"
 		gateway = "gw"
 	)
@@ -33,9 +37,35 @@ func (l *tapListener) parseMetadata(md mdata.Metadata) (err error) {
 		config.MTU = DefaultMTU
 	}
 
+	gw := net.ParseIP(config.Gateway)
+
+	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
+		var route tap_util.Route
+		_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(s))
+		if ipNet == nil {
+			continue
+		}
+		route.Net = *ipNet
+		route.Gateway = gw
+
+		config.Routes = append(config.Routes, route)
+	}
+
 	for _, s := range mdutil.GetStrings(md, routes) {
-		if s != "" {
-			config.Routes = append(config.Routes, s)
+		ss := strings.SplitN(s, " ", 2)
+		if len(ss) == 2 {
+			var route tap_util.Route
+			_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(ss[0]))
+			if ipNet == nil {
+				continue
+			}
+			route.Net = *ipNet
+			route.Gateway = net.ParseIP(ss[1])
+			if route.Gateway == nil {
+				route.Gateway = gw
+			}
+
+			config.Routes = append(config.Routes, route)
 		}
 	}
 

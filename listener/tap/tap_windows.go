@@ -2,17 +2,19 @@ package tap
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os/exec"
 	"strings"
 
+	tap_util "github.com/go-gost/x/internal/util/tap"
 	"github.com/songgao/water"
 )
 
-func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) {
+func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
 	ip, ipNet, _ := net.ParseCIDR(l.md.config.Net)
 
-	ifce, err = water.New(water.Config{
+	ifce, err := water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
 			ComponentID:   "tap0901",
@@ -23,6 +25,9 @@ func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) 
 	if err != nil {
 		return
 	}
+
+	dev = ifce
+	name = ifce.Name()
 
 	if ip != nil && ipNet != nil {
 		cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
@@ -37,21 +42,21 @@ func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) 
 		}
 	}
 
-	if err = l.addRoutes(ifce.Name(), l.md.config.Gateway, l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(ifce.Name(), l.md.config.Routes...); err != nil {
 		return
 	}
 
 	return
 }
 
-func (l *tapListener) addRoutes(ifName string, gw string, routes ...string) error {
+func (l *tapListener) addRoutes(ifName string, routes ...tap_util.Route) error {
 	for _, route := range routes {
 		l.deleteRoute(ifName, route)
 
 		cmd := fmt.Sprintf("netsh interface ip add route prefix=%s interface=%s store=active",
-			route, ifName)
-		if gw != "" {
-			cmd += " nexthop=" + gw
+			route.Net.String(), ifName)
+		if route.Gateway != nil {
+			cmd += " nexthop=" + route.Gateway.String()
 		}
 		l.logger.Debug(cmd)
 		args := strings.Split(cmd, " ")
@@ -62,9 +67,9 @@ func (l *tapListener) addRoutes(ifName string, gw string, routes ...string) erro
 	return nil
 }
 
-func (l *tapListener) deleteRoute(ifName string, route string) error {
+func (l *tapListener) deleteRoute(ifName string, route tap_util.Route) error {
 	cmd := fmt.Sprintf("netsh interface ip delete route prefix=%s interface=%s store=active",
-		route, ifName)
+		route.Net.String(), ifName)
 	l.logger.Debug(cmd)
 	args := strings.Split(cmd, " ")
 	return exec.Command(args[0], args[1:]...).Run()
