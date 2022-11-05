@@ -7,7 +7,7 @@ import (
 	"github.com/songgao/water"
 )
 
-func (l *tapListener) createTap() (ifce *water.Interface, ip net.IP, err error) {
+func (l *tapListener) createTap() (ifce *water.Interface, name string, ip net.IP, err error) {
 	err = errors.New("tap is not supported on darwin")
 	return
 }
