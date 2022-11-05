@@ -231,7 +231,7 @@ func (l *rateLimiter) reload(ctx context.Context) error {
 			ipLimits[key] = NewRateLimitGenerator(limit)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewRateLimitGenerator(limit)
+				ipLimits[key] = NewRateLimitSingleGenerator(limit)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {

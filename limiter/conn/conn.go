@@ -238,7 +238,7 @@ func (l *connLimiter) reload(ctx context.Context) error {
 			ipLimits[key] = NewConnLimitGenerator(limit)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewConnLimitGenerator(limit)
+				ipLimits[key] = NewConnLimitSingleGenerator(limit)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {

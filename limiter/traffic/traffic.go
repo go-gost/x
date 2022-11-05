@@ -100,6 +100,8 @@ func LoggerOption(logger logger.Logger) Option {
 type trafficLimiter struct {
 	limits     map[string]TrafficLimitGenerator
 	cidrLimits cidranger.Ranger
+	inLimits   map[string]limiter.Limiter
+	outLimits  map[string]limiter.Limiter
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
@@ -115,6 +117,8 @@ func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
 	lim := &trafficLimiter{
 		limits:     make(map[string]TrafficLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
+		inLimits:   make(map[string]limiter.Limiter),
+		outLimits:  make(map[string]limiter.Limiter),
 		options:    options,
 		cancelFunc: cancel,
 	}
@@ -134,25 +138,6 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 
 	var lims []limiter.Limiter
 
-	if ip := net.ParseIP(key); ip != nil {
-		found := false
-		if p := l.limits[key]; p != nil {
-			if lim := p.In(); lim != nil {
-				lims = append(lims, lim)
-				found = true
-			}
-		}
-		if !found {
-			if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
-				if v, _ := p[0].(*cidrLimitEntry); v != nil {
-					if lim := v.limit.In(); lim != nil {
-						lims = append(lims, lim)
-					}
-				}
-			}
-		}
-	}
-
 	if p := l.limits[ConnLimitKey]; p != nil {
 		if lim := p.In(); lim != nil {
 			lims = append(lims, lim)
@@ -161,6 +146,31 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	if p := l.limits[GlobalLimitKey]; p != nil {
 		if lim := p.In(); lim != nil {
 			lims = append(lims, lim)
+		}
+	}
+
+	// IP limiter
+	if lim, ok := l.inLimits[key]; ok {
+		if lim != nil {
+			lims = append(lims, lim)
+		}
+	} else {
+		if ip := net.ParseIP(key); ip != nil {
+			if p := l.limits[key]; p != nil {
+				if lim = p.In(); lim != nil {
+					lims = append(lims, lim)
+				}
+			}
+			if lim == nil {
+				if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
+					if v, _ := p[0].(*cidrLimitEntry); v != nil {
+						if lim = v.limit.In(); lim != nil {
+							lims = append(lims, lim)
+						}
+					}
+				}
+			}
+			l.inLimits[key] = lim
 		}
 	}
 
@@ -182,25 +192,6 @@ func (l *trafficLimiter) Out(key string) limiter.Limiter {
 
 	var lims []limiter.Limiter
 
-	if ip := net.ParseIP(key); ip != nil {
-		found := false
-		if p := l.limits[key]; p != nil {
-			if lim := p.Out(); lim != nil {
-				lims = append(lims, lim)
-				found = true
-			}
-		}
-		if !found {
-			if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
-				if v, _ := p[0].(*cidrLimitEntry); v != nil {
-					if lim := v.limit.Out(); lim != nil {
-						lims = append(lims, lim)
-					}
-				}
-			}
-		}
-	}
-
 	if p := l.limits[ConnLimitKey]; p != nil {
 		if lim := p.Out(); lim != nil {
 			lims = append(lims, lim)
@@ -209,6 +200,31 @@ func (l *trafficLimiter) Out(key string) limiter.Limiter {
 	if p := l.limits[GlobalLimitKey]; p != nil {
 		if lim := p.Out(); lim != nil {
 			lims = append(lims, lim)
+		}
+	}
+
+	// IP limiter
+	if lim, ok := l.outLimits[key]; ok {
+		if lim != nil {
+			lims = append(lims, lim)
+		}
+	} else {
+		if ip := net.ParseIP(key); ip != nil {
+			if p := l.limits[key]; p != nil {
+				if lim = p.Out(); lim != nil {
+					lims = append(lims, lim)
+				}
+			}
+			if lim == nil {
+				if p, _ := l.cidrLimits.ContainingNetworks(ip); len(p) > 0 {
+					if v, _ := p[0].(*cidrLimitEntry); v != nil {
+						if lim = v.limit.Out(); lim != nil {
+							lims = append(lims, lim)
+						}
+					}
+				}
+			}
+			l.outLimits[key] = lim
 		}
 	}
 
@@ -268,7 +284,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			limits[key] = NewTrafficLimitGenerator(in, out)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				limits[key] = NewTrafficLimitGenerator(in, out)
+				limits[key] = NewTrafficLimitSingleGenerator(in, out)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
@@ -285,6 +301,8 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 
 	l.limits = limits
 	l.cidrLimits = cidrLimits
+	l.inLimits = make(map[string]limiter.Limiter)
+	l.outLimits = make(map[string]limiter.Limiter)
 
 	return nil
 }
