@@ -98,10 +98,8 @@ func LoggerOption(logger logger.Logger) Option {
 }
 
 type trafficLimiter struct {
-	ipLimits   map[string]TrafficLimitGenerator
+	limits     map[string]TrafficLimitGenerator
 	cidrLimits cidranger.Ranger
-	inLimits   map[string]limiter.Limiter
-	outLimits  map[string]limiter.Limiter
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
@@ -115,10 +113,8 @@ func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	lim := &trafficLimiter{
-		ipLimits:   make(map[string]TrafficLimitGenerator),
+		limits:     make(map[string]TrafficLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
-		inLimits:   make(map[string]limiter.Limiter),
-		outLimits:  make(map[string]limiter.Limiter),
 		options:    options,
 		cancelFunc: cancel,
 	}
@@ -136,15 +132,11 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if lim, ok := l.inLimits[key]; ok {
-		return lim
-	}
-
 	var lims []limiter.Limiter
 
 	if ip := net.ParseIP(key); ip != nil {
 		found := false
-		if p := l.ipLimits[key]; p != nil {
+		if p := l.limits[key]; p != nil {
 			if lim := p.In(); lim != nil {
 				lims = append(lims, lim)
 				found = true
@@ -161,12 +153,12 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 		}
 	}
 
-	if p := l.ipLimits[ConnLimitKey]; p != nil {
+	if p := l.limits[ConnLimitKey]; p != nil {
 		if lim := p.In(); lim != nil {
 			lims = append(lims, lim)
 		}
 	}
-	if p := l.ipLimits[GlobalLimitKey]; p != nil {
+	if p := l.limits[GlobalLimitKey]; p != nil {
 		if lim := p.In(); lim != nil {
 			lims = append(lims, lim)
 		}
@@ -176,7 +168,6 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 	if len(lims) > 0 {
 		lim = newLimiterGroup(lims...)
 	}
-	l.inLimits[key] = lim
 
 	if lim != nil && l.options.logger != nil {
 		l.options.logger.Debugf("input limit for %s: %d", key, lim.Limit())
@@ -189,15 +180,11 @@ func (l *trafficLimiter) Out(key string) limiter.Limiter {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if lim, ok := l.outLimits[key]; ok {
-		return lim
-	}
-
 	var lims []limiter.Limiter
 
 	if ip := net.ParseIP(key); ip != nil {
 		found := false
-		if p := l.ipLimits[key]; p != nil {
+		if p := l.limits[key]; p != nil {
 			if lim := p.Out(); lim != nil {
 				lims = append(lims, lim)
 				found = true
@@ -214,12 +201,12 @@ func (l *trafficLimiter) Out(key string) limiter.Limiter {
 		}
 	}
 
-	if p := l.ipLimits[ConnLimitKey]; p != nil {
+	if p := l.limits[ConnLimitKey]; p != nil {
 		if lim := p.Out(); lim != nil {
 			lims = append(lims, lim)
 		}
 	}
-	if p := l.ipLimits[GlobalLimitKey]; p != nil {
+	if p := l.limits[GlobalLimitKey]; p != nil {
 		if lim := p.Out(); lim != nil {
 			lims = append(lims, lim)
 		}
@@ -229,7 +216,6 @@ func (l *trafficLimiter) Out(key string) limiter.Limiter {
 	if len(lims) > 0 {
 		lim = newLimiterGroup(lims...)
 	}
-	l.outLimits[key] = lim
 
 	if lim != nil && l.options.logger != nil {
 		l.options.logger.Debugf("output limit for %s: %d", key, lim.Limit())
@@ -267,7 +253,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 
 	lines := append(l.options.limits, v...)
 
-	ipLimits := make(map[string]TrafficLimitGenerator)
+	limits := make(map[string]TrafficLimitGenerator)
 	cidrLimits := cidranger.NewPCTrieRanger()
 
 	for _, s := range lines {
@@ -277,12 +263,12 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 		}
 		switch key {
 		case GlobalLimitKey:
-			ipLimits[key] = NewTrafficLimitSingleGenerator(in, out)
+			limits[key] = NewTrafficLimitSingleGenerator(in, out)
 		case ConnLimitKey:
-			ipLimits[key] = NewTrafficLimitGenerator(in, out)
+			limits[key] = NewTrafficLimitGenerator(in, out)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewTrafficLimitGenerator(in, out)
+				limits[key] = NewTrafficLimitGenerator(in, out)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
@@ -297,10 +283,8 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	l.ipLimits = ipLimits
+	l.limits = limits
 	l.cidrLimits = cidrLimits
-	l.inLimits = make(map[string]limiter.Limiter)
-	l.outLimits = make(map[string]limiter.Limiter)
 
 	return nil
 }
