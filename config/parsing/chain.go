@@ -202,6 +202,7 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			chain.ResoloverNodeOption(registry.ResolverRegistry().Get(v.Resolver)),
 			chain.HostMapperNodeOption(registry.HostsRegistry().Get(v.Hosts)),
 			chain.MetadataNodeOption(nm),
+			chain.HostNodeOption(v.Host),
 		)
 		nodes = append(nodes, node)
 	}

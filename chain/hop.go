@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"net"
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
@@ -71,19 +72,47 @@ func (p *chainHop) Select(ctx context.Context, opts ...chain.SelectOption) *chai
 	}
 
 	// hop level bypass
-	if p.options.bypass != nil && p.options.bypass.Contains(options.Addr) {
+	if p.options.bypass != nil &&
+		p.options.bypass.Contains(options.Addr) {
 		return nil
 	}
 
+	filters := p.nodes
+	if host := options.Host; host != "" {
+		filters = nil
+		if v, _, _ := net.SplitHostPort(host); v != "" {
+			host = v
+		}
+		var nodes []*chain.Node
+		for _, node := range p.nodes {
+			if node == nil {
+				continue
+			}
+			if node.Options().Host == "" {
+				nodes = append(nodes, node)
+				continue
+			}
+			if node.Options().Host == host {
+				filters = append(filters, node)
+				p.options.logger.Debugf("find node for host: %s", host)
+			}
+		}
+		if len(filters) == 0 {
+			filters = nodes
+		}
+	}
+
 	var nodes []*chain.Node
-	for _, node := range p.nodes {
+	for _, node := range filters {
 		if node == nil {
 			continue
 		}
 		// node level bypass
-		if node.Options().Bypass != nil && node.Options().Bypass.Contains(options.Addr) {
+		if node.Options().Bypass != nil &&
+			node.Options().Bypass.Contains(options.Addr) {
 			continue
 		}
+
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {

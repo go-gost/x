@@ -260,6 +260,7 @@ type ForwarderConfig struct {
 type ForwardNodeConfig struct {
 	Name     string   `yaml:",omitempty" json:"name,omitempty"`
 	Addr     string   `yaml:",omitempty" json:"addr,omitempty"`
+	Host     string   `yaml:",omitempty" json:"host,omitempty"`
 	Bypass   string   `yaml:",omitempty" json:"bypass,omitempty"`
 	Bypasses []string `yaml:",omitempty" json:"bypasses,omitempty"`
 }
@@ -333,6 +334,7 @@ type HopConfig struct {
 type NodeConfig struct {
 	Name      string           `json:"name"`
 	Addr      string           `yaml:",omitempty" json:"addr,omitempty"`
+	Host      string           `yaml:",omitempty" json:"host,omitempty"`
 	Interface string           `yaml:",omitempty" json:"interface,omitempty"`
 	SockOpts  *SockOptsConfig  `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Bypass    string           `yaml:",omitempty" json:"bypass,omitempty"`

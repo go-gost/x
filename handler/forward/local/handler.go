@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	xchain "github.com/go-gost/x/chain"
+	"github.com/go-gost/x/handler/forward/internal/forward"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
@@ -84,16 +86,27 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return nil
 	}
 
-	target := h.hop.Select(ctx)
+	network := "tcp"
+	if _, ok := conn.(net.PacketConn); ok {
+		network = "udp"
+	}
+
+	var rw io.ReadWriter
+	var host string
+	if h.md.sniffing {
+		if network == "tcp" {
+			rw, host, _ = forward.SniffHost(ctx, conn)
+		}
+	}
+
+	var target *chain.Node
+	if h.hop != nil {
+		target = h.hop.Select(ctx, chain.HostSelectOption(host))
+	}
 	if target == nil {
 		err := errors.New("target not available")
 		log.Error(err)
 		return err
-	}
-
-	network := "tcp"
-	if _, ok := conn.(net.PacketConn); ok {
-		network = "udp"
 	}
 
 	log = log.WithFields(map[string]any{
@@ -119,7 +132,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	netpkg.Transport(conn, cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
