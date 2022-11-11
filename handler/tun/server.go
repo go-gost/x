@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
@@ -16,16 +17,26 @@ import (
 )
 
 func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tun_util.Config, log logger.Logger) error {
-	pc, err := net.ListenPacket(conn.LocalAddr().Network(), conn.LocalAddr().String())
-	if err != nil {
-		return err
-	}
-	defer pc.Close()
+	for {
+		err := func() error {
+			pc, err := net.ListenPacket(conn.LocalAddr().Network(), conn.LocalAddr().String())
+			if err != nil {
+				return err
+			}
+			defer pc.Close()
 
-	return h.transportServer(conn, pc, config, log)
+			return h.transportServer(conn, pc, config, log)
+		}()
+		if err == ErrTun {
+			return err
+		}
+
+		log.Error(err)
+		time.Sleep(time.Second)
+	}
 }
 
-func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
 	tunIP, _, err := net.ParseCIDR(config.Net)
 	if err != nil {
 		return err
@@ -41,7 +52,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 
 				n, err := tun.Read(*b)
 				if err != nil {
-					return err
+					return ErrTun
 				}
 
 				var src, dst net.IP
@@ -181,7 +192,7 @@ func (h *tunHandler) transportServer(tun net.Conn, conn net.PacketConn, config *
 				}
 
 				if _, err := tun.Write((*b)[:n]); err != nil {
-					return err
+					return ErrTun
 				}
 				return nil
 			}()

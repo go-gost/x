@@ -16,6 +16,10 @@ import (
 	"github.com/songgao/water/waterutil"
 )
 
+var (
+	ErrTun = errors.New("tun device error")
+)
+
 func init() {
 	registry.HandlerRegistry().Register("tun", NewHandler)
 }

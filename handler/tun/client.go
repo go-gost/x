@@ -30,18 +30,28 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.A
 		return err
 	}
 
-	cc, err := h.router.Dial(ctx, addr.Network(), addr.String())
-	if err != nil {
-		return err
+	for {
+		err := func() error {
+			cc, err := h.router.Dial(ctx, addr.Network(), addr.String())
+			if err != nil {
+				return err
+			}
+			defer cc.Close()
+
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			go h.keepAlive(ctx, cc, ip)
+
+			return h.transportClient(conn, cc, config, log)
+		}()
+		if err == ErrTun {
+			return err
+		}
+
+		log.Error(err)
+		time.Sleep(time.Second)
 	}
-	defer cc.Close()
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	go h.keepAlive(ctx, cc, ip)
-
-	return h.transportClient(conn, cc, config, log)
 }
 
 func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
@@ -75,7 +85,7 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
 	}
 }
 
-func (h *tunHandler) transportClient(tun net.Conn, conn net.Conn, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, config *tun_util.Config, log logger.Logger) error {
 	errc := make(chan error, 1)
 
 	go func() {
@@ -86,7 +96,7 @@ func (h *tunHandler) transportClient(tun net.Conn, conn net.Conn, config *tun_ut
 
 				n, err := tun.Read(*b)
 				if err != nil {
-					return err
+					return ErrTun
 				}
 
 				if waterutil.IsIPv4((*b)[:n]) {
@@ -173,8 +183,10 @@ func (h *tunHandler) transportClient(tun net.Conn, conn net.Conn, config *tun_ut
 					return nil
 				}
 
-				_, err = tun.Write((*b)[:n])
-				return err
+				if _, err = tun.Write((*b)[:n]); err != nil {
+					return ErrTun
+				}
+				return nil
 			}()
 
 			if err != nil {
