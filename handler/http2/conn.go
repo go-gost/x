@@ -6,19 +6,6 @@ import (
 	"net/http"
 )
 
-type readWriter struct {
-	r io.Reader
-	w io.Writer
-}
-
-func (rw *readWriter) Read(p []byte) (n int, err error) {
-	return rw.r.Read(p)
-}
-
-func (rw *readWriter) Write(p []byte) (n int, err error) {
-	return rw.w.Write(p)
-}
-
 type flushWriter struct {
 	w io.Writer
 }

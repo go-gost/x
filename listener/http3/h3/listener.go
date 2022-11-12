@@ -1,33 +1,30 @@
-package http3
+package h3
 
 import (
 	"net"
-	"net/http"
-	"sync"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	mdx "github.com/go-gost/x/metadata"
+	pht_util "github.com/go-gost/x/internal/util/pht"
+	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 )
 
 func init() {
-	registry.ListenerRegistry().Register("http3", NewListener)
+	registry.ListenerRegistry().Register("h3", NewListener)
 }
 
 type http3Listener struct {
-	server  *http3.Server
 	addr    net.Addr
-	cqueue  chan net.Conn
-	errChan chan error
+	server  *pht_util.Server
 	logger  logger.Logger
 	md      metadata
 	options listener.Options
-	mu      sync.Mutex
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
@@ -55,10 +52,9 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	l.server = &http3.Server{
-		Addr:      l.options.Addr,
-		TLSConfig: l.options.TLSConfig,
-		QuicConfig: &quic.Config{
+	l.server = pht_util.NewHTTP3Server(
+		l.options.Addr,
+		&quic.Config{
 			KeepAlivePeriod:      l.md.keepAlivePeriod,
 			HandshakeIdleTimeout: l.md.handshakeTimeout,
 			MaxIdleTimeout:       l.md.maxIdleTimeout,
@@ -67,11 +63,11 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 			},
 			MaxIncomingStreams: int64(l.md.maxStreams),
 		},
-		Handler: http.HandlerFunc(l.handleFunc),
-	}
-
-	l.cqueue = make(chan net.Conn, l.md.backlog)
-	l.errChan = make(chan error, 1)
+		pht_util.TLSConfigServerOption(l.options.TLSConfig),
+		pht_util.BacklogServerOption(l.md.backlog),
+		pht_util.PathServerOption(l.md.authorizePath, l.md.pushPath, l.md.pullPath),
+		pht_util.LoggerServerOption(l.options.Logger),
+	)
 
 	go func() {
 		if err := l.server.ListenAndServe(); err != nil {
@@ -83,15 +79,15 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 }
 
 func (l *http3Listener) Accept() (conn net.Conn, err error) {
-	var ok bool
-	select {
-	case conn = <-l.cqueue:
-	case err, ok = <-l.errChan:
-		if !ok {
-			err = listener.ErrClosed
-		}
+	conn, err = l.server.Accept()
+	if err != nil {
+		return
 	}
-	return
+
+	conn = metrics.WrapConn(l.options.Service, conn)
+	conn = admission.WrapConn(l.options.Admission, conn)
+	conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
+	return conn, nil
 }
 
 func (l *http3Listener) Addr() net.Addr {
@@ -99,36 +95,5 @@ func (l *http3Listener) Addr() net.Addr {
 }
 
 func (l *http3Listener) Close() (err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	select {
-	case <-l.errChan:
-	default:
-		err = l.server.Close()
-		l.errChan <- err
-		close(l.errChan)
-	}
-	return nil
-}
-
-func (l *http3Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
-	raddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
-	conn := &conn{
-		laddr:  l.addr,
-		raddr:  raddr,
-		closed: make(chan struct{}),
-		md: mdx.NewMetadata(map[string]any{
-			"r": r,
-			"w": w,
-		}),
-	}
-	select {
-	case l.cqueue <- conn:
-	default:
-		l.logger.Warnf("connection queue is full, client %s discarded", r.RemoteAddr)
-		return
-	}
-
-	<-conn.Done()
+	return l.server.Close()
 }

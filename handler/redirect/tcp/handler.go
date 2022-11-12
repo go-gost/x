@@ -18,6 +18,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	dissector "github.com/go-gost/tls-dissector"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
@@ -99,10 +100,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		// try to sniff TLS traffic
 		var hdr [dissector.RecordHeaderLen]byte
 		_, err := io.ReadFull(rw, hdr[:])
-		rw = &readWriter{
-			Reader: io.MultiReader(bytes.NewReader(hdr[:]), rw),
-			Writer: rw,
-		}
+		rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:]), rw), rw)
 		if err == nil &&
 			hdr[0] == dissector.Handshake &&
 			binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
@@ -112,10 +110,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		// try to sniff HTTP traffic
 		buf := new(bytes.Buffer)
 		_, err = http.ReadRequest(bufio.NewReader(io.TeeReader(rw, buf)))
-		rw = &readWriter{
-			Reader: io.MultiReader(buf, rw),
-			Writer: rw,
-		}
+		rw = xio.NewReadWriter(io.MultiReader(buf, rw), rw)
 		if err == nil {
 			return h.handleHTTP(ctx, rw, conn.RemoteAddr(), log)
 		}
@@ -241,10 +236,7 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", raddr, host)
-	netpkg.Transport(&readWriter{
-		Reader: io.MultiReader(buf, rw),
-		Writer: rw,
-	}, cc)
+	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", raddr, host)

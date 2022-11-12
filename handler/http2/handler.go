@@ -22,6 +22,7 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
@@ -200,7 +201,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 		start := time.Now()
 		log.Debugf("%s <-> %s", req.RemoteAddr, addr)
-		netpkg.Transport(&readWriter{r: req.Body, w: flushWriter{w}}, cc)
+		netpkg.Transport(xio.NewReadWriter(req.Body, flushWriter{w}), cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Debugf("%s >-< %s", req.RemoteAddr, addr)

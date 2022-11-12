@@ -20,6 +20,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	dissector "github.com/go-gost/tls-dissector"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
@@ -87,10 +88,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return err
 	}
 
-	rw := &readWriter{
-		Reader: io.MultiReader(bytes.NewReader(hdr[:]), conn),
-		Writer: conn,
-	}
+	rw := xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:]), conn), conn)
 	if hdr[0] == dissector.Handshake &&
 		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
 		return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), log)
@@ -199,16 +197,12 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", raddr, host)
-	netpkg.Transport(&readWriter{
-		Reader: io.MultiReader(buf, rw),
-		Writer: rw,
-	}, cc)
+	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", raddr, host)
 
 	return nil
-
 }
 
 func (h *sniHandler) decodeHost(r io.Reader) (host string, err error) {
