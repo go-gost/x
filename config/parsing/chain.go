@@ -2,6 +2,7 @@ package parsing
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -196,13 +197,22 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			chain.TimeoutTransportOption(10*time.Second),
 		)
 
+		// convert *.example.com to .example.com
+		// convert *example.com to example.com
+		host := v.Host
+		if strings.HasPrefix(host, "*") {
+			host = host[1:]
+			if !strings.HasPrefix(host, ".") {
+				host = "." + host
+			}
+		}
 		node := chain.NewNode(v.Name, v.Addr,
 			chain.TransportNodeOption(tr),
 			chain.BypassNodeOption(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)),
 			chain.ResoloverNodeOption(registry.ResolverRegistry().Get(v.Resolver)),
 			chain.HostMapperNodeOption(registry.HostsRegistry().Get(v.Hosts)),
 			chain.MetadataNodeOption(nm),
-			chain.HostNodeOption(v.Host),
+			chain.HostNodeOption(host),
 		)
 		nodes = append(nodes, node)
 	}

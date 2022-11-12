@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"net"
+	"strings"
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
@@ -88,13 +89,15 @@ func (p *chainHop) Select(ctx context.Context, opts ...chain.SelectOption) *chai
 			if node == nil {
 				continue
 			}
-			if node.Options().Host == "" {
+			vhost := node.Options().Host
+			if vhost == "" {
 				nodes = append(nodes, node)
 				continue
 			}
-			if node.Options().Host == host {
+			if vhost == host ||
+				vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
 				filters = append(filters, node)
-				p.options.logger.Debugf("find node for host: %s", host)
+				p.options.logger.Debugf("find node for host: %s(match %s)", host, vhost)
 			}
 		}
 		if len(filters) == 0 {
