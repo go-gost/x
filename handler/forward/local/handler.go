@@ -91,7 +91,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		network = "udp"
 	}
 
-	var rw io.ReadWriter
+	var rw io.ReadWriter = conn
 	var host string
 	if h.md.sniffing {
 		if network == "tcp" {
