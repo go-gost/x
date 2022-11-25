@@ -61,6 +61,9 @@ func (c *socks5Connector) Init(md md.Metadata) (err error) {
 				InsecureSkipVerify: true,
 			}
 		}
+		if selector.User != nil {
+			selector.methods = append(selector.methods, socks.MethodTLSAuth)
+		}
 	}
 	c.selector = selector
 
