@@ -87,26 +87,17 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	network := "udp"
-	var raddr net.Addr
-	var err error
-
 	var target *chain.Node
 	if h.hop != nil {
 		target = h.hop.Select(ctx)
 	}
 	if target != nil {
-		raddr, err = net.ResolveUDPAddr(network, target.Addr)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
 		log = log.WithFields(map[string]any{
-			"dst": fmt.Sprintf("%s/%s", raddr.String(), raddr.Network()),
+			"dst": fmt.Sprintf("%s/%s", target.Addr, "udp"),
 		})
 		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-		if err := h.handleClient(ctx, conn, raddr, config, log); err != nil {
+		if err := h.handleClient(ctx, conn, target.Addr, config, log); err != nil {
 			log.Error(err)
 		}
 		return nil

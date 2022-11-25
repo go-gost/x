@@ -24,7 +24,7 @@ var (
 	magicHeader = []byte("GOST")
 )
 
-func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.Addr, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr string, config *tun_util.Config, log logger.Logger) error {
 	ip, _, err := net.ParseCIDR(config.Net)
 	if err != nil {
 		return err
@@ -32,7 +32,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, addr net.A
 
 	for {
 		err := func() error {
-			cc, err := h.router.Dial(ctx, addr.Network(), addr.String())
+			cc, err := h.router.Dial(ctx, "udp", raddr)
 			if err != nil {
 				return err
 			}
