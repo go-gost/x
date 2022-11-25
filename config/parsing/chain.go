@@ -78,6 +78,9 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			v.Connector = &config.ConnectorConfig{
 				Type: "http",
 			}
+		}
+
+		if v.Dialer == nil {
 			v.Dialer = &config.DialerConfig{
 				Type: "tcp",
 			}
