@@ -46,11 +46,13 @@ func (c *socks5Connector) Init(md md.Metadata) (err error) {
 	selector := &clientSelector{
 		methods: []uint8{
 			gosocks5.MethodNoAuth,
-			gosocks5.MethodUserPass,
 		},
 		User:      c.options.Auth,
 		TLSConfig: c.options.TLSConfig,
 		logger:    c.options.Logger,
+	}
+	if selector.User != nil {
+		selector.methods = append(selector.methods, gosocks5.MethodUserPass)
 	}
 	if !c.md.noTLS {
 		selector.methods = append(selector.methods, socks.MethodTLS)
