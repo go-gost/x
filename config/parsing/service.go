@@ -82,6 +82,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var ppv int
 	ifce := cfg.Interface
 	var preUp, preDown, postUp, postDown []string
+	var ignoreChain bool
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		ppv = mdutil.GetInt(md, mdKeyProxyProtocol)
@@ -97,23 +98,30 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		preDown = mdutil.GetStrings(md, mdKeyPreDown)
 		postUp = mdutil.GetStrings(md, mdKeyPostUp)
 		postDown = mdutil.GetStrings(md, mdKeyPostDown)
+		ignoreChain = mdutil.GetBool(md, mdKeyIgnoreChain)
+	}
+
+	listenOpts := []listener.Option{
+		listener.AddrOption(cfg.Addr),
+		listener.AutherOption(auther),
+		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
+		listener.TLSConfigOption(tlsConfig),
+		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
+		listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
+		listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
+		listener.LoggerOption(listenerLogger),
+		listener.ServiceOption(cfg.Name),
+		listener.ProxyProtocolOption(ppv),
+	}
+	if !ignoreChain {
+		listenOpts = append(listenOpts,
+			listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
+		)
 	}
 
 	var ln listener.Listener
 	if rf := registry.ListenerRegistry().Get(cfg.Listener.Type); rf != nil {
-		ln = rf(
-			listener.AddrOption(cfg.Addr),
-			listener.AutherOption(auther),
-			listener.AuthOption(parseAuth(cfg.Listener.Auth)),
-			listener.TLSConfigOption(tlsConfig),
-			listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
-			listener.ChainOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
-			listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
-			listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
-			listener.LoggerOption(listenerLogger),
-			listener.ServiceOption(cfg.Name),
-			listener.ProxyProtocolOption(ppv),
-		)
+		ln = rf(listenOpts...)
 	} else {
 		return nil, fmt.Errorf("unregistered listener: %s", cfg.Listener.Type)
 	}
@@ -163,17 +171,23 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			Record:   r.Record,
 		})
 	}
-	router := chain.NewRouter(
+
+	routerOpts := []chain.RouterOption{
 		chain.RetriesRouterOption(cfg.Handler.Retries),
 		// chain.TimeoutRouterOption(10*time.Second),
 		chain.InterfaceRouterOption(ifce),
 		chain.SockOptsRouterOption(sockOpts),
-		chain.ChainRouterOption(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)),
 		chain.ResolverRouterOption(registry.ResolverRegistry().Get(cfg.Resolver)),
 		chain.HostMapperRouterOption(registry.HostsRegistry().Get(cfg.Hosts)),
 		chain.RecordersRouterOption(recorders...),
 		chain.LoggerRouterOption(handlerLogger),
-	)
+	}
+	if !ignoreChain {
+		routerOpts = append(routerOpts,
+			chain.ChainRouterOption(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)),
+		)
+	}
+	router := chain.NewRouter(routerOpts...)
 
 	var h handler.Handler
 	if rf := registry.HandlerRegistry().Get(cfg.Handler.Type); rf != nil {

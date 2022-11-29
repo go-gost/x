@@ -40,6 +40,7 @@ const (
 	mdKeyPreDown       = "preDown"
 	mdKeyPostUp        = "postUp"
 	mdKeyPostDown      = "postDown"
+	mdKeyIgnoreChain   = "ignoreChain"
 )
 
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
