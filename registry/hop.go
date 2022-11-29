@@ -22,10 +22,7 @@ func (r *hopRegistry) Get(name string) chain.Hop {
 }
 
 func (r *hopRegistry) get(name string) chain.Hop {
-	if v := r.registry.Get(name); v != nil {
-		return v.(chain.Hop)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type hopWrapper struct {

@@ -22,10 +22,7 @@ func (r *trafficLimiterRegistry) Get(name string) traffic.TrafficLimiter {
 }
 
 func (r *trafficLimiterRegistry) get(name string) traffic.TrafficLimiter {
-	if v := r.registry.Get(name); v != nil {
-		return v.(traffic.TrafficLimiter)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type trafficLimiterWrapper struct {
@@ -65,10 +62,7 @@ func (r *connLimiterRegistry) Get(name string) conn.ConnLimiter {
 }
 
 func (r *connLimiterRegistry) get(name string) conn.ConnLimiter {
-	if v := r.registry.Get(name); v != nil {
-		return v.(conn.ConnLimiter)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type connLimiterWrapper struct {
@@ -100,10 +94,7 @@ func (r *rateLimiterRegistry) Get(name string) rate.RateLimiter {
 }
 
 func (r *rateLimiterRegistry) get(name string) rate.RateLimiter {
-	if v := r.registry.Get(name); v != nil {
-		return v.(rate.RateLimiter)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type rateLimiterWrapper struct {

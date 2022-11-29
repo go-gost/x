@@ -20,10 +20,7 @@ func (r *autherRegistry) Get(name string) auth.Authenticator {
 }
 
 func (r *autherRegistry) get(name string) auth.Authenticator {
-	if v := r.registry.Get(name); v != nil {
-		return v.(auth.Authenticator)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type autherWrapper struct {

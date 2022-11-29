@@ -22,10 +22,7 @@ func (r *recorderRegistry) Get(name string) recorder.Recorder {
 }
 
 func (r *recorderRegistry) get(name string) recorder.Recorder {
-	if v := r.registry.Get(name); v != nil {
-		return v.(recorder.Recorder)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type recorderWrapper struct {

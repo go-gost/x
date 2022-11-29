@@ -20,10 +20,7 @@ func (r *bypassRegistry) Get(name string) bypass.Bypass {
 }
 
 func (r *bypassRegistry) get(name string) bypass.Bypass {
-	if v := r.registry.Get(name); v != nil {
-		return v.(bypass.Bypass)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type bypassWrapper struct {

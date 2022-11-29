@@ -22,10 +22,7 @@ func (r *hostsRegistry) Get(name string) hosts.HostMapper {
 }
 
 func (r *hostsRegistry) get(name string) hosts.HostMapper {
-	if v := r.registry.Get(name); v != nil {
-		return v.(hosts.HostMapper)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type hostsWrapper struct {

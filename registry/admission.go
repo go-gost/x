@@ -20,10 +20,7 @@ func (r *admissionRegistry) Get(name string) admission.Admission {
 }
 
 func (r *admissionRegistry) get(name string) admission.Admission {
-	if v := r.registry.Get(name); v != nil {
-		return v.(admission.Admission)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type admissionWrapper struct {

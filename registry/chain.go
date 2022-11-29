@@ -24,10 +24,7 @@ func (r *chainRegistry) Get(name string) chain.Chainer {
 }
 
 func (r *chainRegistry) get(name string) chain.Chainer {
-	if v := r.registry.Get(name); v != nil {
-		return v.(chain.Chainer)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type chainWrapper struct {

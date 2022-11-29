@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/recorder"
+	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/service"
 )
@@ -23,33 +24,24 @@ var (
 )
 
 var (
-	listenerReg  Registry[NewListener]  = new(listenerRegistry)
-	handlerReg   Registry[NewHandler]   = new(handlerRegistry)
-	dialerReg    Registry[NewDialer]    = new(dialerRegistry)
-	connectorReg Registry[NewConnector] = new(connectorRegistry)
+	listenerReg  reg.Registry[NewListener]         = new(listenerRegistry)
+	handlerReg   reg.Registry[NewHandler]          = new(handlerRegistry)
+	dialerReg    reg.Registry[NewDialer]           = new(dialerRegistry)
+	connectorReg reg.Registry[NewConnector]        = new(connectorRegistry)
+	serviceReg   reg.Registry[service.Service]     = new(serviceRegistry)
+	chainReg     reg.Registry[chain.Chainer]       = new(chainRegistry)
+	hopReg       reg.Registry[chain.Hop]           = new(hopRegistry)
+	autherReg    reg.Registry[auth.Authenticator]  = new(autherRegistry)
+	admissionReg reg.Registry[admission.Admission] = new(admissionRegistry)
+	bypassReg    reg.Registry[bypass.Bypass]       = new(bypassRegistry)
+	resolverReg  reg.Registry[resolver.Resolver]   = new(resolverRegistry)
+	hostsReg     reg.Registry[hosts.HostMapper]    = new(hostsRegistry)
+	recorderReg  reg.Registry[recorder.Recorder]   = new(recorderRegistry)
 
-	serviceReg   Registry[service.Service]     = new(serviceRegistry)
-	chainReg     Registry[chain.Chainer]       = new(chainRegistry)
-	hopReg       Registry[chain.Hop]           = new(hopRegistry)
-	autherReg    Registry[auth.Authenticator]  = new(autherRegistry)
-	admissionReg Registry[admission.Admission] = new(admissionRegistry)
-	bypassReg    Registry[bypass.Bypass]       = new(bypassRegistry)
-	resolverReg  Registry[resolver.Resolver]   = new(resolverRegistry)
-	hostsReg     Registry[hosts.HostMapper]    = new(hostsRegistry)
-	recorderReg  Registry[recorder.Recorder]   = new(recorderRegistry)
-
-	trafficLimiterReg Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
-	connLimiterReg    Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
-	rateLimiterReg    Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
+	trafficLimiterReg reg.Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
+	connLimiterReg    reg.Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
+	rateLimiterReg    reg.Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
 )
-
-type Registry[T any] interface {
-	Register(name string, v T) error
-	Unregister(name string)
-	IsRegistered(name string) bool
-	Get(name string) T
-	GetAll() map[string]T
-}
 
 type registry[T any] struct {
 	m sync.Map
@@ -100,66 +92,66 @@ func (r *registry[T]) GetAll() (m map[string]T) {
 	return
 }
 
-func ListenerRegistry() Registry[NewListener] {
+func ListenerRegistry() reg.Registry[NewListener] {
 	return listenerReg
 }
 
-func HandlerRegistry() Registry[NewHandler] {
+func HandlerRegistry() reg.Registry[NewHandler] {
 	return handlerReg
 }
 
-func DialerRegistry() Registry[NewDialer] {
+func DialerRegistry() reg.Registry[NewDialer] {
 	return dialerReg
 }
 
-func ConnectorRegistry() Registry[NewConnector] {
+func ConnectorRegistry() reg.Registry[NewConnector] {
 	return connectorReg
 }
 
-func ServiceRegistry() Registry[service.Service] {
+func ServiceRegistry() reg.Registry[service.Service] {
 	return serviceReg
 }
 
-func ChainRegistry() Registry[chain.Chainer] {
+func ChainRegistry() reg.Registry[chain.Chainer] {
 	return chainReg
 }
 
-func HopRegistry() Registry[chain.Hop] {
+func HopRegistry() reg.Registry[chain.Hop] {
 	return hopReg
 }
 
-func AutherRegistry() Registry[auth.Authenticator] {
+func AutherRegistry() reg.Registry[auth.Authenticator] {
 	return autherReg
 }
 
-func AdmissionRegistry() Registry[admission.Admission] {
+func AdmissionRegistry() reg.Registry[admission.Admission] {
 	return admissionReg
 }
 
-func BypassRegistry() Registry[bypass.Bypass] {
+func BypassRegistry() reg.Registry[bypass.Bypass] {
 	return bypassReg
 }
 
-func ResolverRegistry() Registry[resolver.Resolver] {
+func ResolverRegistry() reg.Registry[resolver.Resolver] {
 	return resolverReg
 }
 
-func HostsRegistry() Registry[hosts.HostMapper] {
+func HostsRegistry() reg.Registry[hosts.HostMapper] {
 	return hostsReg
 }
 
-func RecorderRegistry() Registry[recorder.Recorder] {
+func RecorderRegistry() reg.Registry[recorder.Recorder] {
 	return recorderReg
 }
 
-func TrafficLimiterRegistry() Registry[traffic.TrafficLimiter] {
+func TrafficLimiterRegistry() reg.Registry[traffic.TrafficLimiter] {
 	return trafficLimiterReg
 }
 
-func ConnLimiterRegistry() Registry[conn.ConnLimiter] {
+func ConnLimiterRegistry() reg.Registry[conn.ConnLimiter] {
 	return connLimiterReg
 }
 
-func RateLimiterRegistry() Registry[rate.RateLimiter] {
+func RateLimiterRegistry() reg.Registry[rate.RateLimiter] {
 	return rateLimiterReg
 }

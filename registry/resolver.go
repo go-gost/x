@@ -23,10 +23,7 @@ func (r *resolverRegistry) Get(name string) resolver.Resolver {
 }
 
 func (r *resolverRegistry) get(name string) resolver.Resolver {
-	if v := r.registry.Get(name); v != nil {
-		return v.(resolver.Resolver)
-	}
-	return nil
+	return r.registry.Get(name)
 }
 
 type resolverWrapper struct {
