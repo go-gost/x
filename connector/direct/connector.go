@@ -11,6 +11,7 @@ import (
 
 func init() {
 	registry.ConnectorRegistry().Register("direct", NewConnector)
+	registry.ConnectorRegistry().Register("virtual", NewConnector)
 }
 
 type directConnector struct {

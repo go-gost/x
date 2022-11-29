@@ -1,4 +1,4 @@
-package tcp
+package direct
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 func init() {
 	registry.DialerRegistry().Register("direct", NewDialer)
+	registry.DialerRegistry().Register("virtual", NewDialer)
 }
 
 type directDialer struct {
@@ -34,5 +35,5 @@ func (d *directDialer) Init(md md.Metadata) (err error) {
 }
 
 func (d *directDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
-	return nil, nil
+	return &conn{}, nil
 }
