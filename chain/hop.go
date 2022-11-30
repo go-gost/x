@@ -103,6 +103,16 @@ func (p *chainHop) Select(ctx context.Context, opts ...chain.SelectOption) *chai
 		if len(filters) == 0 {
 			filters = nodes
 		}
+	} else if protocol := options.Protocol; protocol != "" {
+		filters = nil
+		for _, node := range p.nodes {
+			if node == nil {
+				continue
+			}
+			if node.Options().Protocol == protocol {
+				filters = append(filters, node)
+			}
+		}
 	}
 
 	var nodes []*chain.Node

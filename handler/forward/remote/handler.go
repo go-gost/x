@@ -84,14 +84,18 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	var rw io.ReadWriter = conn
 	var host string
+	var protocol string
 	if h.md.sniffing {
 		if network == "tcp" {
-			rw, host, _ = forward.SniffHost(ctx, conn)
+			rw, host, protocol, _ = forward.Sniffing(ctx, conn)
 		}
 	}
 	var target *chain.Node
 	if h.hop != nil {
-		target = h.hop.Select(ctx, chain.HostSelectOption(host))
+		target = h.hop.Select(ctx,
+			chain.HostSelectOption(host),
+			chain.ProtocolSelectOption(protocol),
+		)
 	}
 	if target == nil {
 		err := errors.New("target not available")

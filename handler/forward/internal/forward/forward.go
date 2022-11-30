@@ -14,7 +14,7 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 )
 
-func SniffHost(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host string, err error) {
+func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host string, protocol string, err error) {
 	rw = rdw
 
 	// try to sniff TLS traffic
@@ -24,7 +24,8 @@ func SniffHost(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host s
 	if err == nil &&
 		hdr[0] == dissector.Handshake &&
 		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
-		return sniffSNI(ctx, rw)
+		rw, host, err = sniffSNI(ctx, rw)
+		return
 	}
 
 	// try to sniff HTTP traffic
@@ -38,6 +39,8 @@ func SniffHost(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host s
 			return
 		}
 	}
+
+	protocol = sniffProtocol(hdr[:])
 
 	return
 }
@@ -81,4 +84,15 @@ func isHTTP(s string) bool {
 		strings.HasPrefix(http.MethodHead, s[:4]) ||
 		strings.HasPrefix(http.MethodConnect, s) ||
 		strings.HasPrefix(http.MethodTrace, s)
+}
+
+const (
+	SSHv2 = "SSH-2"
+)
+
+func sniffProtocol(hdr []byte) string {
+	if string(hdr) == SSHv2 {
+		return "ssh"
+	}
+	return ""
 }

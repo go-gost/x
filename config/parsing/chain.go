@@ -216,6 +216,7 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			chain.HostMapperNodeOption(registry.HostsRegistry().Get(v.Hosts)),
 			chain.MetadataNodeOption(nm),
 			chain.HostNodeOption(host),
+			chain.ProtocolNodeOption(v.Protocol),
 		)
 		nodes = append(nodes, node)
 	}

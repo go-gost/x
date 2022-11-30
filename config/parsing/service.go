@@ -250,6 +250,7 @@ func parseForwarder(cfg *config.ForwarderConfig) (chain.Hop, error) {
 						Name:     node.Name,
 						Addr:     node.Addr,
 						Host:     node.Host,
+						Protocol: node.Protocol,
 						Bypass:   node.Bypass,
 						Bypasses: node.Bypasses,
 					},
