@@ -37,8 +37,8 @@ require (
 	golang.org/x/sys v0.2.0
 	golang.org/x/time v0.2.0
 	golang.zx2c4.com/wireguard v0.0.0-20220703234212-c31a7b1ab478
-	google.golang.org/grpc v1.49.0
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/grpc v1.51.0
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
 )
 

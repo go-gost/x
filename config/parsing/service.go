@@ -222,11 +222,12 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	s := xservice.NewService(cfg.Name, ln, h,
 		xservice.AdmissionOption(admission.AdmissionGroup(admissions...)),
-		xservice.LoggerOption(serviceLogger),
 		xservice.PreUpOption(preUp),
 		xservice.PreDownOption(preDown),
 		xservice.PostUpOption(postUp),
 		xservice.PostDownOption(postDown),
+		xservice.RecordersOption(recorders...),
+		xservice.LoggerOption(serviceLogger),
 	)
 
 	serviceLogger.Infof("listening on %s/%s", s.Addr().String(), s.Addr().Network())

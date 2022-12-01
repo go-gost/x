@@ -49,10 +49,12 @@ func (d *grpcDialer) Multiplex() bool {
 }
 
 func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
-	remoteAddr, err := net.ResolveTCPAddr("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
+	/*
+		remoteAddr, err := net.ResolveTCPAddr("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	d.clientMutex.Lock()
 	defer d.clientMutex.Unlock()
@@ -107,7 +109,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 	return &conn{
 		c:          cli,
 		localAddr:  &net.TCPAddr{},
-		remoteAddr: remoteAddr,
+		remoteAddr: &net.TCPAddr{},
 		closed:     make(chan struct{}),
 	}, nil
 }

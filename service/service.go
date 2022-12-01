@@ -142,14 +142,15 @@ func (s *defaultService) Serve() error {
 		tempDelay = 0
 
 		for _, rec := range s.options.recorders {
-			host := conn.RemoteAddr().String()
-			if h, _, _ := net.SplitHostPort(host); h != "" {
-				host = h
-			}
 			if rec.Record == recorder.RecorderServiceClientAddress {
+				host := conn.RemoteAddr().String()
+				if h, _, _ := net.SplitHostPort(host); h != "" {
+					host = h
+				}
 				if err := rec.Recorder.Record(context.Background(), []byte(host)); err != nil {
 					s.options.logger.Errorf("record %s: %v", rec.Record, err)
 				}
+				break
 			}
 		}
 		if s.options.admission != nil &&
