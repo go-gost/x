@@ -46,12 +46,14 @@ func (d *dtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 
 	conn, err := options.NetDialer.Dial(ctx, "udp", addr)
 	if err != nil {
-		d.logger.Error(err)
+		return nil, err
 	}
 
 	tlsCfg := d.options.TLSConfig
 	if tlsCfg == nil {
-		tlsCfg = &tls.Config{}
+		tlsCfg = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 	}
 	config := dtls.Config{
 		Certificates:         tlsCfg.Certificates,
@@ -59,6 +61,8 @@ func (d *dtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
 		ServerName:           tlsCfg.ServerName,
 		RootCAs:              tlsCfg.RootCAs,
+		FlightInterval:       d.md.flightInterval,
+		MTU:                  d.md.mtu,
 	}
 
 	return dtls.ClientWithContext(ctx, conn, &config)

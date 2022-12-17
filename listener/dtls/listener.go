@@ -66,8 +66,10 @@ func (l *dtlsListener) Init(md md.Metadata) (err error) {
 		ConnectContextMaker: func() (context.Context, func()) {
 			return context.WithTimeout(context.Background(), 30*time.Second)
 		},
-		ClientCAs:  tlsCfg.ClientCAs,
-		ClientAuth: dtls.ClientAuthType(tlsCfg.ClientAuth),
+		ClientCAs:      tlsCfg.ClientCAs,
+		ClientAuth:     dtls.ClientAuthType(tlsCfg.ClientAuth),
+		FlightInterval: l.md.flightInterval,
+		MTU:            l.md.mtu,
 	}
 
 	ln, err := dtls.Listen(network, laddr, &config)

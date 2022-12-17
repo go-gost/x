@@ -1,6 +1,10 @@
 package parsing
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -70,7 +74,8 @@ func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, ra
 	// Create private key and self-signed certificate
 	// Adapted from https://golang.org/src/crypto/tls/generate_cert.go
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	var priv crypto.PrivateKey
+	priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return
 	}
@@ -103,13 +108,19 @@ func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, ra
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
 		BasicConstraintsValid: true,
+	}
+	if _, isRSA := priv.(*rsa.PrivateKey); isRSA {
+		template.KeyUsage |= x509.KeyUsageKeyEncipherment
 	}
 
 	template.DNSNames = append(template.DNSNames, cn)
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
 	if err != nil {
 		return
 	}
@@ -122,4 +133,17 @@ func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, ra
 	rawKey = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
 
 	return
+}
+
+func publicKey(priv crypto.PrivateKey) any {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case *ecdsa.PrivateKey:
+		return &k.PublicKey
+	case ed25519.PrivateKey:
+		return k.Public().(ed25519.PublicKey)
+	default:
+		return nil
+	}
 }

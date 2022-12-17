@@ -32,7 +32,7 @@ require (
 	github.com/xtaci/smux v1.5.16
 	github.com/xtaci/tcpraw v1.2.25
 	github.com/yl2chen/cidranger v1.0.2
-	golang.org/x/crypto v0.2.0
+	golang.org/x/crypto v0.3.0
 	golang.org/x/net v0.2.0
 	golang.org/x/sys v0.2.0
 	golang.org/x/time v0.2.0
@@ -76,7 +76,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.2.0 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pion/logging v0.2.2 // indirect
-	github.com/pion/transport v0.13.0 // indirect
+	github.com/pion/transport v0.14.1 // indirect
 	github.com/pion/udp v0.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
