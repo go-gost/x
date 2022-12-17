@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -108,10 +109,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}
 
 		// try to sniff HTTP traffic
-		buf := new(bytes.Buffer)
-		_, err = http.ReadRequest(bufio.NewReader(io.TeeReader(rw, buf)))
-		rw = xio.NewReadWriter(io.MultiReader(buf, rw), rw)
-		if err == nil {
+		if isHTTP(string(hdr[:])) {
 			return h.handleHTTP(ctx, rw, conn.RemoteAddr(), log)
 		}
 	}
@@ -184,19 +182,25 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		return err
 	}
 
-	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer resp.Body.Close()
-
+	var rw2 io.ReadWriter = cc
 	if log.IsLevelEnabled(logger.TraceLevel) {
+		var buf bytes.Buffer
+		resp, err := http.ReadResponse(bufio.NewReader(io.TeeReader(cc, &buf)), req)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer resp.Body.Close()
+
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
+
+		rw2 = xio.NewReadWriter(io.MultiReader(&buf, cc), cc)
 	}
 
-	return resp.Write(rw)
+	netpkg.Transport(rw, rw2)
+
+	return nil
 }
 
 func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, log logger.Logger) error {
@@ -276,4 +280,16 @@ func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func isHTTP(s string) bool {
+	return strings.HasPrefix(http.MethodGet, s[:3]) ||
+		strings.HasPrefix(http.MethodPost, s[:4]) ||
+		strings.HasPrefix(http.MethodPut, s[:3]) ||
+		strings.HasPrefix(http.MethodDelete, s) ||
+		strings.HasPrefix(http.MethodOptions, s) ||
+		strings.HasPrefix(http.MethodPatch, s) ||
+		strings.HasPrefix(http.MethodHead, s[:4]) ||
+		strings.HasPrefix(http.MethodConnect, s) ||
+		strings.HasPrefix(http.MethodTrace, s)
 }
