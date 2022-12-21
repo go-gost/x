@@ -276,9 +276,15 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Bypasses
+            host:
+                type: string
+                x-go-name: Host
             name:
                 type: string
                 x-go-name: Name
+            protocol:
+                type: string
+                x-go-name: Protocol
         type: object
         x-go-package: github.com/go-gost/x/config
     ForwarderConfig:
@@ -469,6 +475,50 @@ definitions:
             output:
                 type: string
                 x-go-name: Output
+            rotation:
+                $ref: '#/definitions/LogRotationConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    LogRotationConfig:
+        properties:
+            compress:
+                description: |-
+                    Compress determines if the rotated log files should be compressed
+                    using gzip. The default is not to perform compression.
+                type: boolean
+                x-go-name: Compress
+            localTime:
+                description: |-
+                    LocalTime determines if the time used for formatting the timestamps in
+                    backup files is the computer's local time. The default is to use UTC
+                    time.
+                type: boolean
+                x-go-name: LocalTime
+            maxAge:
+                description: |-
+                    MaxAge is the maximum number of days to retain old log files based on the
+                    timestamp encoded in their filename.  Note that a day is defined as 24
+                    hours and may not exactly correspond to calendar days due to daylight
+                    savings, leap seconds, etc. The default is not to remove old log files
+                    based on age.
+                format: int64
+                type: integer
+                x-go-name: MaxAge
+            maxBackups:
+                description: |-
+                    MaxBackups is the maximum number of old log files to retain.  The default
+                    is to retain all old log files (though MaxAge may still cause them to get
+                    deleted.)
+                format: int64
+                type: integer
+                x-go-name: MaxBackups
+            maxSize:
+                description: |-
+                    MaxSize is the maximum size in megabytes of the log file before it gets
+                    rotated. It defaults to 100 megabytes.
+                format: int64
+                type: integer
+                x-go-name: MaxSize
         type: object
         x-go-package: github.com/go-gost/x/config
     MetricsConfig:
@@ -521,6 +571,9 @@ definitions:
                 $ref: '#/definitions/ConnectorConfig'
             dialer:
                 $ref: '#/definitions/DialerConfig'
+            host:
+                type: string
+                x-go-name: Host
             hosts:
                 type: string
                 x-go-name: Hosts
@@ -534,6 +587,9 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            protocol:
+                type: string
+                x-go-name: Protocol
             resolver:
                 type: string
                 x-go-name: Resolver

@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
@@ -14,6 +13,7 @@ import (
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 )
 
 func init() {
@@ -82,7 +82,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			grpc.WithAuthority(host),
 			grpc.WithConnectParams(grpc.ConnectParams{
 				Backoff:           backoff.DefaultConfig,
-				MinConnectTimeout: 10 * time.Second,
+				MinConnectTimeout: d.md.minConnectTimeout,
 			}),
 			grpc.FailOnNonTempDialError(true),
 		}
@@ -90,6 +90,14 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(d.options.TLSConfig)))
 		} else {
 			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}
+
+		if d.md.keepalive {
+			grpcOpts = append(grpcOpts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
+				Time:                d.md.keepaliveTime,
+				Timeout:             d.md.keepaliveTimeout,
+				PermitWithoutStream: d.md.keepalivePermitWithoutStream,
+			}))
 		}
 
 		cc, err := grpc.DialContext(ctx, addr, grpcOpts...)

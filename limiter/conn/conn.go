@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,42 +20,6 @@ const (
 	GlobalLimitKey = "$"
 	IPLimitKey     = "$$"
 )
-
-type limiterGroup struct {
-	limiters []limiter.Limiter
-}
-
-func newLimiterGroup(limiters ...limiter.Limiter) *limiterGroup {
-	sort.Slice(limiters, func(i, j int) bool {
-		return limiters[i].Limit() < limiters[j].Limit()
-	})
-	return &limiterGroup{limiters: limiters}
-}
-
-func (l *limiterGroup) Allow(n int) (b bool) {
-	var i int
-
-	for i = range l.limiters {
-		if b = l.limiters[i].Allow(n); !b {
-			break
-		}
-	}
-	if !b && i > 0 && n > 0 {
-		for i := range l.limiters[:i] {
-			l.limiters[i].Allow(-n)
-		}
-	}
-
-	return
-}
-
-func (l *limiterGroup) Limit() int {
-	if len(l.limiters) == 0 {
-		return 0
-	}
-
-	return l.limiters[0].Limit()
-}
 
 type options struct {
 	limits      []string

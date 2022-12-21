@@ -339,6 +339,12 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
 				xrecorder.PasswordRedisRecorderOption(cfg.Redis.Password),
 			)
+		case "sset": // sorted set
+			return xrecorder.RedisSortedSetRecorder(cfg.Redis.Addr,
+				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
+				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
+				xrecorder.PasswordRedisRecorderOption(cfg.Redis.Password),
+			)
 		default: // redis set
 			return xrecorder.RedisSetRecorder(cfg.Redis.Addr,
 				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),

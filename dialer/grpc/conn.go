@@ -66,6 +66,7 @@ func (c *conn) Close() error {
 	case <-c.closed:
 	default:
 		close(c.closed)
+		return c.c.CloseSend()
 	}
 
 	return nil

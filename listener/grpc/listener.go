@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/x/registry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 )
 
 func init() {
@@ -66,6 +67,19 @@ func (l *grpcListener) Init(md md.Metadata) (err error) {
 	var opts []grpc.ServerOption
 	if !l.md.insecure {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(l.options.TLSConfig)))
+	}
+	if l.md.keepalive {
+		opts = append(opts,
+			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+				MinTime:             l.md.keepaliveMinTime,
+				PermitWithoutStream: l.md.keepalivePermitWithoutStream,
+			}),
+			grpc.KeepaliveParams(keepalive.ServerParameters{
+				MaxConnectionIdle: l.md.keepaliveMaxConnectionIdle,
+				Time:              l.md.keepaliveTime,
+				Timeout:           l.md.keepaliveTimeout,
+			}),
+		)
 	}
 
 	l.server = grpc.NewServer(opts...)

@@ -99,3 +99,40 @@ func (r *redisListRecorder) Record(ctx context.Context, b []byte) error {
 func (r *redisListRecorder) Close() error {
 	return r.client.Close()
 }
+
+type redisSortedSetRecorder struct {
+	client *redis.Client
+	key    string
+}
+
+// RedisSortedSetRecorder records data to a redis sorted set.
+func RedisSortedSetRecorder(addr string, opts ...RedisRecorderOption) recorder.Recorder {
+	var options redisRecorderOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return &redisSortedSetRecorder{
+		client: redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: options.password,
+			DB:       options.db,
+		}),
+		key: options.key,
+	}
+}
+
+func (r *redisSortedSetRecorder) Record(ctx context.Context, b []byte) error {
+	if r.key == "" {
+		return nil
+	}
+
+	return r.client.ZIncr(ctx, r.key, &redis.Z{
+		Score:  1,
+		Member: b,
+	}).Err()
+}
+
+func (r *redisSortedSetRecorder) Close() error {
+	return r.client.Close()
+}
