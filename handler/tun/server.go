@@ -37,11 +37,6 @@ func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tu
 }
 
 func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
-	tunIP, _, err := net.ParseCIDR(config.Net)
-	if err != nil {
-		return err
-	}
-
 	errc := make(chan error, 1)
 
 	go func() {
@@ -115,33 +110,49 @@ func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, con
 				if err != nil {
 					return err
 				}
-				if n == keepAliveDataLength && bytes.Equal((*b)[:4], magicHeader) {
-					peerIP := net.IP((*b)[4:20])
-					key := bytes.TrimRight((*b)[20:36], "\x00")
-
-					if peerIP.Equal(tunIP.To16()) {
+				if n > keepAliveHeaderLength && bytes.Equal((*b)[:4], magicHeader) {
+					var peerIPs []net.IP
+					data := (*b)[keepAliveHeaderLength:n]
+					if len(data)%net.IPv6len == 0 {
+						for len(data) > 0 {
+							peerIPs = append(peerIPs, net.IP(data[:net.IPv6len]))
+							data = data[net.IPv6len:]
+						}
+					}
+					if len(peerIPs) == 0 {
 						return nil
 					}
 
-					if auther := h.options.Auther; auther != nil {
-						ip := peerIP
-						if v := peerIP.To4(); ip != nil {
-							ip = v
+					for _, net := range config.Net {
+						for _, ip := range peerIPs {
+							if ip.Equal(net.IP.To16()) {
+								return nil
+							}
 						}
-						if !auther.Authenticate(ip.String(), string(key)) {
-							log.Debugf("keepalive from %v => %v, auth FAILED", addr, peerIP)
+					}
+
+					if auther := h.options.Auther; auther != nil {
+						ok := true
+						key := bytes.TrimRight((*b)[4:20], "\x00")
+						for _, ip := range peerIPs {
+							if ok = auther.Authenticate(ip.String(), string(key)); !ok {
+								break
+							}
+						}
+						if !ok {
+							log.Debugf("keepalive from %v => %v, auth FAILED", addr, peerIPs)
 							return nil
 						}
 					}
 
-					log.Debugf("keepalive from %v => %v", addr, peerIP)
+					log.Debugf("keepalive from %v => %v", addr, peerIPs)
 
 					addrPort, err := netip.ParseAddrPort(addr.String())
 					if err != nil {
 						log.Warnf("keepalive from %v: %v", addr, err)
 						return nil
 					}
-					var keepAliveData [keepAliveDataLength]byte
+					var keepAliveData [keepAliveHeaderLength]byte
 					copy(keepAliveData[:4], magicHeader) // magic header
 					a16 := addrPort.Addr().As16()
 					copy(keepAliveData[4:], a16[:])
@@ -151,7 +162,9 @@ func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, con
 						return nil
 					}
 
-					h.updateRoute(peerIP, addr, log)
+					for _, ip := range peerIPs {
+						h.updateRoute(ip, addr, log)
+					}
 					return nil
 				}
 
@@ -204,7 +217,7 @@ func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, con
 		}
 	}()
 
-	err = <-errc
+	err := <-errc
 	if err != nil && err == io.EOF {
 		err = nil
 	}

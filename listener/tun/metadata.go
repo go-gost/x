@@ -29,17 +29,30 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	)
 
 	config := &tun_util.Config{
-		Name:    mdutil.GetString(md, name),
-		Net:     mdutil.GetString(md, netKey),
-		Peer:    mdutil.GetString(md, peer),
-		MTU:     mdutil.GetInt(md, mtu),
-		Gateway: mdutil.GetString(md, gateway),
+		Name: mdutil.GetString(md, name),
+		Peer: mdutil.GetString(md, peer),
+		MTU:  mdutil.GetInt(md, mtu),
 	}
 	if config.MTU <= 0 {
 		config.MTU = DefaultMTU
 	}
+	if gw := mdutil.GetString(md, gateway); gw != "" {
+		config.Gateway = net.ParseIP(gw)
+	}
 
-	gw := net.ParseIP(config.Gateway)
+	for _, s := range strings.Split(mdutil.GetString(md, netKey), ",") {
+		if s = strings.TrimSpace(s); s == "" {
+			continue
+		}
+		ip, ipNet, err := net.ParseCIDR(s)
+		if err != nil {
+			continue
+		}
+		config.Net = append(config.Net, net.IPNet{
+			IP:   ip,
+			Mask: ipNet.Mask,
+		})
+	}
 
 	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
 		var route tun_util.Route
@@ -48,7 +61,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 			continue
 		}
 		route.Net = *ipNet
-		route.Gateway = gw
+		route.Gateway = config.Gateway
 
 		config.Routes = append(config.Routes, route)
 	}
@@ -64,7 +77,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 			route.Net = *ipNet
 			route.Gateway = net.ParseIP(ss[1])
 			if route.Gateway == nil {
-				route.Gateway = gw
+				route.Gateway = config.Gateway
 			}
 
 			config.Routes = append(config.Routes, route)

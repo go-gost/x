@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	ErrTun = errors.New("tun device error")
+	ErrTun        = errors.New("tun device error")
+	ErrInvalidNet = errors.New("invalid net IP")
 )
 
 func init() {

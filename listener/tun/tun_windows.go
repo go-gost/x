@@ -15,11 +15,6 @@ const (
 )
 
 func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.IP, err error) {
-	ip, ipNet, err := net.ParseCIDR(l.md.config.Net)
-	if err != nil {
-		return
-	}
-
 	if l.md.config.Name == "" {
 		l.md.config.Name = defaultTunName
 	}
@@ -28,15 +23,19 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		return
 	}
 
-	cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
-		"source=static addr=%s mask=%s gateway=none",
-		name, ip.String(), ipMask(ipNet.Mask))
-	l.logger.Debug(cmd)
+	if len(l.md.config.Net) > 0 {
+		ipNet := l.md.config.Net[0]
+		cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
+			"source=static addr=%s mask=%s gateway=none",
+			name, ipNet.IP.String(), ipMask(ipNet.Mask))
+		l.logger.Debug(cmd)
 
-	args := strings.Split(cmd, " ")
-	if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
-		err = fmt.Errorf("%s: %v", cmd, er)
-		return
+		args := strings.Split(cmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+			err = fmt.Errorf("%s: %v", cmd, er)
+			return
+		}
+		ip = ipNet.IP
 	}
 
 	if err = l.addRoutes(name, l.md.config.Gateway, l.md.config.Routes...); err != nil {
@@ -46,14 +45,14 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 	return
 }
 
-func (l *tunListener) addRoutes(ifName string, gw string, routes ...tun_util.Route) error {
+func (l *tunListener) addRoutes(ifName string, gw net.IP, routes ...tun_util.Route) error {
 	for _, route := range routes {
 		l.deleteRoute(ifName, route.Net.String())
 
 		cmd := fmt.Sprintf("netsh interface ip add route prefix=%s interface=%s store=active",
 			route.Net.String(), ifName)
-		if gw != "" {
-			cmd += " nexthop=" + gw
+		if gw != nil {
+			cmd += " nexthop=" + gw.String()
 		}
 		l.logger.Debug(cmd)
 		args := strings.Split(cmd, " ")

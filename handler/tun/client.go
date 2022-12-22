@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	// 4-byte magic header followed by 16-byte IP address followed by 16-byte key.
-	keepAliveDataLength = 36
+	// 4-byte magic header followed by 16-byte key.
+	keepAliveHeaderLength = 20
 )
 
 var (
@@ -25,9 +25,12 @@ var (
 )
 
 func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr string, config *tun_util.Config, log logger.Logger) error {
-	ip, _, err := net.ParseCIDR(config.Net)
-	if err != nil {
-		return err
+	var ips []net.IP
+	for _, net := range config.Net {
+		ips = append(ips, net.IP)
+	}
+	if len(ips) == 0 {
+		return ErrInvalidNet
 	}
 
 	for {
@@ -41,9 +44,9 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			go h.keepAlive(ctx, cc, ip)
+			go h.keepAlive(ctx, cc, ips)
 
-			return h.transportClient(conn, cc, config, log)
+			return h.transportClient(conn, cc, log)
 		}()
 		if err == ErrTun {
 			return err
@@ -54,13 +57,19 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 	}
 }
 
-func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
+func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ips []net.IP) {
 	// handshake
-	var keepAliveData [keepAliveDataLength]byte
-	copy(keepAliveData[:4], magicHeader) // magic header
-	copy(keepAliveData[4:20], ip.To16())
-	copy(keepAliveData[20:36], []byte(h.md.passphrase))
-	if _, err := conn.Write(keepAliveData[:]); err != nil {
+	keepAliveData := bufpool.Get(keepAliveHeaderLength + len(ips)*net.IPv6len)
+	defer bufpool.Put(keepAliveData)
+
+	copy((*keepAliveData)[:4], magicHeader) // magic header
+	copy((*keepAliveData)[4:20], []byte(h.md.passphrase))
+	pos := 20
+	for _, ip := range ips {
+		copy((*keepAliveData)[pos:pos+net.IPv6len], ip.To16())
+		pos += net.IPv6len
+	}
+	if _, err := conn.Write((*keepAliveData)); err != nil {
 		return
 	}
 
@@ -75,7 +84,7 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := conn.Write(keepAliveData[:]); err != nil {
+			if _, err := conn.Write((*keepAliveData)); err != nil {
 				return
 			}
 			h.options.Logger.Debugf("keepalive sended")
@@ -85,7 +94,7 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ip net.IP) {
 	}
 }
 
-func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logger.Logger) error {
 	errc := make(chan error, 1)
 
 	go func() {
@@ -147,7 +156,7 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, config *t
 					return err
 				}
 
-				if n == keepAliveDataLength && bytes.Equal((*b)[:4], magicHeader) {
+				if n == keepAliveHeaderLength && bytes.Equal((*b)[:4], magicHeader) {
 					ip := net.IP((*b)[4:20])
 					log.Debugf("keepalive received at %v", ip)
 

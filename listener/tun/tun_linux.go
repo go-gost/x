@@ -11,11 +11,6 @@ import (
 )
 
 func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
-	ip, ipNet, err := net.ParseCIDR(l.md.config.Net)
-	if err != nil {
-		return
-	}
-
 	dev, name, err = l.createTunDevice()
 	if err != nil {
 		return
@@ -31,14 +26,18 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 		return
 	}
 
-	if err = netlink.AddrAdd(link, &netlink.Addr{
-		IPNet: &net.IPNet{
-			IP:   ip,
-			Mask: ipNet.Mask,
-		},
-	}); err != nil {
-		return
+	for _, net := range l.md.config.Net {
+		if err = netlink.AddrAdd(link, &netlink.Addr{
+			IPNet: &net,
+		}); err != nil {
+			l.logger.Error(err)
+			continue
+		}
 	}
+	if len(l.md.config.Net) > 0 {
+		ip = l.md.config.Net[0].IP
+	}
+
 	if err = netlink.LinkSetUp(link); err != nil {
 		return
 	}

@@ -15,11 +15,6 @@ const (
 )
 
 func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.IP, err error) {
-	ip, _, err = net.ParseCIDR(l.md.config.Net)
-	if err != nil {
-		return
-	}
-
 	if l.md.config.Name == "" {
 		l.md.config.Name = defaultTunName
 	}
@@ -32,13 +27,15 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 	if peer == "" {
 		peer = ip.String()
 	}
-	cmd := fmt.Sprintf("ifconfig %s inet %s %s mtu %d up",
-		name, l.md.config.Net, l.md.config.Peer, l.md.config.MTU)
-	l.logger.Debug(cmd)
-
-	args := strings.Split(cmd, " ")
-	if err = exec.Command(args[0], args[1:]...).Run(); err != nil {
-		return
+	if len(l.md.config.Net) > 0 {
+		cmd := fmt.Sprintf("ifconfig %s inet %s %s mtu %d up",
+			name, l.md.config.Net[0].String(), l.md.config.Peer, l.md.config.MTU)
+		l.logger.Debug(cmd)
+		args := strings.Split(cmd, " ")
+		if err = exec.Command(args[0], args[1:]...).Run(); err != nil {
+			return
+		}
+		ip = l.md.config.Net[0].IP
 	}
 
 	if err = l.addRoutes(name, l.md.config.Routes...); err != nil {

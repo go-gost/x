@@ -10,10 +10,10 @@ type Route struct {
 
 type Config struct {
 	Name string
-	Net  string
+	Net  []net.IPNet
 	// peer addr of point-to-point on MacOS
 	Peer    string
 	MTU     int
-	Gateway string
+	Gateway net.IP
 	Routes  []Route
 }
