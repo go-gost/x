@@ -9,6 +9,7 @@ import (
 
 const (
 	defaultKeepAlivePeriod = 10 * time.Second
+	defaultBufferSize      = 4096
 )
 
 type metadata struct {
@@ -27,7 +28,7 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
-		h.md.bufferSize = 1500
+		h.md.bufferSize = defaultBufferSize
 	}
 
 	if mdutil.GetBool(md, keepAlive) {

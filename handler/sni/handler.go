@@ -145,20 +145,25 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		return err
 	}
 
-	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer resp.Body.Close()
-
+	var rw2 io.ReadWriter = cc
 	if log.IsLevelEnabled(logger.TraceLevel) {
+		var buf bytes.Buffer
+		resp, err := http.ReadResponse(bufio.NewReader(io.TeeReader(cc, &buf)), req)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer resp.Body.Close()
+
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
+
+		rw2 = xio.NewReadWriter(io.MultiReader(&buf, cc), cc)
 	}
 
-	return resp.Write(rw)
+	netpkg.Transport(rw, rw2)
 
+	return nil
 }
 
 func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr net.Addr, log logger.Logger) error {

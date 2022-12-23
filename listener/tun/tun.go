@@ -12,11 +12,16 @@ const (
 )
 
 type tunDevice struct {
-	dev tun.Device
+	dev            tun.Device
+	readBufferSize int
 }
 
 func (d *tunDevice) Read(p []byte) (n int, err error) {
-	b := bufpool.Get(tunOffsetBytes + 65535)
+	rbuf := d.readBufferSize
+	if rbuf <= tunOffsetBytes {
+		rbuf = defaultReadBufferSize
+	}
+	b := bufpool.Get(rbuf)
 	defer bufpool.Put(b)
 
 	n, err = d.dev.Read(*b, tunOffsetBytes)
@@ -51,7 +56,8 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 	}
 
 	dev = &tunDevice{
-		dev: ifce,
+		dev:            ifce,
+		readBufferSize: l.md.readBufferSize,
 	}
 	name, err = ifce.Name()
 

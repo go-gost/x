@@ -12,6 +12,7 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
+	xdtls "github.com/go-gost/x/internal/util/dtls"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -88,7 +89,12 @@ func (l *dtlsListener) Init(md md.Metadata) (err error) {
 }
 
 func (l *dtlsListener) Accept() (conn net.Conn, err error) {
-	return l.ln.Accept()
+	c, err := l.ln.Accept()
+	if err != nil {
+		return
+	}
+	conn = xdtls.Conn(c, l.md.bufferSize)
+	return
 }
 
 func (l *dtlsListener) Addr() net.Addr {

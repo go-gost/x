@@ -10,11 +10,13 @@ import (
 )
 
 const (
-	DefaultMTU = 1350
+	defaultMTU            = 1350
+	defaultReadBufferSize = 4096
 )
 
 type metadata struct {
-	config *tun_util.Config
+	config         *tun_util.Config
+	readBufferSize int
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -28,13 +30,18 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		gateway = "gw"
 	)
 
+	l.md.readBufferSize = mdutil.GetInt(md, "tun.rbuf", "rbuf", "readBufferSize")
+	if l.md.readBufferSize <= 0 {
+		l.md.readBufferSize = defaultReadBufferSize
+	}
+
 	config := &tun_util.Config{
 		Name: mdutil.GetString(md, name),
 		Peer: mdutil.GetString(md, peer),
 		MTU:  mdutil.GetInt(md, mtu),
 	}
 	if config.MTU <= 0 {
-		config.MTU = DefaultMTU
+		config.MTU = defaultMTU
 	}
 	if gw := mdutil.GetString(md, gateway); gw != "" {
 		config.Gateway = net.ParseIP(gw)
