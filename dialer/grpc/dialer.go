@@ -109,8 +109,10 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		d.clients[addr] = client
 	}
 
-	cli, err := client.TunnelX(context.Background(), d.md.path)
+	ctx2, cancel := context.WithCancel(context.Background())
+	cli, err := client.TunnelX(ctx2, d.md.path)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -118,6 +120,6 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		c:          cli,
 		localAddr:  &net.TCPAddr{},
 		remoteAddr: &net.TCPAddr{},
-		closed:     make(chan struct{}),
+		cancelFunc: cancel,
 	}, nil
 }

@@ -1,8 +1,8 @@
 package grpc
 
 import (
+	"context"
 	"errors"
-	"io"
 	"net"
 	"time"
 
@@ -14,16 +14,13 @@ type conn struct {
 	rb         []byte
 	localAddr  net.Addr
 	remoteAddr net.Addr
-	closed     chan struct{}
+	cancelFunc context.CancelFunc
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
 	select {
 	case <-c.c.Context().Done():
 		err = c.c.Context().Err()
-		return
-	case <-c.closed:
-		err = io.ErrClosedPipe
 		return
 	default:
 	}
@@ -46,9 +43,6 @@ func (c *conn) Write(b []byte) (n int, err error) {
 	case <-c.c.Context().Done():
 		err = c.c.Context().Err()
 		return
-	case <-c.closed:
-		err = io.ErrClosedPipe
-		return
 	default:
 	}
 
@@ -62,14 +56,8 @@ func (c *conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *conn) Close() error {
-	select {
-	case <-c.closed:
-	default:
-		close(c.closed)
-		return c.c.CloseSend()
-	}
-
-	return nil
+	defer c.cancelFunc()
+	return c.c.CloseSend()
 }
 
 func (c *conn) LocalAddr() net.Addr {
