@@ -129,6 +129,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Listener.Metadata == nil {
 		cfg.Listener.Metadata = make(map[string]any)
 	}
+	listenerLogger.Debugf("metadata: %v", cfg.Listener.Metadata)
 	if err := ln.Init(metadata.NewMetadata(cfg.Listener.Metadata)); err != nil {
 		listenerLogger.Error("init: ", err)
 		return nil, err
@@ -215,6 +216,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Handler.Metadata == nil {
 		cfg.Handler.Metadata = make(map[string]any)
 	}
+	handlerLogger.Debugf("metadata: %v", cfg.Handler.Metadata)
 	if err := h.Init(metadata.NewMetadata(cfg.Handler.Metadata)); err != nil {
 		handlerLogger.Error("init: ", err)
 		return nil, err

@@ -1,27 +1,33 @@
 package metadata
 
 import (
+	"strings"
+
 	"github.com/go-gost/core/metadata"
 )
 
 type mapMetadata map[string]any
 
 func NewMetadata(m map[string]any) metadata.Metadata {
-	return mapMetadata(m)
+	md := make(map[string]any)
+	for k, v := range m {
+		md[strings.ToLower(k)] = v
+	}
+	return mapMetadata(md)
 }
 
 func (m mapMetadata) IsExists(key string) bool {
-	_, ok := m[key]
+	_, ok := m[strings.ToLower(key)]
 	return ok
 }
 
 func (m mapMetadata) Set(key string, value any) {
-	m[key] = value
+	m[strings.ToLower(key)] = value
 }
 
 func (m mapMetadata) Get(key string) any {
 	if m != nil {
-		return m[key]
+		return m[strings.ToLower(key)]
 	}
 	return nil
 }
