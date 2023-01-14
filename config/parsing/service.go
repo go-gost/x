@@ -200,6 +200,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
 			handler.LoggerOption(handlerLogger),
+			handler.ServiceOption(cfg.Name),
 		)
 	} else {
 		return nil, fmt.Errorf("unregistered handler: %s", cfg.Handler.Type)

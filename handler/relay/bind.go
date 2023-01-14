@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/mux"
 	relay_util "github.com/go-gost/x/internal/util/relay"
+	"github.com/google/uuid"
 )
 
 func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -190,4 +191,50 @@ func (h *relayHandler) serveTCPBind(ctx context.Context, conn net.Conn, ln net.L
 				Debugf("%s >-< %s", c.LocalAddr(), c.RemoteAddr())
 		}(rc)
 	}
+}
+
+func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID relay.TunnelID, log logger.Logger) (err error) {
+	resp := relay.Response{
+		Version: relay.Version1,
+		Status:  relay.StatusOK,
+	}
+
+	if h.ep == nil {
+		resp.Status = relay.StatusServiceUnavailable
+		resp.WriteTo(conn)
+		return
+	}
+
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		resp.Status = relay.StatusInternalServerError
+		resp.WriteTo(conn)
+		return
+	}
+
+	var connectorID relay.ConnectorID
+	copy(connectorID[:], uuid[:])
+
+	af := &relay.AddrFeature{}
+	err = af.ParseFrom(h.ep.Addr().String())
+	if err != nil {
+		log.Warn(err)
+	}
+	resp.Features = append(resp.Features, af,
+		&relay.TunnelFeature{
+			ID: connectorID,
+		},
+	)
+	resp.WriteTo(conn)
+
+	// Upgrade connection to multiplex session.
+	session, err := mux.ClientSession(conn)
+	if err != nil {
+		return
+	}
+
+	h.pool.Add(tunnelID, NewConnector(connectorID, session))
+	log.Debugf("tunnel %s connector %s established", tunnelID, connectorID)
+
+	return
 }

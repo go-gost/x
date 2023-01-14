@@ -7,14 +7,15 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.8.2
-	github.com/go-gost/core v0.0.0-20221221101823-36ed0eae2dec
+	github.com/go-gost/core v0.0.0-20230114050924-1a8c1ccb1dc5
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
-	github.com/go-gost/relay v0.1.1-0.20211123134818-8ef7fd81ffd7
+	github.com/go-gost/relay v0.2.0
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
 	github.com/golang/snappy v0.0.4
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/lucas-clemente/quic-go v0.31.1
 	github.com/miekg/dns v1.1.50

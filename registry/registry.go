@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
@@ -41,6 +42,8 @@ var (
 	trafficLimiterReg reg.Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
 	connLimiterReg    reg.Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
 	rateLimiterReg    reg.Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
+
+	ingressReg reg.Registry[ingress.Ingress] = new(ingressRegistry)
 )
 
 type registry[T any] struct {
@@ -154,4 +157,8 @@ func ConnLimiterRegistry() reg.Registry[conn.ConnLimiter] {
 
 func RateLimiterRegistry() reg.Registry[rate.RateLimiter] {
 	return rateLimiterReg
+}
+
+func IngressRegistry() reg.Registry[ingress.Ingress] {
+	return ingressReg
 }

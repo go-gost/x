@@ -12,8 +12,8 @@ import (
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	xchain "github.com/go-gost/x/chain"
-	"github.com/go-gost/x/handler/forward/internal/forward"
 	netpkg "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
 )
 

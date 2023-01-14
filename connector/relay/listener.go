@@ -25,6 +25,7 @@ func (p *tcpListener) Accept() (net.Conn, error) {
 	conn, err := p.getPeerConn(cc)
 	if err != nil {
 		cc.Close()
+		p.logger.Errorf("get peer failed: %s", err)
 		return nil, err
 	}
 

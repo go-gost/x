@@ -193,6 +193,20 @@ type HostsConfig struct {
 	HTTP     *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
 }
 
+type IngressRuleConfig struct {
+	Hostname string `json:"hostname"`
+	Endpoint string `json:"endpoint"`
+}
+
+type IngressConfig struct {
+	Name   string               `json:"name"`
+	Rules  []*IngressRuleConfig `yaml:",omitempty" json:"rules,omitempty"`
+	Reload time.Duration        `yaml:",omitempty" json:"reload,omitempty"`
+	File   *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
+	Redis  *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP   *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
+}
+
 type RecorderConfig struct {
 	Name  string         `json:"name"`
 	File  *FileRecorder  `yaml:",omitempty" json:"file,omitempty"`
@@ -246,6 +260,7 @@ type HandlerConfig struct {
 	Authers    []string          `yaml:",omitempty" json:"authers,omitempty"`
 	Auth       *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
 	TLS        *TLSConfig        `yaml:",omitempty" json:"tls,omitempty"`
+	Ingress    string            `yaml:",omitempty" json:"ingress,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
@@ -357,6 +372,7 @@ type Config struct {
 	Bypasses   []*BypassConfig    `yaml:",omitempty" json:"bypasses,omitempty"`
 	Resolvers  []*ResolverConfig  `yaml:",omitempty" json:"resolvers,omitempty"`
 	Hosts      []*HostsConfig     `yaml:",omitempty" json:"hosts,omitempty"`
+	Ingresses  []*IngressConfig   `yaml:",omitempty" json:"ingresses,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
@@ -404,6 +420,7 @@ func (c *Config) Write(w io.Writer, format string) error {
 	default:
 		enc := yaml.NewEncoder(w)
 		defer enc.Close()
+		enc.SetIndent(2)
 
 		return enc.Encode(c)
 	}

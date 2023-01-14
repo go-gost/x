@@ -16,6 +16,10 @@ import (
 
 // Bind implements connector.Binder.
 func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, address string, opts ...connector.BindOption) (net.Listener, error) {
+	if !c.md.tunnelID.IsZero() {
+		return c.tunnel(ctx, conn, c.options.Logger)
+	}
+
 	log := c.options.Logger.WithFields(map[string]any{
 		"network": network,
 		"address": address,
@@ -39,8 +43,75 @@ func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, addre
 	}
 }
 
+func (c *relayConnector) tunnel(ctx context.Context, conn net.Conn, log logger.Logger) (net.Listener, error) {
+	addr, cid, err := c.initTunnel(conn)
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("create tunnel %s connector %s OK", c.md.tunnelID, cid)
+
+	session, err := mux.ServerSession(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tcpListener{
+		addr:    addr,
+		session: session,
+		logger:  log,
+	}, nil
+}
+
+func (c *relayConnector) initTunnel(conn net.Conn) (addr net.Addr, cid relay.ConnectorID, err error) {
+	req := relay.Request{
+		Version: relay.Version1,
+		Cmd:     relay.CmdBind,
+	}
+
+	if c.options.Auth != nil {
+		pwd, _ := c.options.Auth.Password()
+		req.Features = append(req.Features, &relay.UserAuthFeature{
+			Username: c.options.Auth.Username(),
+			Password: pwd,
+		})
+	}
+
+	req.Features = append(req.Features, &relay.TunnelFeature{
+		ID: c.md.tunnelID,
+	})
+	if _, err = req.WriteTo(conn); err != nil {
+		return
+	}
+
+	// first reply, bind status
+	resp := relay.Response{}
+	if _, err = resp.ReadFrom(conn); err != nil {
+		return
+	}
+
+	if resp.Status != relay.StatusOK {
+		err = fmt.Errorf("%d: create tunnel %s failed", resp.Status, c.md.tunnelID)
+		return
+	}
+
+	for _, f := range resp.Features {
+		switch f.Type() {
+		case relay.FeatureAddr:
+			if feature, _ := f.(*relay.AddrFeature); feature != nil {
+				addr, err = net.ResolveTCPAddr("tcp", net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port))))
+			}
+		case relay.FeatureTunnel:
+			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
+				cid = feature.ID
+			}
+		}
+	}
+
+	return
+}
+
 func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) (net.Listener, error) {
-	laddr, err := c.bind(conn, relay.BIND, network, address)
+	laddr, err := c.bind(conn, relay.CmdBind, network, address)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +130,7 @@ func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, ad
 }
 
 func (c *relayConnector) bindUDP(ctx context.Context, conn net.Conn, network, address string, opts *connector.BindOptions, log logger.Logger) (net.Listener, error) {
-	laddr, err := c.bind(conn, relay.FUDP|relay.BIND, network, address)
+	laddr, err := c.bind(conn, relay.FUDP|relay.CmdBind, network, address)
 	if err != nil {
 		return nil, err
 	}
@@ -80,10 +151,10 @@ func (c *relayConnector) bindUDP(ctx context.Context, conn net.Conn, network, ad
 	return ln, nil
 }
 
-func (c *relayConnector) bind(conn net.Conn, cmd uint8, network, address string) (net.Addr, error) {
+func (c *relayConnector) bind(conn net.Conn, cmd relay.CmdType, network, address string) (net.Addr, error) {
 	req := relay.Request{
 		Version: relay.Version1,
-		Flags:   cmd,
+		Cmd:     cmd,
 	}
 
 	if c.options.Auth != nil {

@@ -53,14 +53,14 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 
 	req := relay.Request{
 		Version: relay.Version1,
-		Flags:   relay.CONNECT,
+		Cmd:     relay.CmdConnect,
 	}
 	if network == "udp" || network == "udp4" || network == "udp6" {
-		req.Flags |= relay.FUDP
+		req.Cmd |= relay.FUDP
 
 		// UDP association
 		if address == "" {
-			baddr, err := c.bind(conn, relay.FUDP|relay.BIND, network, address)
+			baddr, err := c.bind(conn, relay.FUDP|relay.CmdBind, network, address)
 			if err != nil {
 				return nil, err
 			}

@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
@@ -21,6 +22,7 @@ import (
 	bypass_impl "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
 	xhosts "github.com/go-gost/x/hosts"
+	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/internal/loader"
 	xconn "github.com/go-gost/x/limiter/conn"
 	xrate "github.com/go-gost/x/limiter/rate"
@@ -317,6 +319,60 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 		)))
 	}
 	return xhosts.NewHostMapper(opts...)
+}
+
+func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
+	if cfg == nil {
+		return nil
+	}
+
+	var rules []xingress.Rule
+	for _, rule := range cfg.Rules {
+		if rule.Hostname == "" || rule.Endpoint == "" {
+			continue
+		}
+
+		rules = append(rules, xingress.Rule{
+			Host:     rule.Hostname,
+			Endpoint: rule.Endpoint,
+		})
+	}
+	opts := []xingress.Option{
+		xingress.RulesOption(rules),
+		xingress.ReloadPeriodOption(cfg.Reload),
+		xingress.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind":    "ingress",
+			"ingress": cfg.Name,
+		})),
+	}
+	if cfg.File != nil && cfg.File.Path != "" {
+		opts = append(opts, xingress.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+	}
+	if cfg.Redis != nil && cfg.Redis.Addr != "" {
+		switch cfg.Redis.Type {
+		case "set": // redis set
+			opts = append(opts, xingress.RedisLoaderOption(loader.RedisSetLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		default: // redis hash
+			opts = append(opts, xingress.RedisLoaderOption(loader.RedisHashLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
+		}
+	}
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		opts = append(opts, xingress.HTTPLoaderOption(loader.HTTPLoader(
+			cfg.HTTP.URL,
+			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+		)))
+	}
+	return xingress.NewIngress(opts...)
 }
 
 func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
