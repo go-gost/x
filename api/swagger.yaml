@@ -173,6 +173,11 @@ definitions:
                     $ref: '#/definitions/HostsConfig'
                 type: array
                 x-go-name: Hosts
+            ingresses:
+                items:
+                    $ref: '#/definitions/IngressConfig'
+                type: array
+                x-go-name: Ingresses
             limiters:
                 items:
                     $ref: '#/definitions/LimiterConfig'
@@ -333,6 +338,9 @@ definitions:
                 x-go-name: Chain
             chainGroup:
                 $ref: '#/definitions/ChainGroupConfig'
+            ingress:
+                type: string
+                x-go-name: Ingress
             metadata:
                 additionalProperties: {}
                 type: object
@@ -414,6 +422,36 @@ definitions:
                 $ref: '#/definitions/RedisLoader'
             reload:
                 $ref: '#/definitions/Duration'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    IngressConfig:
+        properties:
+            file:
+                $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
+            name:
+                type: string
+                x-go-name: Name
+            redis:
+                $ref: '#/definitions/RedisLoader'
+            reload:
+                $ref: '#/definitions/Duration'
+            rules:
+                items:
+                    $ref: '#/definitions/IngressRuleConfig'
+                type: array
+                x-go-name: Rules
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    IngressRuleConfig:
+        properties:
+            endpoint:
+                type: string
+                x-go-name: Endpoint
+            hostname:
+                type: string
+                x-go-name: Hostname
         type: object
         x-go-package: github.com/go-gost/x/config
     LimiterConfig:
@@ -1243,6 +1281,64 @@ paths:
             summary: Update hosts by name, the hosts must already exist.
             tags:
                 - Hosts
+    /config/ingresses:
+        post:
+            operationId: createIngressRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/IngressConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createIngressResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new ingress, the name of the ingress must be unique in ingress list.
+            tags:
+                - Ingress
+    /config/ingresses/{ingress}:
+        delete:
+            operationId: deleteIngressRequest
+            parameters:
+                - in: path
+                  name: ingress
+                  required: true
+                  type: string
+                  x-go-name: Ingress
+            responses:
+                "200":
+                    $ref: '#/responses/deleteIngressResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete ingress by name.
+            tags:
+                - Ingress
+        put:
+            operationId: updateIngressRequest
+            parameters:
+                - in: path
+                  name: ingress
+                  required: true
+                  type: string
+                  x-go-name: Ingress
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/IngressConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateIngressResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update ingress by name, the ingress must already exist.
+            tags:
+                - Ingress
     /config/limiters:
         post:
             operationId: createLimiterRequest
@@ -1520,6 +1616,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createIngressResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createLimiterResponse:
         description: successful operation.
         headers:
@@ -1581,6 +1683,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteHostsResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteIngressResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1659,6 +1767,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateHostsResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateIngressResponse:
         description: successful operation.
         headers:
             Data: {}

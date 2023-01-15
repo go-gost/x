@@ -134,6 +134,10 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/hosts/:hosts", updateHosts)
 	config.DELETE("/hosts/:hosts", deleteHosts)
 
+	config.POST("/ingresses", createIngress)
+	config.PUT("/ingresses/:ingress", updateIngress)
+	config.DELETE("/ingresses/:ingress", deleteIngress)
+
 	config.POST("/limiters", createLimiter)
 	config.PUT("/limiters/:limiter", updateLimiter)
 	config.DELETE("/limiters/:limiter", deleteLimiter)

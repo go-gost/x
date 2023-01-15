@@ -127,7 +127,7 @@ func (ing *ingress) reload(ctx context.Context) error {
 		}
 		host := rule.Host
 		if host[0] == '*' {
-			host = "." + host[1:]
+			host = host[1:]
 		}
 		rules[host] = rule
 	}
