@@ -220,6 +220,14 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 }
 
+// Close implements io.Closer interface.
+func (h *relayHandler) Close() error {
+	if h.ep != nil {
+		return h.ep.Close()
+	}
+	return nil
+}
+
 func (h *relayHandler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
