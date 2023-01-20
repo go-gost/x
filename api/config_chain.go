@@ -51,9 +51,10 @@ func createChain(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Chains = append(cfg.Chains, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Chains = append(c.Chains, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -111,14 +112,15 @@ func updateChain(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Chains {
-		if cfg.Chains[i].Name == req.Chain {
-			cfg.Chains[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Chains {
+			if c.Chains[i].Name == req.Chain {
+				c.Chains[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -158,16 +160,17 @@ func deleteChain(ctx *gin.Context) {
 	}
 	registry.ChainRegistry().Unregister(req.Chain)
 
-	cfg := config.Global()
-	chains := cfg.Chains
-	cfg.Chains = nil
-	for _, s := range chains {
-		if s.Name == req.Chain {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		chains := c.Chains
+		c.Chains = nil
+		for _, s := range chains {
+			if s.Name == req.Chain {
+				continue
+			}
+			c.Chains = append(c.Chains, s)
 		}
-		cfg.Chains = append(cfg.Chains, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

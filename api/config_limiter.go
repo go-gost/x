@@ -47,9 +47,10 @@ func createLimiter(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Limiters = append(cfg.Limiters, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Limiters = append(c.Limiters, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -102,14 +103,15 @@ func updateLimiter(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Limiters {
-		if cfg.Limiters[i].Name == req.Limiter {
-			cfg.Limiters[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Limiters {
+			if c.Limiters[i].Name == req.Limiter {
+				c.Limiters[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -149,16 +151,17 @@ func deleteLimiter(ctx *gin.Context) {
 	}
 	registry.TrafficLimiterRegistry().Unregister(req.Limiter)
 
-	cfg := config.Global()
-	limiteres := cfg.Limiters
-	cfg.Limiters = nil
-	for _, s := range limiteres {
-		if s.Name == req.Limiter {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		limiteres := c.Limiters
+		c.Limiters = nil
+		for _, s := range limiteres {
+			if s.Name == req.Limiter {
+				continue
+			}
+			c.Limiters = append(c.Limiters, s)
 		}
-		cfg.Limiters = append(cfg.Limiters, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

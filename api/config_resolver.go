@@ -51,9 +51,10 @@ func createResolver(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Resolvers = append(cfg.Resolvers, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Resolvers = append(c.Resolvers, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -110,14 +111,15 @@ func updateResolver(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Resolvers {
-		if cfg.Resolvers[i].Name == req.Resolver {
-			cfg.Resolvers[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Resolvers {
+			if c.Resolvers[i].Name == req.Resolver {
+				c.Resolvers[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -157,16 +159,17 @@ func deleteResolver(ctx *gin.Context) {
 	}
 	registry.ResolverRegistry().Unregister(req.Resolver)
 
-	cfg := config.Global()
-	resolvers := cfg.Resolvers
-	cfg.Resolvers = nil
-	for _, s := range resolvers {
-		if s.Name == req.Resolver {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		resolvers := c.Resolvers
+		c.Resolvers = nil
+		for _, s := range resolvers {
+			if s.Name == req.Resolver {
+				continue
+			}
+			c.Resolvers = append(c.Resolvers, s)
 		}
-		cfg.Resolvers = append(cfg.Resolvers, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

@@ -47,9 +47,10 @@ func createHosts(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Hosts = append(cfg.Hosts, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Hosts = append(c.Hosts, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -102,14 +103,15 @@ func updateHosts(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Hosts {
-		if cfg.Hosts[i].Name == req.Hosts {
-			cfg.Hosts[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Hosts {
+			if c.Hosts[i].Name == req.Hosts {
+				c.Hosts[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -149,16 +151,17 @@ func deleteHosts(ctx *gin.Context) {
 	}
 	registry.HostsRegistry().Unregister(req.Hosts)
 
-	cfg := config.Global()
-	hosts := cfg.Hosts
-	cfg.Hosts = nil
-	for _, s := range hosts {
-		if s.Name == req.Hosts {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		hosts := c.Hosts
+		c.Hosts = nil
+		for _, s := range hosts {
+			if s.Name == req.Hosts {
+				continue
+			}
+			c.Hosts = append(c.Hosts, s)
 		}
-		cfg.Hosts = append(cfg.Hosts, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

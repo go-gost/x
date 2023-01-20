@@ -47,9 +47,10 @@ func createIngress(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Ingresses = append(cfg.Ingresses, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Ingresses = append(c.Ingresses, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -102,14 +103,15 @@ func updateIngress(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Ingresses {
-		if cfg.Ingresses[i].Name == req.Ingress {
-			cfg.Ingresses[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Ingresses {
+			if c.Ingresses[i].Name == req.Ingress {
+				c.Ingresses[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -149,16 +151,17 @@ func deleteIngress(ctx *gin.Context) {
 	}
 	registry.IngressRegistry().Unregister(req.Ingress)
 
-	cfg := config.Global()
-	ingresses := cfg.Ingresses
-	cfg.Ingresses = nil
-	for _, s := range ingresses {
-		if s.Name == req.Ingress {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		ingresses := c.Ingresses
+		c.Ingresses = nil
+		for _, s := range ingresses {
+			if s.Name == req.Ingress {
+				continue
+			}
+			c.Ingresses = append(c.Ingresses, s)
 		}
-		cfg.Ingresses = append(cfg.Ingresses, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

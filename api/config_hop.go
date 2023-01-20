@@ -51,9 +51,10 @@ func createHop(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Hops = append(cfg.Hops, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Hops = append(c.Hops, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -111,14 +112,15 @@ func updateHop(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Hops {
-		if cfg.Hops[i].Name == req.Hop {
-			cfg.Hops[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Hops {
+			if c.Hops[i].Name == req.Hop {
+				c.Hops[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -158,16 +160,17 @@ func deleteHop(ctx *gin.Context) {
 	}
 	registry.HopRegistry().Unregister(req.Hop)
 
-	cfg := config.Global()
-	hops := cfg.Hops
-	cfg.Hops = nil
-	for _, s := range hops {
-		if s.Name == req.Hop {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		hops := c.Hops
+		c.Hops = nil
+		for _, s := range hops {
+			if s.Name == req.Hop {
+				continue
+			}
+			c.Hops = append(c.Hops, s)
 		}
-		cfg.Hops = append(cfg.Hops, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

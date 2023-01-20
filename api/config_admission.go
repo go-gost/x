@@ -47,9 +47,10 @@ func createAdmission(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Admissions = append(cfg.Admissions, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Admissions = append(c.Admissions, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -102,14 +103,15 @@ func updateAdmission(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Admissions {
-		if cfg.Admissions[i].Name == req.Admission {
-			cfg.Admissions[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Admissions {
+			if c.Admissions[i].Name == req.Admission {
+				c.Admissions[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -149,16 +151,17 @@ func deleteAdmission(ctx *gin.Context) {
 	}
 	registry.AdmissionRegistry().Unregister(req.Admission)
 
-	cfg := config.Global()
-	admissiones := cfg.Admissions
-	cfg.Admissions = nil
-	for _, s := range admissiones {
-		if s.Name == req.Admission {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		admissiones := c.Admissions
+		c.Admissions = nil
+		for _, s := range admissiones {
+			if s.Name == req.Admission {
+				continue
+			}
+			c.Admissions = append(c.Admissions, s)
 		}
-		cfg.Admissions = append(cfg.Admissions, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

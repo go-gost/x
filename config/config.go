@@ -35,11 +35,18 @@ func Global() *Config {
 	return cfg
 }
 
-func SetGlobal(c *Config) {
+func Set(c *Config) {
 	globalMux.Lock()
 	defer globalMux.Unlock()
 
 	global = c
+}
+
+func OnUpdate(f func(c *Config) error) error {
+	globalMux.Lock()
+	defer globalMux.Unlock()
+
+	return f(global)
 }
 
 type LogConfig struct {

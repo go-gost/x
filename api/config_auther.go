@@ -46,9 +46,10 @@ func createAuther(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Authers = append(cfg.Authers, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Authers = append(c.Authers, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -100,14 +101,15 @@ func updateAuther(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Authers {
-		if cfg.Authers[i].Name == req.Auther {
-			cfg.Authers[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Authers {
+			if c.Authers[i].Name == req.Auther {
+				c.Authers[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -147,16 +149,17 @@ func deleteAuther(ctx *gin.Context) {
 	}
 	registry.AutherRegistry().Unregister(req.Auther)
 
-	cfg := config.Global()
-	authers := cfg.Authers
-	cfg.Authers = nil
-	for _, s := range authers {
-		if s.Name == req.Auther {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		authers := c.Authers
+		c.Authers = nil
+		for _, s := range authers {
+			if s.Name == req.Auther {
+				continue
+			}
+			c.Authers = append(c.Authers, s)
 		}
-		cfg.Authers = append(cfg.Authers, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

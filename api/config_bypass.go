@@ -47,9 +47,10 @@ func createBypass(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	cfg.Bypasses = append(cfg.Bypasses, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Bypasses = append(c.Bypasses, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -102,14 +103,15 @@ func updateBypass(ctx *gin.Context) {
 		return
 	}
 
-	cfg := config.Global()
-	for i := range cfg.Bypasses {
-		if cfg.Bypasses[i].Name == req.Bypass {
-			cfg.Bypasses[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Bypasses {
+			if c.Bypasses[i].Name == req.Bypass {
+				c.Bypasses[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -149,16 +151,17 @@ func deleteBypass(ctx *gin.Context) {
 	}
 	registry.BypassRegistry().Unregister(req.Bypass)
 
-	cfg := config.Global()
-	bypasses := cfg.Bypasses
-	cfg.Bypasses = nil
-	for _, s := range bypasses {
-		if s.Name == req.Bypass {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		bypasses := c.Bypasses
+		c.Bypasses = nil
+		for _, s := range bypasses {
+			if s.Name == req.Bypass {
+				continue
+			}
+			c.Bypasses = append(c.Bypasses, s)
 		}
-		cfg.Bypasses = append(cfg.Bypasses, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

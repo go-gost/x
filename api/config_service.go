@@ -59,9 +59,10 @@ func createService(ctx *gin.Context) {
 
 	go svc.Serve()
 
-	cfg := config.Global()
-	cfg.Services = append(cfg.Services, &req.Data)
-	config.SetGlobal(cfg)
+	config.OnUpdate(func(c *config.Config) error {
+		c.Services = append(c.Services, &req.Data)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -123,14 +124,15 @@ func updateService(ctx *gin.Context) {
 
 	go svc.Serve()
 
-	cfg := config.Global()
-	for i := range cfg.Services {
-		if cfg.Services[i].Name == req.Service {
-			cfg.Services[i] = &req.Data
-			break
+	config.OnUpdate(func(c *config.Config) error {
+		for i := range c.Services {
+			if c.Services[i].Name == req.Service {
+				c.Services[i] = &req.Data
+				break
+			}
 		}
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -173,16 +175,17 @@ func deleteService(ctx *gin.Context) {
 	registry.ServiceRegistry().Unregister(req.Service)
 	svc.Close()
 
-	cfg := config.Global()
-	services := cfg.Services
-	cfg.Services = nil
-	for _, s := range services {
-		if s.Name == req.Service {
-			continue
+	config.OnUpdate(func(c *config.Config) error {
+		services := c.Services
+		c.Services = nil
+		for _, s := range services {
+			if s.Name == req.Service {
+				continue
+			}
+			c.Services = append(c.Services, s)
 		}
-		cfg.Services = append(cfg.Services, s)
-	}
-	config.SetGlobal(cfg)
+		return nil
+	})
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
