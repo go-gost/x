@@ -11,7 +11,6 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
-	xchain "github.com/go-gost/x/chain"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
@@ -44,13 +43,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *forwardHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	if h.hop == nil {
-		// dummy node used by relay connector.
-		h.hop = xchain.NewChainHop([]*chain.Node{
-			{Name: "dummy", Addr: ":0"},
-		})
 	}
 
 	h.router = h.options.Router
@@ -101,17 +93,22 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 
-	var target *chain.Node
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		host = net.JoinHostPort(host, "0")
+	}
+	target := &chain.Node{
+		Addr: host,
+	}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
 			chain.HostSelectOption(host),
 			chain.ProtocolSelectOption(protocol),
 		)
-	}
-	if target == nil {
-		err := errors.New("target not available")
-		log.Error(err)
-		return err
+		if target == nil {
+			err := errors.New("target not available")
+			log.Error(err)
+			return err
+		}
 	}
 
 	log = log.WithFields(map[string]any{

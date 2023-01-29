@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	sx "github.com/go-gost/x/internal/util/selector"
 )
 
@@ -19,7 +20,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		"cmd": "connect",
 	})
 
-	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
+	log.Debugf("%s >> %s/%s", conn.RemoteAddr(), address, network)
 
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -91,6 +92,86 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), address)
+
+	return nil
+}
+
+func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, network, address string, tunnelID relay.TunnelID, log logger.Logger) error {
+	log = log.WithFields(map[string]any{
+		"dst":    fmt.Sprintf("%s/%s", address, network),
+		"cmd":    "connect",
+		"tunnel": tunnelID.String(),
+	})
+
+	log.Debugf("%s >> %s/%s", conn.RemoteAddr(), address, network)
+
+	resp := relay.Response{
+		Version: relay.Version1,
+		Status:  relay.StatusOK,
+	}
+
+	host, _, _ := net.SplitHostPort(address)
+
+	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
+		log.Debug("bypass: ", address)
+		resp.Status = relay.StatusForbidden
+		_, err := resp.WriteTo(conn)
+		return err
+	}
+
+	var tid relay.TunnelID
+	if ingress := h.md.ingress; ingress != nil {
+		tid = parseTunnelID(ingress.Get(host))
+	}
+
+	if !tid.Equal(tunnelID) {
+		resp.Status = relay.StatusBadRequest
+		resp.WriteTo(conn)
+		err := fmt.Errorf("tunnel %s not found", tunnelID.String())
+		log.Error(err)
+		return err
+	}
+
+	cc, err := getTunnelConn(h.pool, tunnelID, 3, log)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer cc.Close()
+
+	log.Debugf("%s >> %s", conn.RemoteAddr(), cc.RemoteAddr())
+
+	if h.md.noDelay {
+		if _, err := resp.WriteTo(conn); err != nil {
+			log.Error(err)
+			return err
+		}
+	} else {
+		rc := &tcpConn{
+			Conn: conn,
+		}
+		// cache the header
+		if _, err := resp.WriteTo(&rc.wbuf); err != nil {
+			return err
+		}
+		conn = rc
+	}
+
+	af := &relay.AddrFeature{}
+	af.ParseFrom(conn.RemoteAddr().String())
+	resp = relay.Response{
+		Version:  relay.Version1,
+		Status:   relay.StatusOK,
+		Features: []relay.Feature{af},
+	}
+	resp.WriteTo(cc)
+
+	t := time.Now()
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
+	xnet.Transport(conn, cc)
+	log.WithFields(map[string]any{
+		"duration": time.Since(t),
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())
 
 	return nil
 }

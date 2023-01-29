@@ -212,8 +212,7 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 		return
 	}
 
-	var connectorID relay.ConnectorID
-	copy(connectorID[:], uuid[:])
+	connectorID := relay.NewTunnelID(uuid[:])
 
 	af := &relay.AddrFeature{}
 	err = af.ParseFrom(h.ep.Addr().String())

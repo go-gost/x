@@ -19,7 +19,6 @@ import (
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
-	"github.com/google/uuid"
 )
 
 type epListener struct {
@@ -118,30 +117,18 @@ func (h *epHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 
 	var tunnelID relay.TunnelID
 	if h.ingress != nil {
-		v := h.ingress.Get(host)
-		uuid, _ := uuid.Parse(v)
-		copy(tunnelID[:], uuid[:])
+		tunnelID = parseTunnelID(h.ingress.Get(host))
+	}
+	if tunnelID.IsPrivate() {
+		err := fmt.Errorf("tunnel %s is private", tunnelID)
+		log.Error(err)
+		return err
 	}
 	log = log.WithFields(map[string]any{
 		"tunnel": tunnelID.String(),
 	})
 
-	var cc net.Conn
-	var err error
-	for i := 0; i < 3; i++ {
-		c := h.pool.Get(tunnelID)
-		if c == nil {
-			err = fmt.Errorf("tunnel %s not available", tunnelID.String())
-			break
-		}
-
-		cc, err = c.Session().GetConn()
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		break
-	}
+	cc, err := getTunnelConn(h.pool, tunnelID, 3, log)
 	if err != nil {
 		log.Error(err)
 		return err

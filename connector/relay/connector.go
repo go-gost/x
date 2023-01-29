@@ -83,11 +83,13 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		if err := af.ParseFrom(address); err != nil {
 			return nil, err
 		}
+		req.Features = append(req.Features, af)
+	}
 
-		// forward mode if port is 0.
-		if af.Port > 0 {
-			req.Features = append(req.Features, af)
-		}
+	if !c.md.tunnelID.IsZero() {
+		req.Features = append(req.Features, &relay.TunnelFeature{
+			ID: c.md.tunnelID,
+		})
 	}
 
 	if c.md.noDelay {

@@ -195,18 +195,23 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if h.hop != nil {
-		if address != "" {
-			resp.Status = relay.StatusForbidden
-			log.Error("forward mode, connect is forbidden")
-			_, err := resp.WriteTo(conn)
-			return err
-		}
+		/*
+			if address != "" {
+				resp.Status = relay.StatusForbidden
+				log.Error("forward mode, CONNECT method is forbidden")
+				_, err := resp.WriteTo(conn)
+				return err
+			}
+		*/
 		// forward mode
 		return h.handleForward(ctx, conn, network, log)
 	}
 
 	switch req.Cmd & relay.CmdMask {
-	case 0, relay.CmdConnect:
+	case relay.CmdConnect:
+		if !tunnelID.IsZero() {
+			return h.handleConnectTunnel(ctx, conn, network, address, tunnelID, log)
+		}
 		return h.handleConnect(ctx, conn, network, address, log)
 	case relay.CmdBind:
 		if !tunnelID.IsZero() {

@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -8,6 +10,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
+	"github.com/google/uuid"
 )
 
 type Connector struct {
@@ -110,13 +113,13 @@ func (t *Tunnel) clean() {
 }
 
 type ConnectorPool struct {
-	tunnels map[relay.TunnelID]*Tunnel
+	tunnels map[string]*Tunnel
 	mu      sync.RWMutex
 }
 
 func NewConnectorPool() *ConnectorPool {
 	return &ConnectorPool{
-		tunnels: make(map[relay.TunnelID]*Tunnel),
+		tunnels: make(map[string]*Tunnel),
 	}
 }
 
@@ -124,10 +127,12 @@ func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	t := p.tunnels[tid]
+	s := tid.String()
+
+	t := p.tunnels[s]
 	if t == nil {
 		t = NewTunnel(tid)
-		p.tunnels[tid] = t
+		p.tunnels[s] = t
 	}
 	t.AddConnector(c)
 }
@@ -140,10 +145,49 @@ func (p *ConnectorPool) Get(tid relay.TunnelID) *Connector {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	t := p.tunnels[tid]
+	t := p.tunnels[tid.String()]
 	if t == nil {
 		return nil
 	}
 
 	return t.GetConnector()
+}
+
+func parseTunnelID(s string) (tid relay.TunnelID) {
+	if s == "" {
+		return
+	}
+	private := false
+	if s[0] == '$' {
+		private = true
+		s = s[1:]
+	}
+	uuid, _ := uuid.Parse(s)
+
+	if private {
+		return relay.NewPrivateTunnelID(uuid[:])
+	}
+	return relay.NewTunnelID(uuid[:])
+}
+
+func getTunnelConn(pool *ConnectorPool, tunnelID relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, err error) {
+	if retry <= 0 {
+		retry = 1
+	}
+	for i := 0; i < retry; i++ {
+		c := pool.Get(tunnelID)
+		if c == nil {
+			err = fmt.Errorf("tunnel %s not available", tunnelID.String())
+			break
+		}
+
+		conn, err = c.Session().GetConn()
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		break
+	}
+
+	return
 }

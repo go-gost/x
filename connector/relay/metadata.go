@@ -30,7 +30,7 @@ func (c *relayConnector) parseMetadata(md mdata.Metadata) (err error) {
 		if err != nil {
 			return err
 		}
-		copy(c.md.tunnelID[:], uuid[:])
+		c.md.tunnelID = relay.NewTunnelID(uuid[:])
 	}
 
 	return

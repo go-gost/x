@@ -48,7 +48,7 @@ func (c *relayConnector) tunnel(ctx context.Context, conn net.Conn, log logger.L
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("create tunnel %s connector %s OK", c.md.tunnelID, cid)
+	log.Debugf("create tunnel %s connector %s OK", c.md.tunnelID.String(), cid)
 
 	session, err := mux.ServerSession(conn)
 	if err != nil {
@@ -90,7 +90,7 @@ func (c *relayConnector) initTunnel(conn net.Conn) (addr net.Addr, cid relay.Con
 	}
 
 	if resp.Status != relay.StatusOK {
-		err = fmt.Errorf("%d: create tunnel %s failed", resp.Status, c.md.tunnelID)
+		err = fmt.Errorf("%d: create tunnel %s failed", resp.Status, c.md.tunnelID.String())
 		return
 	}
 

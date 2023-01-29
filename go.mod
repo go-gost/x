@@ -10,7 +10,7 @@ require (
 	github.com/go-gost/core v0.0.0-20230114050924-1a8c1ccb1dc5
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
-	github.com/go-gost/relay v0.2.0
+	github.com/go-gost/relay v0.3.1
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
