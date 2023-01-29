@@ -15,7 +15,7 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
 )
@@ -136,34 +136,16 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		marker.Reset()
 	}
 
-	if protocol == forward.ProtoHTTP &&
-		target.Options().HTTP != nil {
-		req, err := http.ReadRequest(bufio.NewReader(rw))
-		if err != nil {
-			return err
-		}
-
-		httpSettings := target.Options().HTTP
-		if httpSettings.Host != "" {
-			req.Host = httpSettings.Host
-		}
-		for k, v := range httpSettings.Header {
-			req.Header.Set(k, v)
-		}
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpRequest(req, false)
-			log.Trace(string(dump))
-		}
-
-		if err := req.Write(cc); err != nil {
-			return err
-		}
-	}
-
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	netpkg.Transport(rw, cc)
+
+	if protocol == forward.ProtoHTTP &&
+		target.Options().HTTP != nil {
+		h.handleHTTP(ctx, rw, cc, target.Options().HTTP, log)
+	} else {
+		xnet.Transport(rw, cc)
+	}
+
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
@@ -181,4 +163,57 @@ func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func (h *forwardHandler) handleHTTP(ctx context.Context, src, dst io.ReadWriter, httpSettings *chain.HTTPNodeSettings, log logger.Logger) error {
+	errc := make(chan error, 1)
+	go func() {
+		errc <- xnet.CopyBuffer(src, dst, 8192)
+	}()
+
+	go func() {
+		br := bufio.NewReader(src)
+		for {
+			err := func() error {
+				req, err := http.ReadRequest(br)
+				if err != nil {
+					return err
+				}
+
+				if httpSettings.Host != "" {
+					req.Host = httpSettings.Host
+				}
+				for k, v := range httpSettings.Header {
+					req.Header.Set(k, v)
+				}
+
+				if log.IsLevelEnabled(logger.TraceLevel) {
+					dump, _ := httputil.DumpRequest(req, false)
+					log.Trace(string(dump))
+				}
+				if err := req.Write(dst); err != nil {
+					return err
+				}
+
+				if req.Header.Get("Upgrade") == "websocket" {
+					err := xnet.CopyBuffer(dst, src, 8192)
+					if err == nil {
+						err = io.EOF
+					}
+					return err
+				}
+				return nil
+			}()
+			if err != nil {
+				errc <- err
+				break
+			}
+		}
+	}()
+
+	if err := <-errc; err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
 }

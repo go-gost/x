@@ -11,11 +11,11 @@ import (
 func Transport(rw1, rw2 io.ReadWriter) error {
 	errc := make(chan error, 1)
 	go func() {
-		errc <- copyBuffer(rw1, rw2)
+		errc <- CopyBuffer(rw1, rw2, 8192)
 	}()
 
 	go func() {
-		errc <- copyBuffer(rw2, rw1)
+		errc <- CopyBuffer(rw2, rw1, 8192)
 	}()
 
 	if err := <-errc; err != nil && err != io.EOF {
@@ -25,8 +25,8 @@ func Transport(rw1, rw2 io.ReadWriter) error {
 	return nil
 }
 
-func copyBuffer(dst io.Writer, src io.Reader) error {
-	buf := bufpool.Get(4 * 1024)
+func CopyBuffer(dst io.Writer, src io.Reader, bufSize int) error {
+	buf := bufpool.Get(8192)
 	defer bufpool.Put(buf)
 
 	_, err := io.CopyBuffer(dst, src, *buf)
