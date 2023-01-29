@@ -123,9 +123,8 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	var tunnelID relay.TunnelID
 	defer func() {
-		if tunnelID.IsZero() || err != nil {
+		if err != nil {
 			conn.Close()
 		}
 		log.WithFields(map[string]any{
@@ -161,6 +160,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	var user, pass string
 	var address string
+	var tunnelID relay.TunnelID
 	for _, f := range req.Features {
 		switch f.Type() {
 		case relay.FeatureUserAuth:
@@ -195,20 +195,15 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if h.hop != nil {
-		/*
-			if address != "" {
-				resp.Status = relay.StatusForbidden
-				log.Error("forward mode, CONNECT method is forbidden")
-				_, err := resp.WriteTo(conn)
-				return err
-			}
-		*/
+		defer conn.Close()
 		// forward mode
 		return h.handleForward(ctx, conn, network, log)
 	}
 
 	switch req.Cmd & relay.CmdMask {
 	case relay.CmdConnect:
+		defer conn.Close()
+
 		if !tunnelID.IsZero() {
 			return h.handleConnectTunnel(ctx, conn, network, address, tunnelID, log)
 		}
@@ -217,6 +212,8 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		if !tunnelID.IsZero() {
 			return h.handleTunnel(ctx, conn, tunnelID, log)
 		}
+
+		defer conn.Close()
 		return h.handleBind(ctx, conn, network, address, log)
 	default:
 		resp.Status = relay.StatusBadRequest

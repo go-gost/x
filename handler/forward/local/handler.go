@@ -1,15 +1,19 @@
 package local
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/forward"
@@ -130,6 +134,31 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	defer cc.Close()
 	if marker := target.Marker(); marker != nil {
 		marker.Reset()
+	}
+
+	if protocol == forward.ProtoHTTP &&
+		target.Options().HTTP != nil {
+		req, err := http.ReadRequest(bufio.NewReader(rw))
+		if err != nil {
+			return err
+		}
+
+		httpSettings := target.Options().HTTP
+		if httpSettings.Host != "" {
+			req.Host = httpSettings.Host
+		}
+		for k, v := range httpSettings.Header {
+			req.Header.Set(k, v)
+		}
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpRequest(req, false)
+			log.Trace(string(dump))
+		}
+
+		if err := req.Write(cc); err != nil {
+			return err
+		}
 	}
 
 	t := time.Now()

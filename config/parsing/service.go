@@ -257,6 +257,8 @@ func parseForwarder(cfg *config.ForwarderConfig) (chain.Hop, error) {
 						Protocol: node.Protocol,
 						Bypass:   node.Bypass,
 						Bypasses: node.Bypasses,
+						HTTP:     node.HTTP,
+						TLS:      node.TLS,
 					},
 				)
 			}

@@ -280,12 +280,24 @@ type ForwarderConfig struct {
 }
 
 type ForwardNodeConfig struct {
-	Name     string   `yaml:",omitempty" json:"name,omitempty"`
-	Addr     string   `yaml:",omitempty" json:"addr,omitempty"`
-	Host     string   `yaml:",omitempty" json:"host,omitempty"`
-	Protocol string   `yaml:",omitempty" json:"protocol,omitempty"`
-	Bypass   string   `yaml:",omitempty" json:"bypass,omitempty"`
-	Bypasses []string `yaml:",omitempty" json:"bypasses,omitempty"`
+	Name     string          `yaml:",omitempty" json:"name,omitempty"`
+	Addr     string          `yaml:",omitempty" json:"addr,omitempty"`
+	Host     string          `yaml:",omitempty" json:"host,omitempty"`
+	Protocol string          `yaml:",omitempty" json:"protocol,omitempty"`
+	Bypass   string          `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses []string        `yaml:",omitempty" json:"bypasses,omitempty"`
+	HTTP     *HTTPNodeConfig `yaml:",omitempty" json:"http,omitempty"`
+	TLS      *TLSNodeConfig  `yaml:",omitempty" json:"tls,omitempty"`
+}
+
+type HTTPNodeConfig struct {
+	Host   string            `yaml:",omitempty" json:"host,omitempty"`
+	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
+}
+
+type TLSNodeConfig struct {
+	ServerName string `yaml:"serverName,omitempty" json:"serverName,omitempty"`
+	Secure     bool   `yaml:",omitempty" json:"secure,omitempty"`
 }
 
 type DialerConfig struct {
@@ -368,6 +380,8 @@ type NodeConfig struct {
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
 	Metadata  map[string]any   `yaml:",omitempty" json:"metadata,omitempty"`
+	HTTP      *HTTPNodeConfig  `yaml:",omitempty" json:"http,omitempty"`
+	TLS       *TLSNodeConfig   `yaml:",omitempty" json:"tls,omitempty"`
 }
 
 type Config struct {

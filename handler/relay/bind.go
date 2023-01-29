@@ -199,11 +199,13 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 		Status:  relay.StatusOK,
 	}
 
-	if h.ep == nil {
-		resp.Status = relay.StatusServiceUnavailable
-		resp.WriteTo(conn)
-		return
-	}
+	/*
+		if h.ep == nil {
+			resp.Status = relay.StatusServiceUnavailable
+			resp.WriteTo(conn)
+			return
+		}
+	*/
 
 	uuid, err := uuid.NewRandom()
 	if err != nil {
@@ -214,8 +216,12 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 
 	connectorID := relay.NewTunnelID(uuid[:])
 
+	addr := ":0"
+	if h.ep != nil {
+		addr = h.ep.Addr().String()
+	}
 	af := &relay.AddrFeature{}
-	err = af.ParseFrom(h.ep.Addr().String())
+	err = af.ParseFrom(addr)
 	if err != nil {
 		log.Warn(err)
 	}

@@ -209,7 +209,8 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 				host = "." + host
 			}
 		}
-		node := chain.NewNode(v.Name, v.Addr,
+
+		opts := []chain.NodeOption{
 			chain.TransportNodeOption(tr),
 			chain.BypassNodeOption(bypass.BypassGroup(bypassList(v.Bypass, v.Bypasses...)...)),
 			chain.ResoloverNodeOption(registry.ResolverRegistry().Get(v.Resolver)),
@@ -217,7 +218,20 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			chain.MetadataNodeOption(nm),
 			chain.HostNodeOption(host),
 			chain.ProtocolNodeOption(v.Protocol),
-		)
+		}
+		if v.HTTP != nil {
+			opts = append(opts, chain.HTTPNodeOption(&chain.HTTPNodeSettings{
+				Host:   v.HTTP.Host,
+				Header: v.HTTP.Header,
+			}))
+		}
+		if v.TLS != nil {
+			opts = append(opts, chain.TLSNodeOption(&chain.TLSNodeSettings{
+				ServerName: v.TLS.ServerName,
+				Secure:     v.TLS.Secure,
+			}))
+		}
+		node := chain.NewNode(v.Name, v.Addr, opts...)
 		nodes = append(nodes, node)
 	}
 

@@ -25,6 +25,7 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 		hdr[0] == dissector.Handshake &&
 		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
 		rw, host, err = sniffSNI(ctx, rw)
+		protocol = ProtoTLS
 		return
 	}
 
@@ -36,6 +37,7 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 		rw = xio.NewReadWriter(io.MultiReader(buf, rw), rw)
 		if err == nil {
 			host = r.Host
+			protocol = ProtoHTTP
 			return
 		}
 	}
@@ -87,11 +89,13 @@ func isHTTP(s string) bool {
 }
 
 const (
-	SSHv2 = "SSH-2"
+	ProtoHTTP  = "http"
+	ProtoTLS   = "tls"
+	ProtoSSHv2 = "SSH-2"
 )
 
 func sniffProtocol(hdr []byte) string {
-	if string(hdr) == SSHv2 {
+	if string(hdr) == ProtoSSHv2 {
 		return "ssh"
 	}
 	return ""
