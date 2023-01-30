@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 )
@@ -48,6 +49,13 @@ func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 	return
 }
 
+func (c *serverConn) Metadata() metadata.Metadata {
+	if md, ok := c.Conn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
+}
+
 type packetConn struct {
 	net.PacketConn
 	admission admission.Admission
@@ -77,6 +85,13 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 		return
 	}
+}
+
+func (c *packetConn) Metadata() metadata.Metadata {
+	if md, ok := c.PacketConn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
 }
 
 type udpConn struct {

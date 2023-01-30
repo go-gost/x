@@ -10,6 +10,7 @@ import (
 	"net"
 	"sync"
 
+	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
 )
 
@@ -121,6 +122,7 @@ type bindConn struct {
 	net.Conn
 	localAddr  net.Addr
 	remoteAddr net.Addr
+	md         mdata.Metadata
 }
 
 func (c *bindConn) LocalAddr() net.Addr {
@@ -129,4 +131,9 @@ func (c *bindConn) LocalAddr() net.Addr {
 
 func (c *bindConn) RemoteAddr() net.Addr {
 	return c.remoteAddr
+}
+
+// Metadata implements metadata.Metadatable interface.
+func (c *bindConn) Metadata() mdata.Metadata {
+	return c.md
 }

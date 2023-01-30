@@ -6,6 +6,7 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/metrics"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
@@ -65,6 +66,13 @@ func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 	return
 }
 
+func (c *serverConn) Metadata() metadata.Metadata {
+	if md, ok := c.Conn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
+}
+
 type packetConn struct {
 	net.PacketConn
 	service string
@@ -102,6 +110,13 @@ func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		counter.Add(float64(n))
 	}
 	return
+}
+
+func (c *packetConn) Metadata() metadata.Metadata {
+	if md, ok := c.PacketConn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
 }
 
 type udpConn struct {

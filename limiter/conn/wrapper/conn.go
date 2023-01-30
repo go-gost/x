@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	limiter "github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/metadata"
 )
 
 var (
@@ -40,4 +41,11 @@ func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 func (c *serverConn) Close() error {
 	c.limiter.Allow(-1)
 	return c.Conn.Close()
+}
+
+func (c *serverConn) Metadata() metadata.Metadata {
+	if md, ok := c.Conn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
 }

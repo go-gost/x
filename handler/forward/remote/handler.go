@@ -3,6 +3,7 @@ package remote
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,8 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
-	md "github.com/go-gost/core/metadata"
+	mdata "github.com/go-gost/core/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
@@ -44,7 +46,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
-func (h *forwardHandler) Init(md md.Metadata) (err error) {
+func (h *forwardHandler) Init(md mdata.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
 	}
@@ -93,14 +95,19 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if h.md.sniffing {
 		if network == "tcp" {
 			rw, host, protocol, _ = forward.Sniffing(ctx, conn)
+			log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
 		}
 	}
-
 	if protocol == forward.ProtoHTTP {
 		h.handleHTTP(ctx, rw, log)
 		return nil
 	}
 
+	if md, ok := conn.(mdata.Metadatable); ok {
+		if v := mdutil.GetString(md.Metadata(), "host"); v != "" {
+			host = v
+		}
+	}
 	var target *chain.Node
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
@@ -170,12 +177,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				)
 			}
 			if target == nil {
+				log.Warnf("node for %s not found", req.Host)
 				return resp.Write(rw)
 			}
 
 			log = log.WithFields(map[string]any{
 				"dst": target.Addr,
 			})
+			log.Debugf("find node for host %s -> %s(%s)", req.Host, target.Name, target.Addr)
 
 			// log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
@@ -192,11 +201,20 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 					if marker := target.Marker(); marker != nil {
 						marker.Mark()
 					}
+					log.Warnf("connect to node %s(%s) failed", target.Name, target.Addr)
 					return resp.Write(rw)
 				}
 				if marker := target.Marker(); marker != nil {
 					marker.Reset()
 				}
+
+				if tlsSettings := target.Options().TLS; tlsSettings != nil {
+					cc = tls.Client(cc, &tls.Config{
+						ServerName:         tlsSettings.ServerName,
+						InsecureSkipVerify: !tlsSettings.Secure,
+					})
+				}
+
 				connPool.Store(target, cc)
 				log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
 

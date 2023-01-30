@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
+	mdx "github.com/go-gost/x/metadata"
 )
 
 type tcpListener struct {
@@ -44,11 +45,16 @@ func (p *tcpListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
-	var address string
+	var address, host string
 	for _, f := range resp.Features {
 		if f.Type() == relay.FeatureAddr {
 			if fa, ok := f.(*relay.AddrFeature); ok {
-				address = net.JoinHostPort(fa.Host, strconv.Itoa(int(fa.Port)))
+				v := net.JoinHostPort(fa.Host, strconv.Itoa(int(fa.Port)))
+				if address != "" {
+					host = v
+				} else {
+					address = v
+				}
 			}
 		}
 	}
@@ -58,11 +64,15 @@ func (p *tcpListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
-	return &bindConn{
+	cn := &bindConn{
 		Conn:       conn,
 		localAddr:  p.addr,
 		remoteAddr: raddr,
-	}, nil
+	}
+	if host != "" {
+		cn.md = mdx.NewMetadata(map[string]any{"host": host})
+	}
+	return cn, nil
 }
 
 func (p *tcpListener) Addr() net.Addr {

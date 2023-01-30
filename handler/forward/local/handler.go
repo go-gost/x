@@ -3,6 +3,7 @@ package local
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -94,7 +95,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if h.md.sniffing {
 		if network == "tcp" {
 			rw, host, protocol, _ = forward.Sniffing(ctx, conn)
-			h.options.Logger.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
+			log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
 		}
 	}
 
@@ -177,12 +178,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				)
 			}
 			if target == nil {
+				log.Warnf("node for %s not found", req.Host)
 				return resp.Write(rw)
 			}
 
 			log = log.WithFields(map[string]any{
 				"dst": target.Addr,
 			})
+			log.Debugf("find node for host %s -> %s(%s)", req.Host, target.Name, target.Addr)
 
 			// log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
@@ -199,11 +202,20 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 					if marker := target.Marker(); marker != nil {
 						marker.Mark()
 					}
+					log.Warnf("connect to node %s(%s) failed", target.Name, target.Addr)
 					return resp.Write(rw)
 				}
 				if marker := target.Marker(); marker != nil {
 					marker.Reset()
 				}
+
+				if tlsSettings := target.Options().TLS; tlsSettings != nil {
+					cc = tls.Client(cc, &tls.Config{
+						ServerName:         tlsSettings.ServerName,
+						InsecureSkipVerify: !tlsSettings.Secure,
+					})
+				}
+
 				connPool.Store(target, cc)
 				log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
 

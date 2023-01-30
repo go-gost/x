@@ -120,7 +120,7 @@ func (h *epHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		tunnelID = parseTunnelID(h.ingress.Get(host))
 	}
 	if tunnelID.IsPrivate() {
-		err := fmt.Errorf("tunnel %s is private", tunnelID)
+		err := fmt.Errorf("access denied: tunnel %s is private", tunnelID)
 		log.Error(err)
 		return err
 	}

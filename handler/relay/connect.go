@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -110,7 +111,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 		Status:  relay.StatusOK,
 	}
 
-	host, _, _ := net.SplitHostPort(address)
+	host, sp, _ := net.SplitHostPort(address)
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
 		log.Debug("bypass: ", address)
@@ -157,12 +158,26 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 		conn = rc
 	}
 
-	af := &relay.AddrFeature{}
+	var features []relay.Feature
+	af := &relay.AddrFeature{} // visitor address
 	af.ParseFrom(conn.RemoteAddr().String())
+	features = append(features, af)
+
+	if host != "" {
+		port, _ := strconv.Atoi(sp)
+		// target host
+		af = &relay.AddrFeature{
+			AType: relay.AddrDomain,
+			Host:  host,
+			Port:  uint16(port),
+		}
+		features = append(features, af)
+	}
+
 	resp = relay.Response{
 		Version:  relay.Version1,
 		Status:   relay.StatusOK,
-		Features: []relay.Feature{af},
+		Features: features,
 	}
 	resp.WriteTo(cc)
 
