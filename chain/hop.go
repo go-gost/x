@@ -97,7 +97,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...chain.SelectOption) *chai
 			if vhost == host ||
 				vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
 				filters = append(filters, node)
-				p.options.logger.Debugf("find node for host: %s(match %s)", host, vhost)
+				p.options.logger.Debugf("find node for host: %s -> %s(%s)", host, node.Name, node.Addr)
 			}
 		}
 		if len(filters) == 0 {
