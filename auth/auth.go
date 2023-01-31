@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 type options struct {
@@ -73,6 +74,9 @@ func NewAuthenticator(opts ...Option) auth.Authenticator {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
+	}
+	if options.logger == nil {
+		options.logger = xlogger.Nop()
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO())

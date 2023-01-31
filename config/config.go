@@ -288,6 +288,7 @@ type ForwardNodeConfig struct {
 	Bypasses []string        `yaml:",omitempty" json:"bypasses,omitempty"`
 	HTTP     *HTTPNodeConfig `yaml:",omitempty" json:"http,omitempty"`
 	TLS      *TLSNodeConfig  `yaml:",omitempty" json:"tls,omitempty"`
+	Auth     *AuthConfig     `yaml:",omitempty" json:"auth,omitempty"`
 }
 
 type HTTPNodeConfig struct {
@@ -382,6 +383,7 @@ type NodeConfig struct {
 	Metadata  map[string]any   `yaml:",omitempty" json:"metadata,omitempty"`
 	HTTP      *HTTPNodeConfig  `yaml:",omitempty" json:"http,omitempty"`
 	TLS       *TLSNodeConfig   `yaml:",omitempty" json:"tls,omitempty"`
+	Auth      *AuthConfig      `yaml:",omitempty" json:"auth,omitempty"`
 }
 
 type Config struct {

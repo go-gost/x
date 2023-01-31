@@ -122,7 +122,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", target.Addr, network),
+		"host": host,
+		"node": target.Name,
+		"dst":  fmt.Sprintf("%s/%s", target.Addr, network),
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
@@ -156,13 +158,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 	br := bufio.NewReader(rw)
 	var connPool sync.Map
 
-	resp := &http.Response{
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		StatusCode: http.StatusServiceUnavailable,
-	}
-
 	for {
+		resp := &http.Response{
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     http.Header{},
+			StatusCode: http.StatusServiceUnavailable,
+		}
+
 		err = func() error {
 			req, err := http.ReadRequest(br)
 			if err != nil {
@@ -182,11 +185,21 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 			}
 
 			log = log.WithFields(map[string]any{
-				"dst": target.Addr,
+				"host": req.Host,
+				"node": target.Name,
+				"dst":  target.Addr,
 			})
 			log.Debugf("find node for host %s -> %s(%s)", req.Host, target.Name, target.Addr)
 
-			// log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+			if auther := target.Options().Auther; auther != nil {
+				username, password, _ := req.BasicAuth()
+				if !auther.Authenticate(username, password) {
+					resp.StatusCode = http.StatusUnauthorized
+					resp.Header.Set("WWW-Authenticate", "Basic")
+					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
+					return resp.Write(rw)
+				}
+			}
 
 			var cc net.Conn
 			if v, ok := connPool.Load(target); ok {
@@ -201,7 +214,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 					if marker := target.Marker(); marker != nil {
 						marker.Mark()
 					}
-					log.Warnf("connect to node %s(%s) failed", target.Name, target.Addr)
+					log.Warnf("connect to node %s(%s) failed: %v", target.Name, target.Addr, err)
 					return resp.Write(rw)
 				}
 				if marker := target.Marker(); marker != nil {
@@ -220,7 +233,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 
 				go func() {
 					defer cc.Close()
-					xnet.CopyBuffer(rw, cc, 8192)
+					err := xnet.CopyBuffer(rw, cc, 8192)
+					log.Debugf("close connection to node %s(%s), reason: %v", target.Name, target.Addr, err)
 					connPool.Delete(target)
 				}()
 			}
@@ -239,6 +253,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				log.Trace(string(dump))
 			}
 			if err := req.Write(cc); err != nil {
+				log.Warnf("send request to node %s(%s) failed: %v", target.Name, target.Addr, err)
 				return resp.Write(rw)
 			}
 

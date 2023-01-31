@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	auther "github.com/go-gost/x/auth"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -230,6 +231,19 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 				ServerName: v.TLS.ServerName,
 				Secure:     v.TLS.Secure,
 			}))
+		}
+		if v.Auth != nil {
+			opts = append(opts, chain.AutherNodeOption(
+				auther.NewAuthenticator(
+					auther.AuthsOption(map[string]string{v.Auth.Username: v.Auth.Password}),
+					auther.LoggerOption(logger.Default().WithFields(map[string]any{
+						"kind":     "node",
+						"node":     v.Name,
+						"addr":     v.Addr,
+						"host":     v.Host,
+						"protocol": v.Protocol,
+					})),
+				)))
 		}
 		node := chain.NewNode(v.Name, v.Addr, opts...)
 		nodes = append(nodes, node)
