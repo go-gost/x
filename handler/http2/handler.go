@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -304,20 +305,24 @@ func (h *http2Handler) authenticate(w http.ResponseWriter, r *http.Request, resp
 	}
 
 	if resp.StatusCode == 0 {
+		realm := defaultRealm
+		if h.md.authBasicRealm != "" {
+			realm = h.md.authBasicRealm
+		}
 		resp.StatusCode = http.StatusProxyAuthRequired
-		resp.Header.Add("Proxy-Authenticate", "Basic realm=\"gost\"")
+		resp.Header.Add("Proxy-Authenticate", fmt.Sprintf("Basic realm=\"%s\"", realm))
 		if strings.ToLower(r.Header.Get("Proxy-Connection")) == "keep-alive" {
 			// XXX libcurl will keep sending auth request in same conn
 			// which we don't supported yet.
-			resp.Header.Add("Connection", "close")
-			resp.Header.Add("Proxy-Connection", "close")
+			resp.Header.Set("Connection", "close")
+			resp.Header.Set("Proxy-Connection", "close")
 		}
 
 		log.Debug("proxy authentication required")
 	} else {
 		resp.Header = http.Header{}
-		resp.Header.Set("Server", "nginx/1.20.1")
-		resp.Header.Set("Date", time.Now().Format(http.TimeFormat))
+		// resp.Header.Set("Server", "nginx/1.20.1")
+		// resp.Header.Set("Date", time.Now().Format(http.TimeFormat))
 		if resp.StatusCode == http.StatusOK {
 			resp.Header.Set("Connection", "keep-alive")
 		}

@@ -8,10 +8,15 @@ import (
 	mdutil "github.com/go-gost/core/metadata/util"
 )
 
+const (
+	defaultRealm = "gost"
+)
+
 type metadata struct {
 	probeResistance *probeResistance
 	header          http.Header
 	hash            string
+	authBasicRealm  string
 }
 
 func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
@@ -21,6 +26,7 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		probeResistKeyX = "probe_resist"
 		knock           = "knock"
 		hash            = "hash"
+		authBasicRealm  = "authBasicRealm"
 	)
 
 	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
@@ -45,6 +51,7 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 		}
 	}
 	h.md.hash = mdutil.GetString(md, hash)
+	h.md.authBasicRealm = mdutil.GetString(md, authBasicRealm)
 
 	return nil
 }
