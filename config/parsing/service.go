@@ -338,6 +338,9 @@ func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
 		}
 		sel = parseChainSelector(group.Selector)
 	}
+	if len(chains) == 0 {
+		return nil
+	}
 
 	if sel == nil {
 		sel = defaultChainSelector()

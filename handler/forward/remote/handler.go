@@ -181,6 +181,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 			}
 			if target == nil {
 				log.Warnf("node for %s not found", req.Host)
+				resp.StatusCode = http.StatusBadGateway
 				return resp.Write(rw)
 			}
 
