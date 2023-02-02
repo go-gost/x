@@ -2,11 +2,14 @@ package relay
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/ingress"
+	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/registry"
 )
 
@@ -28,7 +31,6 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 		noDelay       = "nodelay"
 		hash          = "hash"
 		entryPoint    = "entryPoint"
-		ingress       = "ingress"
 	)
 
 	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
@@ -44,7 +46,20 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.hash = mdutil.GetString(md, hash)
 
 	h.md.entryPoint = mdutil.GetString(md, entryPoint)
-	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, ingress))
+	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
+
+	if h.md.ingress == nil {
+		if ss := strings.Split(mdutil.GetString(md, "tunnel"), ":"); len(ss) == 2 {
+			h.md.ingress = xingress.NewIngress(
+				xingress.RulesOption([]xingress.Rule{
+					{Host: ss[0], Endpoint: ss[1]},
+				}),
+				xingress.LoggerOption(logger.Default().WithFields(map[string]any{
+					"kind": "ingress",
+				})),
+			)
+		}
+	}
 
 	return
 }
