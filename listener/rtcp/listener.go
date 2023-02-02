@@ -104,7 +104,7 @@ func (l *rtcpListener) Close() error {
 		close(l.closed)
 		if l.ln != nil {
 			l.ln.Close()
-			l.ln = nil
+			// l.ln = nil
 		}
 	}
 

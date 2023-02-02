@@ -232,3 +232,10 @@ func (c *udpConn) SetDSCP(n int) error {
 	}
 	return nil
 }
+
+func (c *udpConn) Metadata() metadata.Metadata {
+	if md, ok := c.PacketConn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
+}

@@ -92,11 +92,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	var rw io.ReadWriter = conn
 	var host string
 	var protocol string
-	if h.md.sniffing {
-		if network == "tcp" {
-			rw, host, protocol, _ = forward.Sniffing(ctx, conn)
-			log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
-		}
+	if network == "tcp" && h.md.sniffing {
+		rw, host, protocol, _ = forward.Sniffing(ctx, conn)
+		log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
 	}
 
 	if protocol == forward.ProtoHTTP {
@@ -107,19 +105,23 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(host, "0")
 	}
-	target := &chain.Node{
-		Addr: host,
+
+	var target *chain.Node
+	if host != "" {
+		target = &chain.Node{
+			Addr: host,
+		}
 	}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
 			chain.HostSelectOption(host),
 			chain.ProtocolSelectOption(protocol),
 		)
-		if target == nil {
-			err := errors.New("target not available")
-			log.Error(err)
-			return err
-		}
+	}
+	if target == nil {
+		err := errors.New("target not available")
+		log.Error(err)
+		return err
 	}
 
 	log = log.WithFields(map[string]any{
@@ -172,7 +174,9 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				return err
 			}
 
-			var target *chain.Node
+			target := &chain.Node{
+				Addr: req.Host,
+			}
 			if h.hop != nil {
 				target = h.hop.Select(ctx,
 					chain.HostSelectOption(req.Host),
@@ -235,6 +239,9 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				go func() {
 					defer cc.Close()
 					err := xnet.CopyBuffer(rw, cc, 8192)
+					if err != nil {
+						resp.Write(rw)
+					}
 					log.Debugf("close connection to node %s(%s), reason: %v", target.Name, target.Addr, err)
 					connPool.Delete(target)
 				}()
@@ -266,9 +273,12 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				return err
 			}
 
+			// cc.SetReadDeadline(time.Now().Add(10 * time.Second))
+
 			return nil
 		}()
 		if err != nil {
+			// log.Error(err)
 			break
 		}
 	}

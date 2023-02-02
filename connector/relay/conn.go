@@ -10,6 +10,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/go-gost/core/common/bufpool"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
 )
@@ -67,9 +68,11 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 	if len(b) >= dlen {
 		return io.ReadFull(c.Conn, b[:dlen])
 	}
-	buf := make([]byte, dlen)
-	_, err = io.ReadFull(c.Conn, buf)
-	n = copy(b, buf)
+
+	buf := bufpool.Get(dlen)
+	defer bufpool.Put(buf)
+	_, err = io.ReadFull(c.Conn, *buf)
+	n = copy(b, *buf)
 
 	return
 }
@@ -135,5 +138,74 @@ func (c *bindConn) RemoteAddr() net.Addr {
 
 // Metadata implements metadata.Metadatable interface.
 func (c *bindConn) Metadata() mdata.Metadata {
+	return c.md
+}
+
+type bindUDPConn struct {
+	net.Conn
+	localAddr  net.Addr
+	remoteAddr net.Addr
+	md         mdata.Metadata
+}
+
+func (c *bindUDPConn) Read(b []byte) (n int, err error) {
+	// 2-byte data length header
+	var bh [2]byte
+	_, err = io.ReadFull(c.Conn, bh[:])
+	if err != nil {
+		return
+	}
+
+	dlen := int(binary.BigEndian.Uint16(bh[:]))
+	if len(b) >= dlen {
+		n, err = io.ReadFull(c.Conn, b[:dlen])
+		return
+	}
+
+	buf := bufpool.Get(dlen)
+	defer bufpool.Put(buf)
+
+	_, err = io.ReadFull(c.Conn, *buf)
+	n = copy(b, *buf)
+
+	return
+}
+
+func (c *bindUDPConn) Write(b []byte) (n int, err error) {
+	if len(b) > math.MaxUint16 {
+		err = errors.New("write: data maximum exceeded")
+		return
+	}
+
+	// 2-byte data length header
+	var bh [2]byte
+	binary.BigEndian.PutUint16(bh[:], uint16(len(b)))
+	_, err = c.Conn.Write(bh[:])
+	if err != nil {
+		return
+	}
+	return c.Conn.Write(b)
+}
+
+func (c *bindUDPConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	addr = c.remoteAddr
+	n, err = c.Read(b)
+	return
+}
+
+func (c *bindUDPConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
+	return c.Write(b)
+}
+
+func (c *bindUDPConn) LocalAddr() net.Addr {
+	return c.localAddr
+}
+
+func (c *bindUDPConn) RemoteAddr() net.Addr {
+	return c.remoteAddr
+}
+
+// Metadata implements metadata.Metadatable interface.
+func (c *bindUDPConn) Metadata() mdata.Metadata {
 	return c.md
 }

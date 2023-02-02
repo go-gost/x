@@ -81,16 +81,27 @@ func (t *Tunnel) AddConnector(c *Connector) {
 	t.connectors = append(t.connectors, c)
 }
 
-func (t *Tunnel) GetConnector() *Connector {
+func (t *Tunnel) GetConnector(network string) *Connector {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	if len(t.connectors) == 0 {
+	var connectors []*Connector
+	for _, c := range t.connectors {
+		if network == "udp" {
+			if c.id.IsUDP() {
+				connectors = append(connectors, c)
+			}
+		} else {
+			if !c.id.IsUDP() {
+				connectors = append(connectors, c)
+			}
+		}
+	}
+	if len(connectors) == 0 {
 		return nil
 	}
-
 	n := atomic.AddUint64(&t.n, 1) - 1
-	return t.connectors[n%uint64(len(t.connectors))]
+	return connectors[n%uint64(len(connectors))]
 }
 
 func (t *Tunnel) clean() {
@@ -137,7 +148,7 @@ func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
 	t.AddConnector(c)
 }
 
-func (p *ConnectorPool) Get(tid relay.TunnelID) *Connector {
+func (p *ConnectorPool) Get(network string, tid relay.TunnelID) *Connector {
 	if p == nil {
 		return nil
 	}
@@ -150,7 +161,7 @@ func (p *ConnectorPool) Get(tid relay.TunnelID) *Connector {
 		return nil
 	}
 
-	return t.GetConnector()
+	return t.GetConnector(network)
 }
 
 func parseTunnelID(s string) (tid relay.TunnelID) {
@@ -170,12 +181,12 @@ func parseTunnelID(s string) (tid relay.TunnelID) {
 	return relay.NewTunnelID(uuid[:])
 }
 
-func getTunnelConn(pool *ConnectorPool, tunnelID relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, err error) {
+func getTunnelConn(network string, pool *ConnectorPool, tunnelID relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, err error) {
 	if retry <= 0 {
 		retry = 1
 	}
 	for i := 0; i < retry; i++ {
-		c := pool.Get(tunnelID)
+		c := pool.Get(network, tunnelID)
 		if c == nil {
 			err = fmt.Errorf("tunnel %s not available", tunnelID.String())
 			break

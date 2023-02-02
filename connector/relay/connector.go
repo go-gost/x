@@ -88,7 +88,7 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 
 	if !c.md.tunnelID.IsZero() {
 		req.Features = append(req.Features, &relay.TunnelFeature{
-			ID: c.md.tunnelID,
+			ID: c.md.tunnelID.ID(),
 		})
 	}
 

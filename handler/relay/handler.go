@@ -173,7 +173,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
-				tunnelID = feature.ID
+				tunnelID = relay.NewTunnelID(feature.ID[:])
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		return h.handleConnect(ctx, conn, network, address, log)
 	case relay.CmdBind:
 		if !tunnelID.IsZero() {
-			return h.handleTunnel(ctx, conn, tunnelID, log)
+			return h.handleBindTunnel(ctx, conn, network, tunnelID, log)
 		}
 
 		defer conn.Close()

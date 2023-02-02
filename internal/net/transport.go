@@ -8,14 +8,18 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 )
 
+const (
+	bufferSize = 32 * 1024
+)
+
 func Transport(rw1, rw2 io.ReadWriter) error {
 	errc := make(chan error, 1)
 	go func() {
-		errc <- CopyBuffer(rw1, rw2, 8192)
+		errc <- CopyBuffer(rw1, rw2, bufferSize)
 	}()
 
 	go func() {
-		errc <- CopyBuffer(rw2, rw1, 8192)
+		errc <- CopyBuffer(rw2, rw1, bufferSize)
 	}()
 
 	if err := <-errc; err != nil && err != io.EOF {
@@ -26,7 +30,7 @@ func Transport(rw1, rw2 io.ReadWriter) error {
 }
 
 func CopyBuffer(dst io.Writer, src io.Reader, bufSize int) error {
-	buf := bufpool.Get(8192)
+	buf := bufpool.Get(bufSize)
 	defer bufpool.Put(buf)
 
 	_, err := io.CopyBuffer(dst, src, *buf)

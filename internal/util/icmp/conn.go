@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	readBufferSize  = 1500
-	writeBufferSize = 1500
+	readBufferSize  = 4096
+	writeBufferSize = 4096
 	magicNumber     = 0x474F5354
 )
 

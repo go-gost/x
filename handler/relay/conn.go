@@ -15,9 +15,6 @@ type tcpConn struct {
 }
 
 func (c *tcpConn) Read(b []byte) (n int, err error) {
-	if err != nil {
-		return
-	}
 	return c.Conn.Read(b)
 }
 

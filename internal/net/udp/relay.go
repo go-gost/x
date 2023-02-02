@@ -41,7 +41,7 @@ func (r *Relay) SetBufferSize(n int) {
 func (r *Relay) Run() (err error) {
 	bufSize := r.bufferSize
 	if bufSize <= 0 {
-		bufSize = 1500
+		bufSize = 4096
 	}
 
 	errc := make(chan error, 2)

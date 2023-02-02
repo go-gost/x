@@ -128,7 +128,7 @@ func (h *epHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		"tunnel": tunnelID.String(),
 	})
 
-	cc, err := getTunnelConn(h.pool, tunnelID, 3, log)
+	cc, err := getTunnelConn("tcp", h.pool, tunnelID, 3, log)
 	if err != nil {
 		log.Error(err)
 		return err

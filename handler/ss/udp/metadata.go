@@ -27,7 +27,7 @@ func (h *ssuHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if bs := mdutil.GetInt(md, bufferSize); bs > 0 {
 		h.md.bufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
 	} else {
-		h.md.bufferSize = 1500
+		h.md.bufferSize = 4096
 	}
 	return
 }

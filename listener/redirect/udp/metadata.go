@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultTTL            = 30 * time.Second
-	defaultReadBufferSize = 1500
+	defaultReadBufferSize = 4096
 )
 
 type metadata struct {

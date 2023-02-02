@@ -193,19 +193,11 @@ func (h *relayHandler) serveTCPBind(ctx context.Context, conn net.Conn, ln net.L
 	}
 }
 
-func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID relay.TunnelID, log logger.Logger) (err error) {
+func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, network string, tunnelID relay.TunnelID, log logger.Logger) (err error) {
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
 	}
-
-	/*
-		if h.ep == nil {
-			resp.Status = relay.StatusServiceUnavailable
-			resp.WriteTo(conn)
-			return
-		}
-	*/
 
 	uuid, err := uuid.NewRandom()
 	if err != nil {
@@ -214,7 +206,10 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 		return
 	}
 
-	connectorID := relay.NewTunnelID(uuid[:])
+	connectorID := relay.NewConnectorID(uuid[:])
+	if network == "udp" {
+		connectorID = relay.NewUDPConnectorID(uuid[:])
+	}
 
 	addr := ":0"
 	if h.ep != nil {
@@ -227,7 +222,7 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 	}
 	resp.Features = append(resp.Features, af,
 		&relay.TunnelFeature{
-			ID: connectorID,
+			ID: connectorID.ID(),
 		},
 	)
 	resp.WriteTo(conn)
@@ -239,7 +234,7 @@ func (h *relayHandler) handleTunnel(ctx context.Context, conn net.Conn, tunnelID
 	}
 
 	h.pool.Add(tunnelID, NewConnector(connectorID, session))
-	log.Debugf("tunnel %s connector %s established", tunnelID, connectorID)
+	log.Debugf("tunnel %s connector %s/%s established", tunnelID, connectorID, network)
 
 	return
 }

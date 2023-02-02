@@ -6,18 +6,20 @@ import (
 	"strconv"
 
 	"github.com/go-gost/core/logger"
+	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 	mdx "github.com/go-gost/x/metadata"
 )
 
-type tcpListener struct {
+type bindListener struct {
+	network string
 	addr    net.Addr
 	session *mux.Session
 	logger  logger.Logger
 }
 
-func (p *tcpListener) Accept() (net.Conn, error) {
+func (p *bindListener) Accept() (net.Conn, error) {
 	cc, err := p.session.Accept()
 	if err != nil {
 		return nil, err
@@ -33,7 +35,7 @@ func (p *tcpListener) Accept() (net.Conn, error) {
 	return conn, nil
 }
 
-func (p *tcpListener) getPeerConn(conn net.Conn) (net.Conn, error) {
+func (p *bindListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 	// second reply, peer connected
 	resp := relay.Response{}
 	if _, err := resp.ReadFrom(conn); err != nil {
@@ -64,21 +66,33 @@ func (p *tcpListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 		return nil, err
 	}
 
+	var md mdata.Metadata
+	if host != "" {
+		md = mdx.NewMetadata(map[string]any{"host": host})
+	}
+
+	if p.network == "udp" {
+		return &bindUDPConn{
+			Conn:       conn,
+			localAddr:  p.addr,
+			remoteAddr: raddr,
+			md:         md,
+		}, nil
+	}
+
 	cn := &bindConn{
 		Conn:       conn,
 		localAddr:  p.addr,
 		remoteAddr: raddr,
-	}
-	if host != "" {
-		cn.md = mdx.NewMetadata(map[string]any{"host": host})
+		md:         md,
 	}
 	return cn, nil
 }
 
-func (p *tcpListener) Addr() net.Addr {
+func (p *bindListener) Addr() net.Addr {
 	return p.addr
 }
 
-func (p *tcpListener) Close() error {
+func (p *bindListener) Close() error {
 	return p.session.Close()
 }

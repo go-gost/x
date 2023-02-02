@@ -19,7 +19,7 @@ func (h *tapHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.key = mdutil.GetString(md, key)
 	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
-		h.md.bufferSize = 1500
+		h.md.bufferSize = 4096
 	}
 	return
 }

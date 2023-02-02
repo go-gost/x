@@ -92,11 +92,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	var rw io.ReadWriter = conn
 	var host string
 	var protocol string
-	if h.md.sniffing {
-		if network == "tcp" {
-			rw, host, protocol, _ = forward.Sniffing(ctx, conn)
-			log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
-		}
+	if network == "tcp" && h.md.sniffing {
+		rw, host, protocol, _ = forward.Sniffing(ctx, conn)
+		log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
 	}
 	if protocol == forward.ProtoHTTP {
 		h.handleHTTP(ctx, rw, log)
@@ -109,6 +107,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 	var target *chain.Node
+	if host != "" {
+		target = &chain.Node{
+			Addr: host,
+		}
+	}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
 			chain.HostSelectOption(host),
@@ -172,7 +175,9 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				return err
 			}
 
-			var target *chain.Node
+			target := &chain.Node{
+				Addr: req.Host,
+			}
 			if h.hop != nil {
 				target = h.hop.Select(ctx,
 					chain.HostSelectOption(req.Host),
@@ -235,6 +240,9 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				go func() {
 					defer cc.Close()
 					err := xnet.CopyBuffer(rw, cc, 8192)
+					if err != nil {
+						resp.Write(rw)
+					}
 					log.Debugf("close connection to node %s(%s), reason: %v", target.Name, target.Addr, err)
 					connPool.Delete(target)
 				}()
@@ -265,6 +273,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				}
 				return err
 			}
+
+			// cc.SetReadDeadline(time.Now().Add(10 * time.Second))
 
 			return nil
 		}()

@@ -17,7 +17,7 @@ import (
 // Bind implements connector.Binder.
 func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, address string, opts ...connector.BindOption) (net.Listener, error) {
 	if !c.md.tunnelID.IsZero() {
-		return c.tunnel(ctx, conn, c.options.Logger)
+		return c.bindTunnel(ctx, conn, network, c.options.Logger)
 	}
 
 	log := c.options.Logger.WithFields(map[string]any{
@@ -43,29 +43,34 @@ func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, addre
 	}
 }
 
-func (c *relayConnector) tunnel(ctx context.Context, conn net.Conn, log logger.Logger) (net.Listener, error) {
-	addr, cid, err := c.initTunnel(conn)
+func (c *relayConnector) bindTunnel(ctx context.Context, conn net.Conn, network string, log logger.Logger) (net.Listener, error) {
+	addr, cid, err := c.initTunnel(conn, network)
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("create tunnel %s connector %s OK", c.md.tunnelID.String(), cid)
+	log.Debugf("create tunnel %s connector %s/%s OK", c.md.tunnelID.String(), cid, network)
 
 	session, err := mux.ServerSession(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	return &tcpListener{
+	return &bindListener{
+		network: network,
 		addr:    addr,
 		session: session,
 		logger:  log,
 	}, nil
 }
 
-func (c *relayConnector) initTunnel(conn net.Conn) (addr net.Addr, cid relay.ConnectorID, err error) {
+func (c *relayConnector) initTunnel(conn net.Conn, network string) (addr net.Addr, cid relay.ConnectorID, err error) {
 	req := relay.Request{
 		Version: relay.Version1,
 		Cmd:     relay.CmdBind,
+	}
+
+	if network == "udp" {
+		req.Cmd |= relay.FUDP
 	}
 
 	if c.options.Auth != nil {
@@ -77,7 +82,7 @@ func (c *relayConnector) initTunnel(conn net.Conn) (addr net.Addr, cid relay.Con
 	}
 
 	req.Features = append(req.Features, &relay.TunnelFeature{
-		ID: c.md.tunnelID,
+		ID: c.md.tunnelID.ID(),
 	})
 	if _, err = req.WriteTo(conn); err != nil {
 		return
@@ -102,7 +107,7 @@ func (c *relayConnector) initTunnel(conn net.Conn) (addr net.Addr, cid relay.Con
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
-				cid = feature.ID
+				cid = relay.NewConnectorID(feature.ID[:])
 			}
 		}
 	}
@@ -122,7 +127,7 @@ func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, ad
 		return nil, err
 	}
 
-	return &tcpListener{
+	return &bindListener{
 		addr:    laddr,
 		session: session,
 		logger:  log,
