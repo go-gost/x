@@ -6,12 +6,14 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
-	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/mux"
 	relay_util "github.com/go-gost/x/internal/util/relay"
+	xservice "github.com/go-gost/x/service"
 	"github.com/google/uuid"
 )
 
@@ -55,29 +57,70 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 		resp.WriteTo(conn)
 		return err
 	}
+	defer ln.Close()
+
+	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
+	log = log.WithFields(map[string]any{
+		"service":  serviceName,
+		"listener": "tcp",
+		"handler":  "ep-tcp",
+		"bind":     fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
+	})
 
 	af := &relay.AddrFeature{}
-	err = af.ParseFrom(ln.Addr().String())
-	if err != nil {
+	if err := af.ParseFrom(ln.Addr().String()); err != nil {
 		log.Warn(err)
 	}
-
-	// Issue: may not reachable when host has multi-interface
-	af.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String())
-	af.AType = relay.AddrIPv4
 	resp.Features = append(resp.Features, af)
 	if _, err := resp.WriteTo(conn); err != nil {
 		log.Error(err)
-		ln.Close()
 		return err
 	}
 
-	log = log.WithFields(map[string]any{
-		"bind": fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
-	})
-	log.Debugf("bind on %s OK", ln.Addr())
+	// Upgrade connection to multiplex session.
+	session, err := mux.ClientSession(conn)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer session.Close()
 
-	return h.serveTCPBind(ctx, conn, ln, log)
+	epListener := newTCPListener(ln,
+		listener.AddrOption(address),
+		listener.ServiceOption(serviceName),
+		listener.LoggerOption(log.WithFields(map[string]any{
+			"kind": "listener",
+		})),
+	)
+	epHandler := newTCPHandler(session,
+		handler.ServiceOption(serviceName),
+		handler.LoggerOption(log.WithFields(map[string]any{
+			"kind": "handler",
+		})),
+	)
+	srv := xservice.NewService(
+		serviceName, epListener, epHandler,
+		xservice.LoggerOption(log.WithFields(map[string]any{
+			"kind": "service",
+		})),
+	)
+
+	log = log.WithFields(map[string]any{})
+	log.Debugf("bind on %s/%s OK", ln.Addr(), ln.Addr().Network())
+
+	go func() {
+		defer srv.Close()
+		for {
+			conn, err := session.Accept()
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			conn.Close() // we do not handle incoming connections.
+		}
+	}()
+
+	return srv.Serve()
 }
 
 func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -126,71 +169,6 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
 	return nil
-}
-
-func (h *relayHandler) serveTCPBind(ctx context.Context, conn net.Conn, ln net.Listener, log logger.Logger) error {
-	// Upgrade connection to multiplex stream.
-	session, err := mux.ClientSession(conn)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer session.Close()
-
-	go func() {
-		defer ln.Close()
-		for {
-			conn, err := session.Accept()
-			if err != nil {
-				log.Error(err)
-				return
-			}
-			conn.Close() // we do not handle incoming connections.
-		}
-	}()
-
-	for {
-		rc, err := ln.Accept()
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		log.Debugf("peer %s accepted", rc.RemoteAddr())
-
-		go func(c net.Conn) {
-			defer c.Close()
-
-			log = log.WithFields(map[string]any{
-				"local":  ln.Addr().String(),
-				"remote": c.RemoteAddr().String(),
-			})
-
-			sc, err := session.GetConn()
-			if err != nil {
-				log.Error(err)
-				return
-			}
-			defer sc.Close()
-
-			af := &relay.AddrFeature{}
-			af.ParseFrom(c.RemoteAddr().String())
-			resp := relay.Response{
-				Version:  relay.Version1,
-				Status:   relay.StatusOK,
-				Features: []relay.Feature{af},
-			}
-			if _, err := resp.WriteTo(sc); err != nil {
-				log.Error(err)
-				return
-			}
-
-			t := time.Now()
-			log.Debugf("%s <-> %s", c.LocalAddr(), c.RemoteAddr())
-			netpkg.Transport(sc, c)
-			log.WithFields(map[string]any{"duration": time.Since(t)}).
-				Debugf("%s >-< %s", c.LocalAddr(), c.RemoteAddr())
-		}(rc)
-	}
 }
 
 func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, network string, tunnelID relay.TunnelID, log logger.Logger) (err error) {

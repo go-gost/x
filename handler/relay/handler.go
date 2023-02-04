@@ -14,6 +14,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 )
@@ -71,13 +72,25 @@ func (h *relayHandler) initEntryPoint() (err error) {
 		return
 	}
 
-	serviceName := fmt.Sprintf("%s-ep", h.options.Service)
+	network := "tcp"
+	if xnet.IsIPv4(h.md.entryPoint) {
+		network = "tcp4"
+	}
+
+	ln, err := net.Listen(network, h.md.entryPoint)
+	if err != nil {
+		h.options.Logger.Error(err)
+		return
+	}
+
+	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
 	log := h.options.Logger.WithFields(map[string]any{
 		"service":  serviceName,
-		"listener": "tunnel",
-		"handler":  "tunnel",
+		"listener": "tcp",
+		"handler":  "ep-tunnel",
+		"kind":     "service",
 	})
-	epListener := NewEntryPointListener(
+	epListener := newTCPListener(ln,
 		listener.AddrOption(h.md.entryPoint),
 		listener.ServiceOption(serviceName),
 		listener.LoggerOption(log.WithFields(map[string]any{
@@ -87,7 +100,7 @@ func (h *relayHandler) initEntryPoint() (err error) {
 	if err = epListener.Init(nil); err != nil {
 		return
 	}
-	epHandler := NewEntryPointHandler(
+	epHandler := newTunnelHandler(
 		h.pool,
 		h.md.ingress,
 		handler.ServiceOption(serviceName),

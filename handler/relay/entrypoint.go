@@ -13,41 +13,35 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
+	netpkg "github.com/go-gost/x/internal/net"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/forward"
+	"github.com/go-gost/x/internal/util/mux"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 )
 
-type epListener struct {
+type tcpListener struct {
 	ln      net.Listener
 	options listener.Options
 }
 
-func NewEntryPointListener(opts ...listener.Option) listener.Listener {
+func newTCPListener(ln net.Listener, opts ...listener.Option) listener.Listener {
 	options := listener.Options{}
 	for _, opt := range opts {
 		opt(&options)
 	}
-	return &epListener{
+	return &tcpListener{
+		ln:      ln,
 		options: options,
 	}
 }
 
-func (l *epListener) Init(md md.Metadata) (err error) {
-	network := "tcp"
-	if xnet.IsIPv4(l.options.Addr) {
-		network = "tcp4"
-	}
-	ln, err := net.Listen(network, l.options.Addr)
-	if err != nil {
-		return
-	}
-
+func (l *tcpListener) Init(md md.Metadata) (err error) {
 	// l.logger.Debugf("pp: %d", l.options.ProxyProtocol)
-
+	ln := l.ln
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = admission.WrapListener(l.options.Admission, ln)
@@ -58,42 +52,106 @@ func (l *epListener) Init(md md.Metadata) (err error) {
 	return
 }
 
-func (l *epListener) Accept() (conn net.Conn, err error) {
+func (l *tcpListener) Accept() (conn net.Conn, err error) {
 	return l.ln.Accept()
 }
 
-func (l *epListener) Addr() net.Addr {
+func (l *tcpListener) Addr() net.Addr {
 	return l.ln.Addr()
 }
 
-func (l *epListener) Close() error {
+func (l *tcpListener) Close() error {
 	return l.ln.Close()
 }
 
-type epHandler struct {
-	pool    *ConnectorPool
-	ingress ingress.Ingress
+type tcpHandler struct {
+	session *mux.Session
 	options handler.Options
 }
 
-func NewEntryPointHandler(pool *ConnectorPool, ingress ingress.Ingress, opts ...handler.Option) handler.Handler {
+func newTCPHandler(session *mux.Session, opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &epHandler{
+	return &tcpHandler{
+		session: session,
+		options: options,
+	}
+}
+
+func (h *tcpHandler) Init(md md.Metadata) (err error) {
+	return
+}
+
+func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+	defer conn.Close()
+
+	start := time.Now()
+	log := h.options.Logger.WithFields(map[string]any{
+		"remote": conn.RemoteAddr().String(),
+		"local":  conn.LocalAddr().String(),
+	})
+
+	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+	defer func() {
+		log.WithFields(map[string]any{
+			"duration": time.Since(start),
+		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
+	}()
+
+	cc, err := h.session.GetConn()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer cc.Close()
+
+	af := &relay.AddrFeature{}
+	af.ParseFrom(conn.RemoteAddr().String())
+	resp := relay.Response{
+		Version:  relay.Version1,
+		Status:   relay.StatusOK,
+		Features: []relay.Feature{af},
+	}
+	if _, err := resp.WriteTo(cc); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	t := time.Now()
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
+	netpkg.Transport(conn, cc)
+	log.WithFields(map[string]any{"duration": time.Since(t)}).
+		Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())
+	return nil
+}
+
+type tunnelHandler struct {
+	pool    *ConnectorPool
+	ingress ingress.Ingress
+	options handler.Options
+}
+
+func newTunnelHandler(pool *ConnectorPool, ingress ingress.Ingress, opts ...handler.Option) handler.Handler {
+	options := handler.Options{}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return &tunnelHandler{
 		pool:    pool,
 		ingress: ingress,
 		options: options,
 	}
 }
 
-func (h *epHandler) Init(md md.Metadata) (err error) {
+func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	return
 }
 
-func (h *epHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
 	defer conn.Close()
 
 	start := time.Now()

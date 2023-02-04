@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
-	netpkg "github.com/go-gost/x/internal/net"
 	xnet "github.com/go-gost/x/internal/net"
 	sx "github.com/go-gost/x/internal/util/selector"
 )
@@ -89,7 +88,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), address)
-	netpkg.Transport(conn, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), address)
