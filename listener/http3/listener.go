@@ -11,8 +11,8 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 )
 
 func init() {

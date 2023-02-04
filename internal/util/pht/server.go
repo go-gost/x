@@ -18,8 +18,8 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
 	xnet "github.com/go-gost/x/internal/net"
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/xid"
 )
 

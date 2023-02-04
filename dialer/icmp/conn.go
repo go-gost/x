@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
 type quicSession struct {

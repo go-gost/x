@@ -11,7 +11,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	quic_util "github.com/go-gost/x/internal/util/quic"
 	"github.com/go-gost/x/registry"
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
 func init() {
