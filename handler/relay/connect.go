@@ -123,11 +123,10 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 	if ingress := h.md.ingress; ingress != nil {
 		tid = parseTunnelID(ingress.Get(host))
 	}
-
-	if !tid.Equal(tunnelID) {
+	if !tid.Equal(tunnelID) && !h.md.directTunnel {
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn)
-		err := fmt.Errorf("tunnel %s not found", tunnelID.String())
+		err := fmt.Errorf("not route to host %s", host)
 		log.Error(err)
 		return err
 	}

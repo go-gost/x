@@ -21,6 +21,7 @@ type metadata struct {
 	hash          string
 	entryPoint    string
 	ingress       ingress.Ingress
+	directTunnel  bool
 }
 
 func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -47,13 +48,23 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.entryPoint = mdutil.GetString(md, entryPoint)
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
+	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
 
 	if h.md.ingress == nil {
-		if ss := strings.Split(mdutil.GetString(md, "tunnel"), ":"); len(ss) == 2 {
+		var rules []xingress.Rule
+		for _, s := range strings.Split(mdutil.GetString(md, "tunnel"), ",") {
+			ss := strings.SplitN(s, ":", 2)
+			if len(ss) != 2 {
+				continue
+			}
+			rules = append(rules, xingress.Rule{
+				Hostname: ss[0],
+				Endpoint: ss[1],
+			})
+		}
+		if len(rules) > 0 {
 			h.md.ingress = xingress.NewIngress(
-				xingress.RulesOption([]xingress.Rule{
-					{Host: ss[0], Endpoint: ss[1]},
-				}),
+				xingress.RulesOption(rules),
 				xingress.LoggerOption(logger.Default().WithFields(map[string]any{
 					"kind": "ingress",
 				})),

@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/mux"
 	relay_util "github.com/go-gost/x/internal/util/relay"
+	metrics "github.com/go-gost/x/metrics/wrapper"
 	xservice "github.com/go-gost/x/service"
 	"github.com/google/uuid"
 )
@@ -129,23 +130,32 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		Status:  relay.StatusOK,
 	}
 
+	var pc net.PacketConn
+	var err error
 	bindAddr, _ := net.ResolveUDPAddr(network, address)
-	pc, err := net.ListenUDP(network, bindAddr)
+	pc, err = net.ListenUDP(network, bindAddr)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
+
+	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, pc.LocalAddr())
+	log = log.WithFields(map[string]any{
+		"service":  serviceName,
+		"listener": "udp",
+		"handler":  "ep-udp",
+		"bind":     fmt.Sprintf("%s/%s", pc.LocalAddr(), pc.LocalAddr().Network()),
+	})
+	pc = metrics.WrapPacketConn(serviceName, pc)
+	// pc = admission.WrapPacketConn(l.options.Admission, pc)
+	// pc = limiter.WrapPacketConn(l.options.TrafficLimiter, pc)
+
 	defer pc.Close()
 
 	af := &relay.AddrFeature{}
-	err = af.ParseFrom(pc.LocalAddr().String())
-	if err != nil {
+	if err := af.ParseFrom(pc.LocalAddr().String()); err != nil {
 		log.Warn(err)
 	}
-
-	// Issue: may not reachable when host has multi-interface
-	af.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String())
-	af.AType = relay.AddrIPv4
 	resp.Features = append(resp.Features, af)
 	if _, err := resp.WriteTo(conn); err != nil {
 		log.Error(err)
@@ -183,7 +193,6 @@ func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, netw
 		resp.WriteTo(conn)
 		return
 	}
-
 	connectorID := relay.NewConnectorID(uuid[:])
 	if network == "udp" {
 		connectorID = relay.NewUDPConnectorID(uuid[:])

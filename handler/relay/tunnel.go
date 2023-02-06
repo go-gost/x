@@ -87,14 +87,9 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 
 	var connectors []*Connector
 	for _, c := range t.connectors {
-		if network == "udp" {
-			if c.id.IsUDP() {
-				connectors = append(connectors, c)
-			}
-		} else {
-			if !c.id.IsUDP() {
-				connectors = append(connectors, c)
-			}
+		if network == "udp" && c.id.IsUDP() ||
+			network != "udp" && !c.id.IsUDP() {
+			connectors = append(connectors, c)
 		}
 	}
 	if len(connectors) == 0 {
@@ -181,14 +176,14 @@ func parseTunnelID(s string) (tid relay.TunnelID) {
 	return relay.NewTunnelID(uuid[:])
 }
 
-func getTunnelConn(network string, pool *ConnectorPool, tunnelID relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, err error) {
+func getTunnelConn(network string, pool *ConnectorPool, tid relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, err error) {
 	if retry <= 0 {
 		retry = 1
 	}
 	for i := 0; i < retry; i++ {
-		c := pool.Get(network, tunnelID)
+		c := pool.Get(network, tid)
 		if c == nil {
-			err = fmt.Errorf("tunnel %s not available", tunnelID.String())
+			err = fmt.Errorf("tunnel %s not available", tid.String())
 			break
 		}
 

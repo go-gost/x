@@ -333,7 +333,7 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		}
 
 		rules = append(rules, xingress.Rule{
-			Host:     rule.Hostname,
+			Hostname: rule.Hostname,
 			Endpoint: rule.Endpoint,
 		})
 	}

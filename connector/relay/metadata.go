@@ -19,13 +19,12 @@ func (c *relayConnector) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		connectTimeout = "connectTimeout"
 		noDelay        = "nodelay"
-		tunnelID       = "tunnelID"
 	)
 
 	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
 	c.md.noDelay = mdutil.GetBool(md, noDelay)
 
-	if s := mdutil.GetString(md, tunnelID); s != "" {
+	if s := mdutil.GetString(md, "tunnelID", "tunnel.id"); s != "" {
 		uuid, err := uuid.Parse(s)
 		if err != nil {
 			return err

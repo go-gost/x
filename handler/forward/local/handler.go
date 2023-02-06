@@ -132,7 +132,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-	cc, err := h.router.Dial(ctx, network, target.Addr)
+	addr := target.Addr
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		addr += ":0"
+	}
+	cc, err := h.router.Dial(ctx, network, addr)
 	if err != nil {
 		log.Error(err)
 		// TODO: the router itself may be failed due to the failed node in the router,

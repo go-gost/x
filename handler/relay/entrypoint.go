@@ -177,8 +177,13 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	if h.ingress != nil {
 		tunnelID = parseTunnelID(h.ingress.Get(host))
 	}
+	if tunnelID.IsZero() {
+		err := fmt.Errorf("no route to host %s", host)
+		log.Error(err)
+		return err
+	}
 	if tunnelID.IsPrivate() {
-		err := fmt.Errorf("access denied: tunnel %s is private", tunnelID)
+		err := fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, host)
 		log.Error(err)
 		return err
 	}

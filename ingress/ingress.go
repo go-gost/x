@@ -15,7 +15,7 @@ import (
 )
 
 type Rule struct {
-	Host     string
+	Hostname string
 	Endpoint string
 }
 
@@ -122,10 +122,10 @@ func (ing *ingress) reload(ctx context.Context) error {
 	rules := make(map[string]Rule)
 
 	fn := func(rule Rule) {
-		if rule.Host == "" || rule.Endpoint == "" {
+		if rule.Hostname == "" || rule.Endpoint == "" {
 			return
 		}
-		host := rule.Host
+		host := rule.Hostname
 		if host[0] == '*' {
 			host = host[1:]
 		}
@@ -210,7 +210,7 @@ func (ing *ingress) parseRules(r io.Reader) (rules []Rule, err error) {
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		if rule := ing.parseLine(scanner.Text()); rule.Host != "" {
+		if rule := ing.parseLine(scanner.Text()); rule.Hostname != "" {
 			rules = append(rules, rule)
 		}
 	}
@@ -287,7 +287,7 @@ func (ing *ingress) parseLine(s string) (rule Rule) {
 	}
 
 	return Rule{
-		Host:     sp[0],
+		Hostname: sp[0],
 		Endpoint: sp[1],
 	}
 }
