@@ -131,7 +131,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 		return err
 	}
 
-	cc, err := getTunnelConn(network, h.pool, tunnelID, 3, log)
+	cc, _, err := getTunnelConn(network, h.pool, tunnelID, 3, log)
 	if err != nil {
 		log.Error(err)
 		return err
