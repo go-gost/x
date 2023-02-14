@@ -214,7 +214,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	switch req.Cmd & relay.CmdMask {
-	case relay.CmdConnect:
+	case 0, relay.CmdConnect:
 		defer conn.Close()
 
 		if !tunnelID.IsZero() {
