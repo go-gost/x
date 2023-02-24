@@ -2,6 +2,7 @@ package parsing
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -94,9 +95,17 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 			"dialer":    v.Dialer.Type,
 		})
 
+		serverName, _, _ := net.SplitHostPort(v.Addr)
+		if serverName == "" {
+			serverName = "localhost"
+		}
+
 		tlsCfg := v.Connector.TLS
 		if tlsCfg == nil {
 			tlsCfg = &config.TLSConfig{}
+		}
+		if tlsCfg.ServerName == "" {
+			tlsCfg.ServerName = serverName
 		}
 		tlsConfig, err := tls_util.LoadClientConfig(
 			tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile,
@@ -136,6 +145,9 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 		tlsCfg = v.Dialer.TLS
 		if tlsCfg == nil {
 			tlsCfg = &config.TLSConfig{}
+		}
+		if tlsCfg.ServerName == "" {
+			tlsCfg.ServerName = serverName
 		}
 		tlsConfig, err = tls_util.LoadClientConfig(
 			tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile,
