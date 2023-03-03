@@ -188,6 +188,8 @@ func (l *sshdListener) serveConn(conn net.Conn) {
 					req.Reply(false, []byte("connection queue is full"))
 					cc.Close()
 				}
+			case "ping":
+				req.Reply(true, []byte("pong"))
 			default:
 				l.logger.Warnf("unsupported request type: %s, want reply: %v", req.Type, req.WantReply)
 				req.Reply(false, nil)

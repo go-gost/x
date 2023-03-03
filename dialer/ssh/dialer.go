@@ -2,13 +2,11 @@ package ssh
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/go-gost/core/dialer"
-	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"github.com/go-gost/x/registry"
@@ -20,9 +18,8 @@ func init() {
 }
 
 type sshDialer struct {
-	sessions     map[string]*sshSession
+	sessions     map[string]*ssh_util.Session
 	sessionMutex sync.Mutex
-	logger       logger.Logger
 	md           metadata
 	options      dialer.Options
 }
@@ -34,8 +31,7 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 	}
 
 	return &sshDialer{
-		sessions: make(map[string]*sshSession),
-		logger:   options.Logger,
+		sessions: make(map[string]*ssh_util.Session),
 		options:  options,
 	}
 }
@@ -72,73 +68,36 @@ func (d *sshDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 		if err != nil {
 			return
 		}
-
-		session = &sshSession{
-			addr: addr,
-			conn: conn,
+		if d.md.handshakeTimeout > 0 {
+			conn.SetDeadline(time.Now().Add(d.md.handshakeTimeout))
+			defer conn.SetDeadline(time.Time{})
 		}
-		d.sessions[addr] = session
-	}
 
-	return session.conn, err
-}
-
-// Handshake implements dialer.Handshaker
-func (d *sshDialer) Handshake(ctx context.Context, conn net.Conn, options ...dialer.HandshakeOption) (net.Conn, error) {
-	opts := &dialer.HandshakeOptions{}
-	for _, option := range options {
-		option(opts)
-	}
-
-	d.sessionMutex.Lock()
-	defer d.sessionMutex.Unlock()
-
-	if d.md.handshakeTimeout > 0 {
-		conn.SetDeadline(time.Now().Add(d.md.handshakeTimeout))
-		defer conn.SetDeadline(time.Time{})
-	}
-
-	session, ok := d.sessions[opts.Addr]
-	if session != nil && session.conn != conn {
-		err := errors.New("ssh: unrecognized connection")
-		d.logger.Error(err)
-		conn.Close()
-		delete(d.sessions, opts.Addr)
-		return nil, err
-	}
-
-	if !ok || session.client == nil {
-		s, err := d.initSession(ctx, opts.Addr, conn)
+		session, err = d.initSession(ctx, addr, conn)
 		if err != nil {
-			d.logger.Error(err)
 			conn.Close()
-			delete(d.sessions, opts.Addr)
 			return nil, err
 		}
-		session = s
-		go func() {
-			s.wait()
-			d.logger.Debug("session closed")
-		}()
-		d.sessions[opts.Addr] = session
-	}
-	if session.IsClosed() {
-		delete(d.sessions, opts.Addr)
-		return nil, ssh_util.ErrSessionDead
-	}
+		if d.md.keepalive {
+			go session.Keepalive(d.md.keepaliveInterval, d.md.keepaliveTimeout, d.md.keepaliveRetries)
+		}
+		go session.Wait()
+		go session.WaitClose()
 
-	channel, reqs, err := session.client.OpenChannel(ssh_util.GostSSHTunnelRequest, nil)
+		d.sessions[addr] = session
+	}
+	channel, reqs, err := session.OpenChannel(ssh_util.GostSSHTunnelRequest)
 	if err != nil {
 		return nil, err
 	}
 	go ssh.DiscardRequests(reqs)
 
-	return ssh_util.NewConn(conn, channel), nil
+	return ssh_util.NewConn(session, channel), nil
 }
 
-func (d *sshDialer) initSession(ctx context.Context, addr string, conn net.Conn) (*sshSession, error) {
+func (d *sshDialer) initSession(ctx context.Context, addr string, conn net.Conn) (*ssh_util.Session, error) {
 	config := ssh.ClientConfig{
-		Timeout:         30 * time.Second,
+		Timeout:         d.md.handshakeTimeout,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	if d.options.Auth != nil {
@@ -158,10 +117,5 @@ func (d *sshDialer) initSession(ctx context.Context, addr string, conn net.Conn)
 		return nil, err
 	}
 
-	return &sshSession{
-		conn:   conn,
-		client: ssh.NewClient(sshConn, chans, reqs),
-		closed: make(chan struct{}),
-		dead:   make(chan struct{}),
-	}, nil
+	return ssh_util.NewSession(conn, ssh.NewClient(sshConn, chans, reqs), d.options.Logger), nil
 }

@@ -105,21 +105,21 @@ func (d *wsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dial
 
 	cc := ws_util.Conn(c)
 
-	if d.md.keepAlive > 0 {
-		c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
+	if d.md.keepaliveInterval > 0 {
+		c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
 		c.SetPongHandler(func(string) error {
-			c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
-			d.options.Logger.Debugf("pong: set read deadline: %v", d.md.keepAlive*2)
+			c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
+			d.options.Logger.Debugf("pong: set read deadline: %v", d.md.keepaliveInterval*2)
 			return nil
 		})
-		go d.keepAlive(cc)
+		go d.keepalive(cc)
 	}
 
 	return cc, nil
 }
 
-func (d *wsDialer) keepAlive(conn ws_util.WebsocketConn) {
-	ticker := time.NewTicker(d.md.keepAlive)
+func (d *wsDialer) keepalive(conn ws_util.WebsocketConn) {
+	ticker := time.NewTicker(d.md.keepaliveInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {

@@ -12,10 +12,10 @@ type ClientConn struct {
 	client *ssh.Client
 }
 
-func NewClientConn(conn net.Conn, client *ssh.Client) net.Conn {
+func NewClientConn(session *Session) net.Conn {
 	return &ClientConn{
-		Conn:   conn,
-		client: client,
+		Conn:   session.Conn,
+		client: session.client,
 	}
 }
 

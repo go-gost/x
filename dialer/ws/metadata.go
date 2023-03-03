@@ -23,8 +23,8 @@ type metadata struct {
 	writeBufferSize   int
 	enableCompression bool
 
-	header    http.Header
-	keepAlive time.Duration
+	header            http.Header
+	keepaliveInterval time.Duration
 }
 
 func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -38,9 +38,7 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		writeBufferSize   = "writeBufferSize"
 		enableCompression = "enableCompression"
 
-		header          = "header"
-		keepAlive       = "keepAlive"
-		keepAlivePeriod = "ttl"
+		header = "header"
 	)
 
 	d.md.host = mdutil.GetString(md, host)
@@ -64,10 +62,10 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.header = h
 	}
 
-	if mdutil.GetBool(md, keepAlive) {
-		d.md.keepAlive = mdutil.GetDuration(md, keepAlivePeriod)
-		if d.md.keepAlive <= 0 {
-			d.md.keepAlive = defaultKeepAlivePeriod
+	if mdutil.GetBool(md, "keepalive") {
+		d.md.keepaliveInterval = mdutil.GetDuration(md, "ttl", "keepalive.interval")
+		if d.md.keepaliveInterval <= 0 {
+			d.md.keepaliveInterval = defaultKeepAlivePeriod
 		}
 	}
 
