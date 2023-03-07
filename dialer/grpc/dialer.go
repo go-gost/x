@@ -49,13 +49,6 @@ func (d *grpcDialer) Multiplex() bool {
 }
 
 func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
-	/*
-		remoteAddr, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			return nil, err
-		}
-	*/
-
 	d.clientMutex.Lock()
 	defer d.clientMutex.Unlock()
 
@@ -66,9 +59,13 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			opt(&options)
 		}
 
+		adr := addr
+		if h, p, err := net.SplitHostPort(addr); err == nil && h == "" {
+			adr = net.JoinHostPort("localhost", p)
+		}
 		host := d.md.host
 		if host == "" {
-			host = options.Host
+			host = adr
 		}
 		if h, _, _ := net.SplitHostPort(host); h != "" {
 			host = h
@@ -100,7 +97,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			}))
 		}
 
-		cc, err := grpc.DialContext(ctx, addr, grpcOpts...)
+		cc, err := grpc.DialContext(ctx, adr, grpcOpts...)
 		if err != nil {
 			d.options.Logger.Error(err)
 			return nil, err
