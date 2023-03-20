@@ -59,17 +59,14 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			opt(&options)
 		}
 
-		adr := addr
-		if h, p, err := net.SplitHostPort(addr); err == nil && h == "" {
-			adr = net.JoinHostPort("localhost", p)
-		}
 		host := d.md.host
 		if host == "" {
-			host = adr
+			host = options.Host
 		}
 		if h, _, _ := net.SplitHostPort(host); h != "" {
 			host = h
 		}
+		// d.options.Logger.Infof("grpc dialer, addr %s, host %s/%s", addr, d.md.host, options.Host)
 
 		grpcOpts := []grpc.DialOption{
 			// grpc.WithBlock(),
@@ -97,7 +94,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			}))
 		}
 
-		cc, err := grpc.DialContext(ctx, adr, grpcOpts...)
+		cc, err := grpc.DialContext(ctx, addr, grpcOpts...)
 		if err != nil {
 			d.options.Logger.Error(err)
 			return nil, err

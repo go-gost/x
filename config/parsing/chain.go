@@ -96,9 +96,6 @@ func ParseHop(cfg *config.HopConfig) (chain.Hop, error) {
 		})
 
 		serverName, _, _ := net.SplitHostPort(v.Addr)
-		if serverName == "" {
-			serverName = "localhost"
-		}
 
 		tlsCfg := v.Connector.TLS
 		if tlsCfg == nil {
