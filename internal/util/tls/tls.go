@@ -9,12 +9,7 @@ import (
 	"time"
 )
 
-// LoadServerConfig loads the certificate from cert & key files and optional client CA file.
-func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
-	if certFile == "" && keyFile == "" {
-		return nil, nil
-	}
-
+func LoadConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, err
@@ -32,6 +27,15 @@ func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// LoadServerConfig loads the certificate from cert & key files and optional client CA file.
+func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
+	if certFile == "" && keyFile == "" {
+		return nil, nil
+	}
+
+	return LoadConfig(certFile, keyFile, caFile)
 }
 
 // LoadClientConfig loads the certificate from cert & key files and optional CA file.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 )
 
 var (
@@ -29,10 +30,11 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 		cfg = &config.TLSConfig{
 			CertFile: "cert.pem",
 			KeyFile:  "key.pem",
+			CAFile:   "ca.pem",
 		}
 	}
 
-	tlsConfig, err := loadConfig(cfg.CertFile, cfg.KeyFile)
+	tlsConfig, err := tls_util.LoadConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
 	if err != nil {
 		// generate random self-signed certificate.
 		cert, err := genCertificate(cfg.Validity, cfg.Organization, cfg.CommonName)
@@ -47,19 +49,6 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 		log.Debug("load global TLS certificate files OK")
 	}
 	defaultTLSConfig = tlsConfig
-}
-
-func loadConfig(certFile, keyFile string) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-	}
-
-	return cfg, nil
 }
 
 func genCertificate(validity time.Duration, org string, cn string) (cert tls.Certificate, err error) {
