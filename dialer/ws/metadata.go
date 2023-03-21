@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultPath            = "/ws"
-	defaultKeepAlivePeriod = 15 * time.Second
+	defaultKeepalivePeriod = 15 * time.Second
 )
 
 type metadata struct {
@@ -65,7 +65,7 @@ func (d *wsDialer) parseMetadata(md mdata.Metadata) (err error) {
 	if mdutil.GetBool(md, "keepalive") {
 		d.md.keepaliveInterval = mdutil.GetDuration(md, "ttl", "keepalive.interval")
 		if d.md.keepaliveInterval <= 0 {
-			d.md.keepaliveInterval = defaultKeepAlivePeriod
+			d.md.keepaliveInterval = defaultKeepalivePeriod
 		}
 	}
 

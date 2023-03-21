@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	defaultPath = "/ws"
+	defaultPath            = "/ws"
+	defaultKeepalivePeriod = 15 * time.Second
 )
 
 type metadata struct {
@@ -29,8 +30,8 @@ type metadata struct {
 	muxMaxReceiveBuffer  int
 	muxMaxStreamBuffer   int
 
-	header    http.Header
-	keepAlive time.Duration
+	header            http.Header
+	keepaliveInterval time.Duration
 }
 
 func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -44,8 +45,7 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		writeBufferSize   = "writeBufferSize"
 		enableCompression = "enableCompression"
 
-		header    = "header"
-		keepAlive = "keepAlive"
+		header = "header"
 
 		muxKeepAliveDisabled = "muxKeepAliveDisabled"
 		muxKeepAliveInterval = "muxKeepAliveInterval"
@@ -82,7 +82,13 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		d.md.header = h
 	}
-	d.md.keepAlive = mdutil.GetDuration(md, keepAlive)
+
+	if mdutil.GetBool(md, "keepalive") {
+		d.md.keepaliveInterval = mdutil.GetDuration(md, "ttl", "keepalive.interval")
+		if d.md.keepaliveInterval <= 0 {
+			d.md.keepaliveInterval = defaultKeepalivePeriod
+		}
+	}
 
 	return
 }

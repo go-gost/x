@@ -167,10 +167,11 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn)
 
 	cc := ws_util.Conn(c)
 
-	if d.md.keepAlive > 0 {
-		c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
+	if d.md.keepaliveInterval > 0 {
+		d.options.Logger.Debugf("keepalive is enabled, ttl: %v", d.md.keepaliveInterval)
+		c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
 		c.SetPongHandler(func(string) error {
-			c.SetReadDeadline(time.Now().Add(d.md.keepAlive * 2))
+			c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
 			return nil
 		})
 		go d.keepAlive(cc)
@@ -203,13 +204,15 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn)
 }
 
 func (d *mwsDialer) keepAlive(conn ws_util.WebsocketConn) {
-	ticker := time.NewTicker(d.md.keepAlive)
+	ticker := time.NewTicker(d.md.keepaliveInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
+		d.options.Logger.Debug("send ping")
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 			return
 		}
+		conn.SetWriteDeadline(time.Time{})
 	}
 }

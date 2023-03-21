@@ -106,6 +106,7 @@ func (d *wsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dial
 	cc := ws_util.Conn(c)
 
 	if d.md.keepaliveInterval > 0 {
+		d.options.Logger.Debugf("keepalive is enabled, ttl: %v", d.md.keepaliveInterval)
 		c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
 		c.SetPongHandler(func(string) error {
 			c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
@@ -123,10 +124,12 @@ func (d *wsDialer) keepalive(conn ws_util.WebsocketConn) {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		d.options.Logger.Debug("send ping")
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			// d.options.Logger.Error(err)
 			return
 		}
-		d.options.Logger.Debug("send ping")
+		conn.SetWriteDeadline(time.Time{})
 	}
 }
