@@ -7,9 +7,37 @@ import (
 	"io/ioutil"
 	"net"
 	"time"
+
+	"github.com/go-gost/core/logger"
 )
 
-func LoadConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
+// LoadDefaultConfig loads the certificate from cert & key files and optional CA file.
+func LoadDefaultConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+
+	pool, err := loadCA(caFile)
+	if err != nil {
+		logger.Default().Debugf("load default CA(%s): %v", caFile, err)
+	}
+	if pool != nil {
+		cfg.ClientCAs = pool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return cfg, nil
+}
+
+// LoadServerConfig loads the certificate from cert & key files and client CA file.
+func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
+	if certFile == "" && keyFile == "" {
+		return nil, nil
+	}
+
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, err
@@ -29,16 +57,7 @@ func LoadConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 	return cfg, nil
 }
 
-// LoadServerConfig loads the certificate from cert & key files and optional client CA file.
-func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
-	if certFile == "" && keyFile == "" {
-		return nil, nil
-	}
-
-	return LoadConfig(certFile, keyFile, caFile)
-}
-
-// LoadClientConfig loads the certificate from cert & key files and optional CA file.
+// LoadClientConfig loads the certificate from cert & key files and CA file.
 func LoadClientConfig(certFile, keyFile, caFile string, verify bool, serverName string) (*tls.Config, error) {
 	var cfg *tls.Config
 

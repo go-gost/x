@@ -34,7 +34,7 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 		}
 	}
 
-	tlsConfig, err := tls_util.LoadConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
+	tlsConfig, err := tls_util.LoadDefaultConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
 	if err != nil {
 		// generate random self-signed certificate.
 		cert, err := genCertificate(cfg.Validity, cfg.Organization, cfg.CommonName)
