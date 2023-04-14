@@ -145,12 +145,12 @@ func (s *defaultService) Serve() error {
 		}
 		tempDelay = 0
 
+		host := conn.RemoteAddr().String()
+		if h, _, _ := net.SplitHostPort(host); h != "" {
+			host = h
+		}
 		for _, rec := range s.options.recorders {
 			if rec.Record == recorder.RecorderServiceClientAddress {
-				host := conn.RemoteAddr().String()
-				if h, _, _ := net.SplitHostPort(host); h != "" {
-					host = h
-				}
 				if err := rec.Recorder.Record(context.Background(), []byte(host)); err != nil {
 					s.options.logger.Errorf("record %s: %v", rec.Record, err)
 				}
@@ -166,12 +166,12 @@ func (s *defaultService) Serve() error {
 
 		go func() {
 			if v := xmetrics.GetCounter(xmetrics.MetricServiceRequestsCounter,
-				metrics.Labels{"service": s.name}); v != nil {
+				metrics.Labels{"service": s.name, "client": host}); v != nil {
 				v.Inc()
 			}
 
 			if v := xmetrics.GetGauge(xmetrics.MetricServiceRequestsInFlightGauge,
-				metrics.Labels{"service": s.name}); v != nil {
+				metrics.Labels{"service": s.name, "client": host}); v != nil {
 				v.Inc()
 				defer v.Dec()
 			}
@@ -184,14 +184,13 @@ func (s *defaultService) Serve() error {
 				}()
 			}
 
-			host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 			ctx := sx.ContextWithHash(context.Background(), &sx.Hash{Source: host})
 			ctx = ContextWithSid(ctx, xid.New().String())
 
 			if err := s.handler.Handle(ctx, conn); err != nil {
 				s.options.logger.Error(err)
 				if v := xmetrics.GetCounter(xmetrics.MetricServiceHandlerErrorsCounter,
-					metrics.Labels{"service": s.name}); v != nil {
+					metrics.Labels{"service": s.name, "client": host}); v != nil {
 					v.Inc()
 				}
 			}

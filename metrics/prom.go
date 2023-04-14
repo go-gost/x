@@ -30,7 +30,7 @@ func NewMetrics() metrics.Metrics {
 					Name: string(MetricServiceRequestsInFlightGauge),
 					Help: "Current in-flight requests",
 				},
-				[]string{"host", "service"}),
+				[]string{"host", "service", "client"}),
 		},
 		counters: map[metrics.MetricName]*prometheus.CounterVec{
 			MetricServiceRequestsCounter: prometheus.NewCounterVec(
@@ -38,7 +38,7 @@ func NewMetrics() metrics.Metrics {
 					Name: string(MetricServiceRequestsCounter),
 					Help: "Total number of requests",
 				},
-				[]string{"host", "service"}),
+				[]string{"host", "service", "client"}),
 			MetricServiceTransferInputBytesCounter: prometheus.NewCounterVec(
 				prometheus.CounterOpts{
 					Name: string(MetricServiceTransferInputBytesCounter),
@@ -56,7 +56,7 @@ func NewMetrics() metrics.Metrics {
 					Name: string(MetricServiceHandlerErrorsCounter),
 					Help: "Total service handler errors",
 				},
-				[]string{"host", "service"}),
+				[]string{"host", "service", "client"}),
 			MetricChainErrorsCounter: prometheus.NewCounterVec(
 				prometheus.CounterOpts{
 					Name: string(MetricChainErrorsCounter),

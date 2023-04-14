@@ -68,8 +68,8 @@ func (l *http2Listener) Init(md md.Metadata) (err error) {
 		return err
 	}
 	l.addr = ln.Addr()
-	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
+	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
