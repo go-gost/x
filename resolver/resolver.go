@@ -150,8 +150,8 @@ func (r *resolver) resolve6(ctx context.Context, server *NameServer, host string
 
 func (r *resolver) resolveIPs(ctx context.Context, server *NameServer, mq *dns.Msg) (ips []net.IP, err error) {
 	key := resolver_util.NewCacheKey(&mq.Question[0])
-	mr := r.cache.Load(key)
-	if mr == nil {
+	mr, ttl := r.cache.Load(key)
+	if ttl <= 0 {
 		resolver_util.AddSubnetOpt(mq, server.ClientIP)
 		mr, err = r.exchange(ctx, server.exchanger, mq)
 		if err != nil {

@@ -9,6 +9,10 @@ import (
 	"github.com/miekg/dns"
 )
 
+const (
+	defaultTTL = 60 * time.Second
+)
+
 type CacheKey string
 
 // NewCacheKey generates resolver cache key from question of dns query.
@@ -40,25 +44,31 @@ func (c *Cache) WithLogger(logger logger.Logger) *Cache {
 	return c
 }
 
-func (c *Cache) Load(key CacheKey) *dns.Msg {
+func (c *Cache) Load(key CacheKey) (msg *dns.Msg, ttl time.Duration) {
 	v, ok := c.m.Load(key)
 	if !ok {
-		return nil
+		return
 	}
 
 	item, ok := v.(*cacheItem)
 	if !ok {
-		return nil
+		return
 	}
 
-	if time.Since(item.ts) > item.ttl {
-		c.m.Delete(key)
-		return nil
+	msg = item.msg.Copy()
+	for i := range msg.Answer {
+		d := uint32(time.Since(item.ts).Seconds())
+		if msg.Answer[i].Header().Ttl > d {
+			msg.Answer[i].Header().Ttl -= d
+		} else {
+			msg.Answer[i].Header().Ttl = 1
+		}
 	}
+	ttl = item.ttl - time.Since(item.ts)
 
-	c.logger.Debugf("hit resolver cache: %s", key)
+	c.logger.Debugf("hit resolver cache: %s, ttl: %v", key, ttl)
 
-	return item.msg.Copy()
+	return
 }
 
 func (c *Cache) Store(key CacheKey, mr *dns.Msg, ttl time.Duration) {
@@ -73,9 +83,13 @@ func (c *Cache) Store(key CacheKey, mr *dns.Msg, ttl time.Duration) {
 				ttl = v
 			}
 		}
-	}
-	if ttl == 0 {
-		ttl = 30 * time.Second
+		if ttl == 0 {
+			ttl = defaultTTL
+		}
+	} else {
+		for i := range mr.Answer {
+			mr.Answer[i].Header().Ttl = uint32(ttl.Seconds())
+		}
 	}
 
 	c.m.Store(key, &cacheItem{
@@ -85,4 +99,17 @@ func (c *Cache) Store(key CacheKey, mr *dns.Msg, ttl time.Duration) {
 	})
 
 	c.logger.Debugf("resolver cache store: %s, ttl: %v", key, ttl)
+}
+
+func (c *Cache) RefreshTTL(key CacheKey) {
+	v, ok := c.m.Load(key)
+	if !ok {
+		return
+	}
+
+	item, ok := v.(*cacheItem)
+	if !ok {
+		return
+	}
+	item.ts = time.Now()
 }

@@ -21,6 +21,7 @@ type metadata struct {
 	// nameservers
 	dns        []string
 	bufferSize int
+	async      bool
 }
 
 func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -31,6 +32,7 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 		clientIP    = "clientIP"
 		dns         = "dns"
 		bufferSize  = "bufferSize"
+		async       = "async"
 	)
 
 	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
@@ -48,6 +50,7 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = defaultBufferSize
 	}
+	h.md.async = mdutil.GetBool(md, async)
 
 	return
 }
