@@ -185,7 +185,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	var tunnelID relay.TunnelID
 	if h.ingress != nil {
-		tunnelID = parseTunnelID(h.ingress.Get(host))
+		tunnelID = parseTunnelID(h.ingress.Get(ctx, host))
 	}
 	if tunnelID.IsZero() {
 		err := fmt.Errorf("no route to host %s", host)
@@ -248,7 +248,7 @@ func (h *tunnelHandler) handleHTTP(ctx context.Context, raddr net.Addr, rw io.Re
 
 			var tunnelID relay.TunnelID
 			if h.ingress != nil {
-				tunnelID = parseTunnelID(h.ingress.Get(req.Host))
+				tunnelID = parseTunnelID(h.ingress.Get(ctx, req.Host))
 			}
 			if tunnelID.IsZero() {
 				err := fmt.Errorf("no route to host %s", req.Host)

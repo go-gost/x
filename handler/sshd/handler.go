@@ -92,7 +92,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), targetAddr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(targetAddr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, targetAddr) {
 		log.Debugf("bypass %s", targetAddr)
 		return nil
 	}

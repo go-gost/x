@@ -1,6 +1,7 @@
 package parsing
 
 import (
+	"crypto/tls"
 	"net"
 	"net/url"
 
@@ -31,6 +32,10 @@ import (
 	"github.com/go-gost/x/registry"
 	resolver_impl "github.com/go-gost/x/resolver"
 	xs "github.com/go-gost/x/selector"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -48,6 +53,20 @@ const (
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	if cfg == nil {
 		return nil
+	}
+
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return auth_impl.NewPluginAuthenticator(
+			auth_impl.PluginConnOption(c),
+			auth_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":   "auther",
+				"auther": cfg.Name,
+			})),
+		)
 	}
 
 	m := make(map[string]string)
@@ -84,7 +103,6 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
 		)))
 	}
-
 	return auth_impl.NewAuthenticator(opts...)
 }
 
@@ -170,6 +188,21 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	if cfg == nil {
 		return nil
 	}
+
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return admission_impl.NewPluginAdmission(
+			admission_impl.PluginConnOption(c),
+			admission_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":      "admission",
+				"admission": cfg.Name,
+			})),
+		)
+	}
+
 	opts := []admission_impl.Option{
 		admission_impl.MatchersOption(cfg.Matchers),
 		admission_impl.WhitelistOption(cfg.Reverse || cfg.Whitelist),
@@ -203,6 +236,20 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 	if cfg == nil {
 		return nil
+	}
+
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return bypass_impl.NewPluginBypass(
+			bypass_impl.PluginConnOption(c),
+			bypass_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":   "bypass",
+				"bypass": cfg.Name,
+			})),
+		)
 	}
 
 	opts := []bypass_impl.Option{
@@ -239,6 +286,22 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 	if cfg == nil {
 		return nil, nil
 	}
+
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+			return nil, err
+		}
+		return resolver_impl.NewPluginResolver(
+			resolver_impl.PluginConnOption(c),
+			resolver_impl.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":     "resolver",
+				"resolver": cfg.Name,
+			})),
+		)
+	}
+
 	var nameservers []resolver_impl.NameServer
 	for _, server := range cfg.Nameservers {
 		nameservers = append(nameservers, resolver_impl.NameServer{
@@ -254,7 +317,7 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 
 	return resolver_impl.NewResolver(
 		nameservers,
-		resolver_impl.LoggerResolverOption(
+		resolver_impl.LoggerOption(
 			logger.Default().WithFields(map[string]any{
 				"kind":     "resolver",
 				"resolver": cfg.Name,
@@ -266,6 +329,20 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 	if cfg == nil {
 		return nil
+	}
+
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return xhosts.NewPluginHostMapper(
+			xhosts.PluginConnOption(c),
+			xhosts.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":  "hosts",
+				"hosts": cfg.Name,
+			})),
+		)
 	}
 
 	var mappings []xhosts.Mapping
@@ -326,6 +403,20 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		return nil
 	}
 
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return xingress.NewPluginIngress(
+			xingress.PluginConnOption(c),
+			xingress.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":    "ingress",
+				"ingress": cfg.Name,
+			})),
+		)
+	}
+
 	var rules []xingress.Rule
 	for _, rule := range cfg.Rules {
 		if rule.Hostname == "" || rule.Endpoint == "" {
@@ -380,9 +471,24 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		return nil
 	}
 
+	if cfg.Plugin != nil {
+		c, err := newPluginConn(cfg.Plugin)
+		if err != nil {
+			logger.Default().Error(err)
+		}
+		return xrecorder.NewPluginRecorder(
+			xrecorder.PluginConnOption(c),
+			xrecorder.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":     "recorder",
+				"recorder": cfg.Name,
+			})),
+		)
+	}
+
 	if cfg.File != nil && cfg.File.Path != "" {
 		return xrecorder.FileRecorder(cfg.File.Path,
-			xrecorder.SepRecorderOption(cfg.File.Sep))
+			xrecorder.SepRecorderOption(cfg.File.Sep),
+		)
 	}
 
 	if cfg.Redis != nil &&
@@ -565,4 +671,25 @@ func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
 	)
 
 	return xrate.NewRateLimiter(opts...)
+}
+
+func newPluginConn(cfg *config.PluginConfig) (*grpc.ClientConn, error) {
+	grpcOpts := []grpc.DialOption{
+		// grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.DefaultConfig,
+		}),
+		grpc.FailOnNonTempDialError(true),
+	}
+	if tlsCfg := cfg.TLS; tlsCfg != nil && tlsCfg.Secure {
+		grpcOpts = append(grpcOpts,
+			grpc.WithAuthority(tlsCfg.ServerName),
+			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+				ServerName:         tlsCfg.ServerName,
+				InsecureSkipVerify: !tlsCfg.Secure,
+			})))
+	} else {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	return grpc.Dial(cfg.Addr, grpcOpts...)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
+	"google.golang.org/grpc"
 )
 
 type options struct {
@@ -20,6 +21,7 @@ type options struct {
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
 	period      time.Duration
+	client      *grpc.ClientConn
 	logger      logger.Logger
 }
 
@@ -52,6 +54,12 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+func PluginConnOption(c *grpc.ClientConn) Option {
+	return func(opts *options) {
+		opts.client = c
 	}
 }
 
@@ -97,13 +105,17 @@ func NewAuthenticator(opts ...Option) auth.Authenticator {
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *authenticator) Authenticate(user, password string) bool {
-	if p == nil || len(p.kvs) == 0 {
+func (p *authenticator) Authenticate(ctx context.Context, user, password string) bool {
+	if p == nil {
 		return true
 	}
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
+	if len(p.kvs) == 0 {
+		return true
+	}
 
 	v, ok := p.kvs[user]
 	return ok && (v == "" || password == v)

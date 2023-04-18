@@ -25,7 +25,7 @@ func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tu
 			}
 			defer pc.Close()
 
-			return h.transportServer(conn, pc, config, log)
+			return h.transportServer(ctx, conn, pc, config, log)
 		}()
 		if err == ErrTun {
 			return err
@@ -36,7 +36,7 @@ func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tu
 	}
 }
 
-func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
 	errc := make(chan error, 1)
 
 	go func() {
@@ -135,7 +135,7 @@ func (h *tunHandler) transportServer(tun io.ReadWriter, conn net.PacketConn, con
 						ok := true
 						key := bytes.TrimRight((*b)[4:20], "\x00")
 						for _, ip := range peerIPs {
-							if ok = auther.Authenticate(ip.String(), string(key)); !ok {
+							if ok = auther.Authenticate(ctx, ip.String(), string(key)); !ok {
 								break
 							}
 						}

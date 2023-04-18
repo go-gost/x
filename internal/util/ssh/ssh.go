@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -26,7 +27,7 @@ func PasswordCallback(au auth.Authenticator) PasswordCallbackFunc {
 		return nil
 	}
 	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-		if au.Authenticate(conn.User(), string(password)) {
+		if au.Authenticate(context.Background(), conn.User(), string(password)) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("password rejected for %s", conn.User())

@@ -109,13 +109,19 @@ type TLSConfig struct {
 	Organization string        `yaml:",omitempty" json:"organization,omitempty"`
 }
 
+type PluginConfig struct {
+	Addr string     `json:"addr"`
+	TLS  *TLSConfig `json:"tls"`
+}
+
 type AutherConfig struct {
 	Name   string        `json:"name"`
-	Auths  []*AuthConfig `yaml:",omitempty" json:"auths"`
+	Auths  []*AuthConfig `yaml:",omitempty" json:"auths,omitempty"`
 	Reload time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP   *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type AuthConfig struct {
@@ -134,11 +140,12 @@ type AdmissionConfig struct {
 	// DEPRECATED by whitelist since beta.4
 	Reverse   bool          `yaml:",omitempty" json:"reverse,omitempty"`
 	Whitelist bool          `yaml:",omitempty" json:"whitelist,omitempty"`
-	Matchers  []string      `json:"matchers"`
+	Matchers  []string      `yaml:",omitempty" json:"matchers,omitempty"`
 	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP      *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin    *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type BypassConfig struct {
@@ -146,11 +153,12 @@ type BypassConfig struct {
 	// DEPRECATED by whitelist since beta.4
 	Reverse   bool          `yaml:",omitempty" json:"reverse,omitempty"`
 	Whitelist bool          `yaml:",omitempty" json:"whitelist,omitempty"`
-	Matchers  []string      `json:"matchers"`
+	Matchers  []string      `yaml:",omitempty" json:"matchers,omitempty"`
 	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis     *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP      *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin    *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type FileLoader struct {
@@ -182,7 +190,8 @@ type NameserverConfig struct {
 
 type ResolverConfig struct {
 	Name        string              `json:"name"`
-	Nameservers []*NameserverConfig `json:"nameservers"`
+	Nameservers []*NameserverConfig `yaml:",omitempty" json:"nameservers,omitempty"`
+	Plugin      *PluginConfig       `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type HostMappingConfig struct {
@@ -193,11 +202,12 @@ type HostMappingConfig struct {
 
 type HostsConfig struct {
 	Name     string               `json:"name"`
-	Mappings []*HostMappingConfig `json:"mappings"`
+	Mappings []*HostMappingConfig `yaml:",omitempty" json:"mappings,omitempty"`
 	Reload   time.Duration        `yaml:",omitempty" json:"reload,omitempty"`
 	File     *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
 	Redis    *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP     *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin   *PluginConfig        `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type IngressRuleConfig struct {
@@ -212,12 +222,14 @@ type IngressConfig struct {
 	File   *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP   *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin *PluginConfig        `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type RecorderConfig struct {
-	Name  string         `json:"name"`
-	File  *FileRecorder  `yaml:",omitempty" json:"file,omitempty"`
-	Redis *RedisRecorder `yaml:",omitempty" json:"redis,omitempty"`
+	Name   string         `json:"name"`
+	File   *FileRecorder  `yaml:",omitempty" json:"file,omitempty"`
+	Redis  *RedisRecorder `yaml:",omitempty" json:"redis,omitempty"`
+	Plugin *PluginConfig  `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type FileRecorder struct {

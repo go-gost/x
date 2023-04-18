@@ -145,7 +145,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header = http.Header{}
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
 		resp.StatusCode = http.StatusForbidden
 
 		if log.IsLevelEnabled(logger.TraceLevel) {
@@ -157,7 +157,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return resp.Write(conn)
 	}
 
-	if !h.authenticate(conn, req, resp, log) {
+	if !h.authenticate(ctx, conn, req, resp, log) {
 		return nil
 	}
 
@@ -266,9 +266,9 @@ func (h *httpHandler) basicProxyAuth(proxyAuth string, log logger.Logger) (usern
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *httpHandler) authenticate(conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (ok bool) {
+func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (ok bool) {
 	u, p, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization"), log)
-	if h.options.Auther == nil || h.options.Auther.Authenticate(u, p) {
+	if h.options.Auther == nil || h.options.Auther.Authenticate(ctx, u, p) {
 		return true
 	}
 

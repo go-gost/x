@@ -139,7 +139,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		w.Header().Set(k, h.md.header.Get(k))
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
 		w.WriteHeader(http.StatusForbidden)
 		log.Debug("bypass: ", addr)
 		return nil
@@ -152,7 +152,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
 	}
 
-	if !h.authenticate(w, req, resp, log) {
+	if !h.authenticate(ctx, w, req, resp, log) {
 		return nil
 	}
 
@@ -252,9 +252,9 @@ func (h *http2Handler) basicProxyAuth(proxyAuth string) (username, password stri
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *http2Handler) authenticate(w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (ok bool) {
+func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (ok bool) {
 	u, p, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization"))
-	if h.options.Auther == nil || h.options.Auther.Authenticate(u, p) {
+	if h.options.Auther == nil || h.options.Auther.Authenticate(ctx, u, p) {
 		return true
 	}
 

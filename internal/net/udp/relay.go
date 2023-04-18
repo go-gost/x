@@ -1,6 +1,7 @@
 package udp
 
 import (
+	"context"
 	"net"
 
 	"github.com/go-gost/core/bypass"
@@ -57,7 +58,7 @@ func (r *Relay) Run() (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(context.Background(), raddr.String()) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}
@@ -95,7 +96,7 @@ func (r *Relay) Run() (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(context.Background(), raddr.String()) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}

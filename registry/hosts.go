@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"net"
 
 	"github.com/go-gost/core/hosts"
@@ -30,10 +31,10 @@ type hostsWrapper struct {
 	r    *hostsRegistry
 }
 
-func (w *hostsWrapper) Lookup(network, host string) ([]net.IP, bool) {
+func (w *hostsWrapper) Lookup(ctx context.Context, network, host string) ([]net.IP, bool) {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil, false
 	}
-	return v.Lookup(network, host)
+	return v.Lookup(ctx, network, host)
 }

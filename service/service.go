@@ -158,7 +158,7 @@ func (s *defaultService) Serve() error {
 			}
 		}
 		if s.options.admission != nil &&
-			!s.options.admission.Admit(conn.RemoteAddr().String()) {
+			!s.options.admission.Admit(context.Background(), conn.RemoteAddr().String()) {
 			conn.Close()
 			s.options.logger.Debugf("admission: %s is denied", conn.RemoteAddr())
 			continue

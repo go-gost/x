@@ -194,7 +194,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 	}
 
 	if h.options.Bypass != nil && mq.Question[0].Qclass == dns.ClassINET {
-		if h.options.Bypass.Contains(strings.Trim(mq.Question[0].Name, ".")) {
+		if h.options.Bypass.Contains(context.Background(), strings.Trim(mq.Question[0].Name, ".")) {
 			log.Debug("bypass: ", mq.Question[0].Name)
 			mr = (&dns.Msg{}).SetReply(&mq)
 			b := bufpool.Get(h.md.bufferSize)
@@ -202,7 +202,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 		}
 	}
 
-	mr = h.lookupHosts(&mq, log)
+	mr = h.lookupHosts(ctx, &mq, log)
 	if mr != nil {
 		b := bufpool.Get(h.md.bufferSize)
 		return mr.PackBuffer(*b)
@@ -272,7 +272,7 @@ func (h *dnsHandler) exchange(ctx context.Context, mq *dns.Msg) ([]byte, error) 
 }
 
 // lookup host mapper
-func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
+func (h *dnsHandler) lookupHosts(ctx context.Context, r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 	if h.hostMapper == nil ||
 		r.Question[0].Qclass != dns.ClassINET ||
 		(r.Question[0].Qtype != dns.TypeA && r.Question[0].Qtype != dns.TypeAAAA) {
@@ -286,7 +286,7 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 
 	switch r.Question[0].Qtype {
 	case dns.TypeA:
-		ips, _ := h.hostMapper.Lookup("ip4", host)
+		ips, _ := h.hostMapper.Lookup(ctx, "ip4", host)
 		if len(ips) == 0 {
 			return nil
 		}
@@ -302,7 +302,7 @@ func (h *dnsHandler) lookupHosts(r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 		}
 
 	case dns.TypeAAAA:
-		ips, _ := h.hostMapper.Lookup("ip6", host)
+		ips, _ := h.hostMapper.Lookup(ctx, "ip6", host)
 		if len(ips) == 0 {
 			return nil
 		}

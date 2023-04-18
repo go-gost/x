@@ -12,6 +12,7 @@ import (
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
+	"google.golang.org/grpc"
 )
 
 type NameServer struct {
@@ -25,21 +26,28 @@ type NameServer struct {
 	exchanger exchanger.Exchanger
 }
 
-type resolverOptions struct {
+type options struct {
 	domain string
+	client *grpc.ClientConn
 	logger logger.Logger
 }
 
-type ResolverOption func(opts *resolverOptions)
+type Option func(opts *options)
 
-func DomainResolverOption(domain string) ResolverOption {
-	return func(opts *resolverOptions) {
+func DomainOption(domain string) Option {
+	return func(opts *options) {
 		opts.domain = domain
 	}
 }
 
-func LoggerResolverOption(logger logger.Logger) ResolverOption {
-	return func(opts *resolverOptions) {
+func PluginConnOption(c *grpc.ClientConn) Option {
+	return func(opts *options) {
+		opts.client = c
+	}
+}
+
+func LoggerOption(logger logger.Logger) Option {
+	return func(opts *options) {
 		opts.logger = logger
 	}
 }
@@ -47,11 +55,11 @@ func LoggerResolverOption(logger logger.Logger) ResolverOption {
 type resolver struct {
 	servers []NameServer
 	cache   *resolver_util.Cache
-	options resolverOptions
+	options options
 }
 
-func NewResolver(nameservers []NameServer, opts ...ResolverOption) (resolverpkg.Resolver, error) {
-	options := resolverOptions{}
+func NewResolver(nameservers []NameServer, opts ...Option) (resolverpkg.Resolver, error) {
+	options := options{}
 	for _, opt := range opts {
 		opt(&options)
 	}

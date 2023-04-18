@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"context"
+
 	"github.com/go-gost/core/auth"
 )
 
@@ -28,10 +30,10 @@ type autherWrapper struct {
 	r    *autherRegistry
 }
 
-func (w *autherWrapper) Authenticate(user, password string) bool {
+func (w *autherWrapper) Authenticate(ctx context.Context, user, password string) bool {
 	v := w.r.get(w.name)
 	if v == nil {
 		return true
 	}
-	return v.Authenticate(user, password)
+	return v.Authenticate(ctx, user, password)
 }

@@ -91,7 +91,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	conn.SetReadDeadline(time.Time{})
 
 	if h.options.Auther != nil &&
-		!h.options.Auther.Authenticate(string(req.Userid), "") {
+		!h.options.Auther.Authenticate(ctx, string(req.Userid), "") {
 		resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
 		log.Trace(resp)
 		return resp.Write(conn)
@@ -117,7 +117,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	})
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
 		resp := gosocks4.NewReply(gosocks4.Rejected, nil)
 		log.Trace(resp)
 		log.Debug("bypass: ", addr)

@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"context"
+
 	"github.com/go-gost/core/bypass"
 )
 
@@ -28,10 +30,10 @@ type bypassWrapper struct {
 	r    *bypassRegistry
 }
 
-func (w *bypassWrapper) Contains(addr string) bool {
+func (w *bypassWrapper) Contains(ctx context.Context, addr string) bool {
 	bp := w.r.get(w.name)
 	if bp == nil {
 		return false
 	}
-	return bp.Contains(addr)
+	return bp.Contains(ctx, addr)
 }

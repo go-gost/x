@@ -105,7 +105,7 @@ func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		w.Header().Set(k, h.md.header.Get(k))
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
 		w.WriteHeader(http.StatusForbidden)
 		log.Debug("bypass: ", addr)
 		return nil

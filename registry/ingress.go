@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"context"
+
 	"github.com/go-gost/core/ingress"
 )
 
@@ -28,10 +30,10 @@ type ingressWrapper struct {
 	r    *ingressRegistry
 }
 
-func (w *ingressWrapper) Get(host string) string {
+func (w *ingressWrapper) Get(ctx context.Context, host string) string {
 	v := w.r.get(w.name)
 	if v == nil {
 		return ""
 	}
-	return v.Get(host)
+	return v.Get(ctx, host)
 }

@@ -1,6 +1,7 @@
 package v5
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 
@@ -64,7 +65,7 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, erro
 		s.logger.Trace(req)
 
 		if s.Authenticator != nil &&
-			!s.Authenticator.Authenticate(req.Username, req.Password) {
+			!s.Authenticator.Authenticate(context.Background(), req.Username, req.Password) {
 			resp := gosocks5.NewUserPassResponse(gosocks5.UserPassVer, gosocks5.Failure)
 			if err := resp.Write(conn); err != nil {
 				s.logger.Error(err)

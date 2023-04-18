@@ -199,7 +199,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 
 			if auther := target.Options().Auther; auther != nil {
 				username, password, _ := req.BasicAuth()
-				if !auther.Authenticate(username, password) {
+				if !auther.Authenticate(ctx, username, password) {
 					resp.StatusCode = http.StatusUnauthorized
 					resp.Header.Set("WWW-Authenticate", "Basic")
 					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)

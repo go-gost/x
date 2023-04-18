@@ -1,6 +1,7 @@
 package wrapper
 
 import (
+	"context"
 	"net"
 
 	"github.com/go-gost/core/admission"
@@ -28,7 +29,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 		if ln.admission != nil &&
-			!ln.admission.Admit(c.RemoteAddr().String()) {
+			!ln.admission.Admit(context.Background(), c.RemoteAddr().String()) {
 			c.Close()
 			continue
 		}

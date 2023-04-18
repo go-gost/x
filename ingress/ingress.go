@@ -12,6 +12,7 @@ import (
 	ingress_pkg "github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	"google.golang.org/grpc"
 )
 
 type Rule struct {
@@ -24,6 +25,7 @@ type options struct {
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
+	client      *grpc.ClientConn
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -57,6 +59,12 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+func PluginConnOption(c *grpc.ClientConn) Option {
+	return func(opts *options) {
+		opts.client = c
 	}
 }
 
@@ -219,7 +227,7 @@ func (ing *ingress) parseRules(r io.Reader) (rules []Rule, err error) {
 	return
 }
 
-func (ing *ingress) Get(host string) string {
+func (ing *ingress) Get(ctx context.Context, host string) string {
 	if host == "" || ing == nil {
 		return ""
 	}

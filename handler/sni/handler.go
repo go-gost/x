@@ -115,7 +115,7 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		"host": host,
 	})
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(host) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, host) {
 		log.Debug("bypass: ", host)
 		return nil
 	}
@@ -183,7 +183,7 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 	})
 	log.Debugf("%s >> %s", raddr, host)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(host) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, host) {
 		log.Debug("bypass: ", host)
 		return nil
 	}

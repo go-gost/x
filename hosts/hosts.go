@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	"google.golang.org/grpc"
 )
 
 type Mapping struct {
@@ -24,6 +25,7 @@ type options struct {
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
+	client      *grpc.ClientConn
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -57,6 +59,12 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+func PluginConnOption(c *grpc.ClientConn) Option {
+	return func(opts *options) {
+		opts.client = c
 	}
 }
 
@@ -104,7 +112,7 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 // Lookup searches the IP address corresponds to the given network and host from the host table.
 // The network should be 'ip', 'ip4' or 'ip6', default network is 'ip'.
 // the host should be a hostname (example.org) or a hostname with dot prefix (.example.org).
-func (h *hostMapper) Lookup(network, host string) (ips []net.IP, ok bool) {
+func (h *hostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
 	h.options.logger.Debugf("lookup %s/%s", host, network)
 	ips = h.lookup(host)
 	if ips == nil {

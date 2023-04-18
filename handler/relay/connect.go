@@ -35,7 +35,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		return err
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, address) {
 		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
@@ -112,7 +112,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 
 	host, sp, _ := net.SplitHostPort(address)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, address) {
 		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
@@ -121,7 +121,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 
 	var tid relay.TunnelID
 	if ingress := h.md.ingress; ingress != nil {
-		tid = parseTunnelID(ingress.Get(host))
+		tid = parseTunnelID(ingress.Get(ctx, host))
 	}
 	if !tid.Equal(tunnelID) && !h.md.directTunnel {
 		resp.Status = relay.StatusBadRequest

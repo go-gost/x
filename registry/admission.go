@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"context"
+
 	"github.com/go-gost/core/admission"
 )
 
@@ -28,10 +30,10 @@ type admissionWrapper struct {
 	r    *admissionRegistry
 }
 
-func (w *admissionWrapper) Admit(addr string) bool {
+func (w *admissionWrapper) Admit(ctx context.Context, addr string) bool {
 	p := w.r.get(w.name)
 	if p == nil {
 		return false
 	}
-	return p.Admit(addr)
+	return p.Admit(ctx, addr)
 }
