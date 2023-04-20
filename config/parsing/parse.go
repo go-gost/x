@@ -1,6 +1,7 @@
 package parsing
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/url"
@@ -691,5 +692,22 @@ func newPluginConn(cfg *config.PluginConfig) (*grpc.ClientConn, error) {
 	} else {
 		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
+	if cfg.Token != "" {
+		grpcOpts = append(grpcOpts, grpc.WithPerRPCCredentials(&rpcCredentials{token: cfg.Token}))
+	}
 	return grpc.Dial(cfg.Addr, grpcOpts...)
+}
+
+type rpcCredentials struct {
+	token string
+}
+
+func (c *rpcCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"token": c.token,
+	}, nil
+}
+
+func (c *rpcCredentials) RequireTransportSecurity() bool {
+	return false
 }
