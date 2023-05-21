@@ -8,8 +8,9 @@ import (
 )
 
 type metadata struct {
-	readTimeout time.Duration
-	sniffing    bool
+	readTimeout     time.Duration
+	sniffing        bool
+	sniffingTimeout time.Duration
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -20,5 +21,6 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
 	h.md.sniffing = mdutil.GetBool(md, sniffing)
+	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	return
 }

@@ -119,11 +119,11 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }

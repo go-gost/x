@@ -88,11 +88,11 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), dstAddr)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), dstAddr)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), dstAddr)
 
 	return nil
 }

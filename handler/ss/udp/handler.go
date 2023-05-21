@@ -112,10 +112,10 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.LocalAddr(), cc.LocalAddr())
+	log.Infof("%s <-> %s", conn.LocalAddr(), cc.LocalAddr())
 	h.relayPacket(pc, cc, log)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
-		Debugf("%s >-< %s", conn.LocalAddr(), cc.LocalAddr())
+		Infof("%s >-< %s", conn.LocalAddr(), cc.LocalAddr())
 
 	return nil
 }

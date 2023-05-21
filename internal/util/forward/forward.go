@@ -19,8 +19,8 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 
 	// try to sniff TLS traffic
 	var hdr [dissector.RecordHeaderLen]byte
-	_, err = io.ReadFull(rw, hdr[:])
-	rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:]), rw), rw)
+	n, err := io.ReadFull(rw, hdr[:])
+	rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:n]), rw), rw)
 	if err == nil &&
 		hdr[0] == dissector.Handshake &&
 		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {

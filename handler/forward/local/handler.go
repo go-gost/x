@@ -93,8 +93,14 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	var host string
 	var protocol string
 	if network == "tcp" && h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
 		rw, host, protocol, _ = forward.Sniffing(ctx, conn)
 		log.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
 	}
 
 	if protocol == forward.ProtoHTTP {
@@ -152,11 +158,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
 	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
 
 	return nil
 }

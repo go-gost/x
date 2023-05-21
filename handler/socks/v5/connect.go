@@ -49,11 +49,11 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	}
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), address)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), address)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), address)
 
 	return nil
 }

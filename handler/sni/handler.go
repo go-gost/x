@@ -133,11 +133,11 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", raddr, host)
+	log.Infof("%s <-> %s", raddr, host)
 	defer func() {
 		log.WithFields(map[string]any{
 			"duration": time.Since(t),
-		}).Debugf("%s >-< %s", raddr, host)
+		}).Infof("%s >-< %s", raddr, host)
 	}()
 
 	if err := req.Write(cc); err != nil {
@@ -201,11 +201,11 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", raddr, host)
+	log.Infof("%s <-> %s", raddr, host)
 	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", raddr, host)
+	}).Infof("%s >-< %s", raddr, host)
 
 	return nil
 }

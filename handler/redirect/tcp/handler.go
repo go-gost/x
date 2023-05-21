@@ -98,10 +98,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	var rw io.ReadWriter = conn
 	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
 		// try to sniff TLS traffic
 		var hdr [dissector.RecordHeaderLen]byte
-		_, err := io.ReadFull(rw, hdr[:])
-		rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:]), rw), rw)
+		n, err := io.ReadFull(rw, hdr[:])
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+		rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:n]), rw), rw)
 		if err == nil &&
 			hdr[0] == dissector.Handshake &&
 			binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
@@ -129,11 +135,11 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), dstAddr)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), dstAddr)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), dstAddr)
 
 	return nil
 }
@@ -170,11 +176,11 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", raddr, host)
+	log.Infof("%s <-> %s", raddr, host)
 	defer func() {
 		log.WithFields(map[string]any{
 			"duration": time.Since(t),
-		}).Debugf("%s >-< %s", raddr, host)
+		}).Infof("%s >-< %s", raddr, host)
 	}()
 
 	if err := req.Write(cc); err != nil {
@@ -239,11 +245,11 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", raddr, host)
+	log.Infof("%s <-> %s", raddr, host)
 	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", raddr, host)
+	}).Infof("%s >-< %s", raddr, host)
 
 	return nil
 }

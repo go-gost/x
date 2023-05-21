@@ -104,11 +104,11 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 	defer cc.Close()
 
 	t := time.Now()
-	log.Debugf("%s <-> %s", cc.LocalAddr(), targetAddr)
+	log.Infof("%s <-> %s", cc.LocalAddr(), targetAddr)
 	netpkg.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Debugf("%s >-< %s", cc.LocalAddr(), targetAddr)
+	}).Infof("%s >-< %s", cc.LocalAddr(), targetAddr)
 
 	return nil
 }
@@ -212,11 +212,11 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 	}()
 
 	tm := time.Now()
-	log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
+	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
 	<-conn.Done()
 	log.WithFields(map[string]any{
 		"duration": time.Since(tm),
-	}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
+	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
 
 	return nil
 }

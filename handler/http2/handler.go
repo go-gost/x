@@ -191,21 +191,21 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			defer conn.Close()
 
 			start := time.Now()
-			log.Debugf("%s <-> %s", conn.RemoteAddr(), addr)
+			log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
 			netpkg.Transport(conn, cc)
 			log.WithFields(map[string]any{
 				"duration": time.Since(start),
-			}).Debugf("%s >-< %s", conn.RemoteAddr(), addr)
+			}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
 
 			return nil
 		}
 
 		start := time.Now()
-		log.Debugf("%s <-> %s", req.RemoteAddr, addr)
+		log.Infof("%s <-> %s", req.RemoteAddr, addr)
 		netpkg.Transport(xio.NewReadWriter(req.Body, flushWriter{w}), cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
-		}).Debugf("%s >-< %s", req.RemoteAddr, addr)
+		}).Infof("%s >-< %s", req.RemoteAddr, addr)
 		return nil
 	}
 
