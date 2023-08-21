@@ -108,7 +108,7 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 		MaxIdleTimeout:       d.md.maxIdleTimeout,
 		Versions: []quic.VersionNumber{
 			quic.Version1,
-			quic.VersionDraft29,
+			quic.Version2,
 		},
 		MaxIncomingStreams: int64(d.md.maxStreams),
 	}
@@ -116,7 +116,7 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 	tlsCfg := d.options.TLSConfig
 	tlsCfg.NextProtos = []string{"http/3", "quic/v1"}
 
-	session, err := quic.DialEarlyContext(ctx, conn, addr, addr.String(), tlsCfg, quicConfig)
+	session, err := quic.DialEarly(ctx, conn, addr, tlsCfg, quicConfig)
 	if err != nil {
 		return nil, err
 	}

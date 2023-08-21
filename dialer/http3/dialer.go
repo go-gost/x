@@ -84,7 +84,7 @@ func (d *http3Dialer) Dial(ctx context.Context, addr string, opts ...dialer.Dial
 							return nil, err
 						}
 
-						return quic.DialEarly(udpConn.(net.PacketConn), udpAddr, host, tlsCfg, cfg)
+						return quic.DialEarly(context.Background(), udpConn.(net.PacketConn), udpAddr, tlsCfg, cfg)
 					},
 					QuicConfig: &quic.Config{
 						KeepAlivePeriod:      d.md.keepAlivePeriod,
