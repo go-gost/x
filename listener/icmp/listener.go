@@ -66,7 +66,7 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 		MaxIdleTimeout:       l.md.maxIdleTimeout,
 		Versions: []quic.VersionNumber{
 			quic.Version1,
-			quic.VersionDraft29,
+			quic.Version2,
 		},
 	}
 
@@ -78,7 +78,7 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	l.ln = ln
+	l.ln = *ln
 	l.cqueue = make(chan net.Conn, l.md.backlog)
 	l.errChan = make(chan error, 1)
 
