@@ -59,6 +59,8 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	var cc io.ReadWriteCloser
 
 	switch network {
+	case "unix":
+		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", address)
 	case "serial":
 		cc, err = goserial.OpenPort(serial_util.ParseConfigFromAddr(address))
 	default:
