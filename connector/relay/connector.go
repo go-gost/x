@@ -55,8 +55,13 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		Version: relay.Version1,
 		Cmd:     relay.CmdConnect,
 	}
-	if network == "udp" || network == "udp4" || network == "udp6" {
+
+	switch network {
+	case "udp", "udp4", "udp6":
 		req.Cmd |= relay.FUDP
+		req.Features = append(req.Features, &relay.NetworkFeature{
+			Network: relay.NetworkUDP,
+		})
 
 		// UDP association
 		if address == "" {
@@ -68,6 +73,15 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 
 			return relay_util.UDPTunClientConn(conn, nil), nil
 		}
+
+	case "unix":
+		req.Features = append(req.Features, &relay.NetworkFeature{
+			Network: relay.NetworkUnix,
+		})
+	case "serial":
+		req.Features = append(req.Features, &relay.NetworkFeature{
+			Network: relay.NetworkSerial,
+		})
 	}
 
 	if c.options.Auth != nil {
@@ -103,7 +117,7 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 	}
 
 	switch network {
-	case "tcp", "tcp4", "tcp6":
+	case "tcp", "tcp4", "tcp6", "unix", "serial":
 		if !c.md.noDelay {
 			cc := &tcpConn{
 				Conn: conn,

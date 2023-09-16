@@ -173,6 +173,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	var user, pass string
 	var address string
+	var networkID relay.NetworkID
 	var tunnelID relay.TunnelID
 	for _, f := range req.Features {
 		switch f.Type() {
@@ -188,6 +189,10 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
 				tunnelID = relay.NewTunnelID(feature.ID[:])
 			}
+		case relay.FeatureNetwork:
+			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
+				networkID = feature.Network
+			}
 		}
 	}
 
@@ -202,7 +207,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		return ErrUnauthorized
 	}
 
-	network := "tcp"
+	network := networkID.String()
 	if (req.Cmd & relay.FUDP) == relay.FUDP {
 		network = "udp"
 	}

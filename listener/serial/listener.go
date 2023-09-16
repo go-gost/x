@@ -1,14 +1,14 @@
-package com
+package serial
 
 import (
 	"context"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	serial_util "github.com/go-gost/x/internal/util/serial"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
@@ -16,10 +16,10 @@ import (
 )
 
 func init() {
-	registry.ListenerRegistry().Register("com", NewListener)
+	registry.ListenerRegistry().Register("serial", NewListener)
 }
 
-type comListener struct {
+type serialListener struct {
 	cqueue  chan net.Conn
 	closed  chan struct{}
 	addr    net.Addr
@@ -35,21 +35,21 @@ func NewListener(opts ...listener.Option) listener.Listener {
 	}
 
 	if options.Addr == "" {
-		options.Addr = defaultPort
+		options.Addr = serial_util.DefaultPort
 	}
 
-	return &comListener{
+	return &serialListener{
 		logger:  options.Logger,
 		options: options,
 	}
 }
 
-func (l *comListener) Init(md md.Metadata) (err error) {
+func (l *serialListener) Init(md md.Metadata) (err error) {
 	if err = l.parseMetadata(md); err != nil {
 		return
 	}
 
-	l.addr = &comAddr{port: l.options.Addr}
+	l.addr = &serial_util.Addr{Port: l.options.Addr}
 
 	l.cqueue = make(chan net.Conn)
 	l.closed = make(chan struct{})
@@ -59,7 +59,7 @@ func (l *comListener) Init(md md.Metadata) (err error) {
 	return
 }
 
-func (l *comListener) Accept() (conn net.Conn, err error) {
+func (l *serialListener) Accept() (conn net.Conn, err error) {
 	select {
 	case conn := <-l.cqueue:
 		return conn, nil
@@ -69,11 +69,11 @@ func (l *comListener) Accept() (conn net.Conn, err error) {
 	return nil, listener.ErrClosed
 }
 
-func (l *comListener) Addr() net.Addr {
+func (l *serialListener) Addr() net.Addr {
 	return l.addr
 }
 
-func (l *comListener) Close() error {
+func (l *serialListener) Close() error {
 	select {
 	case <-l.closed:
 		return net.ErrClosed
@@ -83,27 +83,18 @@ func (l *comListener) Close() error {
 	return nil
 }
 
-func (l *comListener) listenLoop() {
+func (l *serialListener) listenLoop() {
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
 		err := func() error {
-			port, err := goserial.OpenPort(&goserial.Config{
-				Name:        l.options.Addr,
-				Baud:        l.md.baudRate,
-				Parity:      parseParity(l.md.parity),
-				ReadTimeout: l.md.timeout,
-			})
+			cfg := serial_util.ParseConfigFromAddr(l.options.Addr)
+			cfg.ReadTimeout = l.md.timeout
+			port, err := goserial.OpenPort(cfg)
 			if err != nil {
 				return err
 			}
 
-			var c net.Conn
-			c = &conn{
-				port:   port,
-				laddr:  l.addr,
-				raddr:  l.addr,
-				cancel: cancel,
-			}
+			c := serial_util.NewConn(port, l.addr, cancel)
 			c = metrics.WrapConn(l.options.Service, c)
 			c = limiter.WrapConn(l.options.TrafficLimiter, c)
 
@@ -123,20 +114,5 @@ func (l *comListener) listenLoop() {
 		}
 
 		time.Sleep(time.Second)
-	}
-}
-
-func parseParity(s string) goserial.Parity {
-	switch strings.ToLower(s) {
-	case "o", "odd":
-		return goserial.ParityOdd
-	case "e", "even":
-		return goserial.ParityEven
-	case "m", "mark":
-		return goserial.ParityMark
-	case "s", "space":
-		return goserial.ParitySpace
-	default:
-		return goserial.ParityNone
 	}
 }

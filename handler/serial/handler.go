@@ -1,10 +1,10 @@
-package com
+package serial
 
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -12,15 +12,17 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
+	serial_util "github.com/go-gost/x/internal/util/serial"
 	"github.com/go-gost/x/registry"
 	goserial "github.com/tarm/serial"
 )
 
 func init() {
+	registry.HandlerRegistry().Register("serial", NewHandler)
 	registry.HandlerRegistry().Register("com", NewHandler)
 }
 
-type comHandler struct {
+type serialHandler struct {
 	hop     chain.Hop
 	router  *chain.Router
 	md      metadata
@@ -33,12 +35,12 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 		opt(&options)
 	}
 
-	return &comHandler{
+	return &serialHandler{
 		options: options,
 	}
 }
 
-func (h *comHandler) Init(md md.Metadata) (err error) {
+func (h *serialHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
 	}
@@ -52,27 +54,19 @@ func (h *comHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *comHandler) Forward(hop chain.Hop) {
+func (h *serialHandler) Forward(hop chain.Hop) {
 	h.hop = hop
 }
 
-func (h *comHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
 	defer conn.Close()
 
 	log := h.options.Logger
 
-	start := time.Now()
 	log = log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 	})
-
-	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
-	defer func() {
-		log.WithFields(map[string]any{
-			"duration": time.Since(start),
-		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
-	}()
 
 	var target *chain.Node
 	if h.hop != nil {
@@ -94,7 +88,7 @@ func (h *comHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	// serial port
 	if _, _, err := net.SplitHostPort(target.Addr); err != nil {
-		return h.forwardCom(ctx, conn, target, log)
+		return h.forwardSerial(ctx, conn, target, log)
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", target.Addr)
@@ -120,17 +114,20 @@ func (h *comHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	return nil
 }
 
-func (h *comHandler) forwardCom(ctx context.Context, conn net.Conn, target *chain.Node, log logger.Logger) error {
-	port, err := goserial.OpenPort(&goserial.Config{
-		Name:        target.Addr,
-		Baud:        h.md.baudRate,
-		Parity:      parseParity(h.md.parity),
-		ReadTimeout: h.md.timeout,
-	})
+func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target *chain.Node, log logger.Logger) (err error) {
+	var port io.ReadWriteCloser
+
+	if opts := h.router.Options(); opts != nil && opts.Chain != nil {
+		port, err = h.router.Dial(ctx, "serial", target.Addr)
+	} else {
+		cfg := serial_util.ParseConfigFromAddr(target.Addr)
+		cfg.ReadTimeout = h.md.timeout
+		port, err = goserial.OpenPort(cfg)
+	}
 	if err != nil {
+		log.Error(err)
 		return err
 	}
-
 	defer port.Close()
 
 	t := time.Now()
@@ -141,19 +138,4 @@ func (h *comHandler) forwardCom(ctx context.Context, conn net.Conn, target *chai
 	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
 
 	return nil
-}
-
-func parseParity(s string) goserial.Parity {
-	switch strings.ToLower(s) {
-	case "o", "odd":
-		return goserial.ParityOdd
-	case "e", "even":
-		return goserial.ParityEven
-	case "m", "mark":
-		return goserial.ParityMark
-	case "s", "space":
-		return goserial.ParitySpace
-	default:
-		return goserial.ParityNone
-	}
 }

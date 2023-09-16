@@ -1,4 +1,4 @@
-package com
+package serial
 
 import (
 	"context"
@@ -13,6 +13,15 @@ type conn struct {
 	laddr  net.Addr
 	raddr  net.Addr
 	cancel context.CancelFunc
+}
+
+func NewConn(port io.ReadWriteCloser, addr net.Addr, cancel context.CancelFunc) net.Conn {
+	return &conn{
+		port:   port,
+		laddr:  addr,
+		raddr:  addr,
+		cancel: cancel,
+	}
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -50,14 +59,14 @@ func (c *conn) Close() (err error) {
 	return c.port.Close()
 }
 
-type comAddr struct {
-	port string
+type Addr struct {
+	Port string
 }
 
-func (a *comAddr) Network() string {
-	return "com"
+func (a *Addr) Network() string {
+	return "serial"
 }
 
-func (a *comAddr) String() string {
-	return a.port
+func (a *Addr) String() string {
+	return a.Port
 }
