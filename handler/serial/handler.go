@@ -28,7 +28,7 @@ type serialHandler struct {
 	router   *chain.Router
 	md       metadata
 	options  handler.Options
-	recorder recorder.Recorder
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -54,7 +54,7 @@ func (h *serialHandler) Init(md md.Metadata) (err error) {
 	if opts := h.router.Options(); opts != nil {
 		for _, ro := range opts.Recorders {
 			if ro.Record == xrecorder.RecorderServiceHandlerSerial {
-				h.recorder = ro.Recorder
+				h.recorder = ro
 				break
 			}
 		}
@@ -96,11 +96,9 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 
-	if h.recorder != nil {
-		conn = &recorderConn{
-			Conn:     conn,
-			recorder: h.recorder,
-		}
+	conn = &recorderConn{
+		Conn:     conn,
+		recorder: h.recorder,
 	}
 
 	// serial port

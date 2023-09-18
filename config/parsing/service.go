@@ -167,9 +167,15 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	var recorders []recorder.RecorderObject
 	for _, r := range cfg.Recorders {
+		md := metadata.NewMetadata(r.Metadata)
 		recorders = append(recorders, recorder.RecorderObject{
 			Recorder: registry.RecorderRegistry().Get(r.Name),
 			Record:   r.Record,
+			Options: &recorder.Options{
+				Direction:       mdutil.GetBool(md, mdKeyRecorderDirection),
+				TimestampFormat: mdutil.GetString(md, mdKeyRecorderTimestampFormat),
+				Hexdump:         mdutil.GetBool(md, mdKeyRecorderHexdump),
+			},
 		})
 	}
 

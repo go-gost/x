@@ -49,6 +49,10 @@ const (
 	mdKeyPostUp        = "postUp"
 	mdKeyPostDown      = "postDown"
 	mdKeyIgnoreChain   = "ignoreChain"
+
+	mdKeyRecorderDirection       = "direction"
+	mdKeyRecorderTimestampFormat = "timeStampFormat"
+	mdKeyRecorderHexdump         = "hexdump"
 )
 
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
@@ -490,6 +494,14 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		return xrecorder.FileRecorder(cfg.File.Path,
 			xrecorder.SepRecorderOption(cfg.File.Sep),
 		)
+	}
+
+	if cfg.TCP != nil && cfg.TCP.Addr != "" {
+		return xrecorder.TCPRecorder(cfg.TCP.Addr, xrecorder.TimeoutTCPRecorderOption(cfg.TCP.Timeout))
+	}
+
+	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		return xrecorder.HTTPRecorder(cfg.HTTP.URL, xrecorder.TimeoutHTTPRecorderOption(cfg.HTTP.Timeout))
 	}
 
 	if cfg.Redis != nil &&
