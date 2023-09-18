@@ -65,52 +65,39 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		"local":  conn.LocalAddr().String(),
 	})
 
-	var target *chain.Node
 	if h.hop != nil {
-		target = h.hop.Select(ctx)
-	}
-
-	if target == nil {
-		err := errors.New("target not available")
-		log.Error(err)
-		return err
-	}
-
-	log = log.WithFields(map[string]any{
-		"node": target.Name,
-		"dst":  target.Addr,
-	})
-
-	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
-
-	if _, _, err := net.SplitHostPort(target.Addr); err != nil {
+		target := h.hop.Select(ctx)
+		if target == nil {
+			err := errors.New("target not available")
+			log.Error(err)
+			return err
+		}
+		log = log.WithFields(map[string]any{
+			"node": target.Name,
+			"dst":  target.Addr,
+		})
 		return h.forwardUnix(ctx, conn, target, log)
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", target.Addr)
+	cc, err := h.router.Dial(ctx, "tcp", "@")
 	if err != nil {
 		log.Error(err)
-		if marker := target.Marker(); marker != nil {
-			marker.Mark()
-		}
 		return err
 	}
 	defer cc.Close()
-	if marker := target.Marker(); marker != nil {
-		marker.Reset()
-	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
+	log.Infof("%s <-> %s", conn.LocalAddr(), "@")
 	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)
+	}).Infof("%s >-< %s", conn.LocalAddr(), "@")
 
 	return nil
 }
 
 func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *chain.Node, log logger.Logger) (err error) {
+	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 	var cc io.ReadWriteCloser
 
 	if opts := h.router.Options(); opts != nil && opts.Chain != nil {

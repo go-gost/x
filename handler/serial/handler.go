@@ -78,58 +78,44 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		"local":  conn.LocalAddr().String(),
 	})
 
-	var target *chain.Node
-	if h.hop != nil {
-		target = h.hop.Select(ctx)
-	}
-
-	if target == nil {
-		err := errors.New("target not available")
-		log.Error(err)
-		return err
-	}
-
-	log = log.WithFields(map[string]any{
-		"node": target.Name,
-		"dst":  target.Addr,
-	})
-
-	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
-
 	conn = &recorderConn{
 		Conn:     conn,
 		recorder: h.recorder,
 	}
 
-	// serial port
-	if _, _, err := net.SplitHostPort(target.Addr); err != nil {
+	if h.hop != nil {
+		target := h.hop.Select(ctx)
+		if target == nil {
+			err := errors.New("target not available")
+			log.Error(err)
+			return err
+		}
+		log = log.WithFields(map[string]any{
+			"node": target.Name,
+			"dst":  target.Addr,
+		})
 		return h.forwardSerial(ctx, conn, target, log)
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", target.Addr)
+	cc, err := h.router.Dial(ctx, "tcp", "@")
 	if err != nil {
 		log.Error(err)
-		if marker := target.Marker(); marker != nil {
-			marker.Mark()
-		}
 		return err
 	}
 	defer cc.Close()
-	if marker := target.Marker(); marker != nil {
-		marker.Reset()
-	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
+	log.Infof("%s <-> %s", conn.LocalAddr(), "@")
 	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)
+	}).Infof("%s >-< %s", conn.LocalAddr(), "@")
 
 	return nil
 }
 
 func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target *chain.Node, log logger.Logger) (err error) {
+	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 	var port io.ReadWriteCloser
 
 	cfg := serial_util.ParseConfigFromAddr(conn.LocalAddr().String())
