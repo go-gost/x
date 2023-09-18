@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -149,7 +148,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		ProtoMajor: 2,
 		ProtoMinor: 0,
 		Header:     http.Header{},
-		Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
+		Body:       io.NopCloser(bytes.NewReader([]byte{})),
 	}
 
 	if !h.authenticate(ctx, w, req, resp, log) {

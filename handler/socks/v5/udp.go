@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"time"
 
@@ -77,7 +76,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.LocalAddr())
-	io.Copy(ioutil.Discard, conn)
+	io.Copy(io.Discard, conn)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
 		Debugf("%s >-< %s", conn.RemoteAddr(), cc.LocalAddr())
 

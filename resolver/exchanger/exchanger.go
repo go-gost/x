@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -172,7 +172,7 @@ func (ex *exchanger) dohExchange(ctx context.Context, msg []byte) ([]byte, error
 	}
 
 	// Read wireformat response from the body
-	buf, err := ioutil.ReadAll(resp.Body)
+	buf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the response body: %w", err)
 	}

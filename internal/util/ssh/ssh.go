@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/go-gost/core/auth"
 	"golang.org/x/crypto/ssh"
@@ -58,7 +58,7 @@ func PublicKeyCallback(keys map[string]bool) PublicKeyCallbackFunc {
 
 // ParseSSHAuthorizedKeysFile parses ssh authorized keys file.
 func ParseAuthorizedKeysFile(name string) (map[string]bool, error) {
-	authorizedKeysBytes, err := ioutil.ReadFile(name)
+	authorizedKeysBytes, err := os.ReadFile(name)
 	if err != nil {
 		return nil, err
 	}
