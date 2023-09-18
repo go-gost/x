@@ -19,7 +19,7 @@ func NewConn(port io.ReadWriteCloser, addr net.Addr, cancel context.CancelFunc) 
 	return &conn{
 		port:   port,
 		laddr:  addr,
-		raddr:  addr,
+		raddr:  &Addr{Port: "@"},
 		cancel: cancel,
 	}
 }

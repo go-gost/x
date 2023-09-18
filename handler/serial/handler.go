@@ -11,8 +11,10 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	xnet "github.com/go-gost/x/internal/net"
 	serial_util "github.com/go-gost/x/internal/util/serial"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	goserial "github.com/tarm/serial"
 )
@@ -22,10 +24,11 @@ func init() {
 }
 
 type serialHandler struct {
-	hop     chain.Hop
-	router  *chain.Router
-	md      metadata
-	options handler.Options
+	hop      chain.Hop
+	router   *chain.Router
+	md       metadata
+	options  handler.Options
+	recorder recorder.Recorder
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -47,6 +50,14 @@ func (h *serialHandler) Init(md md.Metadata) (err error) {
 	h.router = h.options.Router
 	if h.router == nil {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
+	}
+	if opts := h.router.Options(); opts != nil {
+		for _, ro := range opts.Recorders {
+			if ro.Record == xrecorder.RecorderServiceHandlerSerial {
+				h.recorder = ro.Recorder
+				break
+			}
+		}
 	}
 
 	return
@@ -83,7 +94,14 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		"dst":  target.Addr,
 	})
 
-	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
+
+	if h.recorder != nil {
+		conn = &recorderConn{
+			Conn:     conn,
+			recorder: h.recorder,
+		}
+	}
 
 	// serial port
 	if _, _, err := net.SplitHostPort(target.Addr); err != nil {
@@ -104,11 +122,11 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
+	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
 	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
+	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)
 
 	return nil
 }
@@ -132,11 +150,11 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 	defer port.Close()
 
 	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
+	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
 	xnet.Transport(conn, port)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
+	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)
 
 	return nil
 }
