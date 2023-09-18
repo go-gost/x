@@ -1,7 +1,7 @@
 package ssh
 
 import (
-	"io/ioutil"
+	"os"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
@@ -28,7 +28,7 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 	)
 
 	if key := mdutil.GetString(md, privateKeyFile); key != "" {
-		data, err := ioutil.ReadFile(key)
+		data, err := os.ReadFile(key)
 		if err != nil {
 			return err
 		}

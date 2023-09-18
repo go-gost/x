@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"io/ioutil"
+	"os"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -26,7 +26,7 @@ func (d *sshdDialer) parseMetadata(md mdata.Metadata) (err error) {
 	)
 
 	if key := mdutil.GetString(md, privateKeyFile); key != "" {
-		data, err := ioutil.ReadFile(key)
+		data, err := os.ReadFile(key)
 		if err != nil {
 			return err
 		}

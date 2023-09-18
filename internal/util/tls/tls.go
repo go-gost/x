@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"io/ioutil"
 	"net"
+	"os"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -114,7 +114,7 @@ func loadCA(caFile string) (cp *x509.CertPool, err error) {
 		return
 	}
 	cp = x509.NewCertPool()
-	data, err := ioutil.ReadFile(caFile)
+	data, err := os.ReadFile(caFile)
 	if err != nil {
 		return nil, err
 	}
