@@ -22,6 +22,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	netpkg "github.com/go-gost/x/internal/net"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
@@ -145,6 +146,12 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header = http.Header{}
 	}
 
+	ok, id := h.authenticate(ctx, conn, req, resp, log)
+	if !ok {
+		return nil
+	}
+	ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
 		resp.StatusCode = http.StatusForbidden
 
@@ -155,10 +162,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		log.Debug("bypass: ", addr)
 
 		return resp.Write(conn)
-	}
-
-	if !h.authenticate(ctx, conn, req, resp, log) {
-		return nil
 	}
 
 	if network == "udp" {
@@ -266,10 +269,13 @@ func (h *httpHandler) basicProxyAuth(proxyAuth string, log logger.Logger) (usern
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (ok bool) {
+func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (ok bool, token string) {
 	u, p, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization"), log)
-	if h.options.Auther == nil || h.options.Auther.Authenticate(ctx, u, p) {
-		return true
+	if h.options.Auther == nil {
+		return true, ""
+	}
+	if ok, token = h.options.Auther.Authenticate(ctx, u, p); ok {
+		return
 	}
 
 	pr := h.md.probeResistance

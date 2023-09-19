@@ -2,55 +2,56 @@ package bypass
 
 import (
 	"context"
+	"io"
 
 	bypass_pkg "github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/bypass/proto"
-	xlogger "github.com/go-gost/x/logger"
+	auth_util "github.com/go-gost/x/internal/util/auth"
+	"google.golang.org/grpc"
 )
 
-type pluginBypass struct {
-	client  proto.BypassClient
-	options options
+type grpcPluginBypass struct {
+	conn   grpc.ClientConnInterface
+	client proto.BypassClient
+	log    logger.Logger
 }
 
-// NewPluginBypass creates a plugin bypass.
-func NewPluginBypass(opts ...Option) bypass_pkg.Bypass {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+// NewGRPCPluginBypass creates a Bypass plugin based on gRPC.
+func NewGRPCPluginBypass(name string, conn grpc.ClientConnInterface) bypass_pkg.Bypass {
+	p := &grpcPluginBypass{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":   "bypass",
+			"bypass": name,
+		}),
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
-
-	p := &pluginBypass{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewBypassClient(options.client)
+	if conn != nil {
+		p.client = proto.NewBypassClient(conn)
 	}
 	return p
 }
 
-func (p *pluginBypass) Contains(ctx context.Context, addr string) bool {
+func (p *grpcPluginBypass) Contains(ctx context.Context, addr string) bool {
 	if p.client == nil {
-		return false
+		return true
 	}
 
 	r, err := p.client.Bypass(ctx,
 		&proto.BypassRequest{
-			Addr: addr,
+			Addr:   addr,
+			Client: string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
-		p.options.logger.Error(err)
-		return false
+		p.log.Error(err)
+		return true
 	}
 	return r.Ok
 }
 
-func (p *pluginBypass) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginBypass) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
 	xnet "github.com/go-gost/x/internal/net"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 )
@@ -200,11 +201,14 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		log = log.WithFields(map[string]any{"user": user})
 	}
 
-	if h.options.Auther != nil &&
-		!h.options.Auther.Authenticate(ctx, user, pass) {
-		resp.Status = relay.StatusUnauthorized
-		resp.WriteTo(conn)
-		return ErrUnauthorized
+	if h.options.Auther != nil {
+		ok, id := h.options.Auther.Authenticate(ctx, user, pass)
+		if !ok {
+			resp.Status = relay.StatusUnauthorized
+			resp.WriteTo(conn)
+			return ErrUnauthorized
+		}
+		ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 	}
 
 	network := networkID.String()

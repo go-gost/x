@@ -135,7 +135,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 						ok := true
 						key := bytes.TrimRight((*b)[4:20], "\x00")
 						for _, ip := range peerIPs {
-							if ok = auther.Authenticate(ctx, ip.String(), string(key)); !ok {
+							if ok, _ = auther.Authenticate(ctx, ip.String(), string(key)); !ok {
 								break
 							}
 						}

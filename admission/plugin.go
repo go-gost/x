@@ -2,37 +2,36 @@ package admission
 
 import (
 	"context"
+	"io"
 
 	admission_pkg "github.com/go-gost/core/admission"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/admission/proto"
-	xlogger "github.com/go-gost/x/logger"
+	"google.golang.org/grpc"
 )
 
-type pluginAdmission struct {
-	client  proto.AdmissionClient
-	options options
+type grpcPluginAdmission struct {
+	conn   grpc.ClientConnInterface
+	client proto.AdmissionClient
+	log    logger.Logger
 }
 
-// NewPluginAdmission creates a plugin admission.
-func NewPluginAdmission(opts ...Option) admission_pkg.Admission {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+// NewGRPCPluginAdmission creates an Admission plugin based on gRPC.
+func NewGRPCPluginAdmission(name string, conn grpc.ClientConnInterface) admission_pkg.Admission {
+	p := &grpcPluginAdmission{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":      "admission",
+			"admission": name,
+		}),
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
-
-	p := &pluginAdmission{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewAdmissionClient(options.client)
+	if conn != nil {
+		p.client = proto.NewAdmissionClient(conn)
 	}
 	return p
 }
 
-func (p *pluginAdmission) Admit(ctx context.Context, addr string) bool {
+func (p *grpcPluginAdmission) Admit(ctx context.Context, addr string) bool {
 	if p.client == nil {
 		return false
 	}
@@ -42,15 +41,15 @@ func (p *pluginAdmission) Admit(ctx context.Context, addr string) bool {
 			Addr: addr,
 		})
 	if err != nil {
-		p.options.logger.Error(err)
+		p.log.Error(err)
 		return false
 	}
 	return r.Ok
 }
 
-func (p *pluginAdmission) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginAdmission) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

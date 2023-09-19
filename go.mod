@@ -7,9 +7,9 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-gost/core v0.0.0-20230918131208-c258a114c40b
+	github.com/go-gost/core v0.0.0-20230919141921-a1419ec2f4d1
 	github.com/go-gost/gosocks4 v0.0.1
-	github.com/go-gost/gosocks5 v0.3.1-0.20211109033403-d894d75b7f09
+	github.com/go-gost/gosocks5 v0.4.0
 	github.com/go-gost/plugin v0.0.0-20230418123101-d221a4ec9a98
 	github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
@@ -86,7 +86,7 @@ require (
 	github.com/pion/transport/v2 v2.0.2 // indirect
 	github.com/pion/udp/v2 v2.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.3.0 // indirect
+	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect

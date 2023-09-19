@@ -2,39 +2,39 @@ package resolver
 
 import (
 	"context"
+	"io"
 	"net"
 
+	"github.com/go-gost/core/logger"
 	resolver_pkg "github.com/go-gost/core/resolver"
 	"github.com/go-gost/plugin/resolver/proto"
-	xlogger "github.com/go-gost/x/logger"
+	auth_util "github.com/go-gost/x/internal/util/auth"
+	"google.golang.org/grpc"
 )
 
-type pluginResolver struct {
-	client  proto.ResolverClient
-	options options
+type grpcPluginResolver struct {
+	conn   grpc.ClientConnInterface
+	client proto.ResolverClient
+	log    logger.Logger
 }
 
-// NewPluginResolver creates a plugin Resolver.
-func NewPluginResolver(opts ...Option) (resolver_pkg.Resolver, error) {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+// NewGRPCPluginResolver creates a Resolver plugin based on gRPC.
+func NewGRPCPluginResolver(name string, conn grpc.ClientConnInterface) (resolver_pkg.Resolver, error) {
+	p := &grpcPluginResolver{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":     "resolver",
+			"resolver": name,
+		}),
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
-
-	p := &pluginResolver{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewResolverClient(options.client)
+	if conn != nil {
+		p.client = proto.NewResolverClient(conn)
 	}
 	return p, nil
 }
 
-func (p *pluginResolver) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
-	p.options.logger.Debugf("resolve %s/%s", host, network)
+func (p *grpcPluginResolver) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+	p.log.Debugf("resolve %s/%s", host, network)
 
 	if p.client == nil {
 		return
@@ -44,9 +44,10 @@ func (p *pluginResolver) Resolve(ctx context.Context, network, host string) (ips
 		&proto.ResolveRequest{
 			Network: network,
 			Host:    host,
+			Client:  string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
-		p.options.logger.Error(err)
+		p.log.Error(err)
 		return
 	}
 	for _, s := range r.Ips {
@@ -57,9 +58,9 @@ func (p *pluginResolver) Resolve(ctx context.Context, network, host string) (ips
 	return
 }
 
-func (p *pluginResolver) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginResolver) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

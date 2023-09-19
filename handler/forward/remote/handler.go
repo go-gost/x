@@ -19,6 +19,7 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	xnet "github.com/go-gost/x/internal/net"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
 )
@@ -205,12 +206,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 
 			if auther := target.Options().Auther; auther != nil {
 				username, password, _ := req.BasicAuth()
-				if !auther.Authenticate(ctx, username, password) {
+				ok, id := auther.Authenticate(ctx, username, password)
+				if !ok {
 					resp.StatusCode = http.StatusUnauthorized
 					resp.Header.Set("WWW-Authenticate", "Basic")
 					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
 					return resp.Write(rw)
 				}
+				ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 			}
 
 			var cc net.Conn

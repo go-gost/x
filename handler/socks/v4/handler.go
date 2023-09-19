@@ -12,6 +12,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
 	netpkg "github.com/go-gost/x/internal/net"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	sx "github.com/go-gost/x/internal/util/selector"
 	"github.com/go-gost/x/registry"
 )
@@ -90,11 +91,14 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	conn.SetReadDeadline(time.Time{})
 
-	if h.options.Auther != nil &&
-		!h.options.Auther.Authenticate(ctx, string(req.Userid), "") {
-		resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
-		log.Trace(resp)
-		return resp.Write(conn)
+	if h.options.Auther != nil {
+		ok, id := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
+		if !ok {
+			resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
+			log.Trace(resp)
+			return resp.Write(conn)
+		}
+		ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 	}
 
 	switch req.Cmd {

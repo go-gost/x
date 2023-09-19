@@ -2,40 +2,40 @@ package auth
 
 import (
 	"context"
+	"io"
 
 	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/auth/proto"
-	xlogger "github.com/go-gost/x/logger"
+	"google.golang.org/grpc"
 )
 
-type pluginAuthenticator struct {
-	client  proto.AuthenticatorClient
-	options options
+type grpcPluginAuthenticator struct {
+	conn   grpc.ClientConnInterface
+	client proto.AuthenticatorClient
+	log    logger.Logger
 }
 
-// NewPluginAuthenticator creates an Authenticator that authenticates client by plugin.
-func NewPluginAuthenticator(opts ...Option) auth.Authenticator {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
-	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
+// NewGRPCPluginAuthenticator creates an Authenticator plugin based on gRPC.
+func NewGRPCPluginAuthenticator(name string, conn grpc.ClientConnInterface) auth.Authenticator {
+	p := &grpcPluginAuthenticator{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":   "auther",
+			"auther": name,
+		}),
 	}
 
-	p := &pluginAuthenticator{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewAuthenticatorClient(options.client)
+	if conn != nil {
+		p.client = proto.NewAuthenticatorClient(conn)
 	}
 	return p
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *pluginAuthenticator) Authenticate(ctx context.Context, user, password string) bool {
+func (p *grpcPluginAuthenticator) Authenticate(ctx context.Context, user, password string) (bool, string) {
 	if p.client == nil {
-		return false
+		return false, ""
 	}
 
 	r, err := p.client.Authenticate(ctx,
@@ -44,15 +44,15 @@ func (p *pluginAuthenticator) Authenticate(ctx context.Context, user, password s
 			Password: password,
 		})
 	if err != nil {
-		p.options.logger.Error(err)
-		return false
+		p.log.Error(err)
+		return false, ""
 	}
-	return r.Ok
+	return r.Ok, r.Id
 }
 
-func (p *pluginAuthenticator) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginAuthenticator) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

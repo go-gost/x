@@ -2,37 +2,36 @@ package ingress
 
 import (
 	"context"
+	"io"
 
 	ingress_pkg "github.com/go-gost/core/ingress"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/ingress/proto"
-	xlogger "github.com/go-gost/x/logger"
+	"google.golang.org/grpc"
 )
 
-type pluginIngress struct {
-	client  proto.IngressClient
-	options options
+type grpcPluginIngress struct {
+	conn   grpc.ClientConnInterface
+	client proto.IngressClient
+	log    logger.Logger
 }
 
-// NewPluginIngress creates a plugin ingress.
-func NewPluginIngress(opts ...Option) ingress_pkg.Ingress {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+// NewGRPCPluginIngress creates a ingress plugin based on gRPC.
+func NewGRPCPluginIngress(name string, conn grpc.ClientConnInterface) ingress_pkg.Ingress {
+	p := &grpcPluginIngress{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":    "ingress",
+			"ingress": name,
+		}),
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
-
-	p := &pluginIngress{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewIngressClient(options.client)
+	if conn != nil {
+		p.client = proto.NewIngressClient(conn)
 	}
 	return p
 }
 
-func (p *pluginIngress) Get(ctx context.Context, host string) string {
+func (p *grpcPluginIngress) Get(ctx context.Context, host string) string {
 	if p.client == nil {
 		return ""
 	}
@@ -42,15 +41,15 @@ func (p *pluginIngress) Get(ctx context.Context, host string) string {
 			Host: host,
 		})
 	if err != nil {
-		p.options.logger.Error(err)
+		p.log.Error(err)
 		return ""
 	}
 	return r.GetEndpoint()
 }
 
-func (p *pluginIngress) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginIngress) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

@@ -2,39 +2,39 @@ package hosts
 
 import (
 	"context"
+	"io"
 	"net"
 
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/hosts/proto"
-	xlogger "github.com/go-gost/x/logger"
+	auth_util "github.com/go-gost/x/internal/util/auth"
+	"google.golang.org/grpc"
 )
 
-type pluginHostMapper struct {
-	client  proto.HostMapperClient
-	options options
+type grpcPluginHostMapper struct {
+	conn   grpc.ClientConnInterface
+	client proto.HostMapperClient
+	log    logger.Logger
 }
 
-// NewPluginHostMapper creates a plugin HostMapper.
-func NewPluginHostMapper(opts ...Option) hosts.HostMapper {
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+// NewGRPCPluginHostMapper creates a HostMapper plugin based on gRPC.
+func NewGRPCPluginHostMapper(name string, conn grpc.ClientConnInterface) hosts.HostMapper {
+	p := &grpcPluginHostMapper{
+		conn: conn,
+		log: logger.Default().WithFields(map[string]any{
+			"kind":  "hosts",
+			"hosts": name,
+		}),
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
-
-	p := &pluginHostMapper{
-		options: options,
-	}
-	if options.client != nil {
-		p.client = proto.NewHostMapperClient(options.client)
+	if conn != nil {
+		p.client = proto.NewHostMapperClient(conn)
 	}
 	return p
 }
 
-func (p *pluginHostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
-	p.options.logger.Debugf("lookup %s/%s", host, network)
+func (p *grpcPluginHostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+	p.log.Debugf("lookup %s/%s", host, network)
 
 	if p.client == nil {
 		return
@@ -44,9 +44,10 @@ func (p *pluginHostMapper) Lookup(ctx context.Context, network, host string) (ip
 		&proto.LookupRequest{
 			Network: network,
 			Host:    host,
+			Client:  string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
-		p.options.logger.Error(err)
+		p.log.Error(err)
 		return
 	}
 	for _, s := range r.Ips {
@@ -58,9 +59,9 @@ func (p *pluginHostMapper) Lookup(ctx context.Context, network, host string) (ip
 	return
 }
 
-func (p *pluginHostMapper) Close() error {
-	if p.options.client != nil {
-		return p.options.client.Close()
+func (p *grpcPluginHostMapper) Close() error {
+	if closer, ok := p.conn.(io.Closer); ok {
+		return closer.Close()
 	}
 	return nil
 }

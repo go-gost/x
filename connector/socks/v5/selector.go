@@ -30,12 +30,13 @@ func (s *clientSelector) Select(methods ...uint8) (method uint8) {
 	return
 }
 
-func (s *clientSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, error) {
+func (s *clientSelector) OnSelected(method uint8, conn net.Conn) (string, net.Conn, error) {
 	s.logger.Debug("method selected: ", method)
 
 	switch method {
 	case socks.MethodTLS:
 		conn = tls.Client(conn, s.TLSConfig)
+		return "", conn, nil
 
 	case gosocks5.MethodUserPass, socks.MethodTLSAuth:
 		if method == socks.MethodTLSAuth {
@@ -52,22 +53,25 @@ func (s *clientSelector) OnSelected(method uint8, conn net.Conn) (net.Conn, erro
 		s.logger.Trace(req)
 		if err := req.Write(conn); err != nil {
 			s.logger.Error(err)
-			return nil, err
+			return "", nil, err
 		}
 
 		resp, err := gosocks5.ReadUserPassResponse(conn)
 		if err != nil {
 			s.logger.Error(err)
-			return nil, err
+			return "", nil, err
 		}
 		s.logger.Trace(resp)
 
 		if resp.Status != gosocks5.Succeeded {
-			return nil, gosocks5.ErrAuthFailure
+			return "", nil, gosocks5.ErrAuthFailure
 		}
+		return "", conn, nil
+
 	case gosocks5.MethodNoAcceptable:
-		return nil, gosocks5.ErrBadMethod
+		return "", nil, gosocks5.ErrBadMethod
+	default:
+		return "", nil, gosocks5.ErrBadFormat
 	}
 
-	return conn, nil
 }

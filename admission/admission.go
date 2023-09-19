@@ -13,7 +13,6 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
-	"google.golang.org/grpc"
 )
 
 type options struct {
@@ -22,7 +21,6 @@ type options struct {
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
-	client      *grpc.ClientConn
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -62,12 +60,6 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
-	}
-}
-
-func PluginConnOption(c *grpc.ClientConn) Option {
-	return func(opts *options) {
-		opts.client = c
 	}
 }
 

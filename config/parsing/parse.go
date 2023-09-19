@@ -65,13 +65,7 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return auth_impl.NewPluginAuthenticator(
-			auth_impl.PluginConnOption(c),
-			auth_impl.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":   "auther",
-				"auther": cfg.Name,
-			})),
-		)
+		return auth_impl.NewGRPCPluginAuthenticator(cfg.Name, c)
 	}
 
 	m := make(map[string]string)
@@ -199,13 +193,7 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return admission_impl.NewPluginAdmission(
-			admission_impl.PluginConnOption(c),
-			admission_impl.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":      "admission",
-				"admission": cfg.Name,
-			})),
-		)
+		return admission_impl.NewGRPCPluginAdmission(cfg.Name, c)
 	}
 
 	opts := []admission_impl.Option{
@@ -248,13 +236,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return bypass_impl.NewPluginBypass(
-			bypass_impl.PluginConnOption(c),
-			bypass_impl.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":   "bypass",
-				"bypass": cfg.Name,
-			})),
-		)
+		return bypass_impl.NewGRPCPluginBypass(cfg.Name, c)
 	}
 
 	opts := []bypass_impl.Option{
@@ -298,13 +280,7 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 			logger.Default().Error(err)
 			return nil, err
 		}
-		return resolver_impl.NewPluginResolver(
-			resolver_impl.PluginConnOption(c),
-			resolver_impl.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":     "resolver",
-				"resolver": cfg.Name,
-			})),
-		)
+		return resolver_impl.NewGRPCPluginResolver(cfg.Name, c)
 	}
 
 	var nameservers []resolver_impl.NameServer
@@ -341,13 +317,7 @@ func ParseHosts(cfg *config.HostsConfig) hosts.HostMapper {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return xhosts.NewPluginHostMapper(
-			xhosts.PluginConnOption(c),
-			xhosts.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":  "hosts",
-				"hosts": cfg.Name,
-			})),
-		)
+		return xhosts.NewGRPCPluginHostMapper(cfg.Name, c)
 	}
 
 	var mappings []xhosts.Mapping
@@ -413,13 +383,7 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return xingress.NewPluginIngress(
-			xingress.PluginConnOption(c),
-			xingress.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":    "ingress",
-				"ingress": cfg.Name,
-			})),
-		)
+		return xingress.NewGRPCPluginIngress(cfg.Name, c)
 	}
 
 	var rules []xingress.Rule
@@ -481,13 +445,7 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		if err != nil {
 			logger.Default().Error(err)
 		}
-		return xrecorder.NewPluginRecorder(
-			xrecorder.PluginConnOption(c),
-			xrecorder.LoggerOption(logger.Default().WithFields(map[string]any{
-				"kind":     "recorder",
-				"recorder": cfg.Name,
-			})),
-		)
+		return xrecorder.NewGRPCPluginRecorder(cfg.Name, c)
 	}
 
 	if cfg.File != nil && cfg.File.Path != "" {
