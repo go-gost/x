@@ -27,7 +27,7 @@ func PasswordCallback(au auth.Authenticator) PasswordCallbackFunc {
 		return nil
 	}
 	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-		if ok, _ := au.Authenticate(context.Background(), conn.User(), string(password)); ok {
+		if _, ok := au.Authenticate(context.Background(), conn.User(), string(password)); ok {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("password rejected for %s", conn.User())

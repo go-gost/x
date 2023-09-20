@@ -146,7 +146,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		Body:       io.NopCloser(bytes.NewReader([]byte{})),
 	}
 
-	ok, id := h.authenticate(ctx, w, req, resp, log)
+	id, ok := h.authenticate(ctx, w, req, resp, log)
 	if !ok {
 		return nil
 	}
@@ -254,12 +254,12 @@ func (h *http2Handler) basicProxyAuth(proxyAuth string) (username, password stri
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (ok bool, token string) {
+func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (id string, ok bool) {
 	u, p, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization"))
 	if h.options.Auther == nil {
-		return true, ""
+		return "", true
 	}
-	if ok, token = h.options.Auther.Authenticate(ctx, u, p); ok {
+	if id, ok = h.options.Auther.Authenticate(ctx, u, p); ok {
 		return
 	}
 

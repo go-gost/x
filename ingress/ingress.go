@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	ingress_pkg "github.com/go-gost/core/ingress"
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"google.golang.org/grpc"
@@ -74,7 +74,7 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-type ingress struct {
+type localIngress struct {
 	rules      map[string]Rule
 	cancelFunc context.CancelFunc
 	options    options
@@ -82,7 +82,7 @@ type ingress struct {
 }
 
 // NewIngress creates and initializes a new Ingress.
-func NewIngress(opts ...Option) ingress_pkg.Ingress {
+func NewIngress(opts ...Option) ingress.Ingress {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
@@ -90,7 +90,7 @@ func NewIngress(opts ...Option) ingress_pkg.Ingress {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 
-	ing := &ingress{
+	ing := &localIngress{
 		cancelFunc: cancel,
 		options:    options,
 	}
@@ -105,7 +105,7 @@ func NewIngress(opts ...Option) ingress_pkg.Ingress {
 	return ing
 }
 
-func (ing *ingress) periodReload(ctx context.Context) error {
+func (ing *localIngress) periodReload(ctx context.Context) error {
 	period := ing.options.period
 	if period < time.Second {
 		period = time.Second
@@ -126,7 +126,7 @@ func (ing *ingress) periodReload(ctx context.Context) error {
 	}
 }
 
-func (ing *ingress) reload(ctx context.Context) error {
+func (ing *localIngress) reload(ctx context.Context) error {
 	rules := make(map[string]Rule)
 
 	fn := func(rule Rule) {
@@ -160,7 +160,7 @@ func (ing *ingress) reload(ctx context.Context) error {
 	return nil
 }
 
-func (ing *ingress) load(ctx context.Context) (rules []Rule, err error) {
+func (ing *localIngress) load(ctx context.Context) (rules []Rule, err error) {
 	if ing.options.fileLoader != nil {
 		if lister, ok := ing.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -211,7 +211,7 @@ func (ing *ingress) load(ctx context.Context) (rules []Rule, err error) {
 	return
 }
 
-func (ing *ingress) parseRules(r io.Reader) (rules []Rule, err error) {
+func (ing *localIngress) parseRules(r io.Reader) (rules []Rule, err error) {
 	if r == nil {
 		return
 	}
@@ -227,7 +227,7 @@ func (ing *ingress) parseRules(r io.Reader) (rules []Rule, err error) {
 	return
 }
 
-func (ing *ingress) Get(ctx context.Context, host string) string {
+func (ing *localIngress) Get(ctx context.Context, host string) string {
 	if host == "" || ing == nil {
 		return ""
 	}
@@ -267,7 +267,7 @@ func (ing *ingress) Get(ctx context.Context, host string) string {
 	return ep
 }
 
-func (ing *ingress) lookup(host string) string {
+func (ing *localIngress) lookup(host string) string {
 	if ing == nil || len(ing.rules) == 0 {
 		return ""
 	}
@@ -278,7 +278,7 @@ func (ing *ingress) lookup(host string) string {
 	return ing.rules[host].Endpoint
 }
 
-func (ing *ingress) parseLine(s string) (rule Rule) {
+func (ing *localIngress) parseLine(s string) (rule Rule) {
 	line := strings.Replace(s, "\t", " ", -1)
 	line = strings.TrimSpace(line)
 	if n := strings.IndexByte(line, '#'); n >= 0 {
@@ -300,7 +300,7 @@ func (ing *ingress) parseLine(s string) (rule Rule) {
 	}
 }
 
-func (ing *ingress) Close() error {
+func (ing *localIngress) Close() error {
 	ing.cancelFunc()
 	if ing.options.fileLoader != nil {
 		ing.options.fileLoader.Close()

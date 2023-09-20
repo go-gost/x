@@ -209,7 +209,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 
 			if auther := target.Options().Auther; auther != nil {
 				username, password, _ := req.BasicAuth()
-				ok, id := auther.Authenticate(ctx, username, password)
+				id, ok := auther.Authenticate(ctx, username, password)
 				if !ok {
 					resp.StatusCode = http.StatusUnauthorized
 					resp.Header.Set("WWW-Authenticate", "Basic")

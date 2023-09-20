@@ -146,7 +146,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header = http.Header{}
 	}
 
-	ok, id := h.authenticate(ctx, conn, req, resp, log)
+	id, ok := h.authenticate(ctx, conn, req, resp, log)
 	if !ok {
 		return nil
 	}
@@ -269,12 +269,12 @@ func (h *httpHandler) basicProxyAuth(proxyAuth string, log logger.Logger) (usern
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (ok bool, token string) {
+func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (id string, ok bool) {
 	u, p, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization"), log)
 	if h.options.Auther == nil {
-		return true, ""
+		return "", true
 	}
-	if ok, token = h.options.Auther.Authenticate(ctx, u, p); ok {
+	if id, ok = h.options.Auther.Authenticate(ctx, u, p); ok {
 		return
 	}
 

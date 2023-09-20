@@ -110,9 +110,11 @@ type TLSConfig struct {
 }
 
 type PluginConfig struct {
-	Addr  string     `json:"addr"`
-	TLS   *TLSConfig `yaml:",omitempty" json:"tls,omitempty"`
-	Token string     `yaml:",omitempty" json:"token,omitempty"`
+	Type    string        `json:"type"`
+	Addr    string        `json:"addr"`
+	TLS     *TLSConfig    `yaml:",omitempty" json:"tls,omitempty"`
+	Timeout time.Duration `yaml:",omitempty" json:"timeout,omitempty"`
+	Token   string        `yaml:",omitempty" json:"token,omitempty"`
 }
 
 type AutherConfig struct {

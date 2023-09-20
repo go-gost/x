@@ -92,7 +92,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	conn.SetReadDeadline(time.Time{})
 
 	if h.options.Auther != nil {
-		ok, id := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
+		id, ok := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
 		if !ok {
 			resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
 			log.Trace(resp)

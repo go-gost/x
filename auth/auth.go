@@ -97,20 +97,20 @@ func NewAuthenticator(opts ...Option) auth.Authenticator {
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *authenticator) Authenticate(ctx context.Context, user, password string) (bool, string) {
+func (p *authenticator) Authenticate(ctx context.Context, user, password string) (string, bool) {
 	if p == nil {
-		return true, ""
+		return "", true
 	}
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if len(p.kvs) == 0 {
-		return false, ""
+		return "", false
 	}
 
 	v, ok := p.kvs[user]
-	return ok && (v == "" || password == v), ""
+	return "", ok && (v == "" || password == v)
 }
 
 func (p *authenticator) periodReload(ctx context.Context) error {

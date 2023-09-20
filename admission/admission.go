@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	admission_pkg "github.com/go-gost/core/admission"
+	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
@@ -69,7 +69,7 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-type admission struct {
+type localAdmission struct {
 	ipMatcher   matcher.Matcher
 	cidrMatcher matcher.Matcher
 	mu          sync.RWMutex
@@ -79,14 +79,14 @@ type admission struct {
 
 // NewAdmission creates and initializes a new Admission using matcher patterns as its match rules.
 // The rules will be reversed if the reverse is true.
-func NewAdmission(opts ...Option) admission_pkg.Admission {
+func NewAdmission(opts ...Option) admission.Admission {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO())
-	p := &admission{
+	p := &localAdmission{
 		cancelFunc: cancel,
 		options:    options,
 	}
@@ -101,7 +101,7 @@ func NewAdmission(opts ...Option) admission_pkg.Admission {
 	return p
 }
 
-func (p *admission) Admit(ctx context.Context, addr string) bool {
+func (p *localAdmission) Admit(ctx context.Context, addr string) bool {
 	if addr == "" || p == nil {
 		return true
 	}
@@ -117,7 +117,7 @@ func (p *admission) Admit(ctx context.Context, addr string) bool {
 		p.options.whitelist && matched
 }
 
-func (p *admission) periodReload(ctx context.Context) error {
+func (p *localAdmission) periodReload(ctx context.Context) error {
 	period := p.options.period
 	if period < time.Second {
 		period = time.Second
@@ -138,7 +138,7 @@ func (p *admission) periodReload(ctx context.Context) error {
 	}
 }
 
-func (p *admission) reload(ctx context.Context) error {
+func (p *localAdmission) reload(ctx context.Context) error {
 	v, err := p.load(ctx)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func (p *admission) reload(ctx context.Context) error {
 	return nil
 }
 
-func (p *admission) load(ctx context.Context) (patterns []string, err error) {
+func (p *localAdmission) load(ctx context.Context) (patterns []string, err error) {
 	if p.options.fileLoader != nil {
 		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -221,7 +221,7 @@ func (p *admission) load(ctx context.Context) (patterns []string, err error) {
 	return
 }
 
-func (p *admission) parsePatterns(r io.Reader) (patterns []string, err error) {
+func (p *localAdmission) parsePatterns(r io.Reader) (patterns []string, err error) {
 	if r == nil {
 		return
 	}
@@ -237,14 +237,14 @@ func (p *admission) parsePatterns(r io.Reader) (patterns []string, err error) {
 	return
 }
 
-func (p *admission) parseLine(s string) string {
+func (p *localAdmission) parseLine(s string) string {
 	if n := strings.IndexByte(s, '#'); n >= 0 {
 		s = s[:n]
 	}
 	return strings.TrimSpace(s)
 }
 
-func (p *admission) matched(addr string) bool {
+func (p *localAdmission) matched(addr string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -252,7 +252,7 @@ func (p *admission) matched(addr string) bool {
 		p.cidrMatcher.Match(addr)
 }
 
-func (p *admission) Close() error {
+func (p *localAdmission) Close() error {
 	p.cancelFunc()
 	if p.options.fileLoader != nil {
 		p.options.fileLoader.Close()

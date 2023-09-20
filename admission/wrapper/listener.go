@@ -5,11 +5,13 @@ import (
 	"net"
 
 	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/logger"
 )
 
 type listener struct {
 	net.Listener
 	admission admission.Admission
+	log       logger.Logger
 }
 
 func WrapListener(admission admission.Admission, ln net.Listener) net.Listener {

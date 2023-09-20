@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	bypass_pkg "github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
@@ -77,7 +77,7 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-type bypass struct {
+type localBypass struct {
 	ipMatcher       matcher.Matcher
 	cidrMatcher     matcher.Matcher
 	domainMatcher   matcher.Matcher
@@ -89,7 +89,7 @@ type bypass struct {
 
 // NewBypass creates and initializes a new Bypass.
 // The rules will be reversed if the reverse option is true.
-func NewBypass(opts ...Option) bypass_pkg.Bypass {
+func NewBypass(opts ...Option) bypass.Bypass {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
@@ -97,7 +97,7 @@ func NewBypass(opts ...Option) bypass_pkg.Bypass {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 
-	bp := &bypass{
+	bp := &localBypass{
 		cancelFunc: cancel,
 		options:    options,
 	}
@@ -112,7 +112,7 @@ func NewBypass(opts ...Option) bypass_pkg.Bypass {
 	return bp
 }
 
-func (bp *bypass) periodReload(ctx context.Context) error {
+func (bp *localBypass) periodReload(ctx context.Context) error {
 	period := bp.options.period
 	if period < time.Second {
 		period = time.Second
@@ -133,7 +133,7 @@ func (bp *bypass) periodReload(ctx context.Context) error {
 	}
 }
 
-func (bp *bypass) reload(ctx context.Context) error {
+func (bp *localBypass) reload(ctx context.Context) error {
 	v, err := bp.load(ctx)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (bp *bypass) reload(ctx context.Context) error {
 	return nil
 }
 
-func (bp *bypass) load(ctx context.Context) (patterns []string, err error) {
+func (bp *localBypass) load(ctx context.Context) (patterns []string, err error) {
 	if bp.options.fileLoader != nil {
 		if lister, ok := bp.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -224,7 +224,7 @@ func (bp *bypass) load(ctx context.Context) (patterns []string, err error) {
 	return
 }
 
-func (bp *bypass) parsePatterns(r io.Reader) (patterns []string, err error) {
+func (bp *localBypass) parsePatterns(r io.Reader) (patterns []string, err error) {
 	if r == nil {
 		return
 	}
@@ -240,7 +240,7 @@ func (bp *bypass) parsePatterns(r io.Reader) (patterns []string, err error) {
 	return
 }
 
-func (bp *bypass) Contains(ctx context.Context, addr string) bool {
+func (bp *localBypass) Contains(ctx context.Context, addr string) bool {
 	if addr == "" || bp == nil {
 		return false
 	}
@@ -260,14 +260,14 @@ func (bp *bypass) Contains(ctx context.Context, addr string) bool {
 	return b
 }
 
-func (bp *bypass) parseLine(s string) string {
+func (bp *localBypass) parseLine(s string) string {
 	if n := strings.IndexByte(s, '#'); n >= 0 {
 		s = s[:n]
 	}
 	return strings.TrimSpace(s)
 }
 
-func (bp *bypass) matched(addr string) bool {
+func (bp *localBypass) matched(addr string) bool {
 	bp.mu.RLock()
 	defer bp.mu.RUnlock()
 
@@ -280,7 +280,7 @@ func (bp *bypass) matched(addr string) bool {
 		bp.wildcardMatcher.Match(addr)
 }
 
-func (bp *bypass) Close() error {
+func (bp *localBypass) Close() error {
 	bp.cancelFunc()
 	if bp.options.fileLoader != nil {
 		bp.options.fileLoader.Close()

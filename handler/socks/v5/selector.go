@@ -68,7 +68,7 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (string, net.Co
 		var id string
 		if s.Authenticator != nil {
 			var ok bool
-			ok, id = s.Authenticator.Authenticate(context.Background(), req.Username, req.Password)
+			id, ok = s.Authenticator.Authenticate(context.Background(), req.Username, req.Password)
 			if !ok {
 				resp := gosocks5.NewUserPassResponse(gosocks5.UserPassVer, gosocks5.Failure)
 				if err := resp.Write(conn); err != nil {
