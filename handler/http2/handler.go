@@ -88,6 +88,9 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		log.Error(err)
 		return err
 	}
+
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
+
 	md := v.Metadata()
 	return h.roundTrip(ctx,
 		md.Get("w").(http.ResponseWriter),

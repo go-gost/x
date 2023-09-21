@@ -90,6 +90,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		network = "udp"
 	}
 
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
+
 	var rw io.ReadWriter = conn
 	var host string
 	var protocol string

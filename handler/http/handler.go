@@ -89,6 +89,8 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 	defer req.Body.Close()
 
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
+
 	return h.handleRequest(ctx, conn, req, log)
 }
 

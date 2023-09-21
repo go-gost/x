@@ -82,6 +82,8 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 	}
 
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
+
 	req, err := gosocks4.ReadRequest(conn)
 	if err != nil {
 		log.Error(err)

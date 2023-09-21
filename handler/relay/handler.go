@@ -146,6 +146,8 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
+
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return ErrRateLimit
 	}

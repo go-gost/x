@@ -1,6 +1,6 @@
 module github.com/go-gost/x
 
-go 1.20
+go 1.21
 
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
@@ -10,7 +10,7 @@ require (
 	github.com/go-gost/core v0.0.0-20230920145336-6d0e88635be9
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.4.0
-	github.com/go-gost/plugin v0.0.0-20230919143240-0e42c7c67eaa
+	github.com/go-gost/plugin v0.0.0-20230921115816-47001719099f
 	github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5
