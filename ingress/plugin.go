@@ -10,18 +10,18 @@ import (
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/ingress/proto"
-	"github.com/go-gost/x/internal/util/plugin"
+	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginIngress struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.IngressClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginIngress creates an Ingress plugin based on gRPC.
-func NewGRPCPluginIngress(name string, addr string, opts ...plugin.Option) ingress.Ingress {
+// NewGRPCPlugin creates an Ingress plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) ingress.Ingress {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -36,7 +36,7 @@ func NewGRPCPluginIngress(name string, addr string, opts ...plugin.Option) ingre
 		log.Error(err)
 	}
 
-	p := &grpcPluginIngress{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -46,7 +46,7 @@ func NewGRPCPluginIngress(name string, addr string, opts ...plugin.Option) ingre
 	return p
 }
 
-func (p *grpcPluginIngress) Get(ctx context.Context, host string) string {
+func (p *grpcPlugin) Get(ctx context.Context, host string) string {
 	if p.client == nil {
 		return ""
 	}
@@ -62,36 +62,36 @@ func (p *grpcPluginIngress) Get(ctx context.Context, host string) string {
 	return r.GetEndpoint()
 }
 
-func (p *grpcPluginIngress) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpIngressRequest struct {
+type httpPluginRequest struct {
 	Host string `json:"host"`
 }
 
-type httpIngressResponse struct {
+type httpPluginResponse struct {
 	Endpoint string `json:"endpoint"`
 }
 
-type httpPluginIngress struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginIngress creates an Ingress plugin based on HTTP.
-func NewHTTPPluginIngress(name string, url string, opts ...plugin.Option) ingress.Ingress {
+// NewHTTPPlugin creates an Ingress plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) ingress.Ingress {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginIngress{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -102,12 +102,12 @@ func NewHTTPPluginIngress(name string, url string, opts ...plugin.Option) ingres
 	}
 }
 
-func (p *httpPluginIngress) Get(ctx context.Context, host string) (endpoint string) {
+func (p *httpPlugin) Get(ctx context.Context, host string) (endpoint string) {
 	if p.client == nil {
 		return
 	}
 
-	rb := httpIngressRequest{
+	rb := httpPluginRequest{
 		Host: host,
 	}
 	v, err := json.Marshal(&rb)
@@ -134,7 +134,7 @@ func (p *httpPluginIngress) Get(ctx context.Context, host string) (endpoint stri
 		return
 	}
 
-	res := httpIngressResponse{}
+	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}

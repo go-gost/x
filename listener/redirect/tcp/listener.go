@@ -46,13 +46,17 @@ func (l *redirectListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	network := "tcp"
+	if xnet.IsIPv4(l.options.Addr) {
+		network = "tcp4"
+	}
 	lc := net.ListenConfig{}
 	if l.md.tproxy {
 		lc.Control = l.control
 	}
-	network := "tcp"
-	if xnet.IsIPv4(l.options.Addr) {
-		network = "tcp4"
+	if l.md.mptcp {
+		lc.SetMultipathTCP(true)
+		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
 	}
 	ln, err := lc.Listen(context.Background(), network, l.options.Addr)
 	if err != nil {

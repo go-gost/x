@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/service"
 	"github.com/go-gost/x/registry"
 )
 
@@ -45,7 +45,7 @@ func createService(ctx *gin.Context) {
 		return
 	}
 
-	svc, err := parsing.ParseService(&req.Data)
+	svc, err := parser.ParseService(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return
@@ -108,7 +108,7 @@ func updateService(ctx *gin.Context) {
 
 	req.Data.Name = req.Service
 
-	svc, err := parsing.ParseService(&req.Data)
+	svc, err := parser.ParseService(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return

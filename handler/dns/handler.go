@@ -11,10 +11,11 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	xchain "github.com/go-gost/x/chain"
+	xhop "github.com/go-gost/x/hop"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/resolver/exchanger"
@@ -30,7 +31,7 @@ func init() {
 }
 
 type dnsHandler struct {
-	hop        chain.Hop
+	hop        hop.Hop
 	exchangers map[string]exchanger.Exchanger
 	cache      *resolver_util.Cache
 	router     *chain.Router
@@ -70,10 +71,14 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 		for i, addr := range h.md.dns {
 			nodes = append(nodes, chain.NewNode(fmt.Sprintf("target-%d", i), addr))
 		}
-		h.hop = xchain.NewChainHop(nodes)
+		h.hop = xhop.NewHop(xhop.NodeOption(nodes...))
 	}
 
-	for _, node := range h.hop.Nodes() {
+	var nodes []*chain.Node
+	if nl, ok := h.hop.(hop.NodeList); ok {
+		nodes = nl.Nodes()
+	}
+	for _, node := range nodes {
 		addr := strings.TrimSpace(node.Addr)
 		if addr == "" {
 			continue
@@ -109,7 +114,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *dnsHandler) Forward(hop chain.Hop) {
+func (h *dnsHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
@@ -325,7 +330,7 @@ func (h *dnsHandler) selectExchanger(ctx context.Context, addr string) exchanger
 	if h.hop == nil {
 		return nil
 	}
-	node := h.hop.Select(ctx, chain.AddrSelectOption(addr))
+	node := h.hop.Select(ctx, hop.AddrSelectOption(addr))
 	if node == nil {
 		return nil
 	}

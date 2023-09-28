@@ -2,6 +2,7 @@ package pht
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -38,6 +39,7 @@ type serverOptions struct {
 	tlsConfig      *tls.Config
 	readBufferSize int
 	readTimeout    time.Duration
+	mptcp          bool
 	logger         logger.Logger
 }
 
@@ -78,6 +80,12 @@ func ReadBufferSizeServerOption(n int) ServerOption {
 func ReadTimeoutServerOption(timeout time.Duration) ServerOption {
 	return func(opts *serverOptions) {
 		opts.readTimeout = timeout
+	}
+}
+
+func MPTCPServerOption(mptcp bool) ServerOption {
+	return func(opts *serverOptions) {
+		opts.mptcp = mptcp
 	}
 }
 
@@ -187,7 +195,13 @@ func (s *Server) ListenAndServe() error {
 	if xnet.IsIPv4(s.httpServer.Addr) {
 		network = "tcp4"
 	}
-	ln, err := net.Listen(network, s.httpServer.Addr)
+
+	lc := net.ListenConfig{}
+	if s.options.mptcp {
+		lc.SetMultipathTCP(true)
+		s.options.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
+	}
+	ln, err := lc.Listen(context.Background(), network, s.httpServer.Addr)
 	if err != nil {
 		s.options.logger.Error(err)
 		return err

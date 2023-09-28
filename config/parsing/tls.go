@@ -23,6 +23,10 @@ var (
 	defaultTLSConfig *tls.Config
 )
 
+func DefaultTLSConfig() *tls.Config {
+	return defaultTLSConfig
+}
+
 func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 	log := logger.Default()
 

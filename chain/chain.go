@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/selector"
@@ -38,7 +39,7 @@ type chainNamer interface {
 
 type Chain struct {
 	name     string
-	hops     []chain.Hop
+	hops     []hop.Hop
 	marker   selector.Marker
 	metadata metadata.Metadata
 	logger   logger.Logger
@@ -60,7 +61,7 @@ func NewChain(name string, opts ...ChainOption) *Chain {
 	}
 }
 
-func (c *Chain) AddHop(hop chain.Hop) {
+func (c *Chain) AddHop(hop hop.Hop) {
 	c.hops = append(c.hops, hop)
 }
 
@@ -84,8 +85,8 @@ func (c *Chain) Route(ctx context.Context, network, address string) chain.Route 
 	}
 
 	rt := NewRoute(ChainRouteOption(c))
-	for _, hop := range c.hops {
-		node := hop.Select(ctx, chain.AddrSelectOption(address))
+	for _, h := range c.hops {
+		node := h.Select(ctx, hop.AddrSelectOption(address))
 		if node == nil {
 			return rt
 		}

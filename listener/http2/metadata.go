@@ -11,6 +11,7 @@ const (
 
 type metadata struct {
 	backlog int
+	mptcp   bool
 }
 
 func (l *http2Listener) parseMetadata(md mdata.Metadata) (err error) {
@@ -22,5 +23,7 @@ func (l *http2Listener) parseMetadata(md mdata.Metadata) (err error) {
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
 	return
 }

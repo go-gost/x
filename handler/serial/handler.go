@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
@@ -24,7 +25,7 @@ func init() {
 }
 
 type serialHandler struct {
-	hop      chain.Hop
+	hop      hop.Hop
 	router   *chain.Router
 	md       metadata
 	options  handler.Options
@@ -64,7 +65,7 @@ func (h *serialHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *serialHandler) Forward(hop chain.Hop) {
+func (h *serialHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -20,7 +21,7 @@ func init() {
 }
 
 type unixHandler struct {
-	hop     chain.Hop
+	hop     hop.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -51,7 +52,7 @@ func (h *unixHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *unixHandler) Forward(hop chain.Hop) {
+func (h *unixHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 

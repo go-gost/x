@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/ingress"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createIngress(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseIngress(&req.Data)
+	v := parser.ParseIngress(&req.Data)
 
 	if err := registry.IngressRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
@@ -94,7 +94,7 @@ func updateIngress(ctx *gin.Context) {
 
 	req.Data.Name = req.Ingress
 
-	v := parsing.ParseIngress(&req.Data)
+	v := parser.ParseIngress(&req.Data)
 
 	registry.IngressRegistry().Unregister(req.Ingress)
 

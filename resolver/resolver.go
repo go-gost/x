@@ -12,7 +12,6 @@ import (
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
-	"google.golang.org/grpc"
 )
 
 type NameServer struct {
@@ -28,7 +27,6 @@ type NameServer struct {
 
 type options struct {
 	domain string
-	client *grpc.ClientConn
 	logger logger.Logger
 }
 
@@ -37,12 +35,6 @@ type Option func(opts *options)
 func DomainOption(domain string) Option {
 	return func(opts *options) {
 		opts.domain = domain
-	}
-}
-
-func PluginConnOption(c *grpc.ClientConn) Option {
-	return func(opts *options) {
-		opts.client = c
 	}
 }
 

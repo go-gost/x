@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/limiter/conn"
@@ -31,7 +32,7 @@ var (
 	connectorReg reg.Registry[NewConnector]        = new(connectorRegistry)
 	serviceReg   reg.Registry[service.Service]     = new(serviceRegistry)
 	chainReg     reg.Registry[chain.Chainer]       = new(chainRegistry)
-	hopReg       reg.Registry[chain.Hop]           = new(hopRegistry)
+	hopReg       reg.Registry[hop.Hop]           = new(hopRegistry)
 	autherReg    reg.Registry[auth.Authenticator]  = new(autherRegistry)
 	admissionReg reg.Registry[admission.Admission] = new(admissionRegistry)
 	bypassReg    reg.Registry[bypass.Bypass]       = new(bypassRegistry)
@@ -119,7 +120,7 @@ func ChainRegistry() reg.Registry[chain.Chainer] {
 	return chainReg
 }
 
-func HopRegistry() reg.Registry[chain.Hop] {
+func HopRegistry() reg.Registry[hop.Hop] {
 	return hopReg
 }
 

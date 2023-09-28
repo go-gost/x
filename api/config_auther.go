@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/auth"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createAuther(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseAuther(&req.Data)
+	v := parser.ParseAuther(&req.Data)
 	if err := registry.AutherRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
 		return
@@ -93,7 +93,7 @@ func updateAuther(ctx *gin.Context) {
 
 	req.Data.Name = req.Auther
 
-	v := parsing.ParseAuther(&req.Data)
+	v := parser.ParseAuther(&req.Data)
 	registry.AutherRegistry().Unregister(req.Auther)
 
 	if err := registry.AutherRegistry().Register(req.Auther, v); err != nil {

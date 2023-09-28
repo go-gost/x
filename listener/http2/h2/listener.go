@@ -1,6 +1,7 @@
 package h2
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -74,7 +75,12 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 	if xnet.IsIPv4(l.options.Addr) {
 		network = "tcp4"
 	}
-	ln, err := net.Listen(network, l.options.Addr)
+	lc := net.ListenConfig{}
+	if l.md.mptcp {
+		lc.SetMultipathTCP(true)
+		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
+	}
+	ln, err := lc.Listen(context.Background(), network, l.options.Addr)
 	if err != nil {
 		return err
 	}

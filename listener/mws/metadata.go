@@ -30,6 +30,8 @@ type metadata struct {
 	muxMaxFrameSize      int
 	muxMaxReceiveBuffer  int
 	muxMaxStreamBuffer   int
+
+	mptcp bool
 }
 
 func (l *mwsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -82,5 +84,8 @@ func (l *mwsListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		l.md.header = hd
 	}
+
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
 	return
 }

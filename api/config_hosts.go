@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/hosts"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createHosts(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseHosts(&req.Data)
+	v := parser.ParseHostMapper(&req.Data)
 
 	if err := registry.HostsRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
@@ -94,7 +94,7 @@ func updateHosts(ctx *gin.Context) {
 
 	req.Data.Name = req.Hosts
 
-	v := parsing.ParseHosts(&req.Data)
+	v := parser.ParseHostMapper(&req.Data)
 
 	registry.HostsRegistry().Unregister(req.Hosts)
 

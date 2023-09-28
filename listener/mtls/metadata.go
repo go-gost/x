@@ -20,6 +20,7 @@ type metadata struct {
 	muxMaxStreamBuffer   int
 
 	backlog int
+	mptcp   bool
 }
 
 func (l *mtlsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -45,6 +46,8 @@ func (l *mtlsListener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.muxMaxFrameSize = mdutil.GetInt(md, muxMaxFrameSize)
 	l.md.muxMaxReceiveBuffer = mdutil.GetInt(md, muxMaxReceiveBuffer)
 	l.md.muxMaxStreamBuffer = mdutil.GetInt(md, muxMaxStreamBuffer)
+
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 
 	return
 }

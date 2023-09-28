@@ -14,18 +14,18 @@ import (
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/plugin/resolver/proto"
 	auth_util "github.com/go-gost/x/internal/util/auth"
-	"github.com/go-gost/x/internal/util/plugin"
+	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginResolver struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.ResolverClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginResolver creates a Resolver plugin based on gRPC.
-func NewGRPCPluginResolver(name string, addr string, opts ...plugin.Option) (resolver.Resolver, error) {
+// NewGRPCPlugin creates a Resolver plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) (resolver.Resolver, error) {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -39,7 +39,7 @@ func NewGRPCPluginResolver(name string, addr string, opts ...plugin.Option) (res
 	if err != nil {
 		log.Error(err)
 	}
-	p := &grpcPluginResolver{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -49,7 +49,7 @@ func NewGRPCPluginResolver(name string, addr string, opts ...plugin.Option) (res
 	return p, nil
 }
 
-func (p *grpcPluginResolver) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+func (p *grpcPlugin) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
 	p.log.Debugf("resolve %s/%s", host, network)
 
 	if p.client == nil {
@@ -74,39 +74,39 @@ func (p *grpcPluginResolver) Resolve(ctx context.Context, network, host string) 
 	return
 }
 
-func (p *grpcPluginResolver) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpResolverRequest struct {
+type httpPluginRequest struct {
 	Network string `json:"network"`
 	Host    string `json:"host"`
 	Client  string `json:"client"`
 }
 
-type httpResolverResponse struct {
+type httpPluginResponse struct {
 	IPs []string `json:"ips"`
 	OK  bool     `json:"ok"`
 }
 
-type httpPluginResolver struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginResolver creates an Resolver plugin based on HTTP.
-func NewHTTPPluginResolver(name string, url string, opts ...plugin.Option) resolver.Resolver {
+// NewHTTPPlugin creates an Resolver plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) resolver.Resolver {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginResolver{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -117,14 +117,14 @@ func NewHTTPPluginResolver(name string, url string, opts ...plugin.Option) resol
 	}
 }
 
-func (p *httpPluginResolver) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+func (p *httpPlugin) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
 	p.log.Debugf("resolve %s/%s", host, network)
 
 	if p.client == nil {
 		return
 	}
 
-	rb := httpResolverRequest{
+	rb := httpPluginRequest{
 		Network: network,
 		Host:    host,
 		Client:  string(auth_util.IDFromContext(ctx)),
@@ -154,7 +154,7 @@ func (p *httpPluginResolver) Resolve(ctx context.Context, network, host string) 
 		return
 	}
 
-	res := httpResolverResponse{}
+	res := httpPluginResponse{}
 	if err = json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}

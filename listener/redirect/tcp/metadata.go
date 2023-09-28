@@ -7,6 +7,7 @@ import (
 
 type metadata struct {
 	tproxy bool
+	mptcp  bool
 }
 
 func (l *redirectListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -14,5 +15,6 @@ func (l *redirectListener) parseMetadata(md mdata.Metadata) (err error) {
 		tproxy = "tproxy"
 	)
 	l.md.tproxy = mdutil.GetBool(md, tproxy)
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }

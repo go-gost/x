@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/hop"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createHop(ctx *gin.Context) {
 		return
 	}
 
-	v, err := parsing.ParseHop(&req.Data)
+	v, err := parser.ParseHop(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return
@@ -99,7 +99,7 @@ func updateHop(ctx *gin.Context) {
 
 	req.Data.Name = req.Hop
 
-	v, err := parsing.ParseHop(&req.Data)
+	v, err := parser.ParseHop(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return

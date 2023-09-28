@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/resolver"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createResolver(ctx *gin.Context) {
 		return
 	}
 
-	v, err := parsing.ParseResolver(&req.Data)
+	v, err := parser.ParseResolver(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return
@@ -98,7 +98,7 @@ func updateResolver(ctx *gin.Context) {
 
 	req.Data.Name = req.Resolver
 
-	v, err := parsing.ParseResolver(&req.Data)
+	v, err := parser.ParseResolver(&req.Data)
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return

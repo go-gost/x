@@ -22,8 +22,9 @@ type metadata struct {
 	readBufferSize    int
 	writeBufferSize   int
 	enableCompression bool
+	header            http.Header
 
-	header http.Header
+	mptcp bool
 }
 
 func (l *wsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -63,5 +64,7 @@ func (l *wsListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		l.md.header = hd
 	}
+
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
@@ -30,7 +31,7 @@ func init() {
 }
 
 type forwardHandler struct {
-	hop     chain.Hop
+	hop     hop.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -61,7 +62,7 @@ func (h *forwardHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *forwardHandler) Forward(hop chain.Hop) {
+func (h *forwardHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
@@ -123,8 +124,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
-			chain.HostSelectOption(host),
-			chain.ProtocolSelectOption(protocol),
+			hop.HostSelectOption(host),
+			hop.ProtocolSelectOption(protocol),
 		)
 	}
 	if target == nil {
@@ -192,8 +193,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 			}
 			if h.hop != nil {
 				target = h.hop.Select(ctx,
-					chain.HostSelectOption(req.Host),
-					chain.ProtocolSelectOption(forward.ProtoHTTP),
+					hop.HostSelectOption(req.Host),
+					hop.ProtocolSelectOption(forward.ProtoHTTP),
 				)
 			}
 			if target == nil {

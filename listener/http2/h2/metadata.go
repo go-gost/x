@@ -12,6 +12,7 @@ const (
 type metadata struct {
 	path    string
 	backlog int
+	mptcp   bool
 }
 
 func (l *h2Listener) parseMetadata(md mdata.Metadata) (err error) {
@@ -26,5 +27,7 @@ func (l *h2Listener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.path = mdutil.GetString(md, path)
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
 	return
 }

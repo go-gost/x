@@ -12,18 +12,18 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/hosts/proto"
 	auth_util "github.com/go-gost/x/internal/util/auth"
-	"github.com/go-gost/x/internal/util/plugin"
+	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginHostMapper struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.HostMapperClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginHostMapper creates a HostMapper plugin based on gRPC.
-func NewGRPCPluginHostMapper(name string, addr string, opts ...plugin.Option) hosts.HostMapper {
+// NewGRPCPlugin creates a HostMapper plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hosts.HostMapper {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -37,7 +37,7 @@ func NewGRPCPluginHostMapper(name string, addr string, opts ...plugin.Option) ho
 	if err != nil {
 		log.Error(err)
 	}
-	p := &grpcPluginHostMapper{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -47,7 +47,7 @@ func NewGRPCPluginHostMapper(name string, addr string, opts ...plugin.Option) ho
 	return p
 }
 
-func (p *grpcPluginHostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+func (p *grpcPlugin) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 
 	if p.client == nil {
@@ -73,39 +73,39 @@ func (p *grpcPluginHostMapper) Lookup(ctx context.Context, network, host string)
 	return
 }
 
-func (p *grpcPluginHostMapper) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpHostMapperRequest struct {
+type httpPluginRequest struct {
 	Network string `json:"network"`
 	Host    string `json:"host"`
 	Client  string `json:"client"`
 }
 
-type httpHostMapperResponse struct {
+type httpPluginResponse struct {
 	IPs []string `json:"ips"`
 	OK  bool     `json:"ok"`
 }
 
-type httpPluginHostMapper struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginHostMapper creates an HostMapper plugin based on HTTP.
-func NewHTTPPluginHostMapper(name string, url string, opts ...plugin.Option) hosts.HostMapper {
+// NewHTTPPlugin creates an HostMapper plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hosts.HostMapper {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginHostMapper{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -116,14 +116,14 @@ func NewHTTPPluginHostMapper(name string, url string, opts ...plugin.Option) hos
 	}
 }
 
-func (p *httpPluginHostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+func (p *httpPlugin) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 
 	if p.client == nil {
 		return
 	}
 
-	rb := httpHostMapperRequest{
+	rb := httpPluginRequest{
 		Network: network,
 		Host:    host,
 		Client:  string(auth_util.IDFromContext(ctx)),
@@ -152,7 +152,7 @@ func (p *httpPluginHostMapper) Lookup(ctx context.Context, network, host string)
 		return
 	}
 
-	res := httpHostMapperResponse{}
+	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}

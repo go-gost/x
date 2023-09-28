@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/limiter"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createRateLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseRateLimiter(&req.Data)
+	v := parser.ParseRateLimiter(&req.Data)
 
 	if err := registry.RateLimiterRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
@@ -94,7 +94,7 @@ func updateRateLimiter(ctx *gin.Context) {
 
 	req.Data.Name = req.Limiter
 
-	v := parsing.ParseRateLimiter(&req.Data)
+	v := parser.ParseRateLimiter(&req.Data)
 
 	registry.RateLimiterRegistry().Unregister(req.Limiter)
 

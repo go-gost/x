@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/limiter"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createConnLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseConnLimiter(&req.Data)
+	v := parser.ParseConnLimiter(&req.Data)
 
 	if err := registry.ConnLimiterRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
@@ -94,7 +94,7 @@ func updateConnLimiter(ctx *gin.Context) {
 
 	req.Data.Name = req.Limiter
 
-	v := parsing.ParseConnLimiter(&req.Data)
+	v := parser.ParseConnLimiter(&req.Data)
 
 	registry.ConnLimiterRegistry().Unregister(req.Limiter)
 

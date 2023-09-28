@@ -9,6 +9,7 @@ import (
 
 type metadata struct {
 	header http.Header
+	mptcp  bool
 }
 
 func (l *obfsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -23,5 +24,7 @@ func (l *obfsListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		l.md.header = hd
 	}
+
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }

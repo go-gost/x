@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	tun_util "github.com/go-gost/x/internal/util/tun"
@@ -26,7 +27,7 @@ func init() {
 }
 
 type tunHandler struct {
-	hop     chain.Hop
+	hop     hop.Hop
 	routes  sync.Map
 	router  *chain.Router
 	md      metadata
@@ -58,7 +59,7 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *tunHandler) Forward(hop chain.Hop) {
+func (h *tunHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 

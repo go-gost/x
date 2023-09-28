@@ -10,19 +10,19 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/auth/proto"
+	"github.com/go-gost/x/internal/plugin"
 	auth_util "github.com/go-gost/x/internal/util/auth"
-	"github.com/go-gost/x/internal/util/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginAuthenticator struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.AuthenticatorClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginAuthenticator creates an Authenticator plugin based on gRPC.
-func NewGRPCPluginAuthenticator(name string, addr string, opts ...plugin.Option) auth.Authenticator {
+// NewGRPCPlugin creates an Authenticator plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) auth.Authenticator {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -37,7 +37,7 @@ func NewGRPCPluginAuthenticator(name string, addr string, opts ...plugin.Option)
 		log.Error(err)
 	}
 
-	p := &grpcPluginAuthenticator{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -49,7 +49,7 @@ func NewGRPCPluginAuthenticator(name string, addr string, opts ...plugin.Option)
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *grpcPluginAuthenticator) Authenticate(ctx context.Context, user, password string) (string, bool) {
+func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string) (string, bool) {
 	if p.client == nil {
 		return "", false
 	}
@@ -67,39 +67,39 @@ func (p *grpcPluginAuthenticator) Authenticate(ctx context.Context, user, passwo
 	return r.Id, r.Ok
 }
 
-func (p *grpcPluginAuthenticator) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpAutherRequest struct {
+type httpPluginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Client   string `json:"client"`
 }
 
-type httpAutherResponse struct {
+type httpPluginResponse struct {
 	OK bool   `json:"ok"`
 	ID string `json:"id"`
 }
 
-type httpPluginAuther struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginAuthenticator creates an Authenticator plugin based on HTTP.
-func NewHTTPPluginAuthenticator(name string, url string, opts ...plugin.Option) auth.Authenticator {
+// NewHTTPPlugin creates an Authenticator plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) auth.Authenticator {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginAuther{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -110,12 +110,12 @@ func NewHTTPPluginAuthenticator(name string, url string, opts ...plugin.Option) 
 	}
 }
 
-func (p *httpPluginAuther) Authenticate(ctx context.Context, user, password string) (id string, ok bool) {
+func (p *httpPlugin) Authenticate(ctx context.Context, user, password string) (id string, ok bool) {
 	if p.client == nil {
 		return
 	}
 
-	rb := httpAutherRequest{
+	rb := httpPluginRequest{
 		Username: user,
 		Password: password,
 		Client:   string(auth_util.ClientAddrFromContext(ctx)),
@@ -144,7 +144,7 @@ func (p *httpPluginAuther) Authenticate(ctx context.Context, user, password stri
 		return
 	}
 
-	res := httpAutherResponse{}
+	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}

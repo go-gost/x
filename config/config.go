@@ -371,9 +371,7 @@ type ServiceConfig struct {
 }
 
 type ChainConfig struct {
-	Name string `json:"name"`
-	// REMOVED since beta.6
-	// Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
+	Name     string         `json:"name"`
 	Hops     []*HopConfig   `json:"hops"`
 	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
 }
@@ -393,6 +391,11 @@ type HopConfig struct {
 	Resolver  string          `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts     string          `yaml:",omitempty" json:"hosts,omitempty"`
 	Nodes     []*NodeConfig   `yaml:",omitempty" json:"nodes,omitempty"`
+	Reload    time.Duration   `yaml:",omitempty" json:"reload,omitempty"`
+	File      *FileLoader     `yaml:",omitempty" json:"file,omitempty"`
+	Redis     *RedisLoader    `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP      *HTTPLoader     `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin    *PluginConfig   `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type NodeConfig struct {

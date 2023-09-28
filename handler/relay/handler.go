@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/service"
@@ -32,7 +33,7 @@ func init() {
 }
 
 type relayHandler struct {
-	hop     chain.Hop
+	hop     hop.Hop
 	router  *chain.Router
 	md      metadata
 	options handler.Options
@@ -124,7 +125,7 @@ func (h *relayHandler) initEntryPoint() (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *relayHandler) Forward(hop chain.Hop) {
+func (h *relayHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 

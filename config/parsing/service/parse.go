@@ -1,4 +1,5 @@
-package parsing
+package service
+
 
 import (
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
@@ -17,6 +19,12 @@ import (
 	"github.com/go-gost/core/service"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/config/parsing"
+	auth_parser "github.com/go-gost/x/config/parsing/auth"
+	hop_parser "github.com/go-gost/x/config/parsing/hop"
+	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
+	selector_parser "github.com/go-gost/x/config/parsing/selector"
+	admission_parser "github.com/go-gost/x/config/parsing/admission"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
@@ -56,12 +64,12 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 	if tlsConfig == nil {
-		tlsConfig = defaultTLSConfig.Clone()
+		tlsConfig = parsing.DefaultTLSConfig().Clone()
 	}
 
-	authers := autherList(cfg.Listener.Auther, cfg.Listener.Authers...)
+	authers := auth_parser.List(cfg.Listener.Auther, cfg.Listener.Authers...)
 	if len(authers) == 0 {
-		if auther := ParseAutherFromAuth(cfg.Listener.Auth); auther != nil {
+		if auther := auth_parser.ParseAutherFromAuth(cfg.Listener.Auth); auther != nil {
 			authers = append(authers, auther)
 		}
 	}
@@ -70,7 +78,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		auther = auth.AuthenticatorGroup(authers...)
 	}
 
-	admissions := admissionList(cfg.Admission, cfg.Admissions...)
+	admissions := admission_parser.List(cfg.Admission, cfg.Admissions...)
 
 	var sockOpts *chain.SockOpts
 	if cfg.SockOpts != nil {
@@ -85,26 +93,26 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var ignoreChain bool
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
-		ppv = mdutil.GetInt(md, mdKeyProxyProtocol)
-		if v := mdutil.GetString(md, mdKeyInterface); v != "" {
+		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
+		if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "" {
 			ifce = v
 		}
-		if v := mdutil.GetInt(md, mdKeySoMark); v > 0 {
+		if v := mdutil.GetInt(md, parsing.MDKeySoMark); v > 0 {
 			sockOpts = &chain.SockOpts{
 				Mark: v,
 			}
 		}
-		preUp = mdutil.GetStrings(md, mdKeyPreUp)
-		preDown = mdutil.GetStrings(md, mdKeyPreDown)
-		postUp = mdutil.GetStrings(md, mdKeyPostUp)
-		postDown = mdutil.GetStrings(md, mdKeyPostDown)
-		ignoreChain = mdutil.GetBool(md, mdKeyIgnoreChain)
+		preUp = mdutil.GetStrings(md, parsing.MDKeyPreUp)
+		preDown = mdutil.GetStrings(md, parsing.MDKeyPreDown)
+		postUp = mdutil.GetStrings(md, parsing.MDKeyPostUp)
+		postDown = mdutil.GetStrings(md, parsing.MDKeyPostDown)
+		ignoreChain = mdutil.GetBool(md, parsing.MDKeyIgnoreChain)
 	}
 
 	listenOpts := []listener.Option{
 		listener.AddrOption(cfg.Addr),
 		listener.AutherOption(auther),
-		listener.AuthOption(parseAuth(cfg.Listener.Auth)),
+		listener.AuthOption(auth_parser.Info(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
 		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
 		listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
@@ -150,12 +158,12 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 	if tlsConfig == nil {
-		tlsConfig = defaultTLSConfig.Clone()
+		tlsConfig = parsing.DefaultTLSConfig().Clone()
 	}
 
-	authers = autherList(cfg.Handler.Auther, cfg.Handler.Authers...)
+	authers = auth_parser.List(cfg.Handler.Auther, cfg.Handler.Authers...)
 	if len(authers) == 0 {
-		if auther := ParseAutherFromAuth(cfg.Handler.Auth); auther != nil {
+		if auther := auth_parser.ParseAutherFromAuth(cfg.Handler.Auth); auther != nil {
 			authers = append(authers, auther)
 		}
 	}
@@ -172,9 +180,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			Recorder: registry.RecorderRegistry().Get(r.Name),
 			Record:   r.Record,
 			Options: &recorder.Options{
-				Direction:       mdutil.GetBool(md, mdKeyRecorderDirection),
-				TimestampFormat: mdutil.GetString(md, mdKeyRecorderTimestampFormat),
-				Hexdump:         mdutil.GetBool(md, mdKeyRecorderHexdump),
+				Direction:       mdutil.GetBool(md, parsing.MDKeyRecorderDirection),
+				TimestampFormat: mdutil.GetString(md, parsing.MDKeyRecorderTimestampFormat),
+				Hexdump:         mdutil.GetBool(md, parsing.MDKeyRecorderHexdump),
 			},
 		})
 	}
@@ -201,8 +209,8 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		h = rf(
 			handler.RouterOption(router),
 			handler.AutherOption(auther),
-			handler.AuthOption(parseAuth(cfg.Handler.Auth)),
-			handler.BypassOption(bypass.BypassGroup(bypassList(cfg.Bypass, cfg.Bypasses...)...)),
+			handler.AuthOption(auth_parser.Info(cfg.Handler.Auth)),
+			handler.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
 			handler.LoggerOption(handlerLogger),
@@ -243,7 +251,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	return s, nil
 }
 
-func parseForwarder(cfg *config.ForwarderConfig) (chain.Hop, error) {
+func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -284,49 +292,9 @@ func parseForwarder(cfg *config.ForwarderConfig) (chain.Hop, error) {
 	}
 
 	if len(hc.Nodes) > 0 {
-		return ParseHop(&hc)
+		return hop_parser.ParseHop(&hc)
 	}
 	return registry.HopRegistry().Get(hc.Name), nil
-}
-
-func bypassList(name string, names ...string) []bypass.Bypass {
-	var bypasses []bypass.Bypass
-	if bp := registry.BypassRegistry().Get(name); bp != nil {
-		bypasses = append(bypasses, bp)
-	}
-	for _, s := range names {
-		if bp := registry.BypassRegistry().Get(s); bp != nil {
-			bypasses = append(bypasses, bp)
-		}
-	}
-	return bypasses
-}
-
-func autherList(name string, names ...string) []auth.Authenticator {
-	var authers []auth.Authenticator
-	if auther := registry.AutherRegistry().Get(name); auther != nil {
-		authers = append(authers, auther)
-	}
-	for _, s := range names {
-		if auther := registry.AutherRegistry().Get(s); auther != nil {
-			authers = append(authers, auther)
-		}
-	}
-	return authers
-}
-
-func admissionList(name string, names ...string) []admission.Admission {
-	var admissions []admission.Admission
-	if adm := registry.AdmissionRegistry().Get(name); adm != nil {
-		admissions = append(admissions, adm)
-	}
-	for _, s := range names {
-		if adm := registry.AdmissionRegistry().Get(s); adm != nil {
-			admissions = append(admissions, adm)
-		}
-	}
-
-	return admissions
 }
 
 func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
@@ -342,14 +310,14 @@ func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
 				chains = append(chains, c)
 			}
 		}
-		sel = parseChainSelector(group.Selector)
+		sel = selector_parser.ParseChainSelector(group.Selector)
 	}
 	if len(chains) == 0 {
 		return nil
 	}
 
 	if sel == nil {
-		sel = defaultChainSelector()
+		sel = selector_parser.DefaultChainSelector()
 	}
 
 	return xchain.NewChainGroup(chains...).

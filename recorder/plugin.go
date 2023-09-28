@@ -12,18 +12,18 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/plugin/recorder/proto"
-	"github.com/go-gost/x/internal/util/plugin"
+	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginRecorder struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.RecorderClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginRecorder creates a Recorder plugin based on gRPC.
-func NewGRPCPluginRecorder(name string, addr string, opts ...plugin.Option) recorder.Recorder {
+// NewGRPCPlugin creates a Recorder plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) recorder.Recorder {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -38,7 +38,7 @@ func NewGRPCPluginRecorder(name string, addr string, opts ...plugin.Option) reco
 		log.Error(err)
 	}
 
-	p := &grpcPluginRecorder{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -48,7 +48,7 @@ func NewGRPCPluginRecorder(name string, addr string, opts ...plugin.Option) reco
 	return p
 }
 
-func (p *grpcPluginRecorder) Record(ctx context.Context, b []byte) error {
+func (p *grpcPlugin) Record(ctx context.Context, b []byte) error {
 	if p.client == nil {
 		return nil
 	}
@@ -64,36 +64,36 @@ func (p *grpcPluginRecorder) Record(ctx context.Context, b []byte) error {
 	return nil
 }
 
-func (p *grpcPluginRecorder) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpRecorderRequest struct {
+type httpPluginRequest struct {
 	Data []byte `json:"data"`
 }
 
-type httpRecorderResponse struct {
+type httpPluginResponse struct {
 	OK bool `json:"ok"`
 }
 
-type httpPluginRecorder struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginRecorder creates an Recorder plugin based on HTTP.
-func NewHTTPPluginRecorder(name string, url string, opts ...plugin.Option) recorder.Recorder {
+// NewHTTPPlugin creates an Recorder plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) recorder.Recorder {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginRecorder{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -104,12 +104,12 @@ func NewHTTPPluginRecorder(name string, url string, opts ...plugin.Option) recor
 	}
 }
 
-func (p *httpPluginRecorder) Record(ctx context.Context, b []byte) error {
+func (p *httpPlugin) Record(ctx context.Context, b []byte) error {
 	if len(b) == 0 || p.client == nil {
 		return nil
 	}
 
-	rb := httpRecorderRequest{
+	rb := httpPluginRequest{
 		Data: b,
 	}
 	v, err := json.Marshal(&rb)
@@ -136,7 +136,7 @@ func (p *httpPluginRecorder) Record(ctx context.Context, b []byte) error {
 		return fmt.Errorf("%s", resp.Status)
 	}
 
-	res := httpRecorderResponse{}
+	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return err
 	}

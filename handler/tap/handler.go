@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/x/internal/util/ss"
@@ -28,7 +29,7 @@ func init() {
 }
 
 type tapHandler struct {
-	hop     chain.Hop
+	hop     hop.Hop
 	routes  sync.Map
 	exit    chan struct{}
 	cipher  core.Cipher
@@ -72,7 +73,7 @@ func (h *tapHandler) Init(md md.Metadata) (err error) {
 }
 
 // Forward implements handler.Forwarder.
-func (h *tapHandler) Forward(hop chain.Hop) {
+func (h *tapHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 

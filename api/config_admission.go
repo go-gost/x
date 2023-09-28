@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
+	parser "github.com/go-gost/x/config/parsing/admission"
 	"github.com/go-gost/x/registry"
 )
 
@@ -40,7 +40,7 @@ func createAdmission(ctx *gin.Context) {
 		return
 	}
 
-	v := parsing.ParseAdmission(&req.Data)
+	v := parser.ParseAdmission(&req.Data)
 
 	if err := registry.AdmissionRegistry().Register(req.Data.Name, v); err != nil {
 		writeError(ctx, ErrDup)
@@ -94,7 +94,7 @@ func updateAdmission(ctx *gin.Context) {
 
 	req.Data.Name = req.Admission
 
-	v := parsing.ParseAdmission(&req.Data)
+	v := parser.ParseAdmission(&req.Data)
 
 	registry.AdmissionRegistry().Unregister(req.Admission)
 

@@ -40,6 +40,47 @@ func KeyRedisLoaderOption(key string) RedisLoaderOption {
 	}
 }
 
+type redisStringLoader struct {
+	client *redis.Client
+	key    string
+}
+
+// RedisStringLoader loads data from redis string.
+func RedisStringLoader(addr string, opts ...RedisLoaderOption) Loader {
+	var options redisLoaderOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+
+	key := options.key
+	if key == "" {
+		key = DefaultRedisKey
+	}
+
+	return &redisStringLoader{
+		client: redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: options.password,
+			DB:       options.db,
+		}),
+		key: key,
+	}
+}
+
+func (p *redisStringLoader) Load(ctx context.Context) (io.Reader, error) {
+	v, err := p.client.Get(ctx, p.key).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(v), nil
+}
+
+func (p *redisStringLoader) Close() error {
+	return p.client.Close()
+}
+
 type redisSetLoader struct {
 	client *redis.Client
 	key    string

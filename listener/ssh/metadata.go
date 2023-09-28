@@ -17,6 +17,7 @@ type metadata struct {
 	signer         ssh.Signer
 	authorizedKeys map[string]bool
 	backlog        int
+	mptcp          bool
 }
 
 func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -64,5 +65,6 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }

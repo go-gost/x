@@ -11,18 +11,18 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/bypass/proto"
 	auth_util "github.com/go-gost/x/internal/util/auth"
-	"github.com/go-gost/x/internal/util/plugin"
+	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
-type grpcPluginBypass struct {
+type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.BypassClient
 	log    logger.Logger
 }
 
-// NewGRPCPluginBypass creates a Bypass plugin based on gRPC.
-func NewGRPCPluginBypass(name string, addr string, opts ...plugin.Option) bypass.Bypass {
+// NewGRPCPlugin creates a Bypass plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) bypass.Bypass {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -37,7 +37,7 @@ func NewGRPCPluginBypass(name string, addr string, opts ...plugin.Option) bypass
 		log.Error(err)
 	}
 
-	p := &grpcPluginBypass{
+	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
@@ -47,7 +47,7 @@ func NewGRPCPluginBypass(name string, addr string, opts ...plugin.Option) bypass
 	return p
 }
 
-func (p *grpcPluginBypass) Contains(ctx context.Context, addr string) bool {
+func (p *grpcPlugin) Contains(ctx context.Context, addr string) bool {
 	if p.client == nil {
 		return true
 	}
@@ -64,37 +64,37 @@ func (p *grpcPluginBypass) Contains(ctx context.Context, addr string) bool {
 	return r.Ok
 }
 
-func (p *grpcPluginBypass) Close() error {
+func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-type httpBypassRequest struct {
+type httpPluginRequest struct {
 	Addr   string `json:"addr"`
 	Client string `json:"client"`
 }
 
-type httpBypassResponse struct {
+type httpPluginResponse struct {
 	OK bool `json:"ok"`
 }
 
-type httpPluginBypass struct {
+type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
 	log    logger.Logger
 }
 
-// NewHTTPPluginBypass creates an Bypass plugin based on HTTP.
-func NewHTTPPluginBypass(name string, url string, opts ...plugin.Option) bypass.Bypass {
+// NewHTTPPlugin creates an Bypass plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) bypass.Bypass {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	return &httpPluginBypass{
+	return &httpPlugin{
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
@@ -105,12 +105,12 @@ func NewHTTPPluginBypass(name string, url string, opts ...plugin.Option) bypass.
 	}
 }
 
-func (p *httpPluginBypass) Contains(ctx context.Context, addr string) (ok bool) {
+func (p *httpPlugin) Contains(ctx context.Context, addr string) (ok bool) {
 	if p.client == nil {
 		return
 	}
 
-	rb := httpBypassRequest{
+	rb := httpPluginRequest{
 		Addr:   addr,
 		Client: string(auth_util.IDFromContext(ctx)),
 	}
@@ -138,7 +138,7 @@ func (p *httpPluginBypass) Contains(ctx context.Context, addr string) (ok bool) 
 		return
 	}
 
-	res := httpBypassResponse{}
+	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}

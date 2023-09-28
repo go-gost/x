@@ -19,6 +19,7 @@ type metadata struct {
 	pushPath      string
 	pullPath      string
 	backlog       int
+	mptcp         bool
 }
 
 func (l *phtListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -48,5 +49,6 @@ func (l *phtListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }
