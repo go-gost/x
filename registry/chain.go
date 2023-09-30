@@ -55,10 +55,10 @@ func (w *chainWrapper) Metadata() metadata.Metadata {
 	return nil
 }
 
-func (w *chainWrapper) Route(ctx context.Context, network, address string) chain.Route {
+func (w *chainWrapper) Route(ctx context.Context, network, address string, opts ...chain.RouteOption) chain.Route {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Route(ctx, network, address)
+	return v.Route(ctx, network, address, opts...)
 }

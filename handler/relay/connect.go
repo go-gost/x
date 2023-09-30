@@ -44,7 +44,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		return
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
 		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
 		_, err = resp.WriteTo(conn)
@@ -131,7 +131,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 
 	host, sp, _ := net.SplitHostPort(address)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
 		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)

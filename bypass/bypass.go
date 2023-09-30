@@ -232,7 +232,7 @@ func (bp *localBypass) parsePatterns(r io.Reader) (patterns []string, err error)
 	return
 }
 
-func (bp *localBypass) Contains(ctx context.Context, addr string) bool {
+func (bp *localBypass) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	if addr == "" || bp == nil {
 		return false
 	}

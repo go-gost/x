@@ -19,22 +19,22 @@ import (
 )
 
 type grpcPlugin struct {
-	name string
+	name   string
 	conn   grpc.ClientConnInterface
 	client proto.HopClient
 	log    logger.Logger
 }
 
 // NewGRPCPlugin creates a Hop plugin based on gRPC.
-func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hop.Hop{
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hop.Hop {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	log := logger.Default().WithFields(map[string]any{
-		"kind":   "hop",
-		"hop": name,
+		"kind": "hop",
+		"hop":  name,
 	})
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
@@ -64,9 +64,10 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 
 	r, err := p.client.Select(ctx,
 		&proto.SelectRequest{
-			Addr: options.Addr,
-			Host: options.Host,
-			Client: string(auth_util.IDFromContext(ctx)),
+			Network: options.Network,
+			Addr:    options.Addr,
+			Host:    options.Host,
+			Client:  string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -100,9 +101,9 @@ func (p *grpcPlugin) Close() error {
 
 type httpPluginRequest struct {
 	Network string `json:"network"`
-	Addr   string `json:"addr"`
-	Host string `json:"host"`
-	Client string `json:"client"`
+	Addr    string `json:"addr"`
+	Host    string `json:"host"`
+	Client  string `json:"client"`
 }
 
 type httpPluginResponse struct {
@@ -110,7 +111,7 @@ type httpPluginResponse struct {
 }
 
 type httpPlugin struct {
-	name string
+	name   string
 	url    string
 	client *http.Client
 	header http.Header
@@ -118,20 +119,20 @@ type httpPlugin struct {
 }
 
 // NewHTTPPlugin creates an Hop plugin based on HTTP.
-func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hop.Hop{
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hop.Hop {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	return &httpPlugin{
-		name: name,
+		name:   name,
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
 		log: logger.Default().WithFields(map[string]any{
-			"kind":   "hop",
-			"hop": name,
+			"kind": "hop",
+			"hop":  name,
 		}),
 	}
 }
@@ -147,9 +148,10 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 	}
 
 	rb := httpPluginRequest{
-		Addr:   options.Addr,
-		Host: options.Host,
-		Client: string(auth_util.IDFromContext(ctx)),
+		Network: options.Network,
+		Addr:    options.Addr,
+		Host:    options.Host,
+		Client:  string(auth_util.IDFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

@@ -30,10 +30,10 @@ type bypassWrapper struct {
 	r    *bypassRegistry
 }
 
-func (w *bypassWrapper) Contains(ctx context.Context, addr string) bool {
+func (w *bypassWrapper) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	bp := w.r.get(w.name)
 	if bp == nil {
 		return false
 	}
-	return bp.Contains(ctx, addr)
+	return bp.Contains(ctx, network, addr, opts...)
 }

@@ -58,7 +58,7 @@ func (r *Relay) Run() (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(context.Background(), raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(context.Background(), "udp", raddr.String()) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}
@@ -96,7 +96,7 @@ func (r *Relay) Run() (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(context.Background(), raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(context.Background(), "udp", raddr.String()) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}

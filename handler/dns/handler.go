@@ -199,7 +199,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 	}
 
 	if h.options.Bypass != nil && mq.Question[0].Qclass == dns.ClassINET {
-		if h.options.Bypass.Contains(context.Background(), strings.Trim(mq.Question[0].Name, ".")) {
+		if h.options.Bypass.Contains(context.Background(), "udp", strings.Trim(mq.Question[0].Name, ".")) {
 			log.Debug("bypass: ", mq.Question[0].Name)
 			mr = (&dns.Msg{}).SetReply(&mq)
 			b := bufpool.Get(h.md.bufferSize)

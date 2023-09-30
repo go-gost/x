@@ -19,7 +19,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	})
 	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
 		resp := gosocks5.NewReply(gosocks5.NotAllowed, nil)
 		log.Trace(resp)
 		log.Debug("bypass: ", address)

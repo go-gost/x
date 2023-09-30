@@ -154,7 +154,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, addr) {
 		resp.StatusCode = http.StatusForbidden
 
 		if log.IsLevelEnabled(logger.TraceLevel) {

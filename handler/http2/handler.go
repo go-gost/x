@@ -155,7 +155,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 	ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr) {
 		w.WriteHeader(http.StatusForbidden)
 		log.Debug("bypass: ", addr)
 		return nil

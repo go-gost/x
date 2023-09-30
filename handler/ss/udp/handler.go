@@ -135,7 +135,7 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), addr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), addr.Network(), addr.String()) {
 					log.Warn("bypass: ", addr)
 					return nil
 				}
@@ -167,7 +167,7 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), raddr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), raddr.Network(), raddr.String()) {
 					log.Warn("bypass: ", raddr)
 					return nil
 				}

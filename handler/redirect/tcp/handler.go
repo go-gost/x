@@ -122,7 +122,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, dstAddr.String()) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
 		log.Debug("bypass: ", dstAddr)
 		return nil
 	}
@@ -163,7 +163,7 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		"host": host,
 	})
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, host) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 		log.Debug("bypass: ", host)
 		return nil
 	}
@@ -232,7 +232,7 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 		"host": host,
 	})
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, host) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 		log.Debug("bypass: ", host)
 		return nil
 	}

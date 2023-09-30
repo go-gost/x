@@ -79,14 +79,23 @@ func (c *Chain) Name() string {
 	return c.name
 }
 
-func (c *Chain) Route(ctx context.Context, network, address string) chain.Route {
+func (c *Chain) Route(ctx context.Context, network, address string, opts ...chain.RouteOption) chain.Route {
 	if c == nil || len(c.hops) == 0 {
 		return nil
 	}
 
+	var options chain.RouteOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	rt := NewRoute(ChainRouteOption(c))
 	for _, h := range c.hops {
-		node := h.Select(ctx, hop.AddrSelectOption(address))
+		node := h.Select(ctx,
+			hop.NetworkSelectOption(network),
+			hop.AddrSelectOption(address),
+			hop.HostSelectOption(options.Host),
+		)
 		if node == nil {
 			return rt
 		}
@@ -117,9 +126,9 @@ func (p *chainGroup) WithSelector(s selector.Selector[chain.Chainer]) *chainGrou
 	return p
 }
 
-func (p *chainGroup) Route(ctx context.Context, network, address string) chain.Route {
+func (p *chainGroup) Route(ctx context.Context, network, address string, opts ...chain.RouteOption) chain.Route {
 	if chain := p.next(ctx); chain != nil {
-		return chain.Route(ctx, network, address)
+		return chain.Route(ctx, network, address, opts...)
 	}
 	return nil
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/bypass/proto"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/plugin"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -47,15 +47,22 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) bypass.Bypas
 	return p
 }
 
-func (p *grpcPlugin) Contains(ctx context.Context, addr string) bool {
+func (p *grpcPlugin) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	if p.client == nil {
 		return true
 	}
 
+	var options bypass.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	r, err := p.client.Bypass(ctx,
 		&proto.BypassRequest{
-			Addr:   addr,
-			Client: string(auth_util.IDFromContext(ctx)),
+			Network: network,
+			Addr:    addr,
+			Host:    options.Host,
+			Client:  string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -72,8 +79,10 @@ func (p *grpcPlugin) Close() error {
 }
 
 type httpPluginRequest struct {
-	Addr   string `json:"addr"`
-	Client string `json:"client"`
+	Network string `json:"network"`
+	Addr    string `json:"addr"`
+	Host    string `json:"host"`
+	Client  string `json:"client"`
 }
 
 type httpPluginResponse struct {
@@ -105,14 +114,21 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) bypass.Bypass
 	}
 }
 
-func (p *httpPlugin) Contains(ctx context.Context, addr string) (ok bool) {
+func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) (ok bool) {
 	if p.client == nil {
 		return
 	}
 
+	var options bypass.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	rb := httpPluginRequest{
-		Addr:   addr,
-		Client: string(auth_util.IDFromContext(ctx)),
+		Network: network,
+		Addr:    addr,
+		Host:    options.Host,
+		Client:  string(auth_util.IDFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

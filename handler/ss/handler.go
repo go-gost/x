@@ -101,7 +101,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr.String()) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr.String()) {
 		log.Debug("bypass: ", addr.String())
 		return nil
 	}

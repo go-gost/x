@@ -123,7 +123,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	})
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr) {
 		resp := gosocks4.NewReply(gosocks4.Rejected, nil)
 		log.Trace(resp)
 		log.Debug("bypass: ", addr)
