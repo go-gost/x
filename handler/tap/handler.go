@@ -204,6 +204,9 @@ func (h *tapHandler) transport(tap net.Conn, conn net.PacketConn, raddr net.Addr
 					}
 					return err
 				}
+				if n == 0 {
+					return nil
+				}
 
 				src := waterutil.MACSource((*b)[:n])
 				dst := waterutil.MACDestination((*b)[:n])
@@ -259,6 +262,9 @@ func (h *tapHandler) transport(tap net.Conn, conn net.PacketConn, raddr net.Addr
 				if err != nil &&
 					err != shadowaead.ErrShortPacket {
 					return err
+				}
+				if n == 0 {
+					return nil
 				}
 
 				src := waterutil.MACSource((*b)[:n])

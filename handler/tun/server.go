@@ -49,6 +49,9 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				if err != nil {
 					return ErrTun
 				}
+				if n == 0 {
+					return nil
+				}
 
 				var src, dst net.IP
 				if waterutil.IsIPv4((*b)[:n]) {
@@ -109,6 +112,9 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				n, addr, err := conn.ReadFrom(*b)
 				if err != nil {
 					return err
+				}
+				if n == 0 {
+					return nil
 				}
 				if n > keepAliveHeaderLength && bytes.Equal((*b)[:4], magicHeader) {
 					var peerIPs []net.IP
