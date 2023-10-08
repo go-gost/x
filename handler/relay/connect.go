@@ -142,16 +142,22 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 	if ingress := h.md.ingress; ingress != nil {
 		tid = parseTunnelID(ingress.Get(ctx, host))
 	}
-	if !tid.Equal(tunnelID) && !h.md.directTunnel {
-		resp.Status = relay.StatusBadRequest
-		resp.WriteTo(conn)
-		err := fmt.Errorf("not route to host %s", host)
-		log.Error(err)
-		return err
+
+	// client is not an public entrypoint.
+	if h.md.entryPointID.IsZero() || !tunnelID.Equal(h.md.entryPointID) {
+		if !tid.Equal(tunnelID) && !h.md.directTunnel {
+			resp.Status = relay.StatusHostUnreachable
+			resp.WriteTo(conn)
+			err := fmt.Errorf("no route to host %s", host)
+			log.Error(err)
+			return err
+		}
 	}
 
-	cc, _, err := getTunnelConn(network, h.pool, tunnelID, 3, log)
+	cc, _, err := getTunnelConn(network, h.pool, tid, 3, log)
 	if err != nil {
+		resp.Status = relay.StatusServiceUnavailable
+		resp.WriteTo(conn)
 		log.Error(err)
 		return err
 	}

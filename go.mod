@@ -21,7 +21,7 @@ require (
 	github.com/miekg/dns v1.1.56
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pion/dtls/v2 v2.2.6
-	github.com/pires/go-proxyproto v0.6.2
+	github.com/pires/go-proxyproto v0.7.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/quic-go/quic-go v0.38.1
 	github.com/rs/xid v1.3.0

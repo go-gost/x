@@ -210,12 +210,22 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), cc.RemoteAddr())
 
+	var features []relay.Feature
 	af := &relay.AddrFeature{}
-	af.ParseFrom(conn.RemoteAddr().String())
+	af.ParseFrom(conn.RemoteAddr().String()) // client address
+	features = append(features, af)
+
+	if host != "" {
+		// target host
+		af := &relay.AddrFeature{}
+		af.ParseFrom(host)
+		features = append(features, af)
+	}
+
 	resp := relay.Response{
 		Version:  relay.Version1,
 		Status:   relay.StatusOK,
-		Features: []relay.Feature{af},
+		Features: features,
 	}
 	resp.WriteTo(cc)
 
@@ -284,12 +294,24 @@ func (h *tunnelHandler) handleHTTP(ctx context.Context, raddr net.Addr, rw io.Re
 				connPool.Store(tunnelID, cc)
 				log.Debugf("new connection to tunnel %s(connector %s)", tunnelID, cid)
 
+				var features []relay.Feature
 				af := &relay.AddrFeature{}
 				af.ParseFrom(raddr.String())
+				features = append(features, af)
+
+				if host := req.Host; host != "" {
+					if h, _, _ := net.SplitHostPort(host); h == "" {
+						host = net.JoinHostPort(host, "80")
+					}
+					af := &relay.AddrFeature{}
+					af.ParseFrom(host)
+					features = append(features, af)
+				}
+
 				(&relay.Response{
 					Version:  relay.Version1,
 					Status:   relay.StatusOK,
-					Features: []relay.Feature{af},
+					Features: features,
 				}).WriteTo(cc)
 
 				go func() {

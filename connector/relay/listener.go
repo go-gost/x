@@ -48,6 +48,7 @@ func (p *bindListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 	}
 
 	var address, host string
+	// the first addr is the client address, the optional second addr is the target host address.
 	for _, f := range resp.Features {
 		if f.Type() == relay.FeatureAddr {
 			if fa, ok := f.(*relay.AddrFeature); ok {

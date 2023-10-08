@@ -95,6 +95,7 @@ func (h *relayHandler) initEntryPoint() (err error) {
 	epListener := newTCPListener(ln,
 		listener.AddrOption(h.md.entryPoint),
 		listener.ServiceOption(serviceName),
+		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
 		listener.LoggerOption(log.WithFields(map[string]any{
 			"kind": "listener",
 		})),

@@ -20,6 +20,7 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/util/forward"
 	"github.com/go-gost/x/registry"
@@ -107,7 +108,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 	if protocol == forward.ProtoHTTP {
-		h.handleHTTP(ctx, rw, log)
+		h.handleHTTP(ctx, rw, conn.RemoteAddr(), conn.LocalAddr(), log)
 		return nil
 	}
 
@@ -157,6 +158,13 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		marker.Reset()
 	}
 
+	if dst, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		if dst.IP.Equal(net.IPv6zero) {
+			dst.IP = net.IPv4zero
+		}
+	}
+	cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), conn.LocalAddr(), cc)
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
 	xnet.Transport(rw, cc)
@@ -167,7 +175,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	return nil
 }
 
-func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log logger.Logger) (err error) {
+func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remoteAddr net.Addr, localAddr net.Addr, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
 	var connPool sync.Map
 
@@ -245,6 +253,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 						InsecureSkipVerify: !tlsSettings.Secure,
 					})
 				}
+
+				cc = proxyproto.WrapClientConn(h.md.proxyProtocol, remoteAddr, localAddr, cc)
 
 				connPool.Store(target, cc)
 				log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
