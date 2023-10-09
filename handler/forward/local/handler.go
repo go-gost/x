@@ -134,18 +134,26 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return err
 	}
 
+	addr := target.Addr
+	if opts := target.Options(); opts != nil {
+		switch opts.Network {
+		case "unix":
+			network = opts.Network
+		default:
+			if _, _, err := net.SplitHostPort(addr); err != nil {
+				addr += ":0"
+			}
+		}
+	}
+
 	log = log.WithFields(map[string]any{
 		"host": host,
 		"node": target.Name,
-		"dst":  fmt.Sprintf("%s/%s", target.Addr, network),
+		"dst":  fmt.Sprintf("%s/%s", addr, network),
 	})
 
-	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
-	addr := target.Addr
-	if _, _, err := net.SplitHostPort(addr); err != nil {
-		addr += ":0"
-	}
 	cc, err := h.router.Dial(ctx, network, addr)
 	if err != nil {
 		log.Error(err)

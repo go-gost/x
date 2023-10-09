@@ -92,8 +92,10 @@ type APIConfig struct {
 }
 
 type MetricsConfig struct {
-	Addr string `json:"addr"`
-	Path string `yaml:",omitempty" json:"path,omitempty"`
+	Addr   string      `json:"addr"`
+	Path   string      `yaml:",omitempty" json:"path,omitempty"`
+	Auth   *AuthConfig `yaml:",omitempty" json:"auth,omitempty"`
+	Auther string      `yaml:",omitempty" json:"auther,omitempty"`
 }
 
 type TLSConfig struct {
@@ -303,14 +305,13 @@ type ForwarderConfig struct {
 	Name     string               `yaml:",omitempty" json:"name,omitempty"`
 	Selector *SelectorConfig      `yaml:",omitempty" json:"selector,omitempty"`
 	Nodes    []*ForwardNodeConfig `json:"nodes"`
-	// DEPRECATED by nodes since beta.4
-	Targets []string `yaml:",omitempty" json:"targets,omitempty"`
 }
 
 type ForwardNodeConfig struct {
 	Name     string          `yaml:",omitempty" json:"name,omitempty"`
 	Addr     string          `yaml:",omitempty" json:"addr,omitempty"`
 	Host     string          `yaml:",omitempty" json:"host,omitempty"`
+	Network  string          `yaml:",omitempty" json:"network,omitempty"`
 	Protocol string          `yaml:",omitempty" json:"protocol,omitempty"`
 	Bypass   string          `yaml:",omitempty" json:"bypass,omitempty"`
 	Bypasses []string        `yaml:",omitempty" json:"bypasses,omitempty"`
@@ -402,6 +403,7 @@ type NodeConfig struct {
 	Name      string           `json:"name"`
 	Addr      string           `yaml:",omitempty" json:"addr,omitempty"`
 	Host      string           `yaml:",omitempty" json:"host,omitempty"`
+	Network   string           `yaml:",omitempty" json:"network,omitempty"`
 	Protocol  string           `yaml:",omitempty" json:"protocol,omitempty"`
 	Interface string           `yaml:",omitempty" json:"interface,omitempty"`
 	SockOpts  *SockOptsConfig  `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`

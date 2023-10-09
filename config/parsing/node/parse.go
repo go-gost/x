@@ -168,6 +168,7 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 		chain.MetadataNodeOption(nm),
 		chain.HostNodeOption(host),
 		chain.ProtocolNodeOption(cfg.Protocol),
+		chain.NetworkNodeOption(cfg.Network),
 	}
 	if cfg.HTTP != nil {
 		opts = append(opts, chain.HTTPNodeOption(&chain.HTTPNodeSettings{

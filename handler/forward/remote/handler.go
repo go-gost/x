@@ -135,6 +135,14 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return err
 	}
 
+	if opts := target.Options(); opts != nil {
+		switch opts.Network {
+		case "unix":
+			network = opts.Network
+		default:
+		}
+	}
+
 	log = log.WithFields(map[string]any{
 		"host": host,
 		"node": target.Name,

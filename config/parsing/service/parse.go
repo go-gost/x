@@ -1,16 +1,14 @@
 package service
 
-
 import (
 	"fmt"
-	"strings"
 
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdutil "github.com/go-gost/core/metadata/util"
@@ -20,11 +18,11 @@ import (
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
-	auth_parser "github.com/go-gost/x/config/parsing/auth"
-	hop_parser "github.com/go-gost/x/config/parsing/hop"
-	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
-	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	admission_parser "github.com/go-gost/x/config/parsing/admission"
+	auth_parser "github.com/go-gost/x/config/parsing/auth"
+	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
+	hop_parser "github.com/go-gost/x/config/parsing/hop"
+	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
@@ -260,37 +258,24 @@ func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 		Name:     cfg.Name,
 		Selector: cfg.Selector,
 	}
-	if len(cfg.Nodes) > 0 {
-		for _, node := range cfg.Nodes {
-			if node != nil {
-				hc.Nodes = append(hc.Nodes,
-					&config.NodeConfig{
-						Name:     node.Name,
-						Addr:     node.Addr,
-						Host:     node.Host,
-						Protocol: node.Protocol,
-						Bypass:   node.Bypass,
-						Bypasses: node.Bypasses,
-						HTTP:     node.HTTP,
-						TLS:      node.TLS,
-						Auth:     node.Auth,
-					},
-				)
-			}
-		}
-	} else {
-		for _, target := range cfg.Targets {
-			if v := strings.TrimSpace(target); v != "" {
-				hc.Nodes = append(hc.Nodes,
-					&config.NodeConfig{
-						Name: target,
-						Addr: target,
-					},
-				)
-			}
+	for _, node := range cfg.Nodes {
+		if node != nil {
+			hc.Nodes = append(hc.Nodes,
+				&config.NodeConfig{
+					Name:     node.Name,
+					Addr:     node.Addr,
+					Host:     node.Host,
+					Network:  node.Network,
+					Protocol: node.Protocol,
+					Bypass:   node.Bypass,
+					Bypasses: node.Bypasses,
+					HTTP:     node.HTTP,
+					TLS:      node.TLS,
+					Auth:     node.Auth,
+				},
+			)
 		}
 	}
-
 	if len(hc.Nodes) > 0 {
 		return hop_parser.ParseHop(&hc)
 	}
