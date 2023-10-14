@@ -100,7 +100,7 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 }
 
 func (t *Tunnel) clean() {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	for range ticker.C {
 		t.mu.Lock()
 		var connectors []*Connector

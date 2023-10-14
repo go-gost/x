@@ -222,6 +222,9 @@ func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, netw
 
 	h.pool.Add(tunnelID, NewConnector(connectorID, session))
 	log.Debugf("tunnel %s connector %s/%s established", tunnelID, connectorID, network)
+	if h.recorder.Recorder != nil {
+		h.recorder.Recorder.Record(ctx, tunnelID[:])
+	}
 
 	return
 }

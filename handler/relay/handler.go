@@ -13,10 +13,12 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
 	xnet "github.com/go-gost/x/internal/net"
 	auth_util "github.com/go-gost/x/internal/util/auth"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 )
@@ -33,12 +35,13 @@ func init() {
 }
 
 type relayHandler struct {
-	hop     hop.Hop
-	router  *chain.Router
-	md      metadata
-	options handler.Options
-	ep      service.Service
-	pool    *ConnectorPool
+	hop      hop.Hop
+	router   *chain.Router
+	md       metadata
+	options  handler.Options
+	ep       service.Service
+	pool     *ConnectorPool
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -61,6 +64,15 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 	h.router = h.options.Router
 	if h.router == nil {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
+	}
+
+	if opts := h.router.Options(); opts != nil {
+		for _, ro := range opts.Recorders {
+			if ro.Record == xrecorder.RecorderServiceHandlerRelayTunnelEndpoint {
+				h.recorder = ro
+				break
+			}
+		}
 	}
 
 	if err = h.initEntryPoint(); err != nil {

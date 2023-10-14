@@ -182,7 +182,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 	}
 
 	var features []relay.Feature
-	af := &relay.AddrFeature{} // visitor address
+	af := &relay.AddrFeature{} // source/visitor address
 	af.ParseFrom(conn.RemoteAddr().String())
 	features = append(features, af)
 
