@@ -7,10 +7,10 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-gost/core v0.0.0-20231009132641-4525630abb98
+	github.com/go-gost/core v0.0.0-20231015073540-f08c81460234
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.4.0
-	github.com/go-gost/plugin v0.0.0-20230930094933-bc86458bf2fb
+	github.com/go-gost/plugin v0.0.0-20231015073745-fc558b9a3146
 	github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5

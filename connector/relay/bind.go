@@ -17,7 +17,7 @@ import (
 // Bind implements connector.Binder.
 func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, address string, opts ...connector.BindOption) (net.Listener, error) {
 	if !c.md.tunnelID.IsZero() {
-		return c.bindTunnel(ctx, conn, network, c.options.Logger)
+		return c.bindTunnel(ctx, conn, network, address, c.options.Logger)
 	}
 
 	log := c.options.Logger.WithFields(map[string]any{
@@ -43,12 +43,12 @@ func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, addre
 	}
 }
 
-func (c *relayConnector) bindTunnel(ctx context.Context, conn net.Conn, network string, log logger.Logger) (net.Listener, error) {
-	addr, cid, err := c.initTunnel(conn, network)
+func (c *relayConnector) bindTunnel(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) (net.Listener, error) {
+	addr, cid, err := c.initTunnel(conn, network, address)
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("create tunnel %s connector %s/%s OK", c.md.tunnelID.String(), cid, network)
+	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s", addr, network, c.md.tunnelID.String(), cid)
 
 	session, err := mux.ServerSession(conn)
 	if err != nil {
@@ -63,7 +63,7 @@ func (c *relayConnector) bindTunnel(ctx context.Context, conn net.Conn, network 
 	}, nil
 }
 
-func (c *relayConnector) initTunnel(conn net.Conn, network string) (addr net.Addr, cid relay.ConnectorID, err error) {
+func (c *relayConnector) initTunnel(conn net.Conn, network, address string) (addr net.Addr, cid relay.ConnectorID, err error) {
 	req := relay.Request{
 		Version: relay.Version1,
 		Cmd:     relay.CmdBind,
@@ -81,9 +81,14 @@ func (c *relayConnector) initTunnel(conn net.Conn, network string) (addr net.Add
 		})
 	}
 
-	req.Features = append(req.Features, &relay.TunnelFeature{
-		ID: c.md.tunnelID.ID(),
-	})
+	af := &relay.AddrFeature{}
+	af.ParseFrom(address)
+
+	req.Features = append(req.Features, af,
+		&relay.TunnelFeature{
+			ID: c.md.tunnelID.ID(),
+		},
+	)
 	if _, err = req.WriteTo(conn); err != nil {
 		return
 	}
@@ -103,7 +108,10 @@ func (c *relayConnector) initTunnel(conn net.Conn, network string) (addr net.Add
 		switch f.Type() {
 		case relay.FeatureAddr:
 			if feature, _ := f.(*relay.AddrFeature); feature != nil {
-				addr, err = net.ResolveTCPAddr("tcp", net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port))))
+				addr = &bindAddr{
+					network: network,
+					addr:    net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port))),
+				}
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {

@@ -9,7 +9,6 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
-	"github.com/go-gost/relay"
 	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/registry"
 )
@@ -22,7 +21,6 @@ type metadata struct {
 	hash                    string
 	directTunnel            bool
 	entryPoint              string
-	entryPointID            relay.TunnelID
 	entryPointProxyProtocol int
 	ingress                 ingress.Ingress
 }
@@ -53,7 +51,6 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
 	h.md.entryPoint = mdutil.GetString(md, entryPoint)
-	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, entryPointID))
 	h.md.entryPointProxyProtocol = mdutil.GetInt(md, entryPointProxyProtocol)
 
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))

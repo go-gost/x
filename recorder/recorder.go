@@ -1,6 +1,6 @@
 package recorder
 
 const (
-	RecorderServiceHandlerSerial              = "recorder.service.handler.serial"
-	RecorderServiceHandlerRelayTunnelEndpoint = "recorder.service.handler.relay.tunnel.endpoint"
+	RecorderServiceHandlerSerial         = "recorder.service.handler.serial"
+	RecorderServiceHandlerTunnelEndpoint = "recorder.service.handler.tunnel.endpoint"
 )

@@ -259,6 +259,10 @@ func (ing *localIngress) Get(ctx context.Context, host string) string {
 	return ep
 }
 
+func (ing *localIngress) Set(ctx context.Context, host, endpoint string) {
+
+}
+
 func (ing *localIngress) lookup(host string) string {
 	if ing == nil || len(ing.rules) == 0 {
 		return ""

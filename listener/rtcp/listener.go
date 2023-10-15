@@ -50,12 +50,13 @@ func (l *rtcpListener) Init(md md.Metadata) (err error) {
 	if xnet.IsIPv4(l.options.Addr) {
 		network = "tcp4"
 	}
-	laddr, err := net.ResolveTCPAddr(network, l.options.Addr)
-	if err != nil {
-		return
+	if laddr, _ := net.ResolveTCPAddr(network, l.options.Addr); laddr != nil {
+		l.laddr = laddr
+	}
+	if l.laddr == nil {
+		l.laddr = &bindAddr{addr: l.options.Addr}
 	}
 
-	l.laddr = laddr
 	l.router = chain.NewRouter(
 		chain.ChainRouterOption(l.options.Chain),
 		chain.LoggerRouterOption(l.logger),
@@ -109,4 +110,16 @@ func (l *rtcpListener) Close() error {
 	}
 
 	return nil
+}
+
+type bindAddr struct {
+	addr string
+}
+
+func (p *bindAddr) Network() string {
+	return "tcp"
+}
+
+func (p *bindAddr) String() string {
+	return p.addr
 }

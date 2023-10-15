@@ -37,3 +37,12 @@ func (w *ingressWrapper) Get(ctx context.Context, host string) string {
 	}
 	return v.Get(ctx, host)
 }
+
+func (w *ingressWrapper) Set(ctx context.Context, host, endpoint string) {
+	v := w.r.get(w.name)
+	if v == nil {
+		return
+	}
+
+	v.Set(ctx, host, endpoint)
+}

@@ -1,44 +1,40 @@
-package relay
+package tunnel
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
-	"github.com/go-gost/core/hop"
-	"github.com/go-gost/core/listener"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/service"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/relay"
-	xnet "github.com/go-gost/x/internal/net"
 	auth_util "github.com/go-gost/x/internal/util/auth"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
-	xservice "github.com/go-gost/x/service"
 )
 
 var (
 	ErrBadVersion   = errors.New("relay: bad version")
 	ErrUnknownCmd   = errors.New("relay: unknown command")
+	ErrTunnelID     = errors.New("tunnel: invalid tunnel ID")
 	ErrUnauthorized = errors.New("relay: unauthorized")
 	ErrRateLimit    = errors.New("relay: rate limiting exceeded")
 )
 
 func init() {
-	registry.HandlerRegistry().Register("relay", NewHandler)
+	registry.HandlerRegistry().Register("tunnel", NewHandler)
 }
 
-type relayHandler struct {
-	hop     hop.Hop
-	router  *chain.Router
-	md      metadata
-	options handler.Options
-	ep      service.Service
-	pool    *ConnectorPool
+type tunnelHandler struct {
+	router   *chain.Router
+	md       metadata
+	options  handler.Options
+	pool     *ConnectorPool
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -47,13 +43,13 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 		opt(&options)
 	}
 
-	return &relayHandler{
+	return &tunnelHandler{
 		options: options,
 		pool:    NewConnectorPool(),
 	}
 }
 
-func (h *relayHandler) Init(md md.Metadata) (err error) {
+func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err
 	}
@@ -63,74 +59,19 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
-	if err = h.initEntryPoint(); err != nil {
-		return
+	if opts := h.router.Options(); opts != nil {
+		for _, ro := range opts.Recorders {
+			if ro.Record == xrecorder.RecorderServiceHandlerTunnelEndpoint {
+				h.recorder = ro
+				break
+			}
+		}
 	}
+
 	return nil
 }
 
-func (h *relayHandler) initEntryPoint() (err error) {
-	if h.md.entryPoint == "" {
-		return
-	}
-
-	network := "tcp"
-	if xnet.IsIPv4(h.md.entryPoint) {
-		network = "tcp4"
-	}
-
-	ln, err := net.Listen(network, h.md.entryPoint)
-	if err != nil {
-		h.options.Logger.Error(err)
-		return
-	}
-
-	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
-	log := h.options.Logger.WithFields(map[string]any{
-		"service":  serviceName,
-		"listener": "tcp",
-		"handler":  "ep-tunnel",
-		"kind":     "service",
-	})
-	epListener := newTCPListener(ln,
-		listener.AddrOption(h.md.entryPoint),
-		listener.ServiceOption(serviceName),
-		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
-		listener.LoggerOption(log.WithFields(map[string]any{
-			"kind": "listener",
-		})),
-	)
-	if err = epListener.Init(nil); err != nil {
-		return
-	}
-	epHandler := newTunnelHandler(
-		h.pool,
-		h.md.ingress,
-		handler.ServiceOption(serviceName),
-		handler.LoggerOption(log.WithFields(map[string]any{
-			"kind": "handler",
-		})),
-	)
-	if err = epHandler.Init(nil); err != nil {
-		return
-	}
-
-	h.ep = xservice.NewService(
-		serviceName, epListener, epHandler,
-		xservice.LoggerOption(log),
-	)
-	go h.ep.Serve()
-	log.Infof("entrypoint: %s", h.ep.Addr())
-
-	return
-}
-
-// Forward implements handler.Forwarder.
-func (h *relayHandler) Forward(hop hop.Hop) {
-	h.hop = hop
-}
-
-func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
+func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
@@ -201,6 +142,12 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}
 	}
 
+	if tunnelID.IsZero() {
+		resp.Status = relay.StatusBadRequest
+		resp.WriteTo(conn)
+		return ErrTunnelID
+	}
+
 	if user != "" {
 		log = log.WithFields(map[string]any{"user": user})
 	}
@@ -220,27 +167,12 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		network = "udp"
 	}
 
-	if h.hop != nil {
-		defer conn.Close()
-		// forward mode
-		return h.handleForward(ctx, conn, network, log)
-	}
-
 	switch req.Cmd & relay.CmdMask {
-	case 0, relay.CmdConnect:
+	case relay.CmdConnect:
 		defer conn.Close()
-
-		if !tunnelID.IsZero() {
-			return h.handleConnectTunnel(ctx, conn, network, address, tunnelID, log)
-		}
-		return h.handleConnect(ctx, conn, network, address, log)
+		return h.handleConnect(ctx, conn, network, address, tunnelID, log)
 	case relay.CmdBind:
-		if !tunnelID.IsZero() {
-			return h.handleBindTunnel(ctx, conn, network, address, tunnelID, log)
-		}
-
-		defer conn.Close()
-		return h.handleBind(ctx, conn, network, address, log)
+		return h.handleBind(ctx, conn, network, address, tunnelID, log)
 	default:
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn)
@@ -249,14 +181,11 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 }
 
 // Close implements io.Closer interface.
-func (h *relayHandler) Close() error {
-	if h.ep != nil {
-		return h.ep.Close()
-	}
+func (h *tunnelHandler) Close() error {
 	return nil
 }
 
-func (h *relayHandler) checkRateLimit(addr net.Addr) bool {
+func (h *tunnelHandler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
 	}

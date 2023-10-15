@@ -2,6 +2,8 @@ package relay
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -181,7 +183,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	return nil
 }
 
-func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, network string, tunnelID relay.TunnelID, log logger.Logger) (err error) {
+func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, network, address string, tunnelID relay.TunnelID, log logger.Logger) (err error) {
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
@@ -198,9 +200,11 @@ func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, netw
 		connectorID = relay.NewUDPConnectorID(uuid[:])
 	}
 
-	addr := ":0"
-	if h.ep != nil {
-		addr = h.ep.Addr().String()
+	addr := address
+	if host, port, _ := net.SplitHostPort(addr); host == "" {
+		v := md5.Sum([]byte(tunnelID.String()))
+		host = hex.EncodeToString(v[:8])
+		addr = net.JoinHostPort(host, port)
 	}
 	af := &relay.AddrFeature{}
 	err = af.ParseFrom(addr)
@@ -221,10 +225,11 @@ func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, netw
 	}
 
 	h.pool.Add(tunnelID, NewConnector(connectorID, session))
-	log.Debugf("tunnel %s connector %s/%s established", tunnelID, connectorID, network)
-	if h.recorder.Recorder != nil {
-		h.recorder.Recorder.Record(ctx, tunnelID[:])
+	if h.md.ingress != nil {
+		h.md.ingress.Set(ctx, addr, tunnelID.String())
 	}
+
+	log.Debugf("%s/%s: tunnel=%s, connector=%s established", address, network, tunnelID, connectorID)
 
 	return
 }

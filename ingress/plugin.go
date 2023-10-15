@@ -62,6 +62,17 @@ func (p *grpcPlugin) Get(ctx context.Context, host string) string {
 	return r.GetEndpoint()
 }
 
+func (p *grpcPlugin) Set(ctx context.Context, host, endpoint string) {
+	if p.client == nil {
+		return
+	}
+
+	p.client.Set(ctx, &proto.SetRequest{
+		Host:     host,
+		Endpoint: endpoint,
+	})
+}
+
 func (p *grpcPlugin) Close() error {
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
@@ -69,12 +80,20 @@ func (p *grpcPlugin) Close() error {
 	return nil
 }
 
-type httpPluginRequest struct {
+type httpPluginGetRequest struct {
 	Host string `json:"host"`
 }
 
-type httpPluginResponse struct {
+type httpPluginGetResponse struct {
 	Endpoint string `json:"endpoint"`
+}
+
+type httpPluginSetRequest struct {
+	Host     string `json:"host"`
+	Endpoint string `json:"endpoint"`
+}
+
+type httpPluginSetResponse struct {
 }
 
 type httpPlugin struct {
@@ -107,7 +126,7 @@ func (p *httpPlugin) Get(ctx context.Context, host string) (endpoint string) {
 		return
 	}
 
-	rb := httpPluginRequest{
+	rb := httpPluginGetRequest{
 		Host: host,
 	}
 	v, err := json.Marshal(&rb)
@@ -134,9 +153,48 @@ func (p *httpPlugin) Get(ctx context.Context, host string) (endpoint string) {
 		return
 	}
 
-	res := httpPluginResponse{}
+	res := httpPluginGetResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}
 	return res.Endpoint
+}
+
+func (p *httpPlugin) Set(ctx context.Context, host, endpoint string) {
+	if p.client == nil {
+		return
+	}
+
+	rb := httpPluginSetRequest{
+		Host:     host,
+		Endpoint: endpoint,
+	}
+	v, err := json.Marshal(&rb)
+	if err != nil {
+		return
+	}
+
+	req, err := http.NewRequest(http.MethodPut, p.url, bytes.NewReader(v))
+	if err != nil {
+		return
+	}
+
+	if p.header != nil {
+		req.Header = p.header.Clone()
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	res := httpPluginSetResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return
+	}
 }
