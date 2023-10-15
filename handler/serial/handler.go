@@ -14,10 +14,9 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
 	xnet "github.com/go-gost/x/internal/net"
-	serial_util "github.com/go-gost/x/internal/util/serial"
+	serial "github.com/go-gost/x/internal/util/serial"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
-	goserial "github.com/tarm/serial"
 )
 
 func init() {
@@ -119,14 +118,14 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 	var port io.ReadWriteCloser
 
-	cfg := serial_util.ParseConfigFromAddr(conn.LocalAddr().String())
+	cfg := serial.ParseConfigFromAddr(conn.LocalAddr().String())
 	cfg.Name = target.Addr
 
 	if opts := h.router.Options(); opts != nil && opts.Chain != nil {
-		port, err = h.router.Dial(ctx, "serial", serial_util.AddrFromConfig(cfg))
+		port, err = h.router.Dial(ctx, "serial", serial.AddrFromConfig(cfg))
 	} else {
 		cfg.ReadTimeout = h.md.timeout
-		port, err = goserial.OpenPort(cfg)
+		port, err = serial.OpenPort(cfg)
 	}
 	if err != nil {
 		log.Error(err)

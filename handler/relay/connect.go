@@ -13,8 +13,7 @@ import (
 	"github.com/go-gost/relay"
 	xnet "github.com/go-gost/x/internal/net"
 	sx "github.com/go-gost/x/internal/util/selector"
-	serial_util "github.com/go-gost/x/internal/util/serial"
-	goserial "github.com/tarm/serial"
+	serial "github.com/go-gost/x/internal/util/serial"
 )
 
 func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) (err error) {
@@ -62,7 +61,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	case "unix":
 		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", address)
 	case "serial":
-		cc, err = goserial.OpenPort(serial_util.ParseConfigFromAddr(address))
+		cc, err = serial.OpenPort(serial.ParseConfigFromAddr(address))
 	default:
 		cc, err = h.router.Dial(ctx, network, address)
 	}
