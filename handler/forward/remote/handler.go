@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -183,7 +182,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remoteAddr net.Addr, localAddr net.Addr, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
-	var connPool sync.Map
 
 	for {
 		resp := &http.Response{
@@ -233,47 +231,28 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 			}
 
-			var cc net.Conn
-			if v, ok := connPool.Load(target); ok {
-				cc = v.(net.Conn)
-				log.Debugf("reuse connection to node %s(%s)", target.Name, target.Addr)
-			}
-			if cc == nil {
-				cc, err = h.router.Dial(ctx, "tcp", target.Addr)
-				if err != nil {
-					// TODO: the router itself may be failed due to the failed node in the router,
-					// the dead marker may be a wrong operation.
-					if marker := target.Marker(); marker != nil {
-						marker.Mark()
-					}
-					log.Warnf("connect to node %s(%s) failed: %v", target.Name, target.Addr, err)
-					return resp.Write(rw)
-				}
+			cc, err := h.router.Dial(ctx, "tcp", target.Addr)
+			if err != nil {
+				// TODO: the router itself may be failed due to the failed node in the router,
+				// the dead marker may be a wrong operation.
 				if marker := target.Marker(); marker != nil {
-					marker.Reset()
+					marker.Mark()
 				}
+				log.Warnf("connect to node %s(%s) failed: %v", target.Name, target.Addr, err)
+				return resp.Write(rw)
+			}
+			if marker := target.Marker(); marker != nil {
+				marker.Reset()
+			}
+			defer cc.Close()
 
-				if tlsSettings := target.Options().TLS; tlsSettings != nil {
-					cc = tls.Client(cc, &tls.Config{
-						ServerName:         tlsSettings.ServerName,
-						InsecureSkipVerify: !tlsSettings.Secure,
-					})
-				}
+			log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
 
-				cc = proxyproto.WrapClientConn(h.md.proxyProtocol, remoteAddr, localAddr, cc)
-
-				connPool.Store(target, cc)
-				log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
-
-				go func() {
-					defer cc.Close()
-					err := xnet.CopyBuffer(rw, cc, 8192)
-					if err != nil {
-						resp.Write(rw)
-					}
-					log.Debugf("close connection to node %s(%s), reason: %v", target.Name, target.Addr, err)
-					connPool.Delete(target)
-				}()
+			if tlsSettings := target.Options().TLS; tlsSettings != nil {
+				cc = tls.Client(cc, &tls.Config{
+					ServerName:         tlsSettings.ServerName,
+					InsecureSkipVerify: !tlsSettings.Secure,
+				})
 			}
 
 			if httpSettings := target.Options().HTTP; httpSettings != nil {
@@ -289,34 +268,27 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				dump, _ := httputil.DumpRequest(req, false)
 				log.Trace(string(dump))
 			}
+
+			cc = proxyproto.WrapClientConn(h.md.proxyProtocol, remoteAddr, localAddr, cc)
+
 			if err := req.Write(cc); err != nil {
-				log.Warnf("send request to node %s(%s) failed: %v", target.Name, target.Addr, err)
+				log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
 				return resp.Write(rw)
 			}
 
-			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.CopyBuffer(cc, br, 8192)
-				if err == nil {
-					err = io.EOF
-				}
-				return err
+			res, err := http.ReadResponse(bufio.NewReader(cc), req)
+			if err != nil {
+				log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)
+				return resp.Write(rw)
 			}
+			defer res.Body.Close()
 
-			// cc.SetReadDeadline(time.Now().Add(10 * time.Second))
-
-			return nil
+			return res.Write(rw)
 		}()
 		if err != nil {
 			break
 		}
 	}
-
-	connPool.Range(func(key, value any) bool {
-		if value != nil {
-			value.(net.Conn).Close()
-		}
-		return true
-	})
 
 	return
 }

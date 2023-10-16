@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"sync"
 	"time"
 
 	"github.com/go-gost/core/handler"
@@ -179,8 +178,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	h.options.Logger.Debugf("sniffing: host=%s, protocol=%s", host, protocol)
 
 	if protocol == forward.ProtoHTTP {
-		h.handleHTTP(ctx, conn.RemoteAddr(), rw, log)
-		return nil
+		return h.handleHTTP(ctx, conn.RemoteAddr(), rw, log)
 	}
 
 	var tunnelID relay.TunnelID
@@ -241,12 +239,12 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 func (h *tunnelHandler) handleHTTP(ctx context.Context, raddr net.Addr, rw io.ReadWriter, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
-	var connPool sync.Map
 
 	for {
 		resp := &http.Response{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
+			Header:     http.Header{},
 			StatusCode: http.StatusServiceUnavailable,
 		}
 
@@ -278,86 +276,58 @@ func (h *tunnelHandler) handleHTTP(ctx context.Context, raddr net.Addr, rw io.Re
 				"tunnel": tunnelID.String(),
 			})
 
-			var cc net.Conn
-			if v, ok := connPool.Load(tunnelID); ok {
-				cc = v.(net.Conn)
-				log.Debugf("connection to tunnel %s found in pool", tunnelID)
+			cc, cid, err := getTunnelConn("tcp", h.pool, tunnelID, 3, log)
+			if err != nil {
+				log.Error(err)
+				return resp.Write(rw)
 			}
-			if cc == nil {
-				var cid relay.ConnectorID
-				cc, cid, err = getTunnelConn("tcp", h.pool, tunnelID, 3, log)
-				if err != nil {
-					log.Error(err)
-					return resp.Write(rw)
+			defer cc.Close()
+
+			log.Debugf("new connection to tunnel %s(connector %s)", tunnelID, cid)
+
+			var features []relay.Feature
+			af := &relay.AddrFeature{}
+			af.ParseFrom(raddr.String())
+			features = append(features, af)
+
+			if host := req.Host; host != "" {
+				if h, _, _ := net.SplitHostPort(host); h == "" {
+					host = net.JoinHostPort(host, "80")
 				}
-
-				connPool.Store(tunnelID, cc)
-				log.Debugf("new connection to tunnel %s(connector %s)", tunnelID, cid)
-
-				var features []relay.Feature
 				af := &relay.AddrFeature{}
-				af.ParseFrom(raddr.String())
+				af.ParseFrom(host)
 				features = append(features, af)
-
-				if host := req.Host; host != "" {
-					if h, _, _ := net.SplitHostPort(host); h == "" {
-						host = net.JoinHostPort(host, "80")
-					}
-					af := &relay.AddrFeature{}
-					af.ParseFrom(host)
-					features = append(features, af)
-				}
-
-				(&relay.Response{
-					Version:  relay.Version1,
-					Status:   relay.StatusOK,
-					Features: features,
-				}).WriteTo(cc)
-
-				go func() {
-					defer cc.Close()
-					err := xnet.CopyBuffer(rw, cc, 8192)
-					if err != nil {
-						resp.Write(rw)
-					}
-					log.Debugf("close connection to tunnel %s(connector %s), reason: %v", tunnelID, cid, err)
-					connPool.Delete(tunnelID)
-				}()
 			}
+
+			(&relay.Response{
+				Version:  relay.Version1,
+				Status:   relay.StatusOK,
+				Features: features,
+			}).WriteTo(cc)
 
 			if log.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpRequest(req, false)
 				log.Trace(string(dump))
 			}
 			if err := req.Write(cc); err != nil {
-				log.Warnf("send request to tunnel %s failed: %v", tunnelID, err)
+				log.Warnf("send request to tunnel %s: %v", tunnelID, err)
 				return resp.Write(rw)
 			}
 
-			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.CopyBuffer(cc, br, 8192)
-				if err == nil {
-					err = io.EOF
-				}
-				return err
+			res, err := http.ReadResponse(bufio.NewReader(cc), req)
+			if err != nil {
+				log.Warnf("read response from tunnel %s: %v", tunnelID, err)
+				return resp.Write(rw)
 			}
+			defer res.Body.Close()
 
-			// cc.SetReadDeadline(time.Now().Add(10 * time.Second))
-
-			return nil
+			return res.Write(rw)
 		}()
 		if err != nil {
 			// log.Error(err)
 			break
 		}
 	}
-
-	connPool.Range(func(key, value any) bool {
-		if value != nil {
-			value.(net.Conn).Close()
-		}
-		return true
-	})
 
 	return
 }

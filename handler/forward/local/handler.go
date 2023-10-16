@@ -185,6 +185,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 		resp := &http.Response{
 			ProtoMajor: 1,
 			ProtoMinor: 1,
+			Header:     http.Header{},
 			StatusCode: http.StatusServiceUnavailable,
 		}
 
