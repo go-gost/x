@@ -38,6 +38,10 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 		if err == nil {
 			host = r.Host
 			protocol = ProtoHTTP
+
+			if r.Header.Get("Upgrade") == "websocket" {
+				protocol = ProtoWebsocket
+			}
 			return
 		}
 	}
@@ -89,9 +93,10 @@ func isHTTP(s string) bool {
 }
 
 const (
-	ProtoHTTP  = "http"
-	ProtoTLS   = "tls"
-	ProtoSSHv2 = "SSH-2"
+	ProtoHTTP      = "http"
+	ProtoWebsocket = "ws"
+	ProtoTLS       = "tls"
+	ProtoSSHv2     = "SSH-2"
 )
 
 func sniffProtocol(hdr []byte) string {

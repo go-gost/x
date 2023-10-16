@@ -150,7 +150,7 @@ func (h *relayHandler) handleConnectTunnel(ctx context.Context, conn net.Conn, n
 		return err
 	}
 
-	cc, _, err := getTunnelConn(network, h.pool, tid, 3, log)
+	cc, _, err := getTunnelConn(network, h.pool, tunnelID, 3, log)
 	if err != nil {
 		resp.Status = relay.StatusServiceUnavailable
 		resp.WriteTo(conn)

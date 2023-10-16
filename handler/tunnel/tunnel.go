@@ -177,6 +177,11 @@ func parseTunnelID(s string) (tid relay.TunnelID) {
 }
 
 func getTunnelConn(network string, pool *ConnectorPool, tid relay.TunnelID, retry int, log logger.Logger) (conn net.Conn, cid relay.ConnectorID, err error) {
+	if tid.IsZero() {
+		err = ErrTunnelID
+		return
+	}
+
 	if retry <= 0 {
 		retry = 1
 	}

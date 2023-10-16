@@ -53,13 +53,16 @@ func (c *tunnelConnector) initTunnel(conn net.Conn, network, address string) (ad
 	}
 
 	af := &relay.AddrFeature{}
-	af.ParseFrom(address)
+	af.ParseFrom(conn.LocalAddr().String()) // src address
+	req.Features = append(req.Features, af)
 
-	req.Features = append(req.Features, af,
-		&relay.TunnelFeature{
-			ID: c.md.tunnelID.ID(),
-		},
-	)
+	af = &relay.AddrFeature{}
+	af.ParseFrom(address)
+	req.Features = append(req.Features, af) // dst address
+
+	req.Features = append(req.Features, &relay.TunnelFeature{
+		ID: c.md.tunnelID.ID(),
+	})
 	if _, err = req.WriteTo(conn); err != nil {
 		return
 	}

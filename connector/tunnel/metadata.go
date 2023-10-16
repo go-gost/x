@@ -17,15 +17,16 @@ var (
 type metadata struct {
 	connectTimeout time.Duration
 	tunnelID       relay.TunnelID
+	noDelay        bool
 }
 
 func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		connectTimeout = "connectTimeout"
-		noDelay        = "nodelay"
 	)
 
 	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
+	c.md.noDelay = mdutil.GetBool(md, "nodelay")
 
 	if s := mdutil.GetString(md, "tunnelID", "tunnel.id"); s != "" {
 		uuid, err := uuid.Parse(s)

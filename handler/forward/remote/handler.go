@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"sync"
 	"time"
 
@@ -94,6 +95,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
 
+	localAddr := convertAddr(conn.LocalAddr())
+
 	var rw io.ReadWriter = conn
 	var host string
 	var protocol string
@@ -108,7 +111,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 	if protocol == forward.ProtoHTTP {
-		h.handleHTTP(ctx, rw, conn.RemoteAddr(), conn.LocalAddr(), log)
+		h.handleHTTP(ctx, rw, conn.RemoteAddr(), localAddr, log)
 		return nil
 	}
 
@@ -166,12 +169,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		marker.Reset()
 	}
 
-	if dst, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		if dst.IP.Equal(net.IPv6zero) {
-			dst.IP = net.IPv4zero
-		}
-	}
-	cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), conn.LocalAddr(), cc)
+	cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), localAddr, cc)
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
@@ -333,4 +331,28 @@ func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func convertAddr(addr net.Addr) net.Addr {
+	host, sp, _ := net.SplitHostPort(addr.String())
+	ip := net.ParseIP(host)
+	port, _ := strconv.Atoi(sp)
+
+	if ip == nil || ip.Equal(net.IPv6zero) {
+		ip = net.IPv4zero
+	}
+
+	switch addr.Network() {
+	case "tcp", "tcp4", "tcp6":
+		return &net.TCPAddr{
+			IP:   ip,
+			Port: port,
+		}
+
+	default:
+		return &net.UDPAddr{
+			IP:   ip,
+			Port: port,
+		}
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -12,37 +11,54 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 )
 
-func (h *tunnelHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, tunnelID relay.TunnelID, log logger.Logger) error {
+func (h *tunnelHandler) handleConnect(ctx context.Context, conn net.Conn, network, srcAddr string, dstAddr string, tunnelID relay.TunnelID, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
-		"dst":    fmt.Sprintf("%s/%s", address, network),
+		"dst":    fmt.Sprintf("%s/%s", dstAddr, network),
 		"cmd":    "connect",
 		"tunnel": tunnelID.String(),
 	})
-
-	log.Debugf("%s >> %s/%s", conn.RemoteAddr(), address, network)
 
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
 	}
 
-	host, sp, _ := net.SplitHostPort(address)
-
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
-		log.Debug("bypass: ", address)
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, dstAddr) {
+		log.Debug("bypass: ", dstAddr)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
 		return err
 	}
 
+	host, _, _ := net.SplitHostPort(dstAddr)
+
 	var tid relay.TunnelID
-	if ingress := h.md.ingress; ingress != nil {
+	if ingress := h.md.ingress; ingress != nil && host != "" {
 		tid = parseTunnelID(ingress.Get(ctx, host))
 	}
 
-	// client is not an public entrypoint.
-	if h.md.entryPointID.IsZero() || !tunnelID.Equal(h.md.entryPointID) {
-		if !tid.Equal(tunnelID) && !h.md.directTunnel {
+	// client is a public entrypoint.
+	if tunnelID.Equal(h.md.entryPointID) && !h.md.entryPointID.IsZero() {
+		if tid.IsZero() {
+			resp.Status = relay.StatusNetworkUnreachable
+			resp.WriteTo(conn)
+			err := fmt.Errorf("no route to host %s", host)
+			log.Error(err)
+			return err
+		}
+
+		if tid.IsPrivate() {
+			resp.Status = relay.StatusHostUnreachable
+			resp.WriteTo(conn)
+			err := fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, host)
+			log.Error(err)
+			return err
+		}
+	} else {
+		// direct routing
+		if h.md.directTunnel {
+			tid = tunnelID
+		} else if !tid.Equal(tunnelID) {
 			resp.Status = relay.StatusHostUnreachable
 			resp.WriteTo(conn)
 			err := fmt.Errorf("no route to host %s", host)
@@ -62,36 +78,35 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, conn net.Conn, networ
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), cc.RemoteAddr())
 
-	rc := &tcpConn{
-		Conn: conn,
-	}
-	// cache the header
-	if _, err := resp.WriteTo(&rc.wbuf); err != nil {
-		return err
-	}
-	conn = rc
-
-	var features []relay.Feature
-	af := &relay.AddrFeature{} // source/visitor address
-	af.ParseFrom(conn.RemoteAddr().String())
-	features = append(features, af)
-
-	if host != "" {
-		port, _ := strconv.Atoi(sp)
-		// target host
-		af = &relay.AddrFeature{
-			AType: relay.AddrDomain,
-			Host:  host,
-			Port:  uint16(port),
+	if h.md.noDelay {
+		if _, err := resp.WriteTo(conn); err != nil {
+			log.Error(err)
+			return err
 		}
-		features = append(features, af)
+	} else {
+		rc := &tcpConn{
+			Conn: conn,
+		}
+		// cache the header
+		if _, err := resp.WriteTo(&rc.wbuf); err != nil {
+			return err
+		}
+		conn = rc
 	}
 
 	resp = relay.Response{
-		Version:  relay.Version1,
-		Status:   relay.StatusOK,
-		Features: features,
+		Version: relay.Version1,
+		Status:  relay.StatusOK,
 	}
+
+	af := &relay.AddrFeature{}
+	af.ParseFrom(srcAddr)
+	resp.Features = append(resp.Features, af) // src address
+
+	af = &relay.AddrFeature{}
+	af.ParseFrom(dstAddr)
+	resp.Features = append(resp.Features, af) // dst address
+
 	resp.WriteTo(cc)
 
 	t := time.Now()

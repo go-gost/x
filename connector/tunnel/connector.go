@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/registry"
 )
 
@@ -55,6 +57,14 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		Cmd:     relay.CmdConnect,
 	}
 
+	switch network {
+	case "udp", "udp4", "udp6":
+		req.Cmd |= relay.FUDP
+		req.Features = append(req.Features, &relay.NetworkFeature{
+			Network: relay.NetworkUDP,
+		})
+	}
+
 	if c.options.Auth != nil {
 		pwd, _ := c.options.Auth.Password()
 		req.Features = append(req.Features, &relay.UserAuthFeature{
@@ -63,33 +73,54 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		})
 	}
 
-	if address != "" {
-		af := &relay.AddrFeature{}
-		if err := af.ParseFrom(address); err != nil {
-			return nil, err
-		}
-		req.Features = append(req.Features, af)
+	srcAddr := conn.LocalAddr().String()
+	if v := auth_util.ClientAddrFromContext(ctx); v != "" {
+		srcAddr = string(v)
 	}
+
+	af := &relay.AddrFeature{}
+	af.ParseFrom(srcAddr)
+	req.Features = append(req.Features, af) // src address
+
+	af = &relay.AddrFeature{}
+	af.ParseFrom(address)
+	req.Features = append(req.Features, af) // dst address
 
 	req.Features = append(req.Features, &relay.TunnelFeature{
 		ID: c.md.tunnelID.ID(),
 	})
 
-	switch network {
-	case "tcp", "tcp4", "tcp6", "unix", "serial":
-		cc := &tcpConn{
-			Conn: conn,
-		}
-		if _, err := req.WriteTo(&cc.wbuf); err != nil {
+	if c.md.noDelay {
+		if _, err := req.WriteTo(conn); err != nil {
 			return nil, err
 		}
-		conn = cc
+		// drain the response
+		if err := readResponse(conn); err != nil {
+			return nil, err
+		}
+	}
+
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		if !c.md.noDelay {
+			cc := &tcpConn{
+				Conn: conn,
+				wbuf: &bytes.Buffer{},
+			}
+			if _, err := req.WriteTo(cc.wbuf); err != nil {
+				return nil, err
+			}
+			conn = cc
+		}
 	case "udp", "udp4", "udp6":
 		cc := &udpConn{
 			Conn: conn,
 		}
-		if _, err := req.WriteTo(&cc.wbuf); err != nil {
-			return nil, err
+		if !c.md.noDelay {
+			cc.wbuf = &bytes.Buffer{}
+			if _, err := req.WriteTo(cc.wbuf); err != nil {
+				return nil, err
+			}
 		}
 		conn = cc
 	default:

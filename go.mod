@@ -30,7 +30,6 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/viper v1.14.0
-	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
 	github.com/vishvananda/netlink v1.1.0
 	github.com/xtaci/kcp-go/v5 v5.6.1
 	github.com/xtaci/smux v1.5.24

@@ -118,7 +118,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	var user, pass string
-	var address string
+	var srcAddr, dstAddr string
 	var networkID relay.NetworkID
 	var tunnelID relay.TunnelID
 	for _, f := range req.Features {
@@ -129,7 +129,12 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			}
 		case relay.FeatureAddr:
 			if feature, _ := f.(*relay.AddrFeature); feature != nil {
-				address = net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port)))
+				v := net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port)))
+				if srcAddr != "" {
+					dstAddr = v
+				} else {
+					srcAddr = v
+				}
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
@@ -170,9 +175,12 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	switch req.Cmd & relay.CmdMask {
 	case relay.CmdConnect:
 		defer conn.Close()
-		return h.handleConnect(ctx, conn, network, address, tunnelID, log)
+
+		log.Debugf("connect: %s >> %s/%s", srcAddr, dstAddr, network)
+		return h.handleConnect(ctx, conn, network, srcAddr, dstAddr, tunnelID, log)
 	case relay.CmdBind:
-		return h.handleBind(ctx, conn, network, address, tunnelID, log)
+		log.Debugf("bind: %s >> %s/%s", srcAddr, dstAddr, network)
+		return h.handleBind(ctx, conn, network, dstAddr, tunnelID, log)
 	default:
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn)

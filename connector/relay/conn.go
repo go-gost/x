@@ -17,13 +17,15 @@ import (
 
 type tcpConn struct {
 	net.Conn
-	wbuf bytes.Buffer
+	wbuf *bytes.Buffer
 	once sync.Once
 }
 
 func (c *tcpConn) Read(b []byte) (n int, err error) {
 	c.once.Do(func() {
-		err = readResponse(c.Conn)
+		if c.wbuf != nil {
+			err = readResponse(c.Conn)
+		}
 	})
 
 	if err != nil {
@@ -34,7 +36,7 @@ func (c *tcpConn) Read(b []byte) (n int, err error) {
 
 func (c *tcpConn) Write(b []byte) (n int, err error) {
 	n = len(b) // force byte length consistent
-	if c.wbuf.Len() > 0 {
+	if c.wbuf != nil && c.wbuf.Len() > 0 {
 		c.wbuf.Write(b) // append the data to the cached header
 		_, err = c.Conn.Write(c.wbuf.Bytes())
 		c.wbuf.Reset()
@@ -46,13 +48,15 @@ func (c *tcpConn) Write(b []byte) (n int, err error) {
 
 type udpConn struct {
 	net.Conn
-	wbuf bytes.Buffer
+	wbuf *bytes.Buffer
 	once sync.Once
 }
 
 func (c *udpConn) Read(b []byte) (n int, err error) {
 	c.once.Do(func() {
-		err = readResponse(c.Conn)
+		if c.wbuf != nil {
+			err = readResponse(c.Conn)
+		}
 	})
 	if err != nil {
 		return
@@ -84,7 +88,7 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 	}
 
 	n = len(b)
-	if c.wbuf.Len() > 0 {
+	if c.wbuf != nil && c.wbuf.Len() > 0 {
 		var bb [2]byte
 		binary.BigEndian.PutUint16(bb[:], uint16(len(b)))
 		c.wbuf.Write(bb[:])
