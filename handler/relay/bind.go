@@ -81,7 +81,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	}
 
 	// Upgrade connection to multiplex session.
-	session, err := mux.ClientSession(conn)
+	session, err := mux.ClientSession(conn, nil)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -219,7 +219,7 @@ func (h *relayHandler) handleBindTunnel(ctx context.Context, conn net.Conn, netw
 	resp.WriteTo(conn)
 
 	// Upgrade connection to multiplex session.
-	session, err := mux.ClientSession(conn)
+	session, err := mux.ClientSession(conn, nil)
 	if err != nil {
 		return
 	}

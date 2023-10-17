@@ -17,7 +17,6 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
-	netpkg "github.com/go-gost/x/internal/net"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/forward"
@@ -126,7 +125,7 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
-	netpkg.Transport(conn, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
 		Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())
 	return nil

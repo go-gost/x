@@ -82,13 +82,15 @@ type limitValue struct {
 type trafficLimiter struct {
 	generators     sync.Map
 	cidrGenerators cidranger.Ranger
-	connInLimits   *cache.Cache
-	connOutLimits  *cache.Cache
-	inLimits       *cache.Cache
-	outLimits      *cache.Cache
-	mu             sync.RWMutex
-	cancelFunc     context.CancelFunc
-	options        options
+	// connection level in/out limits
+	connInLimits  *cache.Cache
+	connOutLimits *cache.Cache
+	// service level in/out limits
+	inLimits   *cache.Cache
+	outLimits  *cache.Cache
+	mu         sync.RWMutex
+	cancelFunc context.CancelFunc
+	options    options
 }
 
 func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {

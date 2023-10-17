@@ -62,7 +62,7 @@ func (c *socks5Connector) muxBindTCP(ctx context.Context, conn net.Conn, network
 		return nil, err
 	}
 
-	session, err := mux.ServerSession(conn)
+	session, err := mux.ServerSession(conn, nil)
 	if err != nil {
 		return nil, err
 	}

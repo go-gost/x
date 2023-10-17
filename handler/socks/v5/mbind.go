@@ -70,7 +70,7 @@ func (h *socks5Handler) muxBindLocal(ctx context.Context, conn net.Conn, network
 
 func (h *socks5Handler) serveMuxBind(ctx context.Context, conn net.Conn, ln net.Listener, log logger.Logger) error {
 	// Upgrade connection to multiplex stream.
-	session, err := mux.ClientSession(conn)
+	session, err := mux.ClientSession(conn, nil)
 	if err != nil {
 		log.Error(err)
 		return err

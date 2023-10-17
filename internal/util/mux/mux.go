@@ -2,17 +2,74 @@ package mux
 
 import (
 	"net"
+	"time"
 
 	smux "github.com/xtaci/smux"
 )
+
+type Config struct {
+	// SMUX Protocol version, support 1,2
+	Version int
+
+	// Disabled keepalive
+	KeepAliveDisabled bool
+
+	// KeepAliveInterval is how often to send a NOP command to the remote
+	KeepAliveInterval time.Duration
+
+	// KeepAliveTimeout is how long the session
+	// will be closed if no data has arrived
+	KeepAliveTimeout time.Duration
+
+	// MaxFrameSize is used to control the maximum
+	// frame size to sent to the remote
+	MaxFrameSize int
+
+	// MaxReceiveBuffer is used to control the maximum
+	// number of data in the buffer pool
+	MaxReceiveBuffer int
+
+	// MaxStreamBuffer is used to control the maximum
+	// number of data per stream
+	MaxStreamBuffer int
+}
+
+func convertConfig(cfg *Config) *smux.Config {
+	smuxCfg := smux.DefaultConfig()
+	if cfg == nil {
+		return smuxCfg
+	}
+
+	if cfg.Version > 0 {
+		smuxCfg.Version = cfg.Version
+	}
+	smuxCfg.KeepAliveDisabled = cfg.KeepAliveDisabled
+	if cfg.KeepAliveInterval > 0 {
+		smuxCfg.KeepAliveInterval = cfg.KeepAliveInterval
+	}
+	if cfg.KeepAliveTimeout > 0 {
+		smuxCfg.KeepAliveTimeout = cfg.KeepAliveTimeout
+	}
+	if cfg.MaxFrameSize > 0 {
+		smuxCfg.MaxFrameSize = cfg.MaxFrameSize
+	}
+	if cfg.MaxReceiveBuffer > 0 {
+		smuxCfg.MaxReceiveBuffer = cfg.MaxReceiveBuffer
+	}
+	if cfg.MaxStreamBuffer > 0 {
+		smuxCfg.MaxStreamBuffer = cfg.MaxStreamBuffer
+	}
+
+	return smuxCfg
+}
 
 type Session struct {
 	conn    net.Conn
 	session *smux.Session
 }
 
-func ClientSession(conn net.Conn) (*Session, error) {
-	s, err := smux.Client(conn, smux.DefaultConfig())
+func ClientSession(conn net.Conn, cfg *Config) (*Session, error) {
+	s, err := smux.Client(conn, convertConfig(cfg))
 	if err != nil {
 		return nil, err
 	}
@@ -22,8 +79,8 @@ func ClientSession(conn net.Conn) (*Session, error) {
 	}, nil
 }
 
-func ServerSession(conn net.Conn) (*Session, error) {
-	s, err := smux.Server(conn, smux.DefaultConfig())
+func ServerSession(conn net.Conn, cfg *Config) (*Session, error) {
+	s, err := smux.Server(conn, convertConfig(cfg))
 	if err != nil {
 		return nil, err
 	}

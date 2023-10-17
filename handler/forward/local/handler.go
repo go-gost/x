@@ -276,7 +276,11 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)
 				return resp.Write(rw)
 			}
-			defer res.Body.Close()
+
+			if log.IsLevelEnabled(logger.TraceLevel) {
+				dump, _ := httputil.DumpResponse(res, false)
+				log.Trace(string(dump))
+			}
 
 			return res.Write(rw)
 		}()

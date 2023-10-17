@@ -1,0 +1,37 @@
+package mtcp
+
+import (
+	md "github.com/go-gost/core/metadata"
+	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/x/internal/util/mux"
+)
+
+const (
+	defaultBacklog = 128
+)
+
+type metadata struct {
+	mptcp   bool
+	muxCfg  *mux.Config
+	backlog int
+}
+
+func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
+	l.md.muxCfg = &mux.Config{
+		Version:           mdutil.GetInt(md, "mux.version"),
+		KeepAliveInterval: mdutil.GetDuration(md, "mux.keepaliveInterval"),
+		KeepAliveDisabled: mdutil.GetBool(md, "mux.keepaliveDisabled"),
+		KeepAliveTimeout:  mdutil.GetDuration(md, "mux.keepaliveTimeout"),
+		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
+		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
+		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+	}
+
+	l.md.backlog = mdutil.GetInt(md, "backlog")
+	if l.md.backlog <= 0 {
+		l.md.backlog = defaultBacklog
+	}
+	return
+}

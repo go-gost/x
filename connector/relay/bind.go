@@ -50,7 +50,7 @@ func (c *relayConnector) bindTunnel(ctx context.Context, conn net.Conn, network,
 	}
 	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s", addr, network, c.md.tunnelID.String(), cid)
 
-	session, err := mux.ServerSession(conn)
+	session, err := mux.ServerSession(conn, c.md.muxCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, ad
 	}
 	log.Debugf("bind on %s/%s OK", laddr, laddr.Network())
 
-	session, err := mux.ServerSession(conn)
+	session, err := mux.ServerSession(conn, c.md.muxCfg)
 	if err != nil {
 		return nil, err
 	}

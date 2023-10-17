@@ -10,7 +10,12 @@ import (
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/relay"
 	xingress "github.com/go-gost/x/ingress"
+	"github.com/go-gost/x/internal/util/mux"
 	"github.com/go-gost/x/registry"
+)
+
+const (
+	defaultMuxVersion = 2
 )
 
 type metadata struct {
@@ -20,6 +25,7 @@ type metadata struct {
 	directTunnel bool
 	entryPointID relay.TunnelID
 	ingress      ingress.Ingress
+	muxCfg       *mux.Config
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -52,6 +58,19 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 				})),
 			)
 		}
+	}
+
+	h.md.muxCfg = &mux.Config{
+		Version:           mdutil.GetInt(md, "mux.version"),
+		KeepAliveInterval: mdutil.GetDuration(md, "mux.keepaliveInterval"),
+		KeepAliveDisabled: mdutil.GetBool(md, "mux.keepaliveDisabled"),
+		KeepAliveTimeout:  mdutil.GetDuration(md, "mux.keepaliveTimeout"),
+		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
+		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
+		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+	}
+	if h.md.muxCfg.Version == 0 {
+		h.md.muxCfg.Version = defaultMuxVersion
 	}
 
 	return
