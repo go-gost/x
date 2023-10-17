@@ -21,7 +21,7 @@ func (c *tunnelConnector) Bind(ctx context.Context, conn net.Conn, network, addr
 	}
 	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s", addr, network, c.md.tunnelID.String(), cid)
 
-	session, err := mux.ServerSession(conn, nil)
+	session, err := mux.ServerSession(conn, c.md.muxCfg)
 	if err != nil {
 		return nil, err
 	}

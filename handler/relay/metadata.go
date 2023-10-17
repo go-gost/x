@@ -10,6 +10,7 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	xingress "github.com/go-gost/x/ingress"
+	"github.com/go-gost/x/internal/util/mux"
 	"github.com/go-gost/x/registry"
 )
 
@@ -23,6 +24,7 @@ type metadata struct {
 	entryPoint              string
 	entryPointProxyProtocol int
 	ingress                 ingress.Ingress
+	muxCfg                  *mux.Config
 }
 
 func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -74,6 +76,16 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 				})),
 			)
 		}
+	}
+
+	h.md.muxCfg = &mux.Config{
+		Version:           mdutil.GetInt(md, "mux.version"),
+		KeepAliveInterval: mdutil.GetDuration(md, "mux.keepaliveInterval"),
+		KeepAliveDisabled: mdutil.GetBool(md, "mux.keepaliveDisabled"),
+		KeepAliveTimeout:  mdutil.GetDuration(md, "mux.keepaliveTimeout"),
+		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
+		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
+		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
 
 	return

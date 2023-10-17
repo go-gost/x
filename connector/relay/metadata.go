@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultMuxVersion = 2
+	defaultMuxVersion = 1
 )
 
 type metadata struct {
