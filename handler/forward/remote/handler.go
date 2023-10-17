@@ -19,6 +19,7 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	auth_util "github.com/go-gost/x/internal/util/auth"
@@ -277,7 +278,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.CopyBuffer(cc, br, 8192)
+				err := xnet.Transport(cc, xio.NewReadWriter(br, rw))
 				if err == nil {
 					err = io.EOF
 				}
