@@ -6,6 +6,7 @@ import (
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/x/internal/util/mux"
 )
 
 const (
@@ -23,15 +24,9 @@ type metadata struct {
 	writeBufferSize   int
 	enableCompression bool
 
-	muxKeepAliveDisabled bool
-	muxKeepAliveInterval time.Duration
-	muxKeepAliveTimeout  time.Duration
-	muxMaxFrameSize      int
-	muxMaxReceiveBuffer  int
-	muxMaxStreamBuffer   int
-
 	header            http.Header
 	keepaliveInterval time.Duration
+	muxCfg            *mux.Config
 }
 
 func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -46,13 +41,6 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		enableCompression = "enableCompression"
 
 		header = "header"
-
-		muxKeepAliveDisabled = "muxKeepAliveDisabled"
-		muxKeepAliveInterval = "muxKeepAliveInterval"
-		muxKeepAliveTimeout  = "muxKeepAliveTimeout"
-		muxMaxFrameSize      = "muxMaxFrameSize"
-		muxMaxReceiveBuffer  = "muxMaxReceiveBuffer"
-		muxMaxStreamBuffer   = "muxMaxStreamBuffer"
 	)
 
 	d.md.host = mdutil.GetString(md, host)
@@ -62,12 +50,15 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.path = defaultPath
 	}
 
-	d.md.muxKeepAliveDisabled = mdutil.GetBool(md, muxKeepAliveDisabled)
-	d.md.muxKeepAliveInterval = mdutil.GetDuration(md, muxKeepAliveInterval)
-	d.md.muxKeepAliveTimeout = mdutil.GetDuration(md, muxKeepAliveTimeout)
-	d.md.muxMaxFrameSize = mdutil.GetInt(md, muxMaxFrameSize)
-	d.md.muxMaxReceiveBuffer = mdutil.GetInt(md, muxMaxReceiveBuffer)
-	d.md.muxMaxStreamBuffer = mdutil.GetInt(md, muxMaxStreamBuffer)
+	d.md.muxCfg = &mux.Config{
+		Version:           mdutil.GetInt(md, "mux.version"),
+		KeepAliveInterval: mdutil.GetDuration(md, "mux.keepaliveInterval"),
+		KeepAliveDisabled: mdutil.GetBool(md, "mux.keepaliveDisabled"),
+		KeepAliveTimeout:  mdutil.GetDuration(md, "mux.keepaliveTimeout"),
+		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
+		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
+		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+	}
 
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.readHeaderTimeout = mdutil.GetDuration(md, readHeaderTimeout)

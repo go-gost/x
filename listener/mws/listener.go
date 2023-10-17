@@ -14,13 +14,13 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
+	"github.com/go-gost/x/internal/util/mux"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/gorilla/websocket"
-	"github.com/xtaci/smux"
 )
 
 func init() {
@@ -170,24 +170,7 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 func (l *mwsListener) mux(conn net.Conn) {
 	defer conn.Close()
 
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.KeepAliveDisabled = l.md.muxKeepAliveDisabled
-	if l.md.muxKeepAliveInterval > 0 {
-		smuxConfig.KeepAliveInterval = l.md.muxKeepAliveInterval
-	}
-	if l.md.muxKeepAliveTimeout > 0 {
-		smuxConfig.KeepAliveTimeout = l.md.muxKeepAliveTimeout
-	}
-	if l.md.muxMaxFrameSize > 0 {
-		smuxConfig.MaxFrameSize = l.md.muxMaxFrameSize
-	}
-	if l.md.muxMaxReceiveBuffer > 0 {
-		smuxConfig.MaxReceiveBuffer = l.md.muxMaxReceiveBuffer
-	}
-	if l.md.muxMaxStreamBuffer > 0 {
-		smuxConfig.MaxStreamBuffer = l.md.muxMaxStreamBuffer
-	}
-	session, err := smux.Server(conn, smuxConfig)
+	session, err := mux.ServerSession(conn, l.md.muxCfg)
 	if err != nil {
 		l.logger.Error(err)
 		return
@@ -195,7 +178,7 @@ func (l *mwsListener) mux(conn net.Conn) {
 	defer session.Close()
 
 	for {
-		stream, err := session.AcceptStream()
+		stream, err := session.Accept()
 		if err != nil {
 			l.logger.Error("accept stream: ", err)
 			return
@@ -203,8 +186,6 @@ func (l *mwsListener) mux(conn net.Conn) {
 
 		select {
 		case l.cqueue <- stream:
-		case <-stream.GetDieCh():
-			stream.Close()
 		default:
 			stream.Close()
 			l.logger.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())

@@ -276,6 +276,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				return resp.Write(rw)
 			}
 
+			if req.Header.Get("Upgrade") == "websocket" {
+				err := xnet.CopyBuffer(cc, br, 8192)
+				if err == nil {
+					err = io.EOF
+				}
+				return err
+			}
+
 			res, err := http.ReadResponse(bufio.NewReader(cc), req)
 			if err != nil {
 				log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)

@@ -10,10 +10,10 @@ import (
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/internal/util/mux"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	"github.com/go-gost/x/registry"
 	"github.com/gorilla/websocket"
-	"github.com/xtaci/smux"
 )
 
 func init() {
@@ -178,25 +178,7 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn)
 	}
 
 	// stream multiplex
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.KeepAliveDisabled = d.md.muxKeepAliveDisabled
-	if d.md.muxKeepAliveInterval > 0 {
-		smuxConfig.KeepAliveInterval = d.md.muxKeepAliveInterval
-	}
-	if d.md.muxKeepAliveTimeout > 0 {
-		smuxConfig.KeepAliveTimeout = d.md.muxKeepAliveTimeout
-	}
-	if d.md.muxMaxFrameSize > 0 {
-		smuxConfig.MaxFrameSize = d.md.muxMaxFrameSize
-	}
-	if d.md.muxMaxReceiveBuffer > 0 {
-		smuxConfig.MaxReceiveBuffer = d.md.muxMaxReceiveBuffer
-	}
-	if d.md.muxMaxStreamBuffer > 0 {
-		smuxConfig.MaxStreamBuffer = d.md.muxMaxStreamBuffer
-	}
-
-	session, err := smux.Client(cc, smuxConfig)
+	session, err := mux.ClientSession(conn, d.md.muxCfg)
 	if err != nil {
 		return nil, err
 	}

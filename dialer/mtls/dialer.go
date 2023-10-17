@@ -11,8 +11,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/internal/util/mux"
 	"github.com/go-gost/x/registry"
-	"github.com/xtaci/smux"
 )
 
 func init() {
@@ -130,25 +130,7 @@ func (d *mtlsDialer) initSession(ctx context.Context, conn net.Conn) (*muxSessio
 	conn = tlsConn
 
 	// stream multiplex
-	smuxConfig := smux.DefaultConfig()
-	smuxConfig.KeepAliveDisabled = d.md.muxKeepAliveDisabled
-	if d.md.muxKeepAliveInterval > 0 {
-		smuxConfig.KeepAliveInterval = d.md.muxKeepAliveInterval
-	}
-	if d.md.muxKeepAliveTimeout > 0 {
-		smuxConfig.KeepAliveTimeout = d.md.muxKeepAliveTimeout
-	}
-	if d.md.muxMaxFrameSize > 0 {
-		smuxConfig.MaxFrameSize = d.md.muxMaxFrameSize
-	}
-	if d.md.muxMaxReceiveBuffer > 0 {
-		smuxConfig.MaxReceiveBuffer = d.md.muxMaxReceiveBuffer
-	}
-	if d.md.muxMaxStreamBuffer > 0 {
-		smuxConfig.MaxStreamBuffer = d.md.muxMaxStreamBuffer
-	}
-
-	session, err := smux.Client(conn, smuxConfig)
+	session, err := mux.ClientSession(conn, d.md.muxCfg)
 	if err != nil {
 		return nil, err
 	}

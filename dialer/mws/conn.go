@@ -3,20 +3,20 @@ package mws
 import (
 	"net"
 
-	"github.com/xtaci/smux"
+	"github.com/go-gost/x/internal/util/mux"
 )
 
 type muxSession struct {
 	conn    net.Conn
-	session *smux.Session
+	session *mux.Session
 }
 
 func (session *muxSession) GetConn() (net.Conn, error) {
-	return session.session.OpenStream()
+	return session.session.GetConn()
 }
 
 func (session *muxSession) Accept() (net.Conn, error) {
-	return session.session.AcceptStream()
+	return session.session.Accept()
 }
 
 func (session *muxSession) Close() error {
