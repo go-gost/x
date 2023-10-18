@@ -3,6 +3,7 @@ package rtcp
 import (
 	"context"
 	"net"
+	"sync"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/listener"
@@ -27,6 +28,7 @@ type rtcpListener struct {
 	logger  logger.Logger
 	closed  chan struct{}
 	options listener.Options
+	mu      sync.Mutex
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
@@ -72,23 +74,25 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 	default:
 	}
 
-	if l.ln == nil {
-		l.ln, err = l.router.Bind(
+	ln := l.getListener()
+	if ln == nil {
+		ln, err = l.router.Bind(
 			context.Background(), "tcp", l.laddr.String(),
 			chain.MuxBindOption(true),
 		)
 		if err != nil {
 			return nil, listener.NewAcceptError(err)
 		}
-		l.ln = metrics.WrapListener(l.options.Service, l.ln)
-		l.ln = admission.WrapListener(l.options.Admission, l.ln)
-		l.ln = limiter.WrapListener(l.options.TrafficLimiter, l.ln)
-		l.ln = climiter.WrapListener(l.options.ConnLimiter, l.ln)
+		ln = metrics.WrapListener(l.options.Service, ln)
+		ln = admission.WrapListener(l.options.Admission, ln)
+		ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
+		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
+		l.setListener(ln)
 	}
 	conn, err = l.ln.Accept()
 	if err != nil {
-		l.ln.Close()
-		l.ln = nil
+		ln.Close()
+		l.setListener(nil)
 		return nil, listener.NewAcceptError(err)
 	}
 	return
@@ -103,13 +107,26 @@ func (l *rtcpListener) Close() error {
 	case <-l.closed:
 	default:
 		close(l.closed)
-		if l.ln != nil {
-			l.ln.Close()
+		ln := l.getListener()
+		if ln != nil {
+			ln.Close()
 			// l.ln = nil
 		}
 	}
 
 	return nil
+}
+
+func (l *rtcpListener) setListener(ln net.Listener) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ln = ln
+}
+
+func (l *rtcpListener) getListener() net.Listener {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ln
 }
 
 type bindAddr struct {

@@ -2,7 +2,6 @@ package local
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -195,7 +194,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 		err = func() error {
 			req, err := http.ReadRequest(br)
 			if err != nil {
-				log.Errorf("read http request: %v", err)
+				// log.Errorf("read http request: %v", err)
 				return err
 			}
 
@@ -268,10 +267,14 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				})
 			}
 
+			if err := req.Write(cc); err != nil {
+				cc.Close()
+				log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
+				return resp.Write(rw)
+			}
+
 			if req.Header.Get("Upgrade") == "websocket" {
-				var buf bytes.Buffer
-				req.Write(&buf)
-				err := xnet.Transport(cc, xio.NewReadWriter(io.MultiReader(&buf, br), rw))
+				err := xnet.Transport(cc, xio.NewReadWriter(br, rw))
 				if err == nil {
 					err = io.EOF
 				}
@@ -280,12 +283,6 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 
 			go func() {
 				defer cc.Close()
-
-				if err := req.Write(cc); err != nil {
-					log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
-					resp.Write(rw)
-					return
-				}
 
 				res, err := http.ReadResponse(bufio.NewReader(cc), req)
 				if err != nil {
