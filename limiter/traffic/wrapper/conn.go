@@ -43,8 +43,8 @@ func WrapConn(limiter limiter.TrafficLimiter, c net.Conn) net.Conn {
 
 func (c *serverConn) getInLimiter(addr net.Addr) limiter.Limiter {
 	now := time.Now().UnixNano()
-	// cache the limiter for 1s
-	if c.limiter != nil && time.Duration(now-c.expIn) > time.Second {
+	// cache the limiter for 60s
+	if c.limiter != nil && time.Duration(now-c.expIn) > 60*time.Second {
 		c.limiterIn = c.limiter.In(addr.String())
 		c.expIn = now
 	}
@@ -53,8 +53,8 @@ func (c *serverConn) getInLimiter(addr net.Addr) limiter.Limiter {
 
 func (c *serverConn) getOutLimiter(addr net.Addr) limiter.Limiter {
 	now := time.Now().UnixNano()
-	// cache the limiter for 1s
-	if c.limiter != nil && time.Duration(now-c.expOut) > time.Second {
+	// cache the limiter for 60s
+	if c.limiter != nil && time.Duration(now-c.expOut) > 60*time.Second {
 		c.limiterOut = c.limiter.Out(addr.String())
 		c.expOut = now
 	}

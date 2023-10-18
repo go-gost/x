@@ -2,6 +2,7 @@ package local
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -182,6 +183,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
 
+	var cc net.Conn
 	for {
 		resp := &http.Response{
 			ProtoMajor: 1,
@@ -193,6 +195,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 		err = func() error {
 			req, err := http.ReadRequest(br)
 			if err != nil {
+				log.Errorf("read http request: %v", err)
 				return err
 			}
 
@@ -229,8 +232,20 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				}
 				ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 			}
+			if httpSettings := target.Options().HTTP; httpSettings != nil {
+				if httpSettings.Host != "" {
+					req.Host = httpSettings.Host
+				}
+				for k, v := range httpSettings.Header {
+					req.Header.Set(k, v)
+				}
+			}
+			if log.IsLevelEnabled(logger.TraceLevel) {
+				dump, _ := httputil.DumpRequest(req, false)
+				log.Trace(string(dump))
+			}
 
-			cc, err := h.router.Dial(ctx, "tcp", target.Addr)
+			cc, err = h.router.Dial(ctx, "tcp", target.Addr)
 			if err != nil {
 				// TODO: the router itself may be failed due to the failed node in the router,
 				// the dead marker may be a wrong operation.
@@ -243,9 +258,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 			if marker := target.Marker(); marker != nil {
 				marker.Reset()
 			}
-			defer cc.Close()
 
-			log.Debugf("new connection to node %s(%s)", target.Name, target.Addr)
+			log.Debugf("connection to node %s(%s)", target.Name, target.Addr)
 
 			if tlsSettings := target.Options().TLS; tlsSettings != nil {
 				cc = tls.Client(cc, &tls.Config{
@@ -254,47 +268,49 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, log l
 				})
 			}
 
-			if httpSettings := target.Options().HTTP; httpSettings != nil {
-				if httpSettings.Host != "" {
-					req.Host = httpSettings.Host
-				}
-				for k, v := range httpSettings.Header {
-					req.Header.Set(k, v)
-				}
-			}
-
-			if log.IsLevelEnabled(logger.TraceLevel) {
-				dump, _ := httputil.DumpRequest(req, false)
-				log.Trace(string(dump))
-			}
-			if err := req.Write(cc); err != nil {
-				log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
-				return resp.Write(rw)
-			}
-
 			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.Transport(cc, xio.NewReadWriter(br, rw))
+				var buf bytes.Buffer
+				req.Write(&buf)
+				err := xnet.Transport(cc, xio.NewReadWriter(io.MultiReader(&buf, br), rw))
 				if err == nil {
 					err = io.EOF
 				}
 				return err
 			}
 
-			res, err := http.ReadResponse(bufio.NewReader(cc), req)
-			if err != nil {
-				log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)
-				return resp.Write(rw)
-			}
+			go func() {
+				defer cc.Close()
 
-			if log.IsLevelEnabled(logger.TraceLevel) {
-				dump, _ := httputil.DumpResponse(res, false)
-				log.Trace(string(dump))
-			}
+				if err := req.Write(cc); err != nil {
+					log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
+					resp.Write(rw)
+					return
+				}
 
-			return res.Write(rw)
+				res, err := http.ReadResponse(bufio.NewReader(cc), req)
+				if err != nil {
+					log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)
+					resp.Write(rw)
+					return
+				}
+
+				if log.IsLevelEnabled(logger.TraceLevel) {
+					dump, _ := httputil.DumpResponse(res, false)
+					log.Trace(string(dump))
+				}
+
+				if err = res.Write(rw); err != nil {
+					log.Errorf("write response from node %s(%s): %v", target.Name, target.Addr, err)
+				}
+			}()
+
+			return nil
 		}()
+
 		if err != nil {
-			// log.Error(err)
+			if cc != nil {
+				cc.Close()
+			}
 			break
 		}
 	}
