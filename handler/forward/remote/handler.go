@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -93,8 +94,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		network = "udp"
 	}
 
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
-
 	localAddr := convertAddr(conn.LocalAddr())
 
 	var rw io.ReadWriter = conn
@@ -114,6 +113,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		h.handleHTTP(ctx, rw, conn.RemoteAddr(), localAddr, log)
 		return nil
 	}
+
+	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
 
 	if md, ok := conn.(mdata.Metadatable); ok {
 		if v := mdutil.GetString(md.Metadata(), "host"); v != "" {
@@ -199,6 +200,15 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				// log.Errorf("read http request: %v", err)
 				return err
 			}
+
+			if addr := getRealClientAddr(req, remoteAddr); addr != remoteAddr {
+				log = log.WithFields(map[string]any{
+					"src": addr.String(),
+				})
+				remoteAddr = addr
+			}
+
+			ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(remoteAddr.String()))
 
 			target := &chain.Node{
 				Addr: req.Host,
@@ -352,5 +362,36 @@ func convertAddr(addr net.Addr) net.Addr {
 			IP:   ip,
 			Port: port,
 		}
+	}
+}
+
+func getRealClientAddr(req *http.Request, raddr net.Addr) net.Addr {
+	if req == nil {
+		return nil
+	}
+	// cloudflare CDN
+	sip := req.Header.Get("CF-Connecting-IP")
+	if sip == "" {
+		ss := strings.Split(req.Header.Get("X-Forwarded-For"), ",")
+		if len(ss) > 0 && ss[0] != "" {
+			sip = ss[0]
+		}
+	}
+	if sip == "" {
+		sip = req.Header.Get("X-Real-Ip")
+	}
+
+	ip := net.ParseIP(sip)
+	if ip == nil {
+		return raddr
+	}
+
+	_, sp, _ := net.SplitHostPort(raddr.String())
+
+	port, _ := strconv.Atoi(sp)
+
+	return &net.TCPAddr{
+		IP:   ip,
+		Port: port,
 	}
 }
