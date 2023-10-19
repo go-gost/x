@@ -33,7 +33,7 @@ func CopyBuffer(dst io.Writer, src io.Reader, bufSize int) error {
 	buf := bufpool.Get(bufSize)
 	defer bufpool.Put(buf)
 
-	_, err := io.CopyBuffer(dst, src, *buf)
+	_, err := io.CopyBuffer(dst, src, buf)
 	return err
 }
 

@@ -45,7 +45,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				b := bufpool.Get(h.md.bufferSize)
 				defer bufpool.Put(b)
 
-				n, err := tun.Read(*b)
+				n, err := tun.Read(b)
 				if err != nil {
 					return ErrTun
 				}
@@ -54,8 +54,8 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				}
 
 				var src, dst net.IP
-				if waterutil.IsIPv4((*b)[:n]) {
-					header, err := ipv4.ParseHeader((*b)[:n])
+				if waterutil.IsIPv4(b[:n]) {
+					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warnf("parse ipv4 packet header: %v", err)
 						return nil
@@ -63,10 +63,10 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					src, dst = header.Src, header.Dst
 
 					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						src, dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
+						src, dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
-				} else if waterutil.IsIPv6((*b)[:n]) {
-					header, err := ipv6.ParseHeader((*b)[:n])
+				} else if waterutil.IsIPv6(b[:n]) {
+					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warnf("parse ipv6 packet header: %v", err)
 						return nil
@@ -90,7 +90,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 
 				log.Debugf("find route: %s -> %s", dst, addr)
 
-				if _, err := conn.WriteTo((*b)[:n], addr); err != nil {
+				if _, err := conn.WriteTo(b[:n], addr); err != nil {
 					return err
 				}
 				return nil
@@ -109,16 +109,16 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				b := bufpool.Get(h.md.bufferSize)
 				defer bufpool.Put(b)
 
-				n, addr, err := conn.ReadFrom(*b)
+				n, addr, err := conn.ReadFrom(b)
 				if err != nil {
 					return err
 				}
 				if n == 0 {
 					return nil
 				}
-				if n > keepAliveHeaderLength && bytes.Equal((*b)[:4], magicHeader) {
+				if n > keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
 					var peerIPs []net.IP
-					data := (*b)[keepAliveHeaderLength:n]
+					data := b[keepAliveHeaderLength:n]
 					if len(data)%net.IPv6len == 0 {
 						for len(data) > 0 {
 							peerIPs = append(peerIPs, net.IP(data[:net.IPv6len]))
@@ -139,7 +139,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 
 					if auther := h.options.Auther; auther != nil {
 						ok := true
-						key := bytes.TrimRight((*b)[4:20], "\x00")
+						key := bytes.TrimRight(b[4:20], "\x00")
 						for _, ip := range peerIPs {
 							if _, ok = auther.Authenticate(ctx, ip.String(), string(key)); !ok {
 								break
@@ -175,8 +175,8 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				}
 
 				var src, dst net.IP
-				if waterutil.IsIPv4((*b)[:n]) {
-					header, err := ipv4.ParseHeader((*b)[:n])
+				if waterutil.IsIPv4(b[:n]) {
+					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warnf("parse ipv4 packet header: %v", err)
 						return nil
@@ -184,10 +184,10 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					src, dst = header.Src, header.Dst
 
 					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						src, dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
+						src, dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
-				} else if waterutil.IsIPv6((*b)[:n]) {
-					header, err := ipv6.ParseHeader((*b)[:n])
+				} else if waterutil.IsIPv6(b[:n]) {
+					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warnf("parse ipv6 packet header: %v", err)
 						return nil
@@ -206,11 +206,11 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				if addr := h.findRouteFor(dst, config.Routes...); addr != nil {
 					log.Debugf("find route: %s -> %s", dst, addr)
 
-					_, err := conn.WriteTo((*b)[:n], addr)
+					_, err := conn.WriteTo(b[:n], addr)
 					return err
 				}
 
-				if _, err := tun.Write((*b)[:n]); err != nil {
+				if _, err := tun.Write(b[:n]); err != nil {
 					return ErrTun
 				}
 				return nil

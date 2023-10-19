@@ -41,13 +41,6 @@ func (l *mwsListener) parseMetadata(md mdata.Metadata) (err error) {
 		readBufferSize    = "readBufferSize"
 		writeBufferSize   = "writeBufferSize"
 		enableCompression = "enableCompression"
-
-		muxKeepAliveDisabled = "muxKeepAliveDisabled"
-		muxKeepAliveInterval = "muxKeepAliveInterval"
-		muxKeepAliveTimeout  = "muxKeepAliveTimeout"
-		muxMaxFrameSize      = "muxMaxFrameSize"
-		muxMaxReceiveBuffer  = "muxMaxReceiveBuffer"
-		muxMaxStreamBuffer   = "muxMaxStreamBuffer"
 	)
 
 	l.md.path = mdutil.GetString(md, path)

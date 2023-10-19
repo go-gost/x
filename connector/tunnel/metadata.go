@@ -11,10 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	defaultMuxVersion = 2
-)
-
 var (
 	ErrInvalidTunnelID = errors.New("tunnel: invalid tunnel ID")
 )
@@ -50,9 +46,6 @@ func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
-	}
-	if c.md.muxCfg.Version == 0 {
-		c.md.muxCfg.Version = defaultMuxVersion
 	}
 
 	return

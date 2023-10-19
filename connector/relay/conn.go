@@ -75,8 +75,8 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 
 	buf := bufpool.Get(dlen)
 	defer bufpool.Put(buf)
-	_, err = io.ReadFull(c.Conn, *buf)
-	n = copy(b, *buf)
+	_, err = io.ReadFull(c.Conn, buf)
+	n = copy(b, buf)
 
 	return
 }
@@ -169,8 +169,8 @@ func (c *bindUDPConn) Read(b []byte) (n int, err error) {
 	buf := bufpool.Get(dlen)
 	defer bufpool.Put(buf)
 
-	_, err = io.ReadFull(c.Conn, *buf)
-	n = copy(b, *buf)
+	_, err = io.ReadFull(c.Conn, buf)
+	n = copy(b, buf)
 
 	return
 }

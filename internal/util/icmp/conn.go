@@ -96,12 +96,12 @@ func (c *clientConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	defer bufpool.Put(buf)
 
 	for {
-		n, addr, err = c.PacketConn.ReadFrom(*buf)
+		n, addr, err = c.PacketConn.ReadFrom(buf)
 		if err != nil {
 			return
 		}
 
-		m, err := icmp.ParseMessage(1, (*buf)[:n])
+		m, err := icmp.ParseMessage(1, buf[:n])
 		if err != nil {
 			// logger.Default().Error("icmp: parse message %v", err)
 			return 0, addr, err
@@ -155,7 +155,7 @@ func (c *clientConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	msg := message{
 		data: b,
 	}
-	nn, err := msg.Encode(*buf)
+	nn, err := msg.Encode(buf)
 	if err != nil {
 		return
 	}
@@ -163,7 +163,7 @@ func (c *clientConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	echo := icmp.Echo{
 		ID:   c.id,
 		Seq:  int(atomic.AddUint32(&c.seq, 1)),
-		Data: (*buf)[:nn],
+		Data: buf[:nn],
 	}
 	m := icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
@@ -195,12 +195,12 @@ func (c *serverConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	defer bufpool.Put(buf)
 
 	for {
-		n, addr, err = c.PacketConn.ReadFrom(*buf)
+		n, addr, err = c.PacketConn.ReadFrom(buf)
 		if err != nil {
 			return
 		}
 
-		m, err := icmp.ParseMessage(1, (*buf)[:n])
+		m, err := icmp.ParseMessage(1, buf[:n])
 		if err != nil {
 			// logger.Default().Error("icmp: parse message %v", err)
 			return 0, addr, err
@@ -260,7 +260,7 @@ func (c *serverConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		flags: FlagAck,
 		data:  b,
 	}
-	nn, err := msg.Encode(*buf)
+	nn, err := msg.Encode(buf)
 	if err != nil {
 		return
 	}
@@ -268,7 +268,7 @@ func (c *serverConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	echo := icmp.Echo{
 		ID:   id,
 		Seq:  int(atomic.LoadUint32(&c.seqs[id-1])),
-		Data: (*buf)[:nn],
+		Data: buf[:nn],
 	}
 	m := icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,

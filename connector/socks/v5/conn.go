@@ -36,7 +36,7 @@ func (c *udpRelayConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	buf := bufpool.Get(c.bufferSize)
 	defer bufpool.Put(buf)
 
-	nn, err := c.udpConn.Read(*buf)
+	nn, err := c.udpConn.Read(buf)
 	if err != nil {
 		return
 	}
@@ -48,7 +48,7 @@ func (c *udpRelayConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	dgram := gosocks5.UDPDatagram{
 		Header: &header,
 	}
-	_, err = dgram.ReadFrom(bytes.NewReader((*buf)[:nn]))
+	_, err = dgram.ReadFrom(bytes.NewReader(buf[:nn]))
 	if err != nil {
 		return
 	}
@@ -81,15 +81,15 @@ func (c *udpRelayConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	buf := bufpool.Get(c.bufferSize)
 	defer bufpool.Put(buf)
 
-	nn, err := dgram.WriteTo(bytes.NewBuffer((*buf)[:0]))
+	nn, err := dgram.WriteTo(bytes.NewBuffer(buf[:0]))
 	if err != nil {
 		return
 	}
-	if nn > int64(len(*buf)) {
-		nn = int64(len(*buf))
+	if nn > int64(len(buf)) {
+		nn = int64(len(buf))
 	}
 
-	_, err = c.udpConn.Write((*buf)[:nn])
+	_, err = c.udpConn.Write(buf[:nn])
 	n = len(b)
 
 	return

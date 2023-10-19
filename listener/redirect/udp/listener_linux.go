@@ -45,7 +45,7 @@ func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
 func (l *redirectListener) accept() (conn net.Conn, err error) {
 	b := bufpool.Get(l.md.readBufferSize)
 
-	n, raddr, dstAddr, err := readFromUDP(l.ln, *b)
+	n, raddr, dstAddr, err := readFromUDP(l.ln, b)
 	if err != nil {
 		l.logger.Error(err)
 		return
@@ -65,7 +65,7 @@ func (l *redirectListener) accept() (conn net.Conn, err error) {
 
 	conn = &redirConn{
 		Conn: c,
-		buf:  (*b)[:n],
+		buf:  b[:n],
 		ttl:  l.md.ttl,
 	}
 	return
@@ -81,12 +81,12 @@ func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, d
 	oob := bufpool.Get(1024)
 	defer bufpool.Put(oob)
 
-	n, oobn, _, remoteAddr, err := conn.ReadMsgUDP(b, *oob)
+	n, oobn, _, remoteAddr, err := conn.ReadMsgUDP(b, oob)
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
-	msgs, err := unix.ParseSocketControlMessage((*oob)[:oobn])
+	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("parsing socket control message: %s", err)
 	}

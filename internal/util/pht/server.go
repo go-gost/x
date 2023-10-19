@@ -375,10 +375,10 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(s.options.readTimeout))
-		n, err := conn.Read(*b)
+		n, err := conn.Read(b)
 		if n > 0 {
 			bw := bufio.NewWriter(w)
-			bw.WriteString(base64.StdEncoding.EncodeToString((*b)[:n]))
+			bw.WriteString(base64.StdEncoding.EncodeToString(b[:n]))
 			bw.WriteString("\n")
 			if err := bw.Flush(); err != nil {
 				return
@@ -389,8 +389,8 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				(*b)[0] = '\n' // no data
-				w.Write((*b)[:1])
+				b[0] = '\n' // no data
+				w.Write(b[:1])
 			} else if errors.Is(err, io.EOF) {
 				// server connection closed
 			} else {

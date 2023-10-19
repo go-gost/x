@@ -62,14 +62,14 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ips []net.IP)
 	keepAliveData := bufpool.Get(keepAliveHeaderLength + len(ips)*net.IPv6len)
 	defer bufpool.Put(keepAliveData)
 
-	copy((*keepAliveData)[:4], magicHeader) // magic header
-	copy((*keepAliveData)[4:20], []byte(h.md.passphrase))
+	copy(keepAliveData[:4], magicHeader) // magic header
+	copy(keepAliveData[4:20], []byte(h.md.passphrase))
 	pos := 20
 	for _, ip := range ips {
-		copy((*keepAliveData)[pos:pos+net.IPv6len], ip.To16())
+		copy(keepAliveData[pos:pos+net.IPv6len], ip.To16())
 		pos += net.IPv6len
 	}
-	if _, err := conn.Write((*keepAliveData)); err != nil {
+	if _, err := conn.Write(keepAliveData); err != nil {
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ips []net.IP)
 	for {
 		select {
 		case <-ticker.C:
-			if _, err := conn.Write((*keepAliveData)); err != nil {
+			if _, err := conn.Write(keepAliveData); err != nil {
 				return
 			}
 			h.options.Logger.Debugf("keepalive sended")
@@ -103,23 +103,23 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 				b := bufpool.Get(h.md.bufferSize)
 				defer bufpool.Put(b)
 
-				n, err := tun.Read(*b)
+				n, err := tun.Read(b)
 				if err != nil {
 					return ErrTun
 				}
 
-				if waterutil.IsIPv4((*b)[:n]) {
-					header, err := ipv4.ParseHeader((*b)[:n])
+				if waterutil.IsIPv4(b[:n]) {
+					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
 						return nil
 					}
 
 					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
+						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
-				} else if waterutil.IsIPv6((*b)[:n]) {
-					header, err := ipv6.ParseHeader((*b)[:n])
+				} else if waterutil.IsIPv6(b[:n]) {
+					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
 						return nil
@@ -134,7 +134,7 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 					return nil
 				}
 
-				_, err = conn.Write((*b)[:n])
+				_, err = conn.Write(b[:n])
 				return err
 			}()
 
@@ -151,13 +151,13 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 				b := bufpool.Get(h.md.bufferSize)
 				defer bufpool.Put(b)
 
-				n, err := conn.Read(*b)
+				n, err := conn.Read(b)
 				if err != nil {
 					return err
 				}
 
-				if n == keepAliveHeaderLength && bytes.Equal((*b)[:4], magicHeader) {
-					ip := net.IP((*b)[4:20])
+				if n == keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
+					ip := net.IP(b[4:20])
 					log.Debugf("keepalive received at %v", ip)
 
 					if h.md.keepAlivePeriod > 0 {
@@ -166,18 +166,18 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 					return nil
 				}
 
-				if waterutil.IsIPv4((*b)[:n]) {
-					header, err := ipv4.ParseHeader((*b)[:n])
+				if waterutil.IsIPv4(b[:n]) {
+					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
 						return nil
 					}
 
 					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol((*b)[:n])),
+						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
 						header.Len, header.TotalLen, header.ID, header.Flags)
-				} else if waterutil.IsIPv6((*b)[:n]) {
-					header, err := ipv6.ParseHeader((*b)[:n])
+				} else if waterutil.IsIPv6(b[:n]) {
+					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
 						return nil
@@ -192,7 +192,7 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 					return nil
 				}
 
-				if _, err = tun.Write((*b)[:n]); err != nil {
+				if _, err = tun.Write(b[:n]); err != nil {
 					return ErrTun
 				}
 				return nil

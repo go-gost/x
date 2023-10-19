@@ -6,6 +6,7 @@ import (
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/x/internal/util/mux"
 )
 
 type metadata struct {
@@ -16,6 +17,7 @@ type metadata struct {
 	udpBufferSize     int
 	compatibilityMode bool
 	hash              string
+	muxCfg            *mux.Config
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
@@ -42,6 +44,16 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.compatibilityMode = mdutil.GetBool(md, compatibilityMode)
 	h.md.hash = mdutil.GetString(md, hash)
+
+	h.md.muxCfg = &mux.Config{
+		Version:           mdutil.GetInt(md, "mux.version"),
+		KeepAliveInterval: mdutil.GetDuration(md, "mux.keepaliveInterval"),
+		KeepAliveDisabled: mdutil.GetBool(md, "mux.keepaliveDisabled"),
+		KeepAliveTimeout:  mdutil.GetDuration(md, "mux.keepaliveTimeout"),
+		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
+		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
+		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+	}
 
 	return nil
 }

@@ -39,13 +39,13 @@ func (c *dtlsConn) Read(p []byte) (n int, err error) {
 	buf := bufpool.Get(bufferSize)
 	defer bufpool.Put(buf)
 
-	nn, err := c.Conn.Read(*buf)
+	nn, err := c.Conn.Read(buf)
 	if err != nil {
 		return 0, err
 	}
 
-	n = copy(p, (*buf)[:nn])
-	c.rbuf.Write((*buf)[n:nn])
+	n = copy(p, buf[:nn])
+	c.rbuf.Write(buf[n:nn])
 
 	return
 }

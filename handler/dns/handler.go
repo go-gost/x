@@ -141,17 +141,17 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
-	n, err := conn.Read(*b)
+	n, err := conn.Read(b)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
-	reply, err := h.request(ctx, (*b)[:n], log)
+	reply, err := h.request(ctx, b[:n], log)
 	if err != nil {
 		return err
 	}
-	defer bufpool.Put(&reply)
+	defer bufpool.Put(reply)
 
 	if _, err = conn.Write(reply); err != nil {
 		log.Error(err)
@@ -203,14 +203,14 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 			log.Debug("bypass: ", mq.Question[0].Name)
 			mr = (&dns.Msg{}).SetReply(&mq)
 			b := bufpool.Get(h.md.bufferSize)
-			return mr.PackBuffer(*b)
+			return mr.PackBuffer(b)
 		}
 	}
 
 	mr = h.lookupHosts(ctx, &mq, log)
 	if mr != nil {
 		b := bufpool.Get(h.md.bufferSize)
-		return mr.PackBuffer(*b)
+		return mr.PackBuffer(b)
 	}
 
 	// only cache for single question message.
@@ -222,14 +222,14 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 			if int32(ttl.Seconds()) > 0 {
 				log.Debugf("message %d (cached): %s", mq.Id, mq.Question[0].String())
 				b := bufpool.Get(h.md.bufferSize)
-				return mr.PackBuffer(*b)
+				return mr.PackBuffer(b)
 			}
 		}
 	}
 
 	if mr != nil && h.md.async {
 		b := bufpool.Get(h.md.bufferSize)
-		reply, err := mr.PackBuffer(*b)
+		reply, err := mr.PackBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +248,7 @@ func (h *dnsHandler) exchange(ctx context.Context, mq *dns.Msg) ([]byte, error) 
 	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
-	query, err := mq.PackBuffer(*b)
+	query, err := mq.PackBuffer(b)
 	if err != nil {
 		return nil, err
 	}

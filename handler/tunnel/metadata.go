@@ -14,10 +14,6 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-const (
-	defaultMuxVersion = 2
-)
-
 type metadata struct {
 	readTimeout  time.Duration
 	noDelay      bool
@@ -68,9 +64,6 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
-	}
-	if h.md.muxCfg.Version == 0 {
-		h.md.muxCfg.Version = defaultMuxVersion
 	}
 
 	return

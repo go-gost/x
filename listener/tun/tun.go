@@ -24,7 +24,7 @@ func (d *tunDevice) Read(p []byte) (n int, err error) {
 	b := bufpool.Get(rbuf)
 	defer bufpool.Put(b)
 
-	n, err = d.dev.Read(*b, tunOffsetBytes)
+	n, err = d.dev.Read(b, tunOffsetBytes)
 	if n <= tunOffsetBytes || err != nil {
 		d.dev.Flush()
 		if n <= tunOffsetBytes {
@@ -33,7 +33,7 @@ func (d *tunDevice) Read(p []byte) (n int, err error) {
 		return
 	}
 
-	n = copy(p, (*b)[tunOffsetBytes:tunOffsetBytes+n])
+	n = copy(p, b[tunOffsetBytes:tunOffsetBytes+n])
 	return
 }
 
@@ -41,8 +41,8 @@ func (d *tunDevice) Write(p []byte) (n int, err error) {
 	b := bufpool.Get(tunOffsetBytes + len(p))
 	defer bufpool.Put(b)
 
-	copy((*b)[tunOffsetBytes:], p)
-	return d.dev.Write(*b, tunOffsetBytes)
+	copy(b[tunOffsetBytes:], p)
+	return d.dev.Write(b, tunOffsetBytes)
 }
 
 func (d *tunDevice) Close() error {

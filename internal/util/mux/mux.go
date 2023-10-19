@@ -7,6 +7,10 @@ import (
 	smux "github.com/xtaci/smux"
 )
 
+const (
+	defaultVersion = 2
+)
+
 type Config struct {
 	// SMUX Protocol version, support 1,2
 	Version int
@@ -36,6 +40,8 @@ type Config struct {
 
 func convertConfig(cfg *Config) *smux.Config {
 	smuxCfg := smux.DefaultConfig()
+	smuxCfg.Version = defaultVersion
+
 	if cfg == nil {
 		return smuxCfg
 	}
