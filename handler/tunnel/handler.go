@@ -3,18 +3,23 @@ package tunnel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/listener"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
+	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
+	xnet "github.com/go-gost/x/internal/net"
 	auth_util "github.com/go-gost/x/internal/util/auth"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
+	xservice "github.com/go-gost/x/service"
 )
 
 var (
@@ -33,6 +38,7 @@ type tunnelHandler struct {
 	router   *chain.Router
 	md       metadata
 	options  handler.Options
+	ep       service.Service
 	pool     *ConnectorPool
 	recorder recorder.RecorderObject
 }
@@ -68,7 +74,67 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
+	if err = h.initEntrypoint(); err != nil {
+		return
+	}
+
 	return nil
+}
+
+func (h *tunnelHandler) initEntrypoint() (err error) {
+	if h.md.entryPoint == "" {
+		return
+	}
+
+	network := "tcp"
+	if xnet.IsIPv4(h.md.entryPoint) {
+		network = "tcp4"
+	}
+
+	ln, err := net.Listen(network, h.md.entryPoint)
+	if err != nil {
+		h.options.Logger.Error(err)
+		return
+	}
+
+	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
+	log := h.options.Logger.WithFields(map[string]any{
+		"service":  serviceName,
+		"listener": "tcp",
+		"handler":  "tunnel-ep",
+		"kind":     "service",
+	})
+	epListener := newTCPListener(ln,
+		listener.AddrOption(h.md.entryPoint),
+		listener.ServiceOption(serviceName),
+		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
+		listener.LoggerOption(log.WithFields(map[string]any{
+			"kind": "listener",
+		})),
+	)
+	if err = epListener.Init(nil); err != nil {
+		return
+	}
+	epHandler := newEntrypointHandler(
+		h.pool,
+		h.md.ingress,
+		handler.ServiceOption(serviceName),
+		handler.LoggerOption(log.WithFields(map[string]any{
+			"kind": "handler",
+		})),
+	)
+	if err = epHandler.Init(nil); err != nil {
+		return
+	}
+
+	h.ep = xservice.NewService(
+		serviceName, epListener, epHandler,
+		xservice.LoggerOption(log),
+	)
+	go h.ep.Serve()
+	log.Infof("entrypoint: %s", h.ep.Addr())
+
+	return
 }
 
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {

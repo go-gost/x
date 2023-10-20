@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
@@ -201,6 +202,21 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				return err
 			}
 
+			if log.IsLevelEnabled(logger.TraceLevel) {
+				dump, _ := httputil.DumpRequest(req, false)
+				log.Trace(string(dump))
+			}
+
+			host := req.Host
+			if _, _, err := net.SplitHostPort(host); err != nil {
+				host = net.JoinHostPort(host, "80")
+			}
+			if bp := h.options.Bypass; bp != nil && bp.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
+				log.Debugf("bypass: %s %s", host, req.RequestURI)
+				resp.StatusCode = http.StatusForbidden
+				return resp.Write(rw)
+			}
+
 			if addr := getRealClientAddr(req, remoteAddr); addr != remoteAddr {
 				log = log.WithFields(map[string]any{
 					"src": addr.String(),
@@ -250,10 +266,6 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				for k, v := range httpSettings.Header {
 					req.Header.Set(k, v)
 				}
-			}
-			if log.IsLevelEnabled(logger.TraceLevel) {
-				dump, _ := httputil.DumpRequest(req, false)
-				log.Trace(string(dump))
 			}
 
 			cc, err = h.router.Dial(ctx, "tcp", target.Addr)

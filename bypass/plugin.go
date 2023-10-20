@@ -61,8 +61,9 @@ func (p *grpcPlugin) Contains(ctx context.Context, network, addr string, opts ..
 		&proto.BypassRequest{
 			Network: network,
 			Addr:    addr,
-			Host:    options.Host,
 			Client:  string(auth_util.IDFromContext(ctx)),
+			Host:    options.Host,
+			Path:    options.Path,
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -81,8 +82,9 @@ func (p *grpcPlugin) Close() error {
 type httpPluginRequest struct {
 	Network string `json:"network"`
 	Addr    string `json:"addr"`
-	Host    string `json:"host"`
 	Client  string `json:"client"`
+	Host    string `json:"host"`
+	Path    string `json:"path"`
 }
 
 type httpPluginResponse struct {
@@ -127,8 +129,9 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	rb := httpPluginRequest{
 		Network: network,
 		Addr:    addr,
-		Host:    options.Host,
 		Client:  string(auth_util.IDFromContext(ctx)),
+		Host:    options.Host,
+		Path:    options.Path,
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

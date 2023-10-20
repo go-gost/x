@@ -15,23 +15,25 @@ import (
 )
 
 type metadata struct {
-	readTimeout  time.Duration
-	noDelay      bool
-	hash         string
-	directTunnel bool
-	entryPointID relay.TunnelID
-	ingress      ingress.Ingress
-	muxCfg       *mux.Config
+	readTimeout             time.Duration
+	noDelay                 bool
+	hash                    string
+	directTunnel            bool
+	entryPoint              string
+	entryPointProxyProtocol int
+	entryPointID            relay.TunnelID
+	ingress                 ingress.Ingress
+	muxCfg                  *mux.Config
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	h.md.noDelay = mdutil.GetBool(md, "nodelay")
 
-	h.md.hash = mdutil.GetString(md, "hash")
-
 	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
+	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
 	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
+	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
 
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
 	if h.md.ingress == nil {
@@ -65,6 +67,8 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
+
+	h.md.hash = mdutil.GetString(md, "hash")
 
 	return
 }

@@ -15,6 +15,7 @@ import (
 	"net/http/httputil"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
@@ -115,8 +116,8 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		"host": host,
 	})
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
-		log.Debug("bypass: ", host)
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
+		log.Debugf("bypass: %s %s", host, req.RequestURI)
 		return nil
 	}
 
