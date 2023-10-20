@@ -35,7 +35,11 @@ func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	if c.md.tunnelID.IsZero() {
-		return ErrInvalidTunnelID
+		uuid, err := uuid.NewUUID()
+		if err != nil {
+			return err
+		}
+		c.md.tunnelID = relay.NewTunnelID(uuid[:])
 	}
 
 	c.md.muxCfg = &mux.Config{
