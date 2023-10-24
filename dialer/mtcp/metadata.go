@@ -25,6 +25,9 @@ func (d *mtcpDialer) parseMetadata(md mdata.Metadata) (err error) {
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
+	if d.md.muxCfg.Version == 0 {
+		d.md.muxCfg.Version = 2
+	}
 
 	return
 }

@@ -13,12 +13,20 @@ import (
 
 // Bind implements connector.Binder.
 func (c *tunnelConnector) Bind(ctx context.Context, conn net.Conn, network, address string, opts ...connector.BindOption) (net.Listener, error) {
-	log := c.options.Logger
 
 	addr, cid, err := c.initTunnel(conn, network, address)
 	if err != nil {
 		return nil, err
 	}
+
+	endpoint := addr.String()
+	if v, _, _ := net.SplitHostPort(addr.String()); v != "" {
+		endpoint = v
+	}
+	log := c.options.Logger.WithFields(map[string]any{
+		"endpoint": endpoint,
+		"tunnel":   c.md.tunnelID.String(),
+	})
 	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s", addr, network, c.md.tunnelID.String(), cid)
 
 	session, err := mux.ServerSession(conn, c.md.muxCfg)

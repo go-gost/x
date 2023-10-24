@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultVersion = 2
+	defaultVersion = 1
 )
 
 type Config struct {

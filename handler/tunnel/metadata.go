@@ -67,6 +67,9 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
+	if h.md.muxCfg.Version == 0 {
+		h.md.muxCfg.Version = 2
+	}
 
 	h.md.hash = mdutil.GetString(md, "hash")
 

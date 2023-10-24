@@ -28,6 +28,9 @@ func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
+	if l.md.muxCfg.Version == 0 {
+		l.md.muxCfg.Version = 2
+	}
 
 	l.md.backlog = mdutil.GetInt(md, "backlog")
 	if l.md.backlog <= 0 {
