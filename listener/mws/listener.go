@@ -149,30 +149,30 @@ func (l *mwsListener) Addr() net.Addr {
 }
 
 func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
+	log := l.logger.WithFields(map[string]any{
+		"local":  l.addr.String(),
+		"remote": r.RemoteAddr,
+	})
 	if l.logger.IsLevelEnabled(logger.TraceLevel) {
-		log := l.logger.WithFields(map[string]any{
-			"local":  l.addr.String(),
-			"remote": r.RemoteAddr,
-		})
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
 	}
 
 	conn, err := l.upgrader.Upgrade(w, r, l.md.header)
 	if err != nil {
-		l.logger.Error(err)
+		log.Error(err)
 		return
 	}
 
-	l.mux(ws_util.Conn(conn))
+	l.mux(ws_util.Conn(conn), log)
 }
 
-func (l *mwsListener) mux(conn net.Conn) {
+func (l *mwsListener) mux(conn net.Conn, log logger.Logger) {
 	defer conn.Close()
 
 	session, err := mux.ServerSession(conn, l.md.muxCfg)
 	if err != nil {
-		l.logger.Error(err)
+		log.Error(err)
 		return
 	}
 	defer session.Close()
@@ -180,7 +180,7 @@ func (l *mwsListener) mux(conn net.Conn) {
 	for {
 		stream, err := session.Accept()
 		if err != nil {
-			l.logger.Error("accept stream: ", err)
+			log.Error("accept stream: ", err)
 			return
 		}
 
@@ -188,7 +188,7 @@ func (l *mwsListener) mux(conn net.Conn) {
 		case l.cqueue <- stream:
 		default:
 			stream.Close()
-			l.logger.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())
+			log.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())
 		}
 	}
 }
