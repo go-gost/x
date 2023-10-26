@@ -49,7 +49,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) auth.Authent
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string) (string, bool) {
+func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
 	if p.client == nil {
 		return "", false
 	}
@@ -110,7 +110,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) auth.Authenti
 	}
 }
 
-func (p *httpPlugin) Authenticate(ctx context.Context, user, password string) (id string, ok bool) {
+func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (id string, ok bool) {
 	if p.client == nil {
 		return
 	}

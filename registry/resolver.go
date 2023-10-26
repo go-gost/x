@@ -31,10 +31,10 @@ type resolverWrapper struct {
 	r    *resolverRegistry
 }
 
-func (w *resolverWrapper) Resolve(ctx context.Context, network, host string) ([]net.IP, error) {
+func (w *resolverWrapper) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) ([]net.IP, error) {
 	r := w.r.get(w.name)
 	if r == nil {
 		return nil, resolver.ErrInvalid
 	}
-	return r.Resolve(ctx, network, host)
+	return r.Resolve(ctx, network, host, opts...)
 }

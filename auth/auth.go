@@ -97,7 +97,7 @@ func NewAuthenticator(opts ...Option) auth.Authenticator {
 }
 
 // Authenticate checks the validity of the provided user-password pair.
-func (p *authenticator) Authenticate(ctx context.Context, user, password string) (string, bool) {
+func (p *authenticator) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
 	if p == nil {
 		return "", true
 	}

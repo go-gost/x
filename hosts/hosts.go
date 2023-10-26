@@ -104,7 +104,7 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 // Lookup searches the IP address corresponds to the given network and host from the host table.
 // The network should be 'ip', 'ip4' or 'ip6', default network is 'ip'.
 // the host should be a hostname (example.org) or a hostname with dot prefix (.example.org).
-func (h *hostMapper) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+func (h *hostMapper) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	h.options.logger.Debugf("lookup %s/%s", host, network)
 	ips = h.lookup(host)
 	if ips == nil {

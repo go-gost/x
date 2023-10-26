@@ -54,7 +54,7 @@ func RedisSetRecorder(addr string, opts ...RedisRecorderOption) recorder.Recorde
 	}
 }
 
-func (r *redisSetRecorder) Record(ctx context.Context, b []byte) error {
+func (r *redisSetRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	if r.key == "" {
 		return nil
 	}
@@ -88,7 +88,7 @@ func RedisListRecorder(addr string, opts ...RedisRecorderOption) recorder.Record
 	}
 }
 
-func (r *redisListRecorder) Record(ctx context.Context, b []byte) error {
+func (r *redisListRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	if r.key == "" {
 		return nil
 	}
@@ -122,7 +122,7 @@ func RedisSortedSetRecorder(addr string, opts ...RedisRecorderOption) recorder.R
 	}
 }
 
-func (r *redisSortedSetRecorder) Record(ctx context.Context, b []byte) error {
+func (r *redisSortedSetRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	if r.key == "" {
 		return nil
 	}

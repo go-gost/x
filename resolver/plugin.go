@@ -13,8 +13,8 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/plugin/resolver/proto"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/plugin"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -49,7 +49,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) (resolver.Re
 	return p, nil
 }
 
-func (p *grpcPlugin) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+func (p *grpcPlugin) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) (ips []net.IP, err error) {
 	p.log.Debugf("resolve %s/%s", host, network)
 
 	if p.client == nil {
@@ -117,7 +117,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) resolver.Reso
 	}
 }
 
-func (p *httpPlugin) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+func (p *httpPlugin) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) (ips []net.IP, err error) {
 	p.log.Debugf("resolve %s/%s", host, network)
 
 	if p.client == nil {

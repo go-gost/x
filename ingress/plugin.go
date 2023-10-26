@@ -46,7 +46,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) ingress.Ingr
 	return p
 }
 
-func (p *grpcPlugin) Get(ctx context.Context, host string) string {
+func (p *grpcPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOption) string {
 	if p.client == nil {
 		return ""
 	}
@@ -62,7 +62,7 @@ func (p *grpcPlugin) Get(ctx context.Context, host string) string {
 	return r.GetEndpoint()
 }
 
-func (p *grpcPlugin) Set(ctx context.Context, host, endpoint string) {
+func (p *grpcPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
 	if p.client == nil {
 		return
 	}
@@ -121,7 +121,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) ingress.Ingre
 	}
 }
 
-func (p *httpPlugin) Get(ctx context.Context, host string) (endpoint string) {
+func (p *httpPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOption) (endpoint string) {
 	if p.client == nil {
 		return
 	}
@@ -160,7 +160,7 @@ func (p *httpPlugin) Get(ctx context.Context, host string) (endpoint string) {
 	return res.Endpoint
 }
 
-func (p *httpPlugin) Set(ctx context.Context, host, endpoint string) {
+func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
 	if p.client == nil {
 		return
 	}

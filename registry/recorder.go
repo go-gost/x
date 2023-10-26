@@ -30,10 +30,10 @@ type recorderWrapper struct {
 	r    *recorderRegistry
 }
 
-func (w *recorderWrapper) Record(ctx context.Context, b []byte) error {
+func (w *recorderWrapper) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Record(ctx, b)
+	return v.Record(ctx, b, opts...)
 }

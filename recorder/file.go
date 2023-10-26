@@ -37,7 +37,7 @@ func FileRecorder(filename string, opts ...FileRecorderOption) recorder.Recorder
 	}
 }
 
-func (r *fileRecorder) Record(ctx context.Context, b []byte) error {
+func (r *fileRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	f, err := os.OpenFile(r.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err

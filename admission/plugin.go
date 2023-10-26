@@ -46,7 +46,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) admission.Ad
 	return p
 }
 
-func (p *grpcPlugin) Admit(ctx context.Context, addr string) bool {
+func (p *grpcPlugin) Admit(ctx context.Context, addr string, opts ...admission.Option) bool {
 	if p.client == nil {
 		return false
 	}
@@ -102,7 +102,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) admission.Adm
 	}
 }
 
-func (p *httpPlugin) Admit(ctx context.Context, addr string) (ok bool) {
+func (p *httpPlugin) Admit(ctx context.Context, addr string, opts ...admission.Option) (ok bool) {
 	if p.client == nil {
 		return
 	}

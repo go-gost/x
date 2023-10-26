@@ -219,7 +219,7 @@ func (ing *localIngress) parseRules(r io.Reader) (rules []Rule, err error) {
 	return
 }
 
-func (ing *localIngress) Get(ctx context.Context, host string) string {
+func (ing *localIngress) Get(ctx context.Context, host string, opts ...ingress.GetOption) string {
 	if host == "" || ing == nil {
 		return ""
 	}
@@ -259,7 +259,7 @@ func (ing *localIngress) Get(ctx context.Context, host string) string {
 	return ep
 }
 
-func (ing *localIngress) Set(ctx context.Context, host, endpoint string) {
+func (ing *localIngress) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
 
 }
 

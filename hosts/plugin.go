@@ -47,7 +47,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hosts.HostMa
 	return p
 }
 
-func (p *grpcPlugin) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+func (p *grpcPlugin) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 
 	if p.client == nil {
@@ -116,7 +116,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hosts.HostMap
 	}
 }
 
-func (p *httpPlugin) Lookup(ctx context.Context, network, host string) (ips []net.IP, ok bool) {
+func (p *httpPlugin) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 
 	if p.client == nil {

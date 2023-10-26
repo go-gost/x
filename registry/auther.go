@@ -30,10 +30,10 @@ type autherWrapper struct {
 	r    *autherRegistry
 }
 
-func (w *autherWrapper) Authenticate(ctx context.Context, user, password string) (string, bool) {
+func (w *autherWrapper) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
 	v := w.r.get(w.name)
 	if v == nil {
 		return "", true
 	}
-	return v.Authenticate(ctx, user, password)
+	return v.Authenticate(ctx, user, password, opts...)
 }

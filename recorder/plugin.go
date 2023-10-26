@@ -48,7 +48,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) recorder.Rec
 	return p
 }
 
-func (p *grpcPlugin) Record(ctx context.Context, b []byte) error {
+func (p *grpcPlugin) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	if p.client == nil {
 		return nil
 	}
@@ -98,13 +98,13 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) recorder.Reco
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
 		log: logger.Default().WithFields(map[string]any{
-			"kind":    "recorder",
+			"kind":     "recorder",
 			"recorder": name,
 		}),
 	}
 }
 
-func (p *httpPlugin) Record(ctx context.Context, b []byte) error {
+func (p *httpPlugin) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	if len(b) == 0 || p.client == nil {
 		return nil
 	}

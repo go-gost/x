@@ -30,19 +30,19 @@ type ingressWrapper struct {
 	r    *ingressRegistry
 }
 
-func (w *ingressWrapper) Get(ctx context.Context, host string) string {
+func (w *ingressWrapper) Get(ctx context.Context, host string, opts ...ingress.GetOption) string {
 	v := w.r.get(w.name)
 	if v == nil {
 		return ""
 	}
-	return v.Get(ctx, host)
+	return v.Get(ctx, host, opts...)
 }
 
-func (w *ingressWrapper) Set(ctx context.Context, host, endpoint string) {
+func (w *ingressWrapper) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
 	v := w.r.get(w.name)
 	if v == nil {
 		return
 	}
 
-	v.Set(ctx, host, endpoint)
+	v.Set(ctx, host, endpoint, opts...)
 }

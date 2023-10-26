@@ -40,7 +40,7 @@ func TCPRecorder(addr string, opts ...TCPRecorderOption) recorder.Recorder {
 	}
 }
 
-func (r *tcpRecorder) Record(ctx context.Context, b []byte) error {
+func (r *tcpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	c, err := r.dialer.DialContext(ctx, "tcp", r.addr)
 	if err != nil {
 		return err

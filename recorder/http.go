@@ -42,7 +42,7 @@ func HTTPRecorder(url string, opts ...HTTPRecorderOption) recorder.Recorder {
 	}
 }
 
-func (r *httpRecorder) Record(ctx context.Context, b []byte) error {
+func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	req, err := http.NewRequest(http.MethodPost, r.url, bytes.NewReader(b))
 	if err != nil {
 		return err

@@ -30,10 +30,10 @@ type admissionWrapper struct {
 	r    *admissionRegistry
 }
 
-func (w *admissionWrapper) Admit(ctx context.Context, addr string) bool {
+func (w *admissionWrapper) Admit(ctx context.Context, addr string, opts ...admission.Option) bool {
 	p := w.r.get(w.name)
 	if p == nil {
 		return false
 	}
-	return p.Admit(ctx, addr)
+	return p.Admit(ctx, addr, opts...)
 }

@@ -91,7 +91,7 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 	}, nil
 }
 
-func (r *localResolver) Resolve(ctx context.Context, network, host string) (ips []net.IP, err error) {
+func (r *localResolver) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) (ips []net.IP, err error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return []net.IP{ip}, nil
 	}

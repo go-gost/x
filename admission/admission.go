@@ -101,7 +101,7 @@ func NewAdmission(opts ...Option) admission.Admission {
 	return p
 }
 
-func (p *localAdmission) Admit(ctx context.Context, addr string) bool {
+func (p *localAdmission) Admit(ctx context.Context, addr string, opts ...admission.Option) bool {
 	if addr == "" || p == nil {
 		return true
 	}
