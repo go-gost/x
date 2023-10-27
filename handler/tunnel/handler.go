@@ -38,9 +38,10 @@ type tunnelHandler struct {
 	router   *chain.Router
 	md       metadata
 	options  handler.Options
-	ep       service.Service
 	pool     *ConnectorPool
 	recorder recorder.RecorderObject
+	epSvc    service.Service
+	ep       *entrypoint
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -74,6 +75,13 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
+	h.ep = &entrypoint{
+		pool:    h.pool,
+		ingress: h.md.ingress,
+		log: h.options.Logger.WithFields(map[string]any{
+			"kind": "entrypoint",
+		}),
+	}
 	if err = h.initEntrypoint(); err != nil {
 		return
 	}
@@ -115,24 +123,19 @@ func (h *tunnelHandler) initEntrypoint() (err error) {
 	if err = epListener.Init(nil); err != nil {
 		return
 	}
-	epHandler := newEntrypointHandler(
-		h.pool,
-		h.md.ingress,
-		handler.ServiceOption(serviceName),
-		handler.LoggerOption(log.WithFields(map[string]any{
-			"kind": "handler",
-		})),
-	)
+	epHandler := &entrypointHandler{
+		ep: h.ep,
+	}
 	if err = epHandler.Init(nil); err != nil {
 		return
 	}
 
-	h.ep = xservice.NewService(
+	h.epSvc = xservice.NewService(
 		serviceName, epListener, epHandler,
 		xservice.LoggerOption(log),
 	)
-	go h.ep.Serve()
-	log.Infof("entrypoint: %s", h.ep.Addr())
+	go h.epSvc.Serve()
+	log.Infof("entrypoint: %s", h.epSvc.Addr())
 
 	return
 }

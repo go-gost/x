@@ -16,19 +16,16 @@ import (
 
 type metadata struct {
 	readTimeout             time.Duration
-	noDelay                 bool
-	hash                    string
-	directTunnel            bool
 	entryPoint              string
-	entryPointProxyProtocol int
 	entryPointID            relay.TunnelID
+	entryPointProxyProtocol int
+	directTunnel            bool
 	ingress                 ingress.Ingress
 	muxCfg                  *mux.Config
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
-	h.md.noDelay = mdutil.GetBool(md, "nodelay")
 
 	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
@@ -70,8 +67,6 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if h.md.muxCfg.Version == 0 {
 		h.md.muxCfg.Version = 2
 	}
-
-	h.md.hash = mdutil.GetString(md, "hash")
 
 	return
 }

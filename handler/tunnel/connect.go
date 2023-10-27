@@ -32,39 +32,26 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, conn net.Conn, networ
 
 	host, _, _ := net.SplitHostPort(dstAddr)
 
+	// client is a public entrypoint.
+	if tunnelID.Equal(h.md.entryPointID) && !h.md.entryPointID.IsZero() {
+		resp.WriteTo(conn)
+		return h.ep.handle(ctx, conn)
+	}
+
 	var tid relay.TunnelID
 	if ingress := h.md.ingress; ingress != nil && host != "" {
 		tid = parseTunnelID(ingress.Get(ctx, host))
 	}
 
-	// client is a public entrypoint.
-	if tunnelID.Equal(h.md.entryPointID) && !h.md.entryPointID.IsZero() {
-		if tid.IsZero() {
-			resp.Status = relay.StatusNetworkUnreachable
-			resp.WriteTo(conn)
-			err := fmt.Errorf("no route to host %s", host)
-			log.Error(err)
-			return err
-		}
-
-		if tid.IsPrivate() {
-			resp.Status = relay.StatusHostUnreachable
-			resp.WriteTo(conn)
-			err := fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, host)
-			log.Error(err)
-			return err
-		}
-	} else {
-		// direct routing
-		if h.md.directTunnel {
-			tid = tunnelID
-		} else if !tid.Equal(tunnelID) {
-			resp.Status = relay.StatusHostUnreachable
-			resp.WriteTo(conn)
-			err := fmt.Errorf("no route to host %s", host)
-			log.Error(err)
-			return err
-		}
+	// direct routing
+	if h.md.directTunnel {
+		tid = tunnelID
+	} else if !tid.Equal(tunnelID) {
+		resp.Status = relay.StatusHostUnreachable
+		resp.WriteTo(conn)
+		err := fmt.Errorf("no route to host %s", host)
+		log.Error(err)
+		return err
 	}
 
 	cc, _, err := getTunnelConn(network, h.pool, tid, 3, log)
@@ -78,20 +65,9 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, conn net.Conn, networ
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), cc.RemoteAddr())
 
-	if h.md.noDelay {
-		if _, err := resp.WriteTo(conn); err != nil {
-			log.Error(err)
-			return err
-		}
-	} else {
-		rc := &tcpConn{
-			Conn: conn,
-		}
-		// cache the header
-		if _, err := resp.WriteTo(&rc.wbuf); err != nil {
-			return err
-		}
-		conn = rc
+	if _, err := resp.WriteTo(conn); err != nil {
+		log.Error(err)
+		return err
 	}
 
 	resp = relay.Response{
