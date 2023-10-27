@@ -53,9 +53,17 @@ func (p *grpcPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 		return nil
 	}
 
-	_, err := p.client.Record(context.Background(),
+	var options recorder.RecordOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	md, _ := json.Marshal(options.Metadata)
+
+	_, err := p.client.Record(ctx,
 		&proto.RecordRequest{
-			Data: b,
+			Data:     b,
+			Metadata: md,
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -72,7 +80,8 @@ func (p *grpcPlugin) Close() error {
 }
 
 type httpPluginRequest struct {
-	Data []byte `json:"data"`
+	Data     []byte `json:"data"`
+	Metadata []byte `json:"metadata"`
 }
 
 type httpPluginResponse struct {
@@ -109,15 +118,23 @@ func (p *httpPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 		return nil
 	}
 
+	var options recorder.RecordOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	md, _ := json.Marshal(options.Metadata)
+
 	rb := httpPluginRequest{
-		Data: b,
+		Data:     b,
+		Metadata: md,
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return err
 	}

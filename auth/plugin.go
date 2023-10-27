@@ -125,7 +125,7 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}

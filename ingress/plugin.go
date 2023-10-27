@@ -134,7 +134,7 @@ func (p *httpPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOp
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}
@@ -174,7 +174,7 @@ func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ing
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPut, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}

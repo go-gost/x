@@ -11,8 +11,8 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/hosts/proto"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/plugin"
+	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -133,7 +133,7 @@ func (p *httpPlugin) Lookup(ctx context.Context, network, host string, opts ...h
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}

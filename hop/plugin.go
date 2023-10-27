@@ -159,7 +159,7 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		return nil
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		p.log.Error(err)
 		return nil

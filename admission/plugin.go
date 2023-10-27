@@ -115,7 +115,7 @@ func (p *httpPlugin) Admit(ctx context.Context, addr string, opts ...admission.O
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}

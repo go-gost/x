@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -8,10 +9,17 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 	"github.com/google/uuid"
 )
+
+type connectorMetadata struct {
+	Op      string
+	Network string
+	Server  string
+}
 
 type Connector struct {
 	id relay.ConnectorID
@@ -54,16 +62,23 @@ type Tunnel struct {
 	connectors []*Connector
 	t          time.Time
 	n          uint64
+	close      chan struct{}
 	mu         sync.RWMutex
+	recorder   recorder.Recorder
 }
 
 func NewTunnel(id relay.TunnelID) *Tunnel {
 	t := &Tunnel{
-		id: id,
-		t:  time.Now(),
+		id:    id,
+		t:     time.Now(),
+		close: make(chan struct{}),
 	}
 	go t.clean()
 	return t
+}
+
+func (t *Tunnel) WithRecorder(recorder recorder.Recorder) {
+	t.recorder = recorder
 }
 
 func (t *Tunnel) ID() relay.TunnelID {
@@ -87,6 +102,9 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 
 	var connectors []*Connector
 	for _, c := range t.connectors {
+		if c.Session().IsClosed() {
+			continue
+		}
 		if network == "udp" && c.id.IsUDP() ||
 			network != "udp" && !c.id.IsUDP() {
 			connectors = append(connectors, c)
@@ -99,34 +117,83 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 	return connectors[n%uint64(len(connectors))]
 }
 
+func (t *Tunnel) CloseOnIdle() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	select {
+	case <-t.close:
+	default:
+		if len(t.connectors) == 0 {
+			close(t.close)
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Tunnel) clean() {
-	ticker := time.NewTicker(30 * time.Second)
-	for range ticker.C {
-		t.mu.Lock()
-		var connectors []*Connector
-		for _, c := range t.connectors {
-			if c.Session().IsClosed() {
-				logger.Default().Debugf("remove tunnel %s connector %s", t.id, c.id)
-				continue
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.mu.Lock()
+			if len(t.connectors) == 0 {
+				t.mu.Unlock()
 			}
-			connectors = append(connectors, c)
+			var connectors []*Connector
+			for _, c := range t.connectors {
+				if c.Session().IsClosed() {
+					logger.Default().Debugf("remove tunnel: %s, connector: %s", t.id, c.id)
+					if t.recorder != nil {
+						t.recorder.Record(context.Background(),
+							[]byte(fmt.Sprintf("%s:%s", t.id, c.id)),
+							recorder.MetadataReocrdOption(connectorMetadata{
+								Op: "del",
+							}),
+						)
+					}
+					continue
+				}
+
+				connectors = append(connectors, c)
+				if t.recorder != nil {
+					t.recorder.Record(context.Background(),
+						[]byte(fmt.Sprintf("%s:%s", t.id, c.id)),
+						recorder.MetadataReocrdOption(connectorMetadata{
+							Op: "set",
+						}),
+					)
+				}
+			}
+			if len(connectors) != len(t.connectors) {
+				t.connectors = connectors
+			}
+			t.mu.Unlock()
+		case <-t.close:
+			return
 		}
-		if len(connectors) != len(t.connectors) {
-			t.connectors = connectors
-		}
-		t.mu.Unlock()
 	}
 }
 
 type ConnectorPool struct {
-	tunnels map[string]*Tunnel
-	mu      sync.RWMutex
+	tunnels  map[string]*Tunnel
+	mu       sync.RWMutex
+	recorder recorder.Recorder
 }
 
 func NewConnectorPool() *ConnectorPool {
-	return &ConnectorPool{
+	p := &ConnectorPool{
 		tunnels: make(map[string]*Tunnel),
 	}
+	go p.closeIdles()
+	return p
+}
+
+func (p *ConnectorPool) WithRecorder(recorder recorder.Recorder) {
+	p.recorder = recorder
 }
 
 func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
@@ -138,6 +205,8 @@ func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
 	t := p.tunnels[s]
 	if t == nil {
 		t = NewTunnel(tid)
+		t.WithRecorder(p.recorder)
+
 		p.tunnels[s] = t
 	}
 	t.AddConnector(c)
@@ -157,6 +226,22 @@ func (p *ConnectorPool) Get(network string, tid relay.TunnelID) *Connector {
 	}
 
 	return t.GetConnector(network)
+}
+
+func (p *ConnectorPool) closeIdles() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		p.mu.Lock()
+		for k, v := range p.tunnels {
+			if v.CloseOnIdle() {
+				delete(p.tunnels, k)
+				logger.Default().Debugf("remove idle tunnel: %s", k)
+			}
+		}
+		p.mu.Unlock()
+	}
 }
 
 func parseTunnelID(s string) (tid relay.TunnelID) {

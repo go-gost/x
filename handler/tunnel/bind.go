@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"net"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 	"github.com/google/uuid"
@@ -57,8 +59,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if h.md.ingress != nil {
 		h.md.ingress.Set(ctx, addr, tunnelID.String())
 	}
-	if h.recorder.Recorder != nil {
-		h.recorder.Recorder.Record(ctx, tunnelID[:])
+	if h.recorder != nil {
+		h.recorder.Record(ctx,
+			[]byte(fmt.Sprintf("%s:%s", tunnelID, connectorID)),
+			recorder.MetadataReocrdOption(connectorMetadata{
+				Op:      "add",
+				Network: network,
+				Server:  conn.LocalAddr().String(),
+			}),
+		)
 	}
 
 	log.Debugf("%s/%s: tunnel=%s, connector=%s established", addr, network, tunnelID, connectorID)

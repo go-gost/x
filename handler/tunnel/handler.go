@@ -39,7 +39,7 @@ type tunnelHandler struct {
 	md       metadata
 	options  handler.Options
 	pool     *ConnectorPool
-	recorder recorder.RecorderObject
+	recorder recorder.Recorder
 	epSvc    service.Service
 	ep       *entrypoint
 }
@@ -52,7 +52,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &tunnelHandler{
 		options: options,
-		pool:    NewConnectorPool(),
 	}
 }
 
@@ -68,12 +67,14 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 
 	if opts := h.router.Options(); opts != nil {
 		for _, ro := range opts.Recorders {
-			if ro.Record == xrecorder.RecorderServiceHandlerTunnelEndpoint {
-				h.recorder = ro
+			if ro.Record == xrecorder.RecorderServiceHandlerTunnelConnector {
+				h.recorder = ro.Recorder
 				break
 			}
 		}
 	}
+	h.pool = NewConnectorPool()
+	h.pool.WithRecorder(h.recorder)
 
 	h.ep = &entrypoint{
 		pool:    h.pool,

@@ -56,7 +56,7 @@ func (p *grpcPlugin) Resolve(ctx context.Context, network, host string, opts ...
 		return
 	}
 
-	r, err := p.client.Resolve(context.Background(),
+	r, err := p.client.Resolve(ctx,
 		&proto.ResolveRequest{
 			Network: network,
 			Host:    host,
@@ -134,7 +134,7 @@ func (p *httpPlugin) Resolve(ctx context.Context, network, host string, opts ...
 		return
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.url, bytes.NewReader(v))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
 		return
 	}
