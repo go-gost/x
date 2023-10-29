@@ -6,9 +6,43 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/x/config"
+)
+
+const (
+	VersionTLS10 = "VersionTLS10"
+	VersionTLS11 = "VersionTLS11"
+	VersionTLS12 = "VersionTLS12"
+	VersionTLS13 = "VersionTLS13"
+)
+
+const (
+	TLS_RSA_WITH_RC4_128_SHA                      = "TLS_RSA_WITH_RC4_128_SHA"
+	TLS_RSA_WITH_3DES_EDE_CBC_SHA                 = "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+	TLS_RSA_WITH_AES_128_CBC_SHA                  = "TLS_RSA_WITH_AES_128_CBC_SHA"
+	TLS_RSA_WITH_AES_256_CBC_SHA                  = "TLS_RSA_WITH_AES_256_CBC_SHA"
+	TLS_RSA_WITH_AES_128_CBC_SHA256               = "TLS_RSA_WITH_AES_128_CBC_SHA256"
+	TLS_RSA_WITH_AES_128_GCM_SHA256               = "TLS_RSA_WITH_AES_128_GCM_SHA256"
+	TLS_RSA_WITH_AES_256_GCM_SHA384               = "TLS_RSA_WITH_AES_256_GCM_SHA384"
+	TLS_ECDHE_ECDSA_WITH_RC4_128_SHA              = "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA"
+	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA          = "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
+	TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA          = "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA"
+	TLS_ECDHE_RSA_WITH_RC4_128_SHA                = "TLS_ECDHE_RSA_WITH_RC4_128_SHA"
+	TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA           = "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA"
+	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA            = "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA"
+	TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA            = "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA"
+	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256       = "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
+	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256         = "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256"
+	TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256         = "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+	TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256       = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+	TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384         = "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+	TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384       = "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+	TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256   = "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+	TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 = "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"
 )
 
 // LoadDefaultConfig loads the certificate from cert & key files and optional CA file.
@@ -33,19 +67,19 @@ func LoadDefaultConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 }
 
 // LoadServerConfig loads the certificate from cert & key files and client CA file.
-func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
-	if certFile == "" && keyFile == "" {
+func LoadServerConfig(config *config.TLSConfig) (*tls.Config, error) {
+	if config.CertFile == "" && config.KeyFile == "" {
 		return nil, nil
 	}
 
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
 
-	pool, err := loadCA(caFile)
+	pool, err := loadCA(config.CAFile)
 	if err != nil {
 		return nil, err
 	}
@@ -54,17 +88,88 @@ func LoadServerConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
+	if opts := config.Options; opts != nil {
+		switch strings.ToLower(opts.MinVersion) {
+		case strings.ToLower(VersionTLS10):
+			cfg.MinVersion = tls.VersionTLS10
+		case strings.ToLower(VersionTLS11):
+			cfg.MinVersion = tls.VersionTLS11
+		case strings.ToLower(VersionTLS12):
+			cfg.MinVersion = tls.VersionTLS12
+		case strings.ToLower(VersionTLS13):
+			cfg.MinVersion = tls.VersionTLS13
+		}
+		switch strings.ToLower(opts.MaxVersion) {
+		case strings.ToLower(VersionTLS10):
+			cfg.MaxVersion = tls.VersionTLS10
+		case strings.ToLower(VersionTLS11):
+			cfg.MaxVersion = tls.VersionTLS11
+		case strings.ToLower(VersionTLS12):
+			cfg.MaxVersion = tls.VersionTLS12
+		case strings.ToLower(VersionTLS13):
+			cfg.MaxVersion = tls.VersionTLS13
+		}
+		for _, v := range opts.CipherSuites {
+			switch strings.ToLower(v) {
+			case strings.ToLower(TLS_RSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_RSA_WITH_3DES_EDE_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_RSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256)
+			}
+		}
+	}
+
 	return cfg, nil
 }
 
 // LoadClientConfig loads the certificate from cert & key files and CA file.
-func LoadClientConfig(certFile, keyFile, caFile string, verify bool, serverName string) (*tls.Config, error) {
+func LoadClientConfig(config *config.TLSConfig) (*tls.Config, error) {
 	var cfg *tls.Config
 
-	if certFile == "" && keyFile == "" {
+	if config.CertFile == "" && config.KeyFile == "" {
 		cfg = &tls.Config{}
 	} else {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
 			return nil, err
 		}
@@ -74,17 +179,88 @@ func LoadClientConfig(certFile, keyFile, caFile string, verify bool, serverName 
 		}
 	}
 
-	rootCAs, err := loadCA(caFile)
+	rootCAs, err := loadCA(config.CAFile)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg.RootCAs = rootCAs
-	cfg.ServerName = serverName
-	cfg.InsecureSkipVerify = !verify
+	cfg.ServerName = config.ServerName
+	cfg.InsecureSkipVerify = !config.Secure
+
+	if opts := config.Options; opts != nil {
+		switch strings.ToLower(opts.MinVersion) {
+		case strings.ToLower(VersionTLS10):
+			cfg.MinVersion = tls.VersionTLS10
+		case strings.ToLower(VersionTLS11):
+			cfg.MinVersion = tls.VersionTLS11
+		case strings.ToLower(VersionTLS12):
+			cfg.MinVersion = tls.VersionTLS12
+		case strings.ToLower(VersionTLS13):
+			cfg.MinVersion = tls.VersionTLS13
+		}
+		switch strings.ToLower(opts.MaxVersion) {
+		case strings.ToLower(VersionTLS10):
+			cfg.MaxVersion = tls.VersionTLS10
+		case strings.ToLower(VersionTLS11):
+			cfg.MaxVersion = tls.VersionTLS11
+		case strings.ToLower(VersionTLS12):
+			cfg.MaxVersion = tls.VersionTLS12
+		case strings.ToLower(VersionTLS13):
+			cfg.MaxVersion = tls.VersionTLS13
+		}
+		for _, v := range opts.CipherSuites {
+			switch strings.ToLower(v) {
+			case strings.ToLower(TLS_RSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_RSA_WITH_3DES_EDE_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_RSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_RSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_RC4_128_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384)
+			case strings.ToLower(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256)
+			case strings.ToLower(TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256):
+				cfg.CipherSuites = append(cfg.CipherSuites, tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256)
+			}
+		}
+	}
 
 	// If the root ca is given, but skip verify, we verify the certificate manually.
-	if cfg.RootCAs != nil && !verify {
+	if cfg.RootCAs != nil && !config.Secure {
 		cfg.VerifyConnection = func(state tls.ConnectionState) error {
 			opts := x509.VerifyOptions{
 				Roots:         cfg.RootCAs,

@@ -55,8 +55,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if tlsCfg == nil {
 		tlsCfg = &config.TLSConfig{}
 	}
-	tlsConfig, err := tls_util.LoadServerConfig(
-		tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile)
+	tlsConfig, err := tls_util.LoadServerConfig(tlsCfg)
 	if err != nil {
 		listenerLogger.Error(err)
 		return nil, err
@@ -149,8 +148,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if tlsCfg == nil {
 		tlsCfg = &config.TLSConfig{}
 	}
-	tlsConfig, err = tls_util.LoadServerConfig(
-		tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile)
+	tlsConfig, err = tls_util.LoadServerConfig(tlsCfg)
 	if err != nil {
 		handlerLogger.Error(err)
 		return nil, err

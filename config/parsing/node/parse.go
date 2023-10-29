@@ -57,9 +57,7 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 	if tlsCfg.ServerName == "" {
 		tlsCfg.ServerName = serverName
 	}
-	tlsConfig, err := tls_util.LoadClientConfig(
-		tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile,
-		tlsCfg.Secure, tlsCfg.ServerName)
+	tlsConfig, err := tls_util.LoadClientConfig(tlsCfg)
 	if err != nil {
 		nodeLogger.Error(err)
 		return nil, err
@@ -99,9 +97,7 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 	if tlsCfg.ServerName == "" {
 		tlsCfg.ServerName = serverName
 	}
-	tlsConfig, err = tls_util.LoadClientConfig(
-		tlsCfg.CertFile, tlsCfg.KeyFile, tlsCfg.CAFile,
-		tlsCfg.Secure, tlsCfg.ServerName)
+	tlsConfig, err = tls_util.LoadClientConfig(tlsCfg)
 	if err != nil {
 		nodeLogger.Error(err)
 		return nil, err
