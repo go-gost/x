@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xio "github.com/go-gost/x/internal/io"
@@ -28,8 +29,10 @@ import (
 )
 
 type entrypoint struct {
+	node    string
 	pool    *ConnectorPool
 	ingress ingress.Ingress
+	sd      sd.SD
 	log     logger.Logger
 }
 
@@ -50,6 +53,14 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 	}()
 
 	br := bufio.NewReader(conn)
+
+	v, err := br.Peek(1)
+	if err != nil {
+		return err
+	}
+	if v[0] == relay.Version1 {
+		return ep.handleConnect(ctx, xnet.NewBufferReaderConn(conn, br), log)
+	}
 
 	var cc net.Conn
 	for {
@@ -102,32 +113,42 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				remoteAddr = addr
 			}
 
-			cc, cid, err := getTunnelConn("tcp", ep.pool, tunnelID, 3, log)
+			d := &Dialer{
+				node:    ep.node,
+				pool:    ep.pool,
+				sd:      ep.sd,
+				retry:   3,
+				timeout: 15 * time.Second,
+				log:     log,
+			}
+			cc, node, cid, err := d.Dial(ctx, "tcp", tunnelID.String())
 			if err != nil {
 				log.Error(err)
 				return resp.Write(conn)
 			}
-
 			log.Debugf("new connection to tunnel: %s, connector: %s", tunnelID, cid)
-
-			var features []relay.Feature
-			af := &relay.AddrFeature{}
-			af.ParseFrom(remoteAddr.String())
-			features = append(features, af) // src address
 
 			host := req.Host
 			if h, _, _ := net.SplitHostPort(host); h == "" {
 				host = net.JoinHostPort(host, "80")
 			}
-			af = &relay.AddrFeature{}
-			af.ParseFrom(host)
-			features = append(features, af) // dst address
 
-			(&relay.Response{
-				Version:  relay.Version1,
-				Status:   relay.StatusOK,
-				Features: features,
-			}).WriteTo(cc)
+			if node == ep.node {
+				var features []relay.Feature
+				af := &relay.AddrFeature{}
+				af.ParseFrom(remoteAddr.String())
+				features = append(features, af) // src address
+
+				af = &relay.AddrFeature{}
+				af.ParseFrom(host)
+				features = append(features, af) // dst address
+
+				(&relay.Response{
+					Version:  relay.Version1,
+					Status:   relay.StatusOK,
+					Features: features,
+				}).WriteTo(cc)
+			}
 
 			if err := req.Write(cc); err != nil {
 				cc.Close()
@@ -182,6 +203,90 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 			break
 		}
 	}
+
+	return nil
+}
+
+func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, log logger.Logger) error {
+	req := relay.Request{}
+	if _, err := req.ReadFrom(conn); err != nil {
+		return err
+	}
+
+	resp := relay.Response{
+		Version: relay.Version1,
+		Status:  relay.StatusOK,
+	}
+
+	var srcAddr, dstAddr string
+	network := "tcp"
+	var tunnelID relay.TunnelID
+	for _, f := range req.Features {
+		switch f.Type() {
+		case relay.FeatureAddr:
+			if feature, _ := f.(*relay.AddrFeature); feature != nil {
+				v := net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port)))
+				if srcAddr != "" {
+					dstAddr = v
+				} else {
+					srcAddr = v
+				}
+			}
+		case relay.FeatureTunnel:
+			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
+				tunnelID = relay.NewTunnelID(feature.ID[:])
+			}
+		case relay.FeatureNetwork:
+			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
+				network = feature.Network.String()
+			}
+		}
+	}
+
+	if tunnelID.IsZero() {
+		resp.Status = relay.StatusBadRequest
+		resp.WriteTo(conn)
+		return ErrTunnelID
+	}
+
+	d := Dialer{
+		pool:    ep.pool,
+		retry:   3,
+		timeout: 15 * time.Second,
+		log:     log,
+	}
+	cc, _, cid, err := d.Dial(ctx, network, tunnelID.String())
+	if err != nil {
+		log.Error(err)
+		resp.Status = relay.StatusServiceUnavailable
+		resp.WriteTo(conn)
+		return err
+	}
+	defer cc.Close()
+
+	log.Debugf("new connection to tunnel: %s, connector: %s", tunnelID, cid)
+
+	if _, err := resp.WriteTo(conn); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	af := &relay.AddrFeature{}
+	af.ParseFrom(srcAddr)
+	resp.Features = append(resp.Features, af) // src address
+
+	af = &relay.AddrFeature{}
+	af.ParseFrom(dstAddr)
+	resp.Features = append(resp.Features, af) // dst address
+
+	resp.WriteTo(cc)
+
+	t := time.Now()
+	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
+	xnet.Transport(conn, cc)
+	log.WithFields(map[string]any{
+		"duration": time.Since(t),
+	}).Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())
 
 	return nil
 }

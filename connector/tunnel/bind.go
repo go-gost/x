@@ -50,6 +50,9 @@ func (c *tunnelConnector) initTunnel(conn net.Conn, network, address string) (ad
 
 	if network == "udp" {
 		req.Cmd |= relay.FUDP
+		req.Features = append(req.Features, &relay.NetworkFeature{
+			Network: relay.NetworkUDP,
+		})
 	}
 
 	if c.options.Auth != nil {

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
+	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
@@ -20,14 +20,16 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
+	"github.com/google/uuid"
 )
 
 var (
-	ErrBadVersion   = errors.New("relay: bad version")
-	ErrUnknownCmd   = errors.New("relay: unknown command")
-	ErrTunnelID     = errors.New("tunnel: invalid tunnel ID")
-	ErrUnauthorized = errors.New("relay: unauthorized")
-	ErrRateLimit    = errors.New("relay: rate limiting exceeded")
+	ErrBadVersion         = errors.New("bad version")
+	ErrUnknownCmd         = errors.New("unknown command")
+	ErrTunnelID           = errors.New("invalid tunnel ID")
+	ErrTunnelNotAvailable = errors.New("tunnel not available")
+	ErrUnauthorized       = errors.New("unauthorized")
+	ErrRateLimit          = errors.New("rate limiting exceeded")
 )
 
 func init() {
@@ -35,13 +37,14 @@ func init() {
 }
 
 type tunnelHandler struct {
-	router   *chain.Router
-	md       metadata
+	id       string
 	options  handler.Options
 	pool     *ConnectorPool
 	recorder recorder.Recorder
 	epSvc    service.Service
 	ep       *entrypoint
+	md       metadata
+	log      logger.Logger
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -60,26 +63,33 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		return err
 	}
 
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		return err
 	}
+	h.id = uuid.String()
 
-	if opts := h.router.Options(); opts != nil {
+	h.log = h.options.Logger.WithFields(map[string]any{
+		"node": h.id,
+	})
+
+	if opts := h.options.Router.Options(); opts != nil {
 		for _, ro := range opts.Recorders {
-			if ro.Record == xrecorder.RecorderServiceHandlerTunnelConnector {
+			if ro.Record == xrecorder.RecorderServiceHandlerTunnel {
 				h.recorder = ro.Recorder
 				break
 			}
 		}
 	}
-	h.pool = NewConnectorPool()
-	h.pool.WithRecorder(h.recorder)
+
+	h.pool = NewConnectorPool(h.id, h.md.sd)
 
 	h.ep = &entrypoint{
+		node:    h.id,
 		pool:    h.pool,
 		ingress: h.md.ingress,
-		log: h.options.Logger.WithFields(map[string]any{
+		sd:      h.md.sd,
+		log: h.log.WithFields(map[string]any{
 			"kind": "entrypoint",
 		}),
 	}
@@ -102,12 +112,12 @@ func (h *tunnelHandler) initEntrypoint() (err error) {
 
 	ln, err := net.Listen(network, h.md.entryPoint)
 	if err != nil {
-		h.options.Logger.Error(err)
+		h.log.Error(err)
 		return
 	}
 
 	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
-	log := h.options.Logger.WithFields(map[string]any{
+	log := h.log.WithFields(map[string]any{
 		"service":  serviceName,
 		"listener": "tcp",
 		"handler":  "tunnel-ep",
@@ -143,7 +153,7 @@ func (h *tunnelHandler) initEntrypoint() (err error) {
 
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
-	log := h.options.Logger.WithFields(map[string]any{
+	log := h.log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 	})
@@ -189,7 +199,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	var user, pass string
 	var srcAddr, dstAddr string
-	var networkID relay.NetworkID
+	network := "tcp"
 	var tunnelID relay.TunnelID
 	for _, f := range req.Features {
 		switch f.Type() {
@@ -212,7 +222,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			}
 		case relay.FeatureNetwork:
 			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
-				networkID = feature.Network
+				network = feature.Network.String()
 			}
 		}
 	}
@@ -237,17 +247,13 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
 	}
 
-	network := networkID.String()
-	if (req.Cmd & relay.FUDP) == relay.FUDP {
-		network = "udp"
-	}
-
 	switch req.Cmd & relay.CmdMask {
 	case relay.CmdConnect:
 		defer conn.Close()
 
 		log.Debugf("connect: %s >> %s/%s", srcAddr, dstAddr, network)
-		return h.handleConnect(ctx, conn, network, srcAddr, dstAddr, tunnelID, log)
+		return h.handleConnect(ctx, &req, conn, network, srcAddr, dstAddr, tunnelID, log)
+
 	case relay.CmdBind:
 		log.Debugf("bind: %s >> %s/%s", srcAddr, dstAddr, network)
 		return h.handleBind(ctx, conn, network, dstAddr, tunnelID, log)

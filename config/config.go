@@ -237,6 +237,11 @@ type IngressConfig struct {
 	Plugin *PluginConfig        `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
+type SDConfig struct {
+	Name   string        `json:"name"`
+	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
+}
+
 type RecorderConfig struct {
 	Name   string         `json:"name"`
 	File   *FileRecorder  `yaml:",omitempty" json:"file,omitempty"`
@@ -436,6 +441,7 @@ type Config struct {
 	Resolvers  []*ResolverConfig  `yaml:",omitempty" json:"resolvers,omitempty"`
 	Hosts      []*HostsConfig     `yaml:",omitempty" json:"hosts,omitempty"`
 	Ingresses  []*IngressConfig   `yaml:",omitempty" json:"ingresses,omitempty"`
+	SDs        []*SDConfig        `yaml:"sds,omitempty" json:"sds,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`

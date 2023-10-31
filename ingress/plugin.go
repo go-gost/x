@@ -126,23 +126,19 @@ func (p *httpPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOp
 		return
 	}
 
-	rb := httpPluginGetRequest{
-		Host: host,
-	}
-	v, err := json.Marshal(&rb)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
 		return
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
-	if err != nil {
-		return
-	}
-
 	if p.header != nil {
 		req.Header = p.header.Clone()
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	q := req.URL.Query()
+	q.Set("host", host)
+	req.URL.RawQuery = q.Encode()
+
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return

@@ -7,16 +7,16 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-gost/core v0.0.0-20231027140845-d975ec3c7477
+	github.com/go-gost/core v0.0.0-20231031145651-8835e0e647f9
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.4.0
-	github.com/go-gost/plugin v0.0.0-20231027141311-2cfb0a14b451
+	github.com/go-gost/plugin v0.0.0-20231031145754-4c25027b8b97
 	github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
 	github.com/golang/snappy v0.0.4
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.4.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/miekg/dns v1.1.56
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -40,7 +40,7 @@ require (
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
 	golang.zx2c4.com/wireguard v0.0.0-20220703234212-c31a7b1ab478
-	google.golang.org/grpc v1.58.3
+	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -108,7 +108,7 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231016165738-49dd2c1f3d0b // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

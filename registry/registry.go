@@ -18,6 +18,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
+	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/service"
 )
 
@@ -32,7 +33,7 @@ var (
 	connectorReg reg.Registry[NewConnector]        = new(connectorRegistry)
 	serviceReg   reg.Registry[service.Service]     = new(serviceRegistry)
 	chainReg     reg.Registry[chain.Chainer]       = new(chainRegistry)
-	hopReg       reg.Registry[hop.Hop]           = new(hopRegistry)
+	hopReg       reg.Registry[hop.Hop]             = new(hopRegistry)
 	autherReg    reg.Registry[auth.Authenticator]  = new(autherRegistry)
 	admissionReg reg.Registry[admission.Admission] = new(admissionRegistry)
 	bypassReg    reg.Registry[bypass.Bypass]       = new(bypassRegistry)
@@ -45,6 +46,7 @@ var (
 	rateLimiterReg    reg.Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
 
 	ingressReg reg.Registry[ingress.Ingress] = new(ingressRegistry)
+	sdReg      reg.Registry[sd.SD]           = new(sdRegistry)
 )
 
 type registry[T any] struct {
@@ -162,4 +164,8 @@ func RateLimiterRegistry() reg.Registry[rate.RateLimiter] {
 
 func IngressRegistry() reg.Registry[ingress.Ingress] {
 	return ingressReg
+}
+
+func SDRegistry() reg.Registry[sd.SD] {
+	return sdReg
 }

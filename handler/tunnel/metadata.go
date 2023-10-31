@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/internal/util/mux"
@@ -21,6 +22,7 @@ type metadata struct {
 	entryPointProxyProtocol int
 	directTunnel            bool
 	ingress                 ingress.Ingress
+	sd                      sd.SD
 	muxCfg                  *mux.Config
 }
 
@@ -54,6 +56,7 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 			)
 		}
 	}
+	h.md.sd = registry.SDRegistry().Get(mdutil.GetString(md, "sd"))
 
 	h.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),
