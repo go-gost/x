@@ -30,30 +30,30 @@ type sdWrapper struct {
 	r    *sdRegistry
 }
 
-func (w *sdWrapper) Register(ctx context.Context, name string, network, address string, opts ...sd.Option) error {
+func (w *sdWrapper) Register(ctx context.Context, service *sd.Service, opts ...sd.Option) error {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
-	return v.Register(ctx, name, network, address, opts...)
+	return v.Register(ctx, service, opts...)
 }
 
-func (w *sdWrapper) Deregister(ctx context.Context, name string) error {
+func (w *sdWrapper) Deregister(ctx context.Context, service *sd.Service) error {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
 
-	return v.Deregister(ctx, name)
+	return v.Deregister(ctx, service)
 }
 
-func (w *sdWrapper) Renew(ctx context.Context, name string) error {
+func (w *sdWrapper) Renew(ctx context.Context, service *sd.Service) error {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
 	}
 
-	return v.Renew(ctx, name)
+	return v.Renew(ctx, service)
 }
 
 func (w *sdWrapper) Get(ctx context.Context, name string) ([]*sd.Service, error) {

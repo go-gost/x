@@ -30,22 +30,8 @@ type metadata struct {
 }
 
 func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		host = "host"
-		path = "path"
-
-		handshakeTimeout  = "handshakeTimeout"
-		readHeaderTimeout = "readHeaderTimeout"
-		readBufferSize    = "readBufferSize"
-		writeBufferSize   = "writeBufferSize"
-		enableCompression = "enableCompression"
-
-		header = "header"
-	)
-
-	d.md.host = mdutil.GetString(md, host)
-
-	d.md.path = mdutil.GetString(md, path)
+	d.md.host = mdutil.GetString(md, "ws.host", "host")
+	d.md.path = mdutil.GetString(md, "ws.path", "path")
 	if d.md.path == "" {
 		d.md.path = defaultPath
 	}
@@ -60,13 +46,13 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
 
-	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
-	d.md.readHeaderTimeout = mdutil.GetDuration(md, readHeaderTimeout)
-	d.md.readBufferSize = mdutil.GetInt(md, readBufferSize)
-	d.md.writeBufferSize = mdutil.GetInt(md, writeBufferSize)
-	d.md.enableCompression = mdutil.GetBool(md, enableCompression)
+	d.md.handshakeTimeout = mdutil.GetDuration(md, "ws.handshakeTimeout", "handshakeTimeout")
+	d.md.readHeaderTimeout = mdutil.GetDuration(md, "ws.readHeaderTimeout", "readHeaderTimeout")
+	d.md.readBufferSize = mdutil.GetInt(md, "ws.readBufferSize", "readBufferSize")
+	d.md.writeBufferSize = mdutil.GetInt(md, "ws.writeBufferSize", "writeBufferSize")
+	d.md.enableCompression = mdutil.GetBool(md, "ws.enableCompression", "enableCompression")
 
-	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
+	if m := mdutil.GetStringMapString(md, "ws.header", "header"); len(m) > 0 {
 		h := http.Header{}
 		for k, v := range m {
 			h.Add(k, v)
@@ -74,7 +60,7 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.header = h
 	}
 
-	if mdutil.GetBool(md, "keepalive") {
+	if mdutil.GetBool(md, "ws.keepalive", "keepalive") {
 		d.md.keepaliveInterval = mdutil.GetDuration(md, "ttl", "keepalive.interval")
 		if d.md.keepaliveInterval <= 0 {
 			d.md.keepaliveInterval = defaultKeepalivePeriod

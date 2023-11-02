@@ -49,8 +49,17 @@ func (c *websocketConn) WriteMessage(messageType int, data []byte) error {
 }
 
 func (c *websocketConn) SetDeadline(t time.Time) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
 	if err := c.SetReadDeadline(t); err != nil {
 		return err
 	}
 	return c.SetWriteDeadline(t)
+}
+
+func (c *websocketConn) SetWriteDeadline(t time.Time) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	return c.Conn.SetWriteDeadline(t)
 }

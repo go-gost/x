@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
 	"net"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 	"github.com/google/uuid"
@@ -58,8 +58,14 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if h.md.ingress != nil {
 		h.md.ingress.Set(ctx, addr, tunnelID.String())
 	}
-	if sd := h.md.sd; sd != nil {
-		err := sd.Register(ctx, fmt.Sprintf("%s:%s:%s", h.id, tunnelID, connectorID), network, h.md.entryPoint)
+	if h.md.sd != nil {
+		err := h.md.sd.Register(ctx, &sd.Service{
+			ID: connectorID.String(),
+			Name: tunnelID.String(),
+			Node: h.id,
+			Network: network,
+			Address: h.md.entryPoint,
+		})
 		if err != nil {
 			h.log.Error(err)
 		}

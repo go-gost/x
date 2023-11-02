@@ -47,16 +47,20 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) sd.SD {
 	return p
 }
 
-func (p *grpcPlugin) Register(ctx context.Context, name string, network, address string, opts ...sd.Option) error {
+func (p *grpcPlugin) Register(ctx context.Context, service *sd.Service, opts ...sd.Option) error {
 	if p.client == nil {
 		return nil
 	}
 
 	_, err := p.client.Register(ctx,
 		&proto.RegisterRequest{
-			Name:    name,
-			Network: network,
-			Address: address,
+			Service: &proto.Service{
+				Id:      service.ID,
+				Name:    service.Name,
+				Node:    service.Node,
+				Network: service.Network,
+				Address: service.Address,
+			},
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -65,24 +69,36 @@ func (p *grpcPlugin) Register(ctx context.Context, name string, network, address
 	return nil
 }
 
-func (p *grpcPlugin) Deregister(ctx context.Context, name string) error {
+func (p *grpcPlugin) Deregister(ctx context.Context, service *sd.Service) error {
 	if p.client == nil {
 		return nil
 	}
 
 	_, err := p.client.Deregister(ctx, &proto.DeregisterRequest{
-		Name: name,
+		Service: &proto.Service{
+			Id:      service.ID,
+			Name:    service.Name,
+			Node:    service.Node,
+			Network: service.Network,
+			Address: service.Address,
+		},
 	})
 	return err
 }
 
-func (p *grpcPlugin) Renew(ctx context.Context, name string) error {
+func (p *grpcPlugin) Renew(ctx context.Context, service *sd.Service) error {
 	if p.client == nil {
 		return nil
 	}
 
 	_, err := p.client.Renew(ctx, &proto.RenewRequest{
-		Name: name,
+		Service: &proto.Service{
+			Id:      service.ID,
+			Name:    service.Name,
+			Node:    service.Node,
+			Network: service.Network,
+			Address: service.Address,
+		},
 	})
 	return err
 }
@@ -121,39 +137,10 @@ func (p *grpcPlugin) Close() error {
 	return nil
 }
 
-type httpRegisterRequest struct {
-	Name    string `json:"name"`
-	Network string `json:"network"`
-	Address string `json:"address"`
-}
-
-type httpRegisterResponse struct {
-	Ok bool `json:"ok"`
-}
-
-type httpDeregisterRequest struct {
-	Name string `json:"name"`
-}
-
-type httpDeregisterResponse struct {
-	Ok bool `json:"ok"`
-}
-
-type httpRenewRequest struct {
-	Name string `json:"name"`
-}
-
-type httpRenewResponse struct {
-	Ok bool `json:"ok"`
-}
-
-type httpGetRequest struct {
-	Name string `json:"name"`
-}
-
 type sdService struct {
-	Node    string `json:"node"`
+	ID      string `json:"id"`
 	Name    string `json:"name"`
+	Node    string `json:"node"`
 	Network string `json:"network"`
 	Address string `json:"address"`
 }
@@ -187,17 +174,18 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) sd.SD {
 	}
 }
 
-func (p *httpPlugin) Register(ctx context.Context, name string, network, address string, opts ...sd.Option) error {
-	if p.client == nil {
+func (p *httpPlugin) Register(ctx context.Context, service *sd.Service, opts ...sd.Option) error {
+	if p.client == nil || service == nil {
 		return nil
 	}
 
-	rb := httpRegisterRequest{
-		Name:    name,
-		Network: network,
-		Address: address,
-	}
-	v, err := json.Marshal(&rb)
+	v, err := json.Marshal(sdService{
+		ID:      service.ID,
+		Name:    service.Name,
+		Node:    service.Node,
+		Network: service.Network,
+		Address: service.Address,
+	})
 	if err != nil {
 		return err
 	}
@@ -224,15 +212,18 @@ func (p *httpPlugin) Register(ctx context.Context, name string, network, address
 	return nil
 }
 
-func (p *httpPlugin) Deregister(ctx context.Context, name string) error {
-	if p.client == nil {
+func (p *httpPlugin) Deregister(ctx context.Context, service *sd.Service) error {
+	if p.client == nil || service == nil {
 		return nil
 	}
 
-	rb := httpDeregisterRequest{
-		Name: name,
-	}
-	v, err := json.Marshal(&rb)
+	v, err := json.Marshal(sdService{
+		ID:      service.ID,
+		Name:    service.Name,
+		Node:    service.Node,
+		Network: service.Network,
+		Address: service.Address,
+	})
 	if err != nil {
 		return err
 	}
@@ -259,15 +250,18 @@ func (p *httpPlugin) Deregister(ctx context.Context, name string) error {
 	return nil
 }
 
-func (p *httpPlugin) Renew(ctx context.Context, name string) error {
+func (p *httpPlugin) Renew(ctx context.Context, service *sd.Service) error {
 	if p.client == nil {
 		return nil
 	}
 
-	rb := httpRenewRequest{
-		Name: name,
-	}
-	v, err := json.Marshal(&rb)
+	v, err := json.Marshal(sdService{
+		ID:      service.ID,
+		Name:    service.Name,
+		Node:    service.Node,
+		Network: service.Network,
+		Address: service.Address,
+	})
 	if err != nil {
 		return err
 	}

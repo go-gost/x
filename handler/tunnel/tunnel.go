@@ -2,7 +2,6 @@ package tunnel
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,14 +143,22 @@ func (t *Tunnel) clean() {
 				if c.Session().IsClosed() {
 					logger.Default().Debugf("remove tunnel: %s, connector: %s", t.id, c.id)
 					if t.sd != nil {
-						t.sd.Deregister(context.Background(), fmt.Sprintf("%s:%s:%s", t.node, t.id, c.id))
+						t.sd.Deregister(context.Background(), &sd.Service{
+							ID:   c.id.String(),
+							Name: t.id.String(),
+							Node: t.node,
+						})
 					}
 					continue
 				}
 
 				connectors = append(connectors, c)
 				if t.sd != nil {
-					t.sd.Renew(context.Background(), fmt.Sprintf("%s:%s:%s", t.node, t.id, c.id))
+					t.sd.Renew(context.Background(), &sd.Service{
+						ID:   c.id.String(),
+						Name: t.id.String(),
+						Node: t.node,
+					})
 				}
 			}
 			if len(connectors) != len(t.connectors) {
