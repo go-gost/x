@@ -15,12 +15,17 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+const (
+	defaultTTL = 15 * time.Second
+)
+
 type metadata struct {
 	readTimeout             time.Duration
 	entryPoint              string
 	entryPointID            relay.TunnelID
 	entryPointProxyProtocol int
 	directTunnel            bool
+	tunnelTTL               time.Duration
 	ingress                 ingress.Ingress
 	sd                      sd.SD
 	muxCfg                  *mux.Config
@@ -29,6 +34,10 @@ type metadata struct {
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 
+	h.md.tunnelTTL = mdutil.GetDuration(md, "tunnel.ttl")
+	if h.md.tunnelTTL <= 0 {
+		h.md.tunnelTTL = defaultTTL
+	}
 	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
 	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))

@@ -146,7 +146,7 @@ type sdService struct {
 }
 
 type httpGetResponse struct {
-	Services []*sdService
+	Services []*sdService `json:"services"`
 }
 
 type httpPlugin struct {
@@ -327,8 +327,9 @@ func (p *httpPlugin) Get(ctx context.Context, name string) (services []*sd.Servi
 			continue
 		}
 		services = append(services, &sd.Service{
-			Node:    v.Node,
+			ID:      v.ID,
 			Name:    v.Name,
+			Node:    v.Node,
 			Network: v.Network,
 			Address: v.Address,
 		})

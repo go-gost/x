@@ -14,16 +14,22 @@ import (
 )
 
 type Connector struct {
-	id relay.ConnectorID
-	t  time.Time
-	s  *mux.Session
+	id   relay.ConnectorID
+	tid  relay.TunnelID
+	node string
+	sd   sd.SD
+	t    time.Time
+	s    *mux.Session
 }
 
-func NewConnector(id relay.ConnectorID, s *mux.Session) *Connector {
+func NewConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.Session, sd sd.SD) *Connector {
 	c := &Connector{
-		id: id,
-		t:  time.Now(),
-		s:  s,
+		id:   id,
+		tid:  tid,
+		node: node,
+		sd:   sd,
+		t:    time.Now(),
+		s:    s,
 	}
 	go c.accept()
 	return c
@@ -35,6 +41,13 @@ func (c *Connector) accept() {
 		if err != nil {
 			logger.Default().Errorf("connector %s: %v", c.id, err)
 			c.s.Close()
+			if c.sd != nil {
+				c.sd.Deregister(context.Background(), &sd.Service{
+					ID:   c.id.String(),
+					Name: c.tid.String(),
+					Node: c.node,
+				})
+			}
 			return
 		}
 		conn.Close()
@@ -58,14 +71,19 @@ type Tunnel struct {
 	close      chan struct{}
 	mu         sync.RWMutex
 	sd         sd.SD
+	ttl        time.Duration
 }
 
-func NewTunnel(node string, tid relay.TunnelID) *Tunnel {
+func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {
 	t := &Tunnel{
 		node:  node,
 		id:    tid,
 		t:     time.Now(),
 		close: make(chan struct{}),
+		ttl:   ttl,
+	}
+	if t.ttl <= 0 {
+		t.ttl = defaultTTL
 	}
 	go t.clean()
 	return t
@@ -127,7 +145,7 @@ func (t *Tunnel) CloseOnIdle() bool {
 }
 
 func (t *Tunnel) clean() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(t.ttl)
 	defer ticker.Stop()
 
 	for {
@@ -188,7 +206,7 @@ func NewConnectorPool(node string, sd sd.SD) *ConnectorPool {
 	return p
 }
 
-func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
+func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector, ttl time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -196,7 +214,7 @@ func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector) {
 
 	t := p.tunnels[s]
 	if t == nil {
-		t = NewTunnel(p.node, tid)
+		t = NewTunnel(p.node, tid, ttl)
 		t.WithSD(p.sd)
 
 		p.tunnels[s] = t

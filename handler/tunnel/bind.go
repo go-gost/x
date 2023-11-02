@@ -54,15 +54,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		return
 	}
 
-	h.pool.Add(tunnelID, NewConnector(connectorID, session))
+	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd), h.md.tunnelTTL)
 	if h.md.ingress != nil {
 		h.md.ingress.Set(ctx, addr, tunnelID.String())
 	}
 	if h.md.sd != nil {
 		err := h.md.sd.Register(ctx, &sd.Service{
-			ID: connectorID.String(),
-			Name: tunnelID.String(),
-			Node: h.id,
+			ID:      connectorID.String(),
+			Name:    tunnelID.String(),
+			Node:    h.id,
 			Network: network,
 			Address: h.md.entryPoint,
 		})

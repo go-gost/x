@@ -20,7 +20,9 @@ type Dialer struct {
 
 func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net.Conn, node string, cid string, err error) {
 	retry := d.retry
-	retry = 1
+	if retry <= 0 {
+		retry = 1
+	}
 
 	for i := 0; i < retry; i++ {
 		c := d.pool.Get(network, tid)
