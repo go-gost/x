@@ -66,7 +66,7 @@ func (c *Cache) Load(key CacheKey) (msg *dns.Msg, ttl time.Duration) {
 	}
 	ttl = item.ttl - time.Since(item.ts)
 
-	c.logger.Debugf("hit resolver cache: %s, ttl: %v", key, ttl)
+	c.logger.Debugf("resolver cache hit: %s, ttl: %v", key, ttl)
 
 	return
 }

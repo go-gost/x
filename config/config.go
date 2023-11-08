@@ -198,6 +198,8 @@ type NameserverConfig struct {
 	Hostname string        `yaml:",omitempty" json:"hostname,omitempty"`
 	TTL      time.Duration `yaml:",omitempty" json:"ttl,omitempty"`
 	Timeout  time.Duration `yaml:",omitempty" json:"timeout,omitempty"`
+	Async    bool          `yaml:",omitempty" json:"async,omitempty"`
+	Only     string        `yaml:",omitempty" json:"only,omitempty"`
 }
 
 type ResolverConfig struct {

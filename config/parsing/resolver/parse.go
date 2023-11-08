@@ -52,6 +52,8 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 			ClientIP: net.ParseIP(server.ClientIP),
 			Prefer:   server.Prefer,
 			Hostname: server.Hostname,
+			Async:    server.Async,
+			Only:     server.Only,
 		})
 	}
 
