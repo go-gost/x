@@ -113,8 +113,13 @@ func (p *localAdmission) Admit(ctx context.Context, addr string, opts ...admissi
 
 	matched := p.matched(addr)
 
-	return !p.options.whitelist && !matched ||
+	b := !p.options.whitelist && !matched ||
 		p.options.whitelist && matched
+
+	if !b {
+		p.options.logger.Debugf("%s is denied", addr)
+	}
+	return b
 }
 
 func (p *localAdmission) periodReload(ctx context.Context) error {
@@ -155,6 +160,10 @@ func (p *localAdmission) reload(ctx context.Context) error {
 		if _, inet, err := net.ParseCIDR(pattern); err == nil {
 			inets = append(inets, inet)
 			continue
+		}
+		if ipAddr, _ := net.ResolveIPAddr("ip", pattern); ipAddr != nil {
+			p.options.logger.Debugf("resolve IP: %s -> %s", pattern, ipAddr)
+			ips = append(ips, ipAddr.IP)
 		}
 	}
 

@@ -70,9 +70,8 @@ func LoggerOption(logger logger.Logger) Option {
 }
 
 type localBypass struct {
-	ipMatcher       matcher.Matcher
 	cidrMatcher     matcher.Matcher
-	domainMatcher   matcher.Matcher
+	addrMatcher     matcher.Matcher
 	wildcardMatcher matcher.Matcher
 	cancelFunc      context.CancelFunc
 	options         options
@@ -132,15 +131,10 @@ func (bp *localBypass) reload(ctx context.Context) error {
 	}
 	patterns := append(bp.options.matchers, v...)
 
-	var ips []net.IP
+	var addrs []string
 	var inets []*net.IPNet
-	var domains []string
 	var wildcards []string
 	for _, pattern := range patterns {
-		if ip := net.ParseIP(pattern); ip != nil {
-			ips = append(ips, ip)
-			continue
-		}
 		if _, inet, err := net.ParseCIDR(pattern); err == nil {
 			inets = append(inets, inet)
 			continue
@@ -149,15 +143,14 @@ func (bp *localBypass) reload(ctx context.Context) error {
 			wildcards = append(wildcards, pattern)
 			continue
 		}
-		domains = append(domains, pattern)
+		addrs = append(addrs, pattern)
 	}
 
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 
-	bp.ipMatcher = matcher.IPMatcher(ips)
 	bp.cidrMatcher = matcher.CIDRMatcher(inets)
-	bp.domainMatcher = matcher.DomainMatcher(domains)
+	bp.addrMatcher = matcher.AddrMatcher(addrs)
 	bp.wildcardMatcher = matcher.WildcardMatcher(wildcards)
 
 	return nil
@@ -237,11 +230,6 @@ func (bp *localBypass) Contains(ctx context.Context, network, addr string, opts 
 		return false
 	}
 
-	// try to strip the port
-	if host, _, _ := net.SplitHostPort(addr); host != "" {
-		addr = host
-	}
-
 	matched := bp.matched(addr)
 
 	b := !bp.options.whitelist && matched ||
@@ -263,13 +251,20 @@ func (bp *localBypass) matched(addr string) bool {
 	bp.mu.RLock()
 	defer bp.mu.RUnlock()
 
-	if ip := net.ParseIP(addr); ip != nil {
-		return bp.ipMatcher.Match(addr) ||
-			bp.cidrMatcher.Match(addr)
+	if bp.addrMatcher.Match(addr) {
+		return true
 	}
 
-	return bp.domainMatcher.Match(addr) ||
-		bp.wildcardMatcher.Match(addr)
+	host, _, _ := net.SplitHostPort(addr)
+	if host == "" {
+		host = addr
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		return bp.cidrMatcher.Match(host)
+	}
+
+	return bp.wildcardMatcher.Match(addr)
 }
 
 func (bp *localBypass) Close() error {
