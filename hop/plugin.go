@@ -67,6 +67,7 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 			Network: options.Network,
 			Addr:    options.Addr,
 			Host:    options.Host,
+			Path:    options.Path,
 			Client:  string(auth_util.IDFromContext(ctx)),
 		})
 	if err != nil {
@@ -103,6 +104,7 @@ type httpPluginRequest struct {
 	Network string `json:"network"`
 	Addr    string `json:"addr"`
 	Host    string `json:"host"`
+	Path    string `json:"path"`
 	Client  string `json:"client"`
 }
 
@@ -151,6 +153,7 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		Network: options.Network,
 		Addr:    options.Addr,
 		Host:    options.Host,
+		Path:    options.Path,
 		Client:  string(auth_util.IDFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)

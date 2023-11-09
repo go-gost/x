@@ -164,6 +164,7 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 		chain.MetadataNodeOption(nm),
 		chain.HostNodeOption(host),
 		chain.ProtocolNodeOption(cfg.Protocol),
+		chain.PathNodeOption(cfg.Path),
 		chain.NetworkNodeOption(cfg.Network),
 	}
 	if cfg.HTTP != nil {
@@ -173,10 +174,16 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 		}))
 	}
 	if cfg.TLS != nil {
-		opts = append(opts, chain.TLSNodeOption(&chain.TLSNodeSettings{
+		tlsCfg := &chain.TLSNodeSettings{
 			ServerName: cfg.TLS.ServerName,
 			Secure:     cfg.TLS.Secure,
-		}))
+		}
+		if o := cfg.TLS.Options; o != nil {
+			tlsCfg.Options.MinVersion = o.MinVersion
+			tlsCfg.Options.MaxVersion = o.MaxVersion
+			tlsCfg.Options.CipherSuites = o.CipherSuites
+		}
+		opts = append(opts, chain.TLSNodeOption(tlsCfg))
 	}
 	if cfg.Auth != nil {
 		opts = append(opts, chain.AutherNodeOption(

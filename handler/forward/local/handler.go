@@ -20,10 +20,12 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/config"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/util/forward"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/registry"
 )
 
@@ -232,6 +234,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				target = h.hop.Select(ctx,
 					hop.HostSelectOption(req.Host),
 					hop.ProtocolSelectOption(forward.ProtoHTTP),
+					hop.PathSelectOption(req.URL.Path),
 				)
 			}
 			if target == nil {
@@ -284,10 +287,16 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 			log.Debugf("connection to node %s(%s)", target.Name, target.Addr)
 
 			if tlsSettings := target.Options().TLS; tlsSettings != nil {
-				cc = tls.Client(cc, &tls.Config{
+				cfg := &tls.Config{
 					ServerName:         tlsSettings.ServerName,
 					InsecureSkipVerify: !tlsSettings.Secure,
+				}
+				tls_util.SetTLSOptions(cfg, &config.TLSOptions{
+					MinVersion: tlsSettings.Options.MinVersion,
+					MaxVersion: tlsSettings.Options.MaxVersion,
+					CipherSuites: tlsSettings.Options.CipherSuites,
 				})
+				cc = tls.Client(cc, cfg)
 			}
 
 			if err := req.Write(cc); err != nil {

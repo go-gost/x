@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -177,6 +178,26 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 				filters = append(filters, node)
 			}
 		}
+	}
+
+	// filter by path
+	if path := options.Path; path != "" {
+		p.options.logger.Debugf("filter by path: %s", path)
+		sort.SliceStable(filters, func(i, j int) bool {
+			return len(filters[i].Options().Path) > len(filters[j].Options().Path)
+		})
+		var nodes []*chain.Node
+		for _, node := range filters {
+			if node.Options().Path == "" {
+				nodes = append(nodes, node)
+				continue
+			}
+			if strings.HasPrefix(path, node.Options().Path) {
+				nodes = append(nodes, node)
+				break
+			}
+		}
+		filters = nodes
 	}
 
 	var nodes []*chain.Node

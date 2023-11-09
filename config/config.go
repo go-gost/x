@@ -327,6 +327,7 @@ type ForwardNodeConfig struct {
 	Host     string          `yaml:",omitempty" json:"host,omitempty"`
 	Network  string          `yaml:",omitempty" json:"network,omitempty"`
 	Protocol string          `yaml:",omitempty" json:"protocol,omitempty"`
+	Path     string          `yaml:",omitempty" json:"path,omitempty"`
 	Bypass   string          `yaml:",omitempty" json:"bypass,omitempty"`
 	Bypasses []string        `yaml:",omitempty" json:"bypasses,omitempty"`
 	HTTP     *HTTPNodeConfig `yaml:",omitempty" json:"http,omitempty"`
@@ -340,8 +341,9 @@ type HTTPNodeConfig struct {
 }
 
 type TLSNodeConfig struct {
-	ServerName string `yaml:"serverName,omitempty" json:"serverName,omitempty"`
-	Secure     bool   `yaml:",omitempty" json:"secure,omitempty"`
+	ServerName string      `yaml:"serverName,omitempty" json:"serverName,omitempty"`
+	Secure     bool        `yaml:",omitempty" json:"secure,omitempty"`
+	Options    *TLSOptions `yaml:",omitempty" json:"options,omitempty"`
 }
 
 type DialerConfig struct {
@@ -419,6 +421,7 @@ type NodeConfig struct {
 	Host      string           `yaml:",omitempty" json:"host,omitempty"`
 	Network   string           `yaml:",omitempty" json:"network,omitempty"`
 	Protocol  string           `yaml:",omitempty" json:"protocol,omitempty"`
+	Path      string           `yaml:",omitempty" json:"path,omitempty"`
 	Interface string           `yaml:",omitempty" json:"interface,omitempty"`
 	SockOpts  *SockOptsConfig  `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Bypass    string           `yaml:",omitempty" json:"bypass,omitempty"`
