@@ -160,6 +160,7 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := l.upgrader.Upgrade(w, r, l.md.header)
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		log.Error(err)
 		return
 	}

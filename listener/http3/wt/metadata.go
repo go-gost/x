@@ -1,7 +1,6 @@
-package h3
+package wt
 
 import (
-	"strings"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -9,17 +8,13 @@ import (
 )
 
 const (
-	defaultAuthorizePath = "/authorize"
-	defaultPushPath      = "/push"
-	defaultPullPath      = "/pull"
-	defaultBacklog       = 128
+	defaultPath    = "/wt"
+	defaultBacklog = 128
 )
 
 type metadata struct {
-	authorizePath string
-	pushPath      string
-	pullPath      string
-	backlog       int
+	path    string
+	backlog int
 
 	// QUIC config options
 	keepAlivePeriod  time.Duration
@@ -28,7 +23,7 @@ type metadata struct {
 	maxStreams       int
 }
 
-func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
+func (l *wtListener) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		keepAlive        = "keepalive"
 		keepAlivePeriod  = "ttl"
@@ -39,17 +34,9 @@ func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
 		backlog = "backlog"
 	)
 
-	l.md.authorizePath = mdutil.GetString(md, "pht.authorizePath", "authorizePath")
-	if !strings.HasPrefix(l.md.authorizePath, "/") {
-		l.md.authorizePath = defaultAuthorizePath
-	}
-	l.md.pushPath = mdutil.GetString(md, "pht.pushPath", "pushPath")
-	if !strings.HasPrefix(l.md.pushPath, "/") {
-		l.md.pushPath = defaultPushPath
-	}
-	l.md.pullPath = mdutil.GetString(md, "pht.pullPath", "pullPath")
-	if !strings.HasPrefix(l.md.pullPath, "/") {
-		l.md.pullPath = defaultPullPath
+	l.md.path = mdutil.GetString(md, "wt.path", "path")
+	if l.md.path == "" {
+		l.md.path = defaultPath
 	}
 
 	l.md.backlog = mdutil.GetInt(md, backlog)

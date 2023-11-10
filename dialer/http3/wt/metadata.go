@@ -1,7 +1,7 @@
-package http3
+package wt
 
 import (
-	"strings"
+	"net/http"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -9,16 +9,14 @@ import (
 )
 
 const (
-	defaultAuthorizePath = "/authorize"
-	defaultPushPath      = "/push"
-	defaultPullPath      = "/pull"
+	defaultPath            = "/wt"
+	defaultKeepalivePeriod = 15 * time.Second
 )
 
 type metadata struct {
-	authorizePath string
-	pushPath      string
-	pullPath      string
-	host          string
+	host   string
+	path   string
+	header http.Header
 
 	// QUIC config options
 	keepAlivePeriod  time.Duration
@@ -27,7 +25,7 @@ type metadata struct {
 	maxStreams       int
 }
 
-func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
+func (d *wtDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
 		keepAlive        = "keepalive"
 		keepAlivePeriod  = "ttl"
@@ -36,20 +34,12 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		maxStreams       = "maxStreams"
 	)
 
-	d.md.authorizePath = mdutil.GetString(md, "pht.authorizePath", "authorizePath")
-	if !strings.HasPrefix(d.md.authorizePath, "/") {
-		d.md.authorizePath = defaultAuthorizePath
-	}
-	d.md.pushPath = mdutil.GetString(md, "pht.pushPath", "pushPath")
-	if !strings.HasPrefix(d.md.pushPath, "/") {
-		d.md.pushPath = defaultPushPath
-	}
-	d.md.pullPath = mdutil.GetString(md, "pht.pullPath", "pullPath")
-	if !strings.HasPrefix(d.md.pullPath, "/") {
-		d.md.pullPath = defaultPullPath
+	d.md.host = mdutil.GetString(md, "wt.host", "host")
+	d.md.path = mdutil.GetString(md, "wt.path", "path")
+	if d.md.path == "" {
+		d.md.path = defaultPath
 	}
 
-	d.md.host = mdutil.GetString(md, "host")
 	if !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
 		d.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if d.md.keepAlivePeriod <= 0 {
@@ -59,6 +49,14 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
 	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
+
+	if m := mdutil.GetStringMapString(md, "wt.header", "header"); len(m) > 0 {
+		h := http.Header{}
+		for k, v := range m {
+			h.Add(k, v)
+		}
+		d.md.header = h
+	}
 
 	return
 }

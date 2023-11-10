@@ -156,6 +156,7 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 	conn, err := l.upgrader.Upgrade(w, r, l.md.header)
 	if err != nil {
 		l.logger.Error(err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
