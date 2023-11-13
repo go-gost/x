@@ -259,8 +259,8 @@ func (ing *localIngress) Get(ctx context.Context, host string, opts ...ingress.G
 	return ep
 }
 
-func (ing *localIngress) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
-
+func (ing *localIngress) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) bool {
+	return false
 }
 
 func (ing *localIngress) lookup(host string) string {

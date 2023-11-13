@@ -62,15 +62,20 @@ func (p *grpcPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOp
 	return r.GetEndpoint()
 }
 
-func (p *grpcPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
+func (p *grpcPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) bool {
 	if p.client == nil {
-		return
+		return false
 	}
 
-	p.client.Set(ctx, &proto.SetRequest{
+	r, _ := p.client.Set(ctx, &proto.SetRequest{
 		Host:     host,
 		Endpoint: endpoint,
 	})
+	if r == nil {
+		return false
+	}
+
+	return r.Ok
 }
 
 func (p *grpcPlugin) Close() error {
@@ -94,6 +99,7 @@ type httpPluginSetRequest struct {
 }
 
 type httpPluginSetResponse struct {
+	OK bool `json:"ok"`
 }
 
 type httpPlugin struct {
@@ -156,9 +162,9 @@ func (p *httpPlugin) Get(ctx context.Context, host string, opts ...ingress.GetOp
 	return res.Endpoint
 }
 
-func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
+func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) bool {
 	if p.client == nil {
-		return
+		return false
 	}
 
 	rb := httpPluginSetRequest{
@@ -167,12 +173,12 @@ func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ing
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
-		return
+		return false
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, p.url, bytes.NewReader(v))
 	if err != nil {
-		return
+		return false
 	}
 
 	if p.header != nil {
@@ -181,16 +187,17 @@ func (p *httpPlugin) Set(ctx context.Context, host, endpoint string, opts ...ing
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return
+		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return
+		return false
 	}
 
-	res := httpPluginSetResponse{}
+	res := httpPluginSetResponse{ }
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return
+		return false
 	}
+	return res.OK
 }

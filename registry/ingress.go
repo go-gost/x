@@ -38,11 +38,11 @@ func (w *ingressWrapper) Get(ctx context.Context, host string, opts ...ingress.G
 	return v.Get(ctx, host, opts...)
 }
 
-func (w *ingressWrapper) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) {
+func (w *ingressWrapper) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) bool {
 	v := w.r.get(w.name)
 	if v == nil {
-		return
+		return false
 	}
 
-	v.Set(ctx, host, endpoint, opts...)
+	return v.Set(ctx, host, endpoint, opts...)
 }
