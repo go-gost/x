@@ -19,6 +19,7 @@ type tcpConn struct {
 	net.Conn
 	wbuf *bytes.Buffer
 	once sync.Once
+	mu   sync.Mutex
 }
 
 func (c *tcpConn) Read(b []byte) (n int, err error) {
@@ -36,6 +37,10 @@ func (c *tcpConn) Read(b []byte) (n int, err error) {
 
 func (c *tcpConn) Write(b []byte) (n int, err error) {
 	n = len(b) // force byte length consistent
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.wbuf != nil && c.wbuf.Len() > 0 {
 		c.wbuf.Write(b) // append the data to the cached header
 		_, err = c.Conn.Write(c.wbuf.Bytes())
@@ -50,6 +55,7 @@ type udpConn struct {
 	net.Conn
 	wbuf *bytes.Buffer
 	once sync.Once
+	mu   sync.Mutex
 }
 
 func (c *udpConn) Read(b []byte) (n int, err error) {
@@ -88,6 +94,10 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 	}
 
 	n = len(b)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.wbuf != nil && c.wbuf.Len() > 0 {
 		var bb [2]byte
 		binary.BigEndian.PutUint16(bb[:], uint16(len(b)))

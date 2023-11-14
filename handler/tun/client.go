@@ -44,7 +44,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			go h.keepAlive(ctx, cc, ips)
+			go h.keepalive(ctx, cc, ips)
 
 			return h.transportClient(conn, cc, log)
 		}()
@@ -57,7 +57,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 	}
 }
 
-func (h *tunHandler) keepAlive(ctx context.Context, conn net.Conn, ips []net.IP) {
+func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP) {
 	// handshake
 	keepAliveData := bufpool.Get(keepAliveHeaderLength + len(ips)*net.IPv6len)
 	defer bufpool.Put(keepAliveData)

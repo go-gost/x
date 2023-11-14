@@ -101,12 +101,6 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		req.Features = append(req.Features, af)
 	}
 
-	if !c.md.tunnelID.IsZero() {
-		req.Features = append(req.Features, &relay.TunnelFeature{
-			ID: c.md.tunnelID.ID(),
-		})
-	}
-
 	if c.md.noDelay {
 		if _, err := req.WriteTo(conn); err != nil {
 			return nil, err

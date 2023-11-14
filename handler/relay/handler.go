@@ -3,7 +3,6 @@ package relay
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -11,14 +10,11 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
-	"github.com/go-gost/core/listener"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
-	xnet "github.com/go-gost/x/internal/net"
 	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/registry"
-	xservice "github.com/go-gost/x/service"
 )
 
 var (
@@ -38,7 +34,6 @@ type relayHandler struct {
 	md      metadata
 	options handler.Options
 	ep      service.Service
-	pool    *ConnectorPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -49,7 +44,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &relayHandler{
 		options: options,
-		pool:    NewConnectorPool(),
 	}
 }
 
@@ -63,66 +57,7 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
-	if err = h.initEntryPoint(); err != nil {
-		return
-	}
 	return nil
-}
-
-func (h *relayHandler) initEntryPoint() (err error) {
-	if h.md.entryPoint == "" {
-		return
-	}
-
-	network := "tcp"
-	if xnet.IsIPv4(h.md.entryPoint) {
-		network = "tcp4"
-	}
-
-	ln, err := net.Listen(network, h.md.entryPoint)
-	if err != nil {
-		h.options.Logger.Error(err)
-		return
-	}
-
-	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
-	log := h.options.Logger.WithFields(map[string]any{
-		"service":  serviceName,
-		"listener": "tcp",
-		"handler":  "ep-tunnel",
-		"kind":     "service",
-	})
-	epListener := newTCPListener(ln,
-		listener.AddrOption(h.md.entryPoint),
-		listener.ServiceOption(serviceName),
-		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
-		listener.LoggerOption(log.WithFields(map[string]any{
-			"kind": "listener",
-		})),
-	)
-	if err = epListener.Init(nil); err != nil {
-		return
-	}
-	epHandler := newTunnelHandler(
-		h.pool,
-		h.md.ingress,
-		handler.ServiceOption(serviceName),
-		handler.LoggerOption(log.WithFields(map[string]any{
-			"kind": "handler",
-		})),
-	)
-	if err = epHandler.Init(nil); err != nil {
-		return
-	}
-
-	h.ep = xservice.NewService(
-		serviceName, epListener, epHandler,
-		xservice.LoggerOption(log),
-	)
-	go h.ep.Serve()
-	log.Infof("entrypoint: %s", h.ep.Addr())
-
-	return
 }
 
 // Forward implements handler.Forwarder.
@@ -179,7 +114,6 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	var user, pass string
 	var address string
 	var networkID relay.NetworkID
-	var tunnelID relay.TunnelID
 	for _, f := range req.Features {
 		switch f.Type() {
 		case relay.FeatureUserAuth:
@@ -189,10 +123,6 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		case relay.FeatureAddr:
 			if feature, _ := f.(*relay.AddrFeature); feature != nil {
 				address = net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port)))
-			}
-		case relay.FeatureTunnel:
-			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
-				tunnelID = relay.NewTunnelID(feature.ID[:])
 			}
 		case relay.FeatureNetwork:
 			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
@@ -230,16 +160,10 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	case 0, relay.CmdConnect:
 		defer conn.Close()
 
-		if !tunnelID.IsZero() {
-			return h.handleConnectTunnel(ctx, conn, network, address, tunnelID, log)
-		}
 		return h.handleConnect(ctx, conn, network, address, log)
 	case relay.CmdBind:
-		if !tunnelID.IsZero() {
-			return h.handleBindTunnel(ctx, conn, network, address, tunnelID, log)
-		}
-
 		defer conn.Close()
+
 		return h.handleBind(ctx, conn, network, address, log)
 	default:
 		resp.Status = relay.StatusBadRequest
