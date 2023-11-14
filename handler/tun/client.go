@@ -130,7 +130,7 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
 						header.PayloadLen, header.TrafficClass)
 				} else {
-					log.Warn("unknown packet, discarded")
+					log.Warnf("unknown packet, discarded(%d)", n)
 					return nil
 				}
 

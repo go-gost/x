@@ -71,7 +71,7 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.L
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
-	relay.Run()
+	relay.Run(ctx)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())

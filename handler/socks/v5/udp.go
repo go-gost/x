@@ -72,7 +72,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 		WithLogger(log)
 	r.SetBufferSize(h.md.udpBufferSize)
 
-	go r.Run()
+	go r.Run(ctx)
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.LocalAddr())

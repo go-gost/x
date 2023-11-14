@@ -63,7 +63,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())
-	r.Run()
+	r.Run(ctx)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())

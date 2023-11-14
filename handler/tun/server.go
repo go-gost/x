@@ -78,7 +78,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
 						header.PayloadLen, header.TrafficClass)
 				} else {
-					log.Warn("unknown packet, discarded")
+					log.Warnf("unknown packet, discarded(%d)", n)
 					return nil
 				}
 
@@ -199,7 +199,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
 						header.PayloadLen, header.TrafficClass)
 				} else {
-					log.Warn("unknown packet, discarded")
+					log.Warnf("unknown packet, discarded(%d): % x", n, b[:n])
 					return nil
 				}
 

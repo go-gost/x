@@ -23,6 +23,7 @@ import (
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
+	xnet "github.com/go-gost/x/internal/net"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
@@ -258,10 +259,18 @@ func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 	}
 	for _, node := range cfg.Nodes {
 		if node != nil {
-			hc.Nodes = append(hc.Nodes,
-				&config.NodeConfig{
-					Name:     node.Name,
-					Addr:     node.Addr,
+			addrs := xnet.AddrPortRange(node.Addr).Addrs()
+			if len(addrs) == 0 {
+				addrs = append(addrs, node.Addr)
+			}
+			for i, addr := range addrs {
+				name := node.Name
+				if i > 0 {
+					name = fmt.Sprintf("%s-%d", node.Name, i)
+				}
+				hc.Nodes = append(hc.Nodes, &config.NodeConfig{
+					Name:     name,
+					Addr:     addr,
 					Host:     node.Host,
 					Network:  node.Network,
 					Protocol: node.Protocol,
@@ -271,8 +280,8 @@ func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 					HTTP:     node.HTTP,
 					TLS:      node.TLS,
 					Auth:     node.Auth,
-				},
-			)
+				})
+			}
 		}
 	}
 	if len(hc.Nodes) > 0 {
