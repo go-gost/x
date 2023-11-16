@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	xrelay "github.com/go-gost/x/internal/util/relay"
 )
 
 type tcpConn struct {
@@ -129,7 +130,7 @@ func readResponse(r io.Reader) (err error) {
 	}
 
 	if resp.Status != relay.StatusOK {
-		err = fmt.Errorf("status %d", resp.Status)
+		err = fmt.Errorf("%d %s", resp.Status, xrelay.StatusText(resp.Status))
 		return
 	}
 	return nil
@@ -222,17 +223,4 @@ func (c *bindUDPConn) RemoteAddr() net.Addr {
 // Metadata implements metadata.Metadatable interface.
 func (c *bindUDPConn) Metadata() mdata.Metadata {
 	return c.md
-}
-
-type bindAddr struct {
-	network string
-	addr    string
-}
-
-func (p *bindAddr) Network() string {
-	return p.network
-}
-
-func (p *bindAddr) String() string {
-	return p.addr
 }

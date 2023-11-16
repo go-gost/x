@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -90,39 +89,20 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		ID: c.md.tunnelID.ID(),
 	})
 
-	if c.md.noDelay {
-		if _, err := req.WriteTo(conn); err != nil {
-			return nil, err
-		}
-		// drain the response
-		if err := readResponse(conn); err != nil {
-			return nil, err
-		}
+	if _, err := req.WriteTo(conn); err != nil {
+		return nil, err
+	}
+	// drain the response
+	if err := readResponse(conn); err != nil {
+		return nil, err
 	}
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		if !c.md.noDelay {
-			cc := &tcpConn{
-				Conn: conn,
-				wbuf: &bytes.Buffer{},
-			}
-			if _, err := req.WriteTo(cc.wbuf); err != nil {
-				return nil, err
-			}
-			conn = cc
-		}
 	case "udp", "udp4", "udp6":
-		cc := &udpConn{
+		conn = &udpConn{
 			Conn: conn,
 		}
-		if !c.md.noDelay {
-			cc.wbuf = &bytes.Buffer{}
-			if _, err := req.WriteTo(cc.wbuf); err != nil {
-				return nil, err
-			}
-		}
-		conn = cc
 	default:
 		err := fmt.Errorf("network %s is unsupported", network)
 		log.Error(err)

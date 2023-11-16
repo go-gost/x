@@ -6,7 +6,31 @@ import (
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
+	"github.com/go-gost/relay"
 )
+
+func StatusText(code uint8) string {
+	switch code {
+	case relay.StatusBadRequest:
+		return "Bad Request"
+	case relay.StatusForbidden:
+		return "Forbidden"
+	case relay.StatusHostUnreachable:
+		return "Host Unreachable"
+	case relay.StatusInternalServerError:
+		return "Internal Server Error"
+	case relay.StatusNetworkUnreachable:
+		return "Network Unreachable"
+	case relay.StatusServiceUnavailable:
+		return "Service Unavailable"
+	case relay.StatusTimeout:
+		return "Timeout"
+	case relay.StatusUnauthorized:
+		return "Unauthorized"
+	default:
+		return ""
+	}
+}
 
 type udpTunConn struct {
 	net.Conn

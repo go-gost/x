@@ -1,67 +1,24 @@
 package tunnel
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net"
-	"sync"
 
 	"github.com/go-gost/core/common/bufpool"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	xrelay "github.com/go-gost/x/internal/util/relay"
 )
-
-type tcpConn struct {
-	net.Conn
-	wbuf *bytes.Buffer
-	once sync.Once
-}
-
-func (c *tcpConn) Read(b []byte) (n int, err error) {
-	c.once.Do(func() {
-		if c.wbuf != nil {
-			err = readResponse(c.Conn)
-		}
-	})
-
-	if err != nil {
-		return
-	}
-	return c.Conn.Read(b)
-}
-
-func (c *tcpConn) Write(b []byte) (n int, err error) {
-	n = len(b) // force byte length consistent
-	if c.wbuf != nil && c.wbuf.Len() > 0 {
-		c.wbuf.Write(b) // append the data to the cached header
-		_, err = c.Conn.Write(c.wbuf.Bytes())
-		c.wbuf.Reset()
-		return
-	}
-	_, err = c.Conn.Write(b)
-	return
-}
 
 type udpConn struct {
 	net.Conn
-	wbuf *bytes.Buffer
-	once sync.Once
 }
 
 func (c *udpConn) Read(b []byte) (n int, err error) {
-	c.once.Do(func() {
-		if c.wbuf != nil {
-			err = readResponse(c.Conn)
-		}
-	})
-	if err != nil {
-		return
-	}
-
 	var bb [2]byte
 	_, err = io.ReadFull(c.Conn, bb[:])
 	if err != nil {
@@ -88,14 +45,6 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 	}
 
 	n = len(b)
-	if c.wbuf != nil && c.wbuf.Len() > 0 {
-		var bb [2]byte
-		binary.BigEndian.PutUint16(bb[:], uint16(len(b)))
-		c.wbuf.Write(bb[:])
-		c.wbuf.Write(b) // append the data to the cached header
-		_, err = c.wbuf.WriteTo(c.Conn)
-		return
-	}
 
 	var bb [2]byte
 	binary.BigEndian.PutUint16(bb[:], uint16(len(b)))
@@ -119,7 +68,7 @@ func readResponse(r io.Reader) (err error) {
 	}
 
 	if resp.Status != relay.StatusOK {
-		err = fmt.Errorf("status %d", resp.Status)
+		err = fmt.Errorf("%d %s", resp.Status, xrelay.StatusText(resp.Status))
 		return
 	}
 	return nil
