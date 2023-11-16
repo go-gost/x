@@ -12,6 +12,11 @@ import (
 type AddrPortRange string
 
 func (p AddrPortRange) Addrs() (addrs []string) {
+	// ignore url scheme, e.g. http://, tls://, tcp://.
+	if strings.Contains(string(p), "://") {
+		return nil
+	}
+
 	h, sp, err := net.SplitHostPort(string(p))
 	if err != nil {
 		return nil
