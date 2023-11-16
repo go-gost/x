@@ -21,14 +21,14 @@ func (d *kcpDialer) parseMetadata(md mdata.Metadata) (err error) {
 		handshakeTimeout = "handshakeTimeout"
 	)
 
-	if file := mdutil.GetString(md, configFile); file != "" {
+	if file := mdutil.GetString(md, "kcp.configFile", "configFile", "c"); file != "" {
 		d.md.config, err = kcp_util.ParseFromFile(file)
 		if err != nil {
 			return
 		}
 	}
 
-	if m := mdutil.GetStringMap(md, config); len(m) > 0 {
+	if m := mdutil.GetStringMap(md, "kcp.config", "config"); len(m) > 0 {
 		b, err := json.Marshal(m)
 		if err != nil {
 			return err
@@ -42,6 +42,14 @@ func (d *kcpDialer) parseMetadata(md mdata.Metadata) (err error) {
 	if d.md.config == nil {
 		d.md.config = kcp_util.DefaultConfig
 	}
+	d.md.config.TCP = mdutil.GetBool(md, "kcp.tcp", "tcp")
+	d.md.config.Key = mdutil.GetString(md, "kcp.key")
+	d.md.config.Crypt = mdutil.GetString(md, "kcp.crypt")
+	d.md.config.Mode = mdutil.GetString(md, "kcp.mode")
+	d.md.config.KeepAlive = mdutil.GetInt(md, "kcp.keepalive")
+	d.md.config.Interval = mdutil.GetInt(md, "kcp.interval")
+	d.md.config.MTU = mdutil.GetInt(md, "kcp.mtu")
+	d.md.config.SmuxVer = mdutil.GetInt(md, "kcp.smuxver")
 
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	return
