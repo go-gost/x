@@ -62,6 +62,9 @@ type saveConfigRequest struct {
 	// output format, one of yaml|json, default is yaml.
 	// in: query
 	Format string `form:"format" json:"format"`
+	// file path, default is gost.yaml|gost.json in current working directory.
+	// in: query
+	Path string `form:"path" json:"path"`
 }
 
 // successful operation.
@@ -90,6 +93,10 @@ func saveConfig(ctx *gin.Context) {
 		file = "gost.json"
 	default:
 		req.Format = "yaml"
+	}
+
+	if req.Path != "" {
+		file = req.Path
 	}
 
 	f, err := os.Create(file)
