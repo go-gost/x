@@ -13,8 +13,8 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/plugin/resolver/proto"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/plugin"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -60,7 +60,7 @@ func (p *grpcPlugin) Resolve(ctx context.Context, network, host string, opts ...
 		&proto.ResolveRequest{
 			Network: network,
 			Host:    host,
-			Client:  string(auth_util.IDFromContext(ctx)),
+			Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -127,7 +127,7 @@ func (p *httpPlugin) Resolve(ctx context.Context, network, host string, opts ...
 	rb := httpPluginRequest{
 		Network: network,
 		Host:    host,
-		Client:  string(auth_util.IDFromContext(ctx)),
+		Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

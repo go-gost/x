@@ -289,6 +289,7 @@ type LimiterConfig struct {
 	File   *FileLoader   `yaml:",omitempty" json:"file,omitempty"`
 	Redis  *RedisLoader  `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP   *HTTPLoader   `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
 type ListenerConfig struct {
@@ -311,7 +312,7 @@ type HandlerConfig struct {
 	Authers    []string          `yaml:",omitempty" json:"authers,omitempty"`
 	Auth       *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
 	TLS        *TLSConfig        `yaml:",omitempty" json:"tls,omitempty"`
-	Ingress    string            `yaml:",omitempty" json:"ingress,omitempty"`
+	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 

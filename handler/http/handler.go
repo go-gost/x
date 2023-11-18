@@ -19,11 +19,12 @@ import (
 	"github.com/asaskevich/govalidator"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
-	auth_util "github.com/go-gost/x/internal/util/auth"
-	sx "github.com/go-gost/x/internal/util/selector"
+	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -89,8 +90,6 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 	defer req.Body.Close()
 
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
-
 	return h.handleRequest(ctx, conn, req, log)
 }
 
@@ -148,11 +147,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header = http.Header{}
 	}
 
-	id, ok := h.authenticate(ctx, conn, req, resp, log)
+	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
 	if !ok {
 		return nil
 	}
-	ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, addr) {
 		resp.StatusCode = http.StatusForbidden
@@ -186,7 +185,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 	switch h.md.hash {
 	case "host":
-		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
 	cc, err := h.router.Dial(ctx, network, addr)
@@ -222,9 +221,16 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		}
 	}
 
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, conn.RemoteAddr().String(),
+		traffic.NetworkOption(network),
+		traffic.AddrOption(addr),
+		traffic.ClientOption(clientID),
+		traffic.SrcOption(conn.RemoteAddr().String()),
+	)
+
 	start := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	netpkg.Transport(conn, cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)

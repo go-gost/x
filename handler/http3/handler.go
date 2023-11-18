@@ -14,7 +14,7 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	sx "github.com/go-gost/x/internal/util/selector"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -114,7 +114,7 @@ func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	switch h.md.hash {
 	case "host":
-		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
 	var target *chain.Node

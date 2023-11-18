@@ -22,10 +22,10 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/x/config"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/util/forward"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/registry"
@@ -116,8 +116,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		h.handleHTTP(ctx, rw, conn.RemoteAddr(), localAddr, log)
 		return nil
 	}
-
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
 
 	if md, ok := conn.(mdata.Metadatable); ok {
 		if v := mdutil.GetString(md.Metadata(), "host"); v != "" {
@@ -224,9 +222,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					"src": addr.String(),
 				})
 				remoteAddr = addr
+				ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(remoteAddr.String()))
 			}
-
-			ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(remoteAddr.String()))
 
 			target := &chain.Node{
 				Addr: req.Host,
@@ -260,7 +257,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
 					return resp.Write(rw)
 				}
-				ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+				ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
 			}
 			if httpSettings := target.Options().HTTP; httpSettings != nil {
 				if httpSettings.Host != "" {

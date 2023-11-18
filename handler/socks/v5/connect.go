@@ -6,10 +6,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
-	sx "github.com/go-gost/x/internal/util/selector"
+	"github.com/go-gost/x/limiter/traffic/wrapper"
 )
 
 func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -28,7 +30,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 
 	switch h.md.hash {
 	case "host":
-		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: address})
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: address})
 	}
 
 	cc, err := h.router.Dial(ctx, network, address)
@@ -48,9 +50,16 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		return err
 	}
 
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, conn.RemoteAddr().String(),
+		traffic.NetworkOption(network),
+		traffic.AddrOption(address),
+		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),
+		traffic.SrcOption(conn.RemoteAddr().String()),
+	)
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
-	netpkg.Transport(conn, cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), address)

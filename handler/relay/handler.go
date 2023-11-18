@@ -13,7 +13,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
-	auth_util "github.com/go-gost/x/internal/util/auth"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -83,8 +83,6 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
-
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return ErrRateLimit
 	}
@@ -136,13 +134,13 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if h.options.Auther != nil {
-		id, ok := h.options.Auther.Authenticate(ctx, user, pass)
+		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass)
 		if !ok {
 			resp.Status = relay.StatusUnauthorized
 			resp.WriteTo(conn)
 			return ErrUnauthorized
 		}
-		ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 	}
 
 	network := networkID.String()

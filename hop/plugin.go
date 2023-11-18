@@ -13,8 +13,8 @@ import (
 	"github.com/go-gost/plugin/hop/proto"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/plugin"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -68,7 +68,8 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 			Addr:    options.Addr,
 			Host:    options.Host,
 			Path:    options.Path,
-			Client:  string(auth_util.IDFromContext(ctx)),
+			Client:  string(ctxvalue.ClientIDFromContext(ctx)),
+			Src:     string(ctxvalue.ClientAddrFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -106,6 +107,7 @@ type httpPluginRequest struct {
 	Host    string `json:"host"`
 	Path    string `json:"path"`
 	Client  string `json:"client"`
+	Src     string `json:"src"`
 }
 
 type httpPluginResponse struct {
@@ -154,7 +156,8 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		Addr:    options.Addr,
 		Host:    options.Host,
 		Path:    options.Path,
-		Client:  string(auth_util.IDFromContext(ctx)),
+		Client:  string(ctxvalue.ClientIDFromContext(ctx)),
+		Src:     string(ctxvalue.ClientAddrFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

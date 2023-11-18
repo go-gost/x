@@ -118,10 +118,10 @@ func (l *http2Listener) Close() (err error) {
 	case <-l.errChan:
 	default:
 		err = l.server.Close()
-		l.errChan <- err
+		l.errChan <- http.ErrServerClosed
 		close(l.errChan)
 	}
-	return nil
+	return
 }
 
 func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {

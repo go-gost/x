@@ -6,9 +6,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/limiter/traffic/wrapper"
 )
 
 func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, conn net.Conn, network, srcAddr string, dstAddr string, tunnelID relay.TunnelID, log logger.Logger) error {
@@ -95,9 +98,16 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		req.WriteTo(cc)
 	}
 
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, tunnelID.String(),
+		traffic.NetworkOption(network),
+		traffic.AddrOption(dstAddr),
+		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),
+		traffic.SrcOption(conn.RemoteAddr().String()),
+	)
+
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
-	xnet.Transport(conn, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())

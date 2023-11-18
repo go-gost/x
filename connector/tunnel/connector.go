@@ -9,7 +9,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
-	auth_util "github.com/go-gost/x/internal/util/auth"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -73,7 +73,7 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	}
 
 	srcAddr := conn.LocalAddr().String()
-	if v := auth_util.ClientAddrFromContext(ctx); v != "" {
+	if v := ctxvalue.ClientAddrFromContext(ctx); v != "" {
 		srcAddr = string(v)
 	}
 

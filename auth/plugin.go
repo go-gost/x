@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/auth/proto"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/plugin"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -58,7 +58,7 @@ func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, op
 		&proto.AuthenticateRequest{
 			Username: user,
 			Password: password,
-			Client:   string(auth_util.ClientAddrFromContext(ctx)),
+			Client:   string(ctxvalue.ClientAddrFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -118,7 +118,7 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 	rb := httpPluginRequest{
 		Username: user,
 		Password: password,
-		Client:   string(auth_util.ClientAddrFromContext(ctx)),
+		Client:   string(ctxvalue.ClientAddrFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

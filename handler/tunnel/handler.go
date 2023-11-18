@@ -15,8 +15,8 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
@@ -169,8 +169,6 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
-
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return ErrRateLimit
 	}
@@ -238,13 +236,13 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	if h.options.Auther != nil {
-		id, ok := h.options.Auther.Authenticate(ctx, user, pass)
+		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass)
 		if !ok {
 			resp.Status = relay.StatusUnauthorized
 			resp.WriteTo(conn)
 			return ErrUnauthorized
 		}
-		ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 	}
 
 	switch req.Cmd & relay.CmdMask {

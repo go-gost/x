@@ -26,8 +26,8 @@ type serverConn struct {
 	rbuf       bytes.Buffer
 	limiter    limiter.TrafficLimiter
 	limiterIn  limiter.Limiter
-	expIn      int64
 	limiterOut limiter.Limiter
+	expIn      int64
 	expOut     int64
 }
 
@@ -35,34 +35,39 @@ func WrapConn(limiter limiter.TrafficLimiter, c net.Conn) net.Conn {
 	if limiter == nil {
 		return c
 	}
+
 	return &serverConn{
 		Conn:    c,
 		limiter: limiter,
 	}
 }
 
-func (c *serverConn) getInLimiter(addr net.Addr) limiter.Limiter {
+func (c *serverConn) getInLimiter() limiter.Limiter {
 	now := time.Now().UnixNano()
 	// cache the limiter for 60s
 	if c.limiter != nil && time.Duration(now-c.expIn) > 60*time.Second {
-		c.limiterIn = c.limiter.In(addr.String())
+		if lim := c.limiter.In(context.Background(), c.RemoteAddr().String()); lim != nil {
+			c.limiterIn = lim
+		}
 		c.expIn = now
 	}
 	return c.limiterIn
 }
 
-func (c *serverConn) getOutLimiter(addr net.Addr) limiter.Limiter {
+func (c *serverConn) getOutLimiter() limiter.Limiter {
 	now := time.Now().UnixNano()
 	// cache the limiter for 60s
 	if c.limiter != nil && time.Duration(now-c.expOut) > 60*time.Second {
-		c.limiterOut = c.limiter.Out(addr.String())
+		if lim := c.limiter.Out(context.Background(), c.RemoteAddr().String()); lim != nil {
+			c.limiterOut = lim
+		}
 		c.expOut = now
 	}
 	return c.limiterOut
 }
 
 func (c *serverConn) Read(b []byte) (n int, err error) {
-	limiter := c.getInLimiter(c.RemoteAddr())
+	limiter := c.getInLimiter()
 	if limiter == nil {
 		return c.Conn.Read(b)
 	}
@@ -92,7 +97,7 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *serverConn) Write(b []byte) (n int, err error) {
-	limiter := c.getOutLimiter(c.RemoteAddr())
+	limiter := c.getOutLimiter()
 	if limiter == nil {
 		return c.Conn.Write(b)
 	}
@@ -163,7 +168,7 @@ func (c *packetConn) getInLimiter(addr net.Addr) limiter.Limiter {
 		return lim
 	}
 
-	lim = c.limiter.In(addr.String())
+	lim = c.limiter.In(context.Background(), addr.String())
 	c.inLimits.Set(addr.String(), lim, 0)
 
 	return lim
@@ -187,7 +192,7 @@ func (c *packetConn) getOutLimiter(addr net.Addr) limiter.Limiter {
 		return lim
 	}
 
-	lim = c.limiter.Out(addr.String())
+	lim = c.limiter.Out(context.Background(), addr.String())
 	c.outLimits.Set(addr.String(), lim, 0)
 
 	return lim
@@ -266,7 +271,7 @@ func (c *udpConn) getInLimiter(addr net.Addr) limiter.Limiter {
 		return lim
 	}
 
-	lim = c.limiter.In(addr.String())
+	lim = c.limiter.In(context.Background(), addr.String())
 	c.inLimits.Set(addr.String(), lim, 0)
 
 	return lim
@@ -290,7 +295,7 @@ func (c *udpConn) getOutLimiter(addr net.Addr) limiter.Limiter {
 		return lim
 	}
 
-	lim = c.limiter.Out(addr.String())
+	lim = c.limiter.Out(context.Background(), addr.String())
 	c.outLimits.Set(addr.String(), lim, 0)
 
 	return lim

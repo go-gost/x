@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/bypass/proto"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/plugin"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -61,7 +61,7 @@ func (p *grpcPlugin) Contains(ctx context.Context, network, addr string, opts ..
 		&proto.BypassRequest{
 			Network: network,
 			Addr:    addr,
-			Client:  string(auth_util.IDFromContext(ctx)),
+			Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 			Host:    options.Host,
 			Path:    options.Path,
 		})
@@ -129,7 +129,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	rb := httpPluginRequest{
 		Network: network,
 		Addr:    addr,
-		Client:  string(auth_util.IDFromContext(ctx)),
+		Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 		Host:    options.Host,
 		Path:    options.Path,
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
-	auth_util "github.com/go-gost/x/internal/util/auth"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/socks"
 	"github.com/go-gost/x/registry"
 )
@@ -95,7 +95,9 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 	log.Trace(req)
 
-	ctx = auth_util.ContextWithID(ctx, auth_util.ID(sc.ID()))
+	if clientID := sc.ID(); clientID != "" {
+		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+	}
 
 	conn = sc
 	conn.SetReadDeadline(time.Time{})

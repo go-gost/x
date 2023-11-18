@@ -20,12 +20,13 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
-	auth_util "github.com/go-gost/x/internal/util/auth"
-	sx "github.com/go-gost/x/internal/util/selector"
+	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
@@ -89,8 +90,6 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		return err
 	}
 
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
-
 	md := v.Metadata()
 	return h.roundTrip(ctx,
 		md.Get("w").(http.ResponseWriter),
@@ -149,11 +148,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		Body:       io.NopCloser(bytes.NewReader([]byte{})),
 	}
 
-	id, ok := h.authenticate(ctx, w, req, resp, log)
+	clientID, ok := h.authenticate(ctx, w, req, resp, log)
 	if !ok {
 		return nil
 	}
-	ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr) {
 		w.WriteHeader(http.StatusForbidden)
@@ -167,7 +166,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	switch h.md.hash {
 	case "host":
-		ctx = sx.ContextWithHash(ctx, &sx.Hash{Source: addr})
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
 	cc, err := h.router.Dial(ctx, "tcp", addr)
@@ -205,9 +204,15 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			return nil
 		}
 
+		rw := wrapper.WrapReadWriter(h.options.Limiter, xio.NewReadWriter(req.Body, flushWriter{w}), req.RemoteAddr,
+			traffic.NetworkOption("tcp"),
+			traffic.AddrOption(addr),
+			traffic.ClientOption(clientID),
+			traffic.SrcOption(req.RemoteAddr),
+		)
 		start := time.Now()
 		log.Infof("%s <-> %s", req.RemoteAddr, addr)
-		netpkg.Transport(xio.NewReadWriter(req.Body, flushWriter{w}), cc)
+		netpkg.Transport(rw, cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >-< %s", req.RemoteAddr, addr)

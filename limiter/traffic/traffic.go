@@ -121,7 +121,7 @@ func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
 
 // In obtains a traffic input limiter based on key.
 // The key should be client connection address.
-func (l *trafficLimiter) In(key string) limiter.Limiter {
+func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Option) limiter.Limiter {
 	var lims []limiter.Limiter
 
 	// service level limiter
@@ -185,7 +185,7 @@ func (l *trafficLimiter) In(key string) limiter.Limiter {
 
 // Out obtains a traffic output limiter based on key.
 // The key should be client connection address.
-func (l *trafficLimiter) Out(key string) limiter.Limiter {
+func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Option) limiter.Limiter {
 	var lims []limiter.Limiter
 
 	// service level limiter

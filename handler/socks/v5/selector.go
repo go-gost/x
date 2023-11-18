@@ -8,7 +8,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
-	auth_util "github.com/go-gost/x/internal/util/auth"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/socks"
 )
 
@@ -70,7 +70,7 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (string, net.Co
 		var id string
 		if s.Authenticator != nil {
 			var ok bool
-			ctx := auth_util.ContextWithClientAddr(context.Background(), auth_util.ClientAddr(conn.RemoteAddr().String()))
+			ctx := ctxvalue.ContextWithClientAddr(context.Background(), ctxvalue.ClientAddr(conn.RemoteAddr().String()))
 			id, ok = s.Authenticator.Authenticate(ctx, req.Username, req.Password)
 			if !ok {
 				resp := gosocks5.NewUserPassResponse(gosocks5.UserPassVer, gosocks5.Failure)

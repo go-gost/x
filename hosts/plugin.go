@@ -11,8 +11,8 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/hosts/proto"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/plugin"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"google.golang.org/grpc"
 )
 
@@ -58,7 +58,7 @@ func (p *grpcPlugin) Lookup(ctx context.Context, network, host string, opts ...h
 		&proto.LookupRequest{
 			Network: network,
 			Host:    host,
-			Client:  string(auth_util.IDFromContext(ctx)),
+			Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -126,7 +126,7 @@ func (p *httpPlugin) Lookup(ctx context.Context, network, host string, opts ...h
 	rb := httpPluginRequest{
 		Network: network,
 		Host:    host,
-		Client:  string(auth_util.IDFromContext(ctx)),
+		Client:  string(ctxvalue.ClientIDFromContext(ctx)),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

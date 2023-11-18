@@ -21,9 +21,9 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/x/config"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
-	auth_util "github.com/go-gost/x/internal/util/auth"
 	"github.com/go-gost/x/internal/util/forward"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/registry"
@@ -118,8 +118,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(host, "0")
 	}
-
-	ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(conn.RemoteAddr().String()))
 
 	var target *chain.Node
 	if host != "" {
@@ -223,9 +221,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					"src": addr.String(),
 				})
 				remoteAddr = addr
+				ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(remoteAddr.String()))
 			}
-
-			ctx = auth_util.ContextWithClientAddr(ctx, auth_util.ClientAddr(remoteAddr.String()))
 
 			target := &chain.Node{
 				Addr: req.Host,
@@ -259,7 +256,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
 					return resp.Write(rw)
 				}
-				ctx = auth_util.ContextWithID(ctx, auth_util.ID(id))
+				ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
 			}
 			if httpSettings := target.Options().HTTP; httpSettings != nil {
 				if httpSettings.Host != "" {
@@ -292,8 +289,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					InsecureSkipVerify: !tlsSettings.Secure,
 				}
 				tls_util.SetTLSOptions(cfg, &config.TLSOptions{
-					MinVersion: tlsSettings.Options.MinVersion,
-					MaxVersion: tlsSettings.Options.MaxVersion,
+					MinVersion:   tlsSettings.Options.MinVersion,
+					MaxVersion:   tlsSettings.Options.MaxVersion,
 					CipherSuites: tlsSettings.Options.CipherSuites,
 				})
 				cc = tls.Client(cc, cfg)

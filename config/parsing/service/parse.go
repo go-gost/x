@@ -210,6 +210,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
+			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
 			handler.LoggerOption(handlerLogger),
 			handler.ServiceOption(cfg.Name),
 		)

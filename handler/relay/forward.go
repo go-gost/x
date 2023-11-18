@@ -7,9 +7,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/limiter/traffic/wrapper"
 )
 
 func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network string, log logger.Logger) error {
@@ -84,9 +87,16 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		conn = rc
 	}
 
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, conn.RemoteAddr().String(),
+		traffic.NetworkOption(network),
+		traffic.AddrOption(target.Addr),
+		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),
+		traffic.SrcOption(conn.RemoteAddr().String()),
+	)
+
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	netpkg.Transport(conn, cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
