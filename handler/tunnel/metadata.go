@@ -60,7 +60,8 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 			h.md.ingress = xingress.NewIngress(
 				xingress.RulesOption(rules),
 				xingress.LoggerOption(logger.Default().WithFields(map[string]any{
-					"kind": "ingress",
+					"kind":    "ingress",
+					"ingress": "@internal",
 				})),
 			)
 		}

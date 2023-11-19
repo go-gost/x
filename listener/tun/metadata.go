@@ -4,6 +4,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/core/router"
@@ -99,7 +100,13 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	if config.Router == nil && len(l.routes) > 0 {
-		config.Router = xrouter.NewRouter(xrouter.RoutesOption(l.routes))
+		config.Router = xrouter.NewRouter(
+			xrouter.RoutesOption(l.routes),
+			xrouter.LoggerOption(logger.Default().WithFields(map[string]any{
+				"kind":   "router",
+				"router": "@internal",
+			})),
+		)
 	}
 
 	l.md.config = config
