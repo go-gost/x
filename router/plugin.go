@@ -1,35 +1,36 @@
-package ingress
+package router
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 
-	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/plugin/ingress/proto"
+	"github.com/go-gost/core/router"
+	"github.com/go-gost/plugin/router/proto"
 	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
 
 type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
-	client proto.IngressClient
+	client proto.RouterClient
 	log    logger.Logger
 }
 
-// NewGRPCPlugin creates an Ingress plugin based on gRPC.
-func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) ingress.Ingress {
+// NewGRPCPlugin creates an Router plugin based on gRPC.
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) router.Router {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	log := logger.Default().WithFields(map[string]any{
-		"kind":    "ingress",
-		"ingress": name,
+		"kind":   "router",
+		"router": name,
 	})
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
@@ -41,41 +42,36 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) ingress.Ingr
 		log:  log,
 	}
 	if conn != nil {
-		p.client = proto.NewIngressClient(conn)
+		p.client = proto.NewRouterClient(conn)
 	}
 	return p
 }
 
-func (p *grpcPlugin) GetRule(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule {
+func (p *grpcPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Option) *router.Route {
 	if p.client == nil {
 		return nil
 	}
 
-	r, err := p.client.GetRule(ctx,
-		&proto.GetRuleRequest{
-			Host: host,
+	r, err := p.client.GetRoute(ctx,
+		&proto.GetRouteRequest{
+			Dst: dst.String(),
 		})
 	if err != nil {
 		p.log.Error(err)
 		return nil
 	}
-	if r.Endpoint == "" {
-		return nil
-	}
-	return &ingress.Rule{
-		Hostname: host,
-		Endpoint: r.Endpoint,
-	}
+
+	return ParseRoute(r.Net, r.Gateway)
 }
 
-func (p *grpcPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...ingress.Option) bool {
-	if p.client == nil || rule == nil {
+func (p *grpcPlugin) SetRoute(ctx context.Context, route *router.Route, opts ...router.Option) bool {
+	if p.client == nil || route == nil {
 		return false
 	}
 
-	r, _ := p.client.SetRule(ctx, &proto.SetRuleRequest{
-		Host:     rule.Hostname,
-		Endpoint: rule.Endpoint,
+	r, _ := p.client.SetRoute(ctx, &proto.SetRouteRequest{
+		Net:     route.Net.String(),
+		Gateway: route.Gateway.String(),
 	})
 	if r == nil {
 		return false
@@ -91,20 +87,21 @@ func (p *grpcPlugin) Close() error {
 	return nil
 }
 
-type httpPluginGetRuleRequest struct {
-	Host string `json:"host"`
+type httpPluginGetRouteRequest struct {
+	Dst string `json:"dst"`
 }
 
-type httpPluginGetRuleResponse struct {
-	Endpoint string `json:"endpoint"`
+type httpPluginGetRouteResponse struct {
+	Net     string `json:"net"`
+	Gateway string `json:"gateway"`
 }
 
-type httpPluginSetRuleRequest struct {
-	Host     string `json:"host"`
-	Endpoint string `json:"endpoint"`
+type httpPluginSetRouteRequest struct {
+	Net     string `json:"net"`
+	Gateway string `json:"gateway"`
 }
 
-type httpPluginSetRuleResponse struct {
+type httpPluginSetRouteResponse struct {
 	OK bool `json:"ok"`
 }
 
@@ -115,8 +112,8 @@ type httpPlugin struct {
 	log    logger.Logger
 }
 
-// NewHTTPPlugin creates an Ingress plugin based on HTTP.
-func NewHTTPPlugin(name string, url string, opts ...plugin.Option) ingress.Ingress {
+// NewHTTPPlugin creates an Router plugin based on HTTP.
+func NewHTTPPlugin(name string, url string, opts ...plugin.Option) router.Router {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -127,13 +124,13 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) ingress.Ingre
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
 		log: logger.Default().WithFields(map[string]any{
-			"kind":    "ingress",
-			"ingress": name,
+			"kind":   "router",
+			"router": name,
 		}),
 	}
 }
 
-func (p *httpPlugin) GetRule(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule {
+func (p *httpPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Option) *router.Route {
 	if p.client == nil {
 		return nil
 	}
@@ -148,7 +145,7 @@ func (p *httpPlugin) GetRule(ctx context.Context, host string, opts ...ingress.O
 	req.Header.Set("Content-Type", "application/json")
 
 	q := req.URL.Query()
-	q.Set("host", host)
+	q.Set("dst", dst.String())
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.client.Do(req)
@@ -161,27 +158,22 @@ func (p *httpPlugin) GetRule(ctx context.Context, host string, opts ...ingress.O
 		return nil
 	}
 
-	res := httpPluginGetRuleResponse{}
+	res := httpPluginGetRouteResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return nil
 	}
-	if res.Endpoint == "" {
-		return nil
-	}
-	return &ingress.Rule{
-		Hostname: host,
-		Endpoint: res.Endpoint,
-	}
+
+	return ParseRoute(res.Net, res.Gateway)
 }
 
-func (p *httpPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...ingress.Option) bool {
-	if p.client == nil || rule == nil {
+func (p *httpPlugin) SetRoute(ctx context.Context, route *router.Route, opts ...router.Option) bool {
+	if p.client == nil || route == nil {
 		return false
 	}
 
-	rb := httpPluginSetRuleRequest{
-		Host:     rule.Hostname,
-		Endpoint: rule.Endpoint,
+	rb := httpPluginSetRouteRequest{
+		Net:     route.Net.String(),
+		Gateway: route.Gateway.String(),
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
@@ -207,7 +199,7 @@ func (p *httpPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...in
 		return false
 	}
 
-	res := httpPluginSetRuleResponse{}
+	res := httpPluginSetRouteResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return false
 	}

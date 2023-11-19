@@ -244,6 +244,21 @@ type SDConfig struct {
 	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
+type RouterRouteConfig struct {
+	Net     string `json:"net"`
+	Gateway string `json:"gateway"`
+}
+
+type RouterConfig struct {
+	Name   string               `json:"name"`
+	Routes []*RouterRouteConfig `yaml:",omitempty" json:"routes,omitempty"`
+	Reload time.Duration        `yaml:",omitempty" json:"reload,omitempty"`
+	File   *FileLoader          `yaml:",omitempty" json:"file,omitempty"`
+	Redis  *RedisLoader         `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP   *HTTPLoader          `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin *PluginConfig        `yaml:",omitempty" json:"plugin,omitempty"`
+}
+
 type RecorderConfig struct {
 	Name   string         `json:"name"`
 	File   *FileRecorder  `yaml:",omitempty" json:"file,omitempty"`
@@ -447,6 +462,7 @@ type Config struct {
 	Resolvers  []*ResolverConfig  `yaml:",omitempty" json:"resolvers,omitempty"`
 	Hosts      []*HostsConfig     `yaml:",omitempty" json:"hosts,omitempty"`
 	Ingresses  []*IngressConfig   `yaml:",omitempty" json:"ingresses,omitempty"`
+	Routers    []*RouterConfig    `yaml:",omitempty" json:"routers,omitempty"`
 	SDs        []*SDConfig        `yaml:"sds,omitempty" json:"sds,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`

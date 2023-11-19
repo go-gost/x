@@ -82,7 +82,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				addr := h.findRouteFor(dst, config.Routes...)
+				addr := h.findRouteFor(ctx, dst, config.Router)
 				if addr == nil {
 					log.Debugf("no route for %s -> %s, packet discarded", src, dst)
 					return nil
@@ -203,7 +203,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				if addr := h.findRouteFor(dst, config.Routes...); addr != nil {
+				if addr := h.findRouteFor(ctx, dst, config.Router); addr != nil {
 					log.Debugf("find route: %s -> %s", dst, addr)
 
 					_, err := conn.WriteTo(b[:n], addr)

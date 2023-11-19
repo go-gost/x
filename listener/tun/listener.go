@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/router"
 	xnet "github.com/go-gost/x/internal/net"
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	mdx "github.com/go-gost/x/metadata"
@@ -26,6 +27,7 @@ type tunListener struct {
 	logger  logger.Logger
 	md      metadata
 	options listener.Options
+	routes []*router.Route
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {

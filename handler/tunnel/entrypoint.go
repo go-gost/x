@@ -85,7 +85,9 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 
 			var tunnelID relay.TunnelID
 			if ep.ingress != nil {
-				tunnelID = parseTunnelID(ep.ingress.Get(ctx, req.Host))
+				if rule := ep.ingress.GetRule(ctx, req.Host); rule != nil {
+					tunnelID = parseTunnelID(rule.Endpoint)
+				}
 			}
 			if tunnelID.IsZero() {
 				err := fmt.Errorf("no route to host %s", req.Host)

@@ -6,7 +6,10 @@ import (
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/core/router"
 	tun_util "github.com/go-gost/x/internal/util/tun"
+	"github.com/go-gost/x/registry"
+	xrouter "github.com/go-gost/x/router"
 )
 
 const (
@@ -36,9 +39,10 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	config := &tun_util.Config{
-		Name: mdutil.GetString(md, name),
-		Peer: mdutil.GetString(md, peer),
-		MTU:  mdutil.GetInt(md, mtu),
+		Name:   mdutil.GetString(md, name),
+		Peer:   mdutil.GetString(md, peer),
+		MTU:    mdutil.GetInt(md, mtu),
+		Router: registry.RouterRegistry().Get(mdutil.GetString(md, "router")),
 	}
 	if config.MTU <= 0 {
 		config.MTU = defaultMTU
@@ -62,33 +66,40 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
-		var route tun_util.Route
 		_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(s))
 		if ipNet == nil {
 			continue
 		}
-		route.Net = *ipNet
-		route.Gateway = config.Gateway
 
-		config.Routes = append(config.Routes, route)
+		l.routes = append(l.routes, &router.Route{
+			Net:     ipNet,
+			Gateway: config.Gateway,
+		})
 	}
 
 	for _, s := range mdutil.GetStrings(md, routes) {
 		ss := strings.SplitN(s, " ", 2)
 		if len(ss) == 2 {
-			var route tun_util.Route
+			var route router.Route
 			_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(ss[0]))
 			if ipNet == nil {
 				continue
 			}
-			route.Net = *ipNet
-			route.Gateway = net.ParseIP(ss[1])
-			if route.Gateway == nil {
-				route.Gateway = config.Gateway
+			route.Net = ipNet
+			gw := net.ParseIP(ss[1])
+			if gw == nil {
+				gw = config.Gateway
 			}
 
-			config.Routes = append(config.Routes, route)
+			l.routes = append(l.routes, &router.Route{
+				Net:     ipNet,
+				Gateway: gw,
+			})
 		}
+	}
+
+	if config.Router == nil && len(l.routes) > 0 {
+		config.Router = xrouter.NewRouter(xrouter.RoutesOption(l.routes))
 	}
 
 	l.md.config = config

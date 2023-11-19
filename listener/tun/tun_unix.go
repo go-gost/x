@@ -8,8 +8,6 @@ import (
 	"net"
 	"os/exec"
 	"strings"
-
-	tun_util "github.com/go-gost/x/internal/util/tun"
 )
 
 const (
@@ -45,8 +43,8 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 	return
 }
 
-func (l *tunListener) addRoutes(ifName string, routes ...tun_util.Route) error {
-	for _, route := range routes {
+func (l *tunListener) addRoutes(ifName string) error {
+	for _, route := range l.routes {
 		cmd := fmt.Sprintf("route add -net %s -interface %s", route.Net.String(), ifName)
 		l.logger.Debug(cmd)
 		args := strings.Split(cmd, " ")

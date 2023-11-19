@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/router"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/go-gost/x/registry"
 	"github.com/songgao/water/waterutil"
@@ -108,15 +109,18 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	return h.handleServer(ctx, conn, config, log)
 }
 
-func (h *tunHandler) findRouteFor(dst net.IP, routes ...tun_util.Route) net.Addr {
+func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router.Router) net.Addr {
 	if v, ok := h.routes.Load(ipToTunRouteKey(dst)); ok {
 		return v.(net.Addr)
 	}
-	for _, route := range routes {
-		if route.Net.Contains(dst) && route.Gateway != nil {
-			if v, ok := h.routes.Load(ipToTunRouteKey(route.Gateway)); ok {
-				return v.(net.Addr)
-			}
+
+	if router == nil {
+		return nil
+	}
+
+	if route := router.GetRoute(ctx, dst); route != nil && route.Gateway != nil {
+		if v, ok := h.routes.Load(ipToTunRouteKey(route.Gateway)); ok {
+			return v.(net.Addr)
 		}
 	}
 	return nil

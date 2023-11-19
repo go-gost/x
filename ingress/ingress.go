@@ -14,13 +14,8 @@ import (
 	"github.com/go-gost/x/internal/loader"
 )
 
-type Rule struct {
-	Hostname string
-	Endpoint string
-}
-
 type options struct {
-	rules       []Rule
+	rules       []*ingress.Rule
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
@@ -30,7 +25,7 @@ type options struct {
 
 type Option func(opts *options)
 
-func RulesOption(rules []Rule) Option {
+func RulesOption(rules []*ingress.Rule) Option {
 	return func(opts *options) {
 		opts.rules = rules
 	}
@@ -67,7 +62,7 @@ func LoggerOption(logger logger.Logger) Option {
 }
 
 type localIngress struct {
-	rules      map[string]Rule
+	rules      map[string]*ingress.Rule
 	cancelFunc context.CancelFunc
 	options    options
 	mu         sync.RWMutex
@@ -119,9 +114,9 @@ func (ing *localIngress) periodReload(ctx context.Context) error {
 }
 
 func (ing *localIngress) reload(ctx context.Context) error {
-	rules := make(map[string]Rule)
+	rules := make(map[string]*ingress.Rule)
 
-	fn := func(rule Rule) {
+	fn := func(rule *ingress.Rule) {
 		if rule.Hostname == "" || rule.Endpoint == "" {
 			return
 		}
@@ -152,7 +147,7 @@ func (ing *localIngress) reload(ctx context.Context) error {
 	return nil
 }
 
-func (ing *localIngress) load(ctx context.Context) (rules []Rule, err error) {
+func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err error) {
 	if ing.options.fileLoader != nil {
 		if lister, ok := ing.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -203,7 +198,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []Rule, err error) {
 	return
 }
 
-func (ing *localIngress) parseRules(r io.Reader) (rules []Rule, err error) {
+func (ing *localIngress) parseRules(r io.Reader) (rules []*ingress.Rule, err error) {
 	if r == nil {
 		return
 	}
@@ -219,9 +214,9 @@ func (ing *localIngress) parseRules(r io.Reader) (rules []Rule, err error) {
 	return
 }
 
-func (ing *localIngress) Get(ctx context.Context, host string, opts ...ingress.GetOption) string {
+func (ing *localIngress) GetRule(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule {
 	if host == "" || ing == nil {
-		return ""
+		return nil
 	}
 
 	// try to strip the port
@@ -229,22 +224,18 @@ func (ing *localIngress) Get(ctx context.Context, host string, opts ...ingress.G
 		host = v
 	}
 
-	if ing == nil || len(ing.rules) == 0 {
-		return ""
-	}
-
 	ing.options.logger.Debugf("ingress: lookup %s", host)
 	ep := ing.lookup(host)
-	if ep == "" {
+	if ep == nil {
 		ep = ing.lookup("." + host)
 	}
-	if ep == "" {
+	if ep == nil {
 		s := host
 		for {
 			if index := strings.IndexByte(s, '.'); index > 0 {
 				ep = ing.lookup(s[index:])
 				s = s[index+1:]
-				if ep == "" {
+				if ep == nil {
 					continue
 				}
 			}
@@ -252,29 +243,29 @@ func (ing *localIngress) Get(ctx context.Context, host string, opts ...ingress.G
 		}
 	}
 
-	if ep != "" {
+	if ep != nil {
 		ing.options.logger.Debugf("ingress: %s -> %s", host, ep)
 	}
 
 	return ep
 }
 
-func (ing *localIngress) Set(ctx context.Context, host, endpoint string, opts ...ingress.SetOption) bool {
+func (ing *localIngress) SetRule(ctx context.Context, rule *ingress.Rule, opts ...ingress.Option) bool {
 	return false
 }
 
-func (ing *localIngress) lookup(host string) string {
-	if ing == nil || len(ing.rules) == 0 {
-		return ""
+func (ing *localIngress) lookup(host string) *ingress.Rule {
+	if ing == nil {
+		return nil
 	}
 
 	ing.mu.RLock()
 	defer ing.mu.RUnlock()
 
-	return ing.rules[host].Endpoint
+	return ing.rules[host]
 }
 
-func (ing *localIngress) parseLine(s string) (rule Rule) {
+func (ing *localIngress) parseLine(s string) (rule *ingress.Rule) {
 	line := strings.Replace(s, "\t", " ", -1)
 	line = strings.TrimSpace(line)
 	if n := strings.IndexByte(line, '#'); n >= 0 {
@@ -290,7 +281,7 @@ func (ing *localIngress) parseLine(s string) (rule Rule) {
 		return // invalid lines are ignored
 	}
 
-	return Rule{
+	return &ingress.Rule{
 		Hostname: sp[0],
 		Endpoint: sp[1],
 	}

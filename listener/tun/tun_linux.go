@@ -6,8 +6,6 @@ import (
 	"net"
 
 	"github.com/vishvananda/netlink"
-
-	tun_util "github.com/go-gost/x/internal/util/tun"
 )
 
 func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
@@ -42,17 +40,17 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 		return
 	}
 
-	if err = l.addRoutes(ifce, l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(ifce); err != nil {
 		return
 	}
 
 	return
 }
 
-func (l *tunListener) addRoutes(ifce *net.Interface, routes ...tun_util.Route) error {
-	for _, route := range routes {
+func (l *tunListener) addRoutes(ifce *net.Interface) error {
+	for _, route := range l.routes {
 		r := netlink.Route{
-			Dst: &route.Net,
+			Dst: route.Net,
 			Gw:  route.Gateway,
 		}
 		if r.Gw == nil {

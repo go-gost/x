@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
@@ -56,7 +57,10 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 
 	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd), h.md.tunnelTTL)
 	if h.md.ingress != nil {
-		h.md.ingress.Set(ctx, addr, tunnelID.String())
+		h.md.ingress.SetRule(ctx, &ingress.Rule{
+			Hostname: addr,
+			Endpoint: tunnelID.String(),
+		})
 	}
 	if h.md.sd != nil {
 		err := h.md.sd.Register(ctx, &sd.Service{

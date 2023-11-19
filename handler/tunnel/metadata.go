@@ -45,13 +45,13 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
 	if h.md.ingress == nil {
-		var rules []xingress.Rule
+		var rules []*ingress.Rule
 		for _, s := range strings.Split(mdutil.GetString(md, "tunnel"), ",") {
 			ss := strings.SplitN(s, ":", 2)
 			if len(ss) != 2 {
 				continue
 			}
-			rules = append(rules, xingress.Rule{
+			rules = append(rules, &ingress.Rule{
 				Hostname: ss[0],
 				Endpoint: ss[1],
 			})

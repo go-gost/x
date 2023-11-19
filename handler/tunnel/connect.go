@@ -44,7 +44,9 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	if !h.md.directTunnel {
 		var tid relay.TunnelID
 		if ingress := h.md.ingress; ingress != nil && host != "" {
-			tid = parseTunnelID(ingress.Get(ctx, host))
+			if rule := ingress.GetRule(ctx, host); rule != nil {
+				tid = parseTunnelID(rule.Endpoint)
+			}
 		}
 		if !tid.Equal(tunnelID) {
 			resp.Status = relay.StatusHostUnreachable

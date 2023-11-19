@@ -1,18 +1,19 @@
-package ingress
+package router
 
 import (
 	"crypto/tls"
+	"net"
 	"strings"
 
-	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/router"
 	"github.com/go-gost/x/config"
-	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
+	xrouter "github.com/go-gost/x/router"
 )
 
-func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
+func ParseRouter(cfg *config.RouterConfig) router.Router {
 	if cfg == nil {
 		return nil
 	}
@@ -27,13 +28,13 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xingress.NewHTTPPlugin(
+			return xrouter.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xingress.NewGRPCPlugin(
+			return xrouter.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
@@ -41,39 +42,51 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		}
 	}
 
-	var rules []*ingress.Rule
-	for _, rule := range cfg.Rules {
-		if rule.Hostname == "" || rule.Endpoint == "" {
+	var routes []*router.Route
+	for _, route := range cfg.Routes {
+		_, ipNet, _ := net.ParseCIDR(route.Net)
+		if ipNet == nil {
+			continue
+		}
+		gw := net.ParseIP(route.Gateway)
+		if gw == nil {
 			continue
 		}
 
-		rules = append(rules, &ingress.Rule{
-			Hostname: rule.Hostname,
-			Endpoint: rule.Endpoint,
+		routes = append(routes, &router.Route{
+			Net:     ipNet,
+			Gateway: gw,
 		})
 	}
-	opts := []xingress.Option{
-		xingress.RulesOption(rules),
-		xingress.ReloadPeriodOption(cfg.Reload),
-		xingress.LoggerOption(logger.Default().WithFields(map[string]any{
-			"kind":    "ingress",
-			"ingress": cfg.Name,
+	opts := []xrouter.Option{
+		xrouter.RoutesOption(routes),
+		xrouter.ReloadPeriodOption(cfg.Reload),
+		xrouter.LoggerOption(logger.Default().WithFields(map[string]any{
+			"kind":   "router",
+			"router": cfg.Name,
 		})),
 	}
 	if cfg.File != nil && cfg.File.Path != "" {
-		opts = append(opts, xingress.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+		opts = append(opts, xrouter.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
 	}
 	if cfg.Redis != nil && cfg.Redis.Addr != "" {
 		switch cfg.Redis.Type {
+		case "list": // rediss list
+			opts = append(opts, xrouter.RedisLoaderOption(loader.RedisListLoader(
+				cfg.Redis.Addr,
+				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
+				loader.KeyRedisLoaderOption(cfg.Redis.Key),
+			)))
 		case "set": // redis set
-			opts = append(opts, xingress.RedisLoaderOption(loader.RedisSetLoader(
+			opts = append(opts, xrouter.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
 		default: // redis hash
-			opts = append(opts, xingress.RedisLoaderOption(loader.RedisHashLoader(
+			opts = append(opts, xrouter.RedisLoaderOption(loader.RedisHashLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
@@ -82,10 +95,10 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		}
 	}
 	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
-		opts = append(opts, xingress.HTTPLoaderOption(loader.HTTPLoader(
+		opts = append(opts, xrouter.HTTPLoaderOption(loader.HTTPLoader(
 			cfg.HTTP.URL,
 			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
 		)))
 	}
-	return xingress.NewIngress(opts...)
+	return xrouter.NewRouter(opts...)
 }

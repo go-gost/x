@@ -1,12 +1,10 @@
 package tun
 
-import "net"
+import (
+	"net"
 
-// Route is an IP routing entry
-type Route struct {
-	Net     net.IPNet
-	Gateway net.IP
-}
+	"github.com/go-gost/core/router"
+)
 
 type Config struct {
 	Name string
@@ -15,5 +13,5 @@ type Config struct {
 	Peer    string
 	MTU     int
 	Gateway net.IP
-	Routes  []Route
+	Router  router.Router
 }
