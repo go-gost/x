@@ -41,7 +41,12 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			Type: "auto",
 		}
 	}
-	serviceLogger := logger.Default().WithFields(map[string]any{
+
+	log := registry.LoggerRegistry().Get(cfg.Logger)
+	if log == nil {
+		log = logger.Default()
+	}
+	serviceLogger := log.WithFields(map[string]any{
 		"kind":     "service",
 		"service":  cfg.Name,
 		"listener": cfg.Listener.Type,

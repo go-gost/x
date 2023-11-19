@@ -10,28 +10,35 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type LoggerOptions struct {
+type Options struct {
+	Name   string
 	Output io.Writer
 	Format logger.LogFormat
 	Level  logger.LogLevel
 }
 
-type LoggerOption func(opts *LoggerOptions)
+type Option func(opts *Options)
 
-func OutputLoggerOption(out io.Writer) LoggerOption {
-	return func(opts *LoggerOptions) {
+func NameOption(name string) Option {
+	return func(opts *Options) {
+		opts.Name = name
+	}
+}
+
+func OutputOption(out io.Writer) Option {
+	return func(opts *Options) {
 		opts.Output = out
 	}
 }
 
-func FormatLoggerOption(format logger.LogFormat) LoggerOption {
-	return func(opts *LoggerOptions) {
+func FormatOption(format logger.LogFormat) Option {
+	return func(opts *Options) {
 		opts.Format = format
 	}
 }
 
-func LevelLoggerOption(level logger.LogLevel) LoggerOption {
-	return func(opts *LoggerOptions) {
+func LevelOption(level logger.LogLevel) Option {
+	return func(opts *Options) {
 		opts.Level = level
 	}
 }
@@ -40,8 +47,8 @@ type logrusLogger struct {
 	logger *logrus.Entry
 }
 
-func NewLogger(opts ...LoggerOption) logger.Logger {
-	var options LoggerOptions
+func NewLogger(opts ...Option) logger.Logger {
+	var options Options
 	for _, opt := range opts {
 		opt(&options)
 	}

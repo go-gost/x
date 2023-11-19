@@ -105,6 +105,8 @@ github.com/go-gost/plugin v0.0.0-20231119062132-d959ab54847f h1:V5m5plmwkIt16B25
 github.com/go-gost/plugin v0.0.0-20231119062132-d959ab54847f/go.mod h1:qXr2Zm9Ex2ATqnWuNUzVZqySPMnuIihvblYZt4MlZLw=
 github.com/go-gost/plugin v0.0.0-20231119081435-96a9cabbf6b6 h1:nkeo0TCEZVz74eZlVBDM6xiqDjS3DGWFRBOJ6kiDudU=
 github.com/go-gost/plugin v0.0.0-20231119081435-96a9cabbf6b6/go.mod h1:qXr2Zm9Ex2ATqnWuNUzVZqySPMnuIihvblYZt4MlZLw=
+github.com/go-gost/plugin v0.0.0-20231119084331-d49a1cb23b3b h1:ZmnYutflq+KOZK+Px5RDckorDSxTYlkT4aQbjTC8/C4=
+github.com/go-gost/plugin v0.0.0-20231119084331-d49a1cb23b3b/go.mod h1:qXr2Zm9Ex2ATqnWuNUzVZqySPMnuIihvblYZt4MlZLw=
 github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7 h1:qAG1OyjvdA5h221CfFSS3J359V3d2E7dJWyP29QoDSI=
 github.com/go-gost/relay v0.4.1-0.20230916134211-828f314ddfe7/go.mod h1:lcX+23LCQ3khIeASBo+tJ/WbwXFO32/N5YN6ucuYTG8=
 github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451 h1:xj8gUZGYO3nb5+6Bjw9+tsFkA9sYynrOvDvvC4uDV2I=

@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
@@ -49,6 +50,8 @@ var (
 	ingressReg reg.Registry[ingress.Ingress] = new(ingressRegistry)
 	routerReg  reg.Registry[router.Router]   = new(routerRegistry)
 	sdReg      reg.Registry[sd.SD]           = new(sdRegistry)
+
+	loggerReg reg.Registry[logger.Logger] = new(loggerRegistry)
 )
 
 type registry[T any] struct {
@@ -174,4 +177,8 @@ func RouterRegistry() reg.Registry[router.Router] {
 
 func SDRegistry() reg.Registry[sd.SD] {
 	return sdReg
+}
+
+func LoggerRegistry() reg.Registry[logger.Logger] {
+	return loggerReg
 }

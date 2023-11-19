@@ -79,6 +79,11 @@ type LogRotationConfig struct {
 	Compress bool `yaml:"compress,omitempty" json:"compress,omitempty"`
 }
 
+type LoggerConfig struct {
+	Name string     `json:"name"`
+	Log  *LogConfig `yaml:",omitempty" json:"log,omitempty"`
+}
+
 type ProfilingConfig struct {
 	Addr string `json:"addr"`
 }
@@ -396,6 +401,7 @@ type ServiceConfig struct {
 	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
 	CLimiter   string            `yaml:"climiter,omitempty" json:"climiter,omitempty"`
 	RLimiter   string            `yaml:"rlimiter,omitempty" json:"rlimiter,omitempty"`
+	Logger     string            `yaml:",omitempty" json:"logger,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
@@ -468,6 +474,7 @@ type Config struct {
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
 	RLimiters  []*LimiterConfig   `yaml:"rlimiters,omitempty" json:"rlimiters,omitempty"`
+	Loggers    []*LoggerConfig    `yaml:",omitempty" json:"loggers,omitempty"`
 	TLS        *TLSConfig         `yaml:",omitempty" json:"tls,omitempty"`
 	Log        *LogConfig         `yaml:",omitempty" json:"log,omitempty"`
 	Profiling  *ProfilingConfig   `yaml:",omitempty" json:"profiling,omitempty"`
