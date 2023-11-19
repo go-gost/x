@@ -38,12 +38,3 @@ func (w *routerWrapper) GetRoute(ctx context.Context, dst net.IP, opts ...router
 	}
 	return v.GetRoute(ctx, dst, opts...)
 }
-
-func (w *routerWrapper) SetRoute(ctx context.Context, route *router.Route, opts ...router.Option) bool {
-	v := w.r.get(w.name)
-	if v == nil {
-		return false
-	}
-
-	return v.SetRoute(ctx, route, opts...)
-}

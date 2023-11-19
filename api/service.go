@@ -138,6 +138,10 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/ingresses/:ingress", updateIngress)
 	config.DELETE("/ingresses/:ingress", deleteIngress)
 
+	config.POST("/routers", createRouter)
+	config.PUT("/routers/:router", updateRouter)
+	config.DELETE("/routers/:router", deleteRouter)
+
 	config.POST("/limiters", createLimiter)
 	config.PUT("/limiters/:limiter", updateLimiter)
 	config.DELETE("/limiters/:limiter", deleteLimiter)

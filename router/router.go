@@ -214,10 +214,6 @@ func (p *localRouter) GetRoute(ctx context.Context, dst net.IP, opts ...router.O
 	return nil
 }
 
-func (*localRouter) SetRoute(ctx context.Context, route *router.Route, opts ...router.Option) bool {
-	return false
-}
-
 func (*localRouter) parseLine(s string) (route *router.Route) {
 	line := strings.Replace(s, "\t", " ", -1)
 	line = strings.TrimSpace(line)
