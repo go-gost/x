@@ -34,6 +34,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -71,6 +73,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -91,6 +95,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -107,9 +113,6 @@ definitions:
     ChainConfig:
         properties:
             hops:
-                description: |-
-                    REMOVED since beta.6
-                    Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
                 items:
                     $ref: '#/definitions/HopConfig'
                 type: array
@@ -204,6 +207,16 @@ definitions:
                     $ref: '#/definitions/LimiterConfig'
                 type: array
                 x-go-name: RLimiters
+            routers:
+                items:
+                    $ref: '#/definitions/RouterConfig'
+                type: array
+                x-go-name: Routers
+            sds:
+                items:
+                    $ref: '#/definitions/SDConfig'
+                type: array
+                x-go-name: SDs
             services:
                 items:
                     $ref: '#/definitions/ServiceConfig'
@@ -273,6 +286,8 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
+            auth:
+                $ref: '#/definitions/AuthConfig'
             bypass:
                 type: string
                 x-go-name: Bypass
@@ -284,12 +299,22 @@ definitions:
             host:
                 type: string
                 x-go-name: Host
+            http:
+                $ref: '#/definitions/HTTPNodeConfig'
             name:
                 type: string
                 x-go-name: Name
+            network:
+                type: string
+                x-go-name: Network
+            path:
+                type: string
+                x-go-name: Path
             protocol:
                 type: string
                 x-go-name: Protocol
+            tls:
+                $ref: '#/definitions/TLSNodeConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
     ForwarderConfig:
@@ -304,15 +329,30 @@ definitions:
                 x-go-name: Nodes
             selector:
                 $ref: '#/definitions/SelectorConfig'
-            targets:
-                description: DEPRECATED by nodes since beta.4
-                items:
-                    type: string
-                type: array
-                x-go-name: Targets
         type: object
         x-go-package: github.com/go-gost/x/config
     HTTPLoader:
+        properties:
+            timeout:
+                $ref: '#/definitions/Duration'
+            url:
+                type: string
+                x-go-name: URL
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    HTTPNodeConfig:
+        properties:
+            header:
+                additionalProperties:
+                    type: string
+                type: object
+                x-go-name: Header
+            host:
+                type: string
+                x-go-name: Host
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    HTTPRecorder:
         properties:
             timeout:
                 $ref: '#/definitions/Duration'
@@ -338,9 +378,9 @@ definitions:
                 x-go-name: Chain
             chainGroup:
                 $ref: '#/definitions/ChainGroupConfig'
-            ingress:
+            limiter:
                 type: string
-                x-go-name: Ingress
+                x-go-name: Limiter
             metadata:
                 additionalProperties: {}
                 type: object
@@ -366,9 +406,13 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Bypasses
+            file:
+                $ref: '#/definitions/FileLoader'
             hosts:
                 type: string
                 x-go-name: Hosts
+            http:
+                $ref: '#/definitions/HTTPLoader'
             interface:
                 type: string
                 x-go-name: Interface
@@ -380,6 +424,12 @@ definitions:
                     $ref: '#/definitions/NodeConfig'
                 type: array
                 x-go-name: Nodes
+            plugin:
+                $ref: '#/definitions/PluginConfig'
+            redis:
+                $ref: '#/definitions/RedisLoader'
+            reload:
+                $ref: '#/definitions/Duration'
             resolver:
                 type: string
                 x-go-name: Resolver
@@ -418,6 +468,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -433,6 +485,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -468,6 +522,8 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisLoader'
             reload:
@@ -564,6 +620,11 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
+            auth:
+                $ref: '#/definitions/AuthConfig'
+            auther:
+                type: string
+                x-go-name: Auther
             path:
                 type: string
                 x-go-name: Path
@@ -574,6 +635,9 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
+            async:
+                type: boolean
+                x-go-name: Async
             chain:
                 type: string
                 x-go-name: Chain
@@ -583,6 +647,9 @@ definitions:
             hostname:
                 type: string
                 x-go-name: Hostname
+            only:
+                type: string
+                x-go-name: Only
             prefer:
                 type: string
                 x-go-name: Prefer
@@ -597,6 +664,8 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
+            auth:
+                $ref: '#/definitions/AuthConfig'
             bypass:
                 type: string
                 x-go-name: Bypass
@@ -615,6 +684,8 @@ definitions:
             hosts:
                 type: string
                 x-go-name: Hosts
+            http:
+                $ref: '#/definitions/HTTPNodeConfig'
             interface:
                 type: string
                 x-go-name: Interface
@@ -625,6 +696,12 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            network:
+                type: string
+                x-go-name: Network
+            path:
+                type: string
+                x-go-name: Path
             protocol:
                 type: string
                 x-go-name: Protocol
@@ -633,6 +710,25 @@ definitions:
                 x-go-name: Resolver
             sockopts:
                 $ref: '#/definitions/SockOptsConfig'
+            tls:
+                $ref: '#/definitions/TLSNodeConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    PluginConfig:
+        properties:
+            addr:
+                type: string
+                x-go-name: Addr
+            timeout:
+                $ref: '#/definitions/Duration'
+            tls:
+                $ref: '#/definitions/TLSConfig'
+            token:
+                type: string
+                x-go-name: Token
+            type:
+                type: string
+                x-go-name: Type
         type: object
         x-go-package: github.com/go-gost/x/config
     ProfilingConfig:
@@ -646,15 +742,24 @@ definitions:
         properties:
             file:
                 $ref: '#/definitions/FileRecorder'
+            http:
+                $ref: '#/definitions/HTTPRecorder'
             name:
                 type: string
                 x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
             redis:
                 $ref: '#/definitions/RedisRecorder'
+            tcp:
+                $ref: '#/definitions/TCPRecorder'
         type: object
         x-go-package: github.com/go-gost/x/config
     RecorderObject:
         properties:
+            Metadata:
+                additionalProperties: {}
+                type: object
             name:
                 type: string
                 x-go-name: Name
@@ -713,6 +818,8 @@ definitions:
                     $ref: '#/definitions/NameserverConfig'
                 type: array
                 x-go-name: Nameservers
+            plugin:
+                $ref: '#/definitions/PluginConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
     Response:
@@ -726,6 +833,47 @@ definitions:
                 x-go-name: Msg
         type: object
         x-go-package: github.com/go-gost/x/api
+    RouterConfig:
+        properties:
+            file:
+                $ref: '#/definitions/FileLoader'
+            http:
+                $ref: '#/definitions/HTTPLoader'
+            name:
+                type: string
+                x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
+            redis:
+                $ref: '#/definitions/RedisLoader'
+            reload:
+                $ref: '#/definitions/Duration'
+            routes:
+                items:
+                    $ref: '#/definitions/RouterRouteConfig'
+                type: array
+                x-go-name: Routes
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    RouterRouteConfig:
+        properties:
+            gateway:
+                type: string
+                x-go-name: Gateway
+            net:
+                type: string
+                x-go-name: Net
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    SDConfig:
+        properties:
+            name:
+                type: string
+                x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
     SelectorConfig:
         properties:
             failTimeout:
@@ -809,6 +957,15 @@ definitions:
                 x-go-name: Mark
         type: object
         x-go-package: github.com/go-gost/x/config
+    TCPRecorder:
+        properties:
+            addr:
+                type: string
+                x-go-name: Addr
+            timeout:
+                $ref: '#/definitions/Duration'
+        type: object
+        x-go-package: github.com/go-gost/x/config
     TLSConfig:
         properties:
             caFile:
@@ -823,6 +980,8 @@ definitions:
             keyFile:
                 type: string
                 x-go-name: KeyFile
+            options:
+                $ref: '#/definitions/TLSOptions'
             organization:
                 type: string
                 x-go-name: Organization
@@ -834,6 +993,33 @@ definitions:
                 x-go-name: ServerName
             validity:
                 $ref: '#/definitions/Duration'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    TLSNodeConfig:
+        properties:
+            options:
+                $ref: '#/definitions/TLSOptions'
+            secure:
+                type: boolean
+                x-go-name: Secure
+            serverName:
+                type: string
+                x-go-name: ServerName
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    TLSOptions:
+        properties:
+            cipherSuites:
+                items:
+                    type: string
+                type: array
+                x-go-name: CipherSuites
+            maxVersion:
+                type: string
+                x-go-name: MaxVersion
+            minVersion:
+                type: string
+                x-go-name: MinVersion
         type: object
         x-go-package: github.com/go-gost/x/config
 info:
@@ -866,6 +1052,11 @@ paths:
                   name: format
                   type: string
                   x-go-name: Format
+                - description: file path, default is gost.yaml|gost.json in current working directory.
+                  in: query
+                  name: path
+                  type: string
+                  x-go-name: Path
             responses:
                 "200":
                     $ref: '#/responses/saveConfigResponse'
@@ -1513,6 +1704,64 @@ paths:
             summary: Update rate limiter by name, the limiter must already exist.
             tags:
                 - Limiter
+    /config/routers:
+        post:
+            operationId: createRouterRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/RouterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createRouterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new router, the name of the router must be unique in router list.
+            tags:
+                - Router
+    /config/routers/{router}:
+        delete:
+            operationId: deleteRouterRequest
+            parameters:
+                - in: path
+                  name: router
+                  required: true
+                  type: string
+                  x-go-name: Router
+            responses:
+                "200":
+                    $ref: '#/responses/deleteRouterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete router by name.
+            tags:
+                - Router
+        put:
+            operationId: updateRouterRequest
+            parameters:
+                - in: path
+                  name: router
+                  required: true
+                  type: string
+                  x-go-name: Router
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/RouterConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateRouterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update router by name, the router must already exist.
+            tags:
+                - Router
     /config/services:
         post:
             operationId: createServiceRequest
@@ -1640,6 +1889,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createRouterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createServiceResponse:
         description: successful operation.
         headers:
@@ -1707,6 +1962,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteResolverResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteRouterResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1791,6 +2052,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateResolverResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateRouterResponse:
         description: successful operation.
         headers:
             Data: {}
