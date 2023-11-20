@@ -36,7 +36,7 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		ip = ipNet.IP
 	}
 
-	if err = l.addRoutes(name, l.md.config.Gateway, l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(name, l.md.config.Gateway); err != nil {
 		return
 	}
 

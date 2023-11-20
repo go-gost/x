@@ -6,7 +6,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/go-gost/core/limiter/traffic"
 	limiter "github.com/go-gost/core/limiter/traffic"
 )
 
@@ -19,11 +18,11 @@ type readWriter struct {
 	limiterOut limiter.Limiter
 	expIn      int64
 	expOut     int64
-	opts       []traffic.Option
+	opts       []limiter.Option
 	key        string
 }
 
-func WrapReadWriter(limiter limiter.TrafficLimiter, rw io.ReadWriter, key string, opts ...traffic.Option) io.ReadWriter {
+func WrapReadWriter(limiter limiter.TrafficLimiter, rw io.ReadWriter, key string, opts ...limiter.Option) io.ReadWriter {
 	if limiter == nil {
 		return rw
 	}

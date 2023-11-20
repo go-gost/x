@@ -29,16 +29,22 @@ type serverConn struct {
 	limiterOut limiter.Limiter
 	expIn      int64
 	expOut     int64
+	opts       []limiter.Option
 }
 
-func WrapConn(limiter limiter.TrafficLimiter, c net.Conn) net.Conn {
-	if limiter == nil {
+func WrapConn(tlimiter limiter.TrafficLimiter, c net.Conn) net.Conn {
+	if tlimiter == nil {
 		return c
 	}
 
 	return &serverConn{
 		Conn:    c,
-		limiter: limiter,
+		limiter: tlimiter,
+		opts: []limiter.Option{
+			limiter.NetworkOption(c.LocalAddr().Network()),
+			limiter.SrcOption(c.RemoteAddr().String()),
+			limiter.AddrOption(c.LocalAddr().String()),
+		},
 	}
 }
 
