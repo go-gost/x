@@ -60,6 +60,7 @@ func NewService(addr string, opts ...Option) (service.Service, error) {
 			AllowAllOrigins: true,
 			AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 			AllowHeaders:    []string{"*"},
+			AllowPrivateNetwork: true,
 		})),
 		gin.Recovery(),
 	)
