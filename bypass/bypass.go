@@ -130,6 +130,7 @@ func (bp *localBypass) reload(ctx context.Context) error {
 		return err
 	}
 	patterns := append(bp.options.matchers, v...)
+	bp.options.logger.Debugf("load items %d", len(patterns))
 
 	var addrs []string
 	var inets []*net.IPNet
@@ -205,7 +206,6 @@ func (bp *localBypass) load(ctx context.Context) (patterns []string, err error) 
 		}
 	}
 
-	bp.options.logger.Debugf("load items %d", len(patterns))
 	return
 }
 

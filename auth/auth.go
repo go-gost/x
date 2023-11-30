@@ -145,6 +145,8 @@ func (p *authenticator) reload(ctx context.Context) (err error) {
 		kvs[k] = v
 	}
 
+	p.options.logger.Debugf("load items %d", len(m))
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -206,7 +208,6 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		}
 	}
 
-	p.options.logger.Debugf("load items %d", len(m))
 	return
 }
 

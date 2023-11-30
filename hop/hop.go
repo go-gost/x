@@ -252,6 +252,8 @@ func (p *chainHop) reload(ctx context.Context) (err error) {
 
 	nodes = append(nodes, nl...)
 
+	p.options.logger.Debugf("load items %d", len(nodes))
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -291,7 +293,6 @@ func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
 		}
 	}
 
-	p.options.logger.Debugf("load items %d", len(nodes))
 	return
 }
 

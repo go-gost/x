@@ -215,6 +215,8 @@ func (h *hostMapper) reload(ctx context.Context) (err error) {
 		mapf(m[i].Hostname, m[i].IP)
 	}
 
+	h.options.logger.Debugf("load items %d", len(mappings))
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -271,7 +273,6 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 		}
 	}
 
-	h.options.logger.Debugf("load items %d", len(mappings))
 	return
 }
 

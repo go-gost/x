@@ -139,6 +139,8 @@ func (ing *localIngress) reload(ctx context.Context) error {
 		fn(rule)
 	}
 
+	ing.options.logger.Debugf("load items %d", len(rules))
+
 	ing.mu.Lock()
 	defer ing.mu.Unlock()
 
@@ -194,7 +196,6 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 		rules = append(rules, v...)
 	}
 
-	ing.options.logger.Debugf("load items %d", len(rules))
 	return
 }
 

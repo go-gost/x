@@ -113,19 +113,25 @@ func (p *localRouter) periodReload(ctx context.Context) error {
 	}
 }
 
-func (r *localRouter) reload(ctx context.Context) error {
-	routes := r.options.routes
+func (p *localRouter) reload(ctx context.Context) error {
+	routes := p.options.routes
 
-	v, err := r.load(ctx)
+	v, err := p.load(ctx)
 	if err != nil {
 		return err
 	}
 	routes = append(routes, v...)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	p.options.logger.Debugf("load items %d", len(routes))
 
-	r.routes = routes
+	if err := p.setSysRoutes(routes...); err != nil {
+		p.options.logger.Error(err)
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.routes = routes
 
 	return nil
 }
@@ -177,7 +183,6 @@ func (p *localRouter) load(ctx context.Context) (routes []*router.Route, err err
 		routes = append(routes, v...)
 	}
 
-	p.options.logger.Debugf("load items %d", len(routes))
 	return
 }
 
