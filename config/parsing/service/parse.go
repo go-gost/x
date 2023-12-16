@@ -291,7 +291,7 @@ func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 		}
 	}
 	if len(hc.Nodes) > 0 {
-		return hop_parser.ParseHop(&hc)
+		return hop_parser.ParseHop(&hc, logger.Default())
 	}
 	return registry.HopRegistry().Get(hc.Name), nil
 }

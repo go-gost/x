@@ -12,12 +12,12 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
+func ParseChain(cfg *config.ChainConfig, log logger.Logger) (chain.Chainer, error) {
 	if cfg == nil {
 		return nil, nil
 	}
 
-	chainLogger := logger.Default().WithFields(map[string]any{
+	chainLogger := log.WithFields(map[string]any{
 		"kind":  "chain",
 		"chain": cfg.Name,
 	})
@@ -37,7 +37,7 @@ func ParseChain(cfg *config.ChainConfig) (chain.Chainer, error) {
 		var err error
 
 		if ch.Nodes != nil || ch.Plugin != nil {
-			if hop, err = hop_parser.ParseHop(ch); err != nil {
+			if hop, err = hop_parser.ParseHop(ch, log); err != nil {
 				return nil, err
 			}
 		} else {

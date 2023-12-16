@@ -23,7 +23,7 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
-func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
+func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.Node, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -40,7 +40,7 @@ func ParseNode(hop string, cfg *config.NodeConfig) (*chain.Node, error) {
 		}
 	}
 
-	nodeLogger := logger.Default().WithFields(map[string]any{
+	nodeLogger := log.WithFields(map[string]any{
 		"hop":       hop,
 		"kind":      "node",
 		"node":      cfg.Name,

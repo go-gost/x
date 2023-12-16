@@ -102,16 +102,6 @@ func (s *defaultService) Addr() net.Addr {
 	return s.listener.Addr()
 }
 
-func (s *defaultService) Close() error {
-	s.execCmds("pre-down", s.options.preDown)
-	defer s.execCmds("post-down", s.options.postDown)
-
-	if closer, ok := s.handler.(io.Closer); ok {
-		closer.Close()
-	}
-	return s.listener.Close()
-}
-
 func (s *defaultService) Serve() error {
 	s.execCmds("post-up", s.options.postUp)
 
@@ -199,6 +189,16 @@ func (s *defaultService) Serve() error {
 			}
 		}()
 	}
+}
+
+func (s *defaultService) Close() error {
+	s.execCmds("pre-down", s.options.preDown)
+	defer s.execCmds("post-down", s.options.postDown)
+
+	if closer, ok := s.handler.(io.Closer); ok {
+		closer.Close()
+	}
+	return s.listener.Close()
 }
 
 func (s *defaultService) execCmds(phase string, cmds []string) {

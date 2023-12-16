@@ -308,7 +308,7 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 			continue
 		}
 
-		node, err := node_parser.ParseNode(p.options.name, nc)
+		node, err := node_parser.ParseNode(p.options.name, nc, logger.Default())
 		if err != nil {
 			return nodes, err
 		}

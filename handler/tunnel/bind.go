@@ -31,12 +31,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		connectorID = relay.NewUDPConnectorID(uuid[:])
 	}
 
+	v := md5.Sum([]byte(tunnelID.String()))
+	endpoint := hex.EncodeToString(v[:8])
+
 	addr := address
-	if host, port, _ := net.SplitHostPort(addr); host == "" {
-		v := md5.Sum([]byte(tunnelID.String()))
-		host = hex.EncodeToString(v[:8])
-		addr = net.JoinHostPort(host, port)
+	host, port, _ := net.SplitHostPort(addr)
+	if host == "" {
+		addr = net.JoinHostPort(endpoint, port)
 	}
+
 	af := &relay.AddrFeature{}
 	err = af.ParseFrom(addr)
 	if err != nil {
@@ -58,9 +61,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd), h.md.tunnelTTL)
 	if h.md.ingress != nil {
 		h.md.ingress.SetRule(ctx, &ingress.Rule{
-			Hostname: addr,
+			Hostname: endpoint,
 			Endpoint: tunnelID.String(),
 		})
+		if host != "" {
+			h.md.ingress.SetRule(ctx, &ingress.Rule{
+				Hostname: host,
+				Endpoint: tunnelID.String(),
+			})
+		}
 	}
 	if h.md.sd != nil {
 		err := h.md.sd.Register(ctx, &sd.Service{

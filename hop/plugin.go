@@ -86,7 +86,7 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		return nil
 	}
 
-	node, err := node_parser.ParseNode(p.name, &cfg)
+	node, err := node_parser.ParseNode(p.name, &cfg, logger.Default())
 	if err != nil {
 		p.log.Error(err)
 		return nil
@@ -203,7 +203,7 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		return nil
 	}
 
-	node, err := node_parser.ParseNode(p.name, &cfg)
+	node, err := node_parser.ParseNode(p.name, &cfg, logger.Default())
 	if err != nil {
 		p.log.Error(err)
 		return nil

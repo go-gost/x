@@ -89,7 +89,15 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 		l.setListener(ln)
 	}
-	conn, err = l.ln.Accept()
+
+	select {
+	case <-l.closed:
+		ln.Close()
+		return nil, net.ErrClosed
+	default:
+	}
+
+	conn, err = ln.Accept()
 	if err != nil {
 		ln.Close()
 		l.setListener(nil)
@@ -107,10 +115,8 @@ func (l *rtcpListener) Close() error {
 	case <-l.closed:
 	default:
 		close(l.closed)
-		ln := l.getListener()
-		if ln != nil {
+		if ln := l.getListener(); ln != nil {
 			ln.Close()
-			// l.ln = nil
 		}
 	}
 

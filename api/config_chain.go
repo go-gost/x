@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/chain"
 	"github.com/go-gost/x/registry"
@@ -40,7 +41,7 @@ func createChain(ctx *gin.Context) {
 		return
 	}
 
-	v, err := parser.ParseChain(&req.Data)
+	v, err := parser.ParseChain(&req.Data, logger.Default())
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return
@@ -99,7 +100,7 @@ func updateChain(ctx *gin.Context) {
 
 	req.Data.Name = req.Chain
 
-	v, err := parser.ParseChain(&req.Data)
+	v, err := parser.ParseChain(&req.Data, logger.Default())
 	if err != nil {
 		writeError(ctx, ErrCreate)
 		return

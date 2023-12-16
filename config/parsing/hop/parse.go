@@ -17,7 +17,7 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 )
 
-func ParseHop(cfg *config.HopConfig) (hop.Hop, error) {
+func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -77,7 +77,7 @@ func ParseHop(cfg *config.HopConfig) (hop.Hop, error) {
 			}
 		}
 
-		node, err := node_parser.ParseNode(cfg.Name, v)
+		node, err := node_parser.ParseNode(cfg.Name, v, log)
 		if err != nil {
 			return nil, err
 		}
@@ -97,7 +97,7 @@ func ParseHop(cfg *config.HopConfig) (hop.Hop, error) {
 		xhop.SelectorOption(sel),
 		xhop.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		xhop.ReloadPeriodOption(cfg.Reload),
-		xhop.LoggerOption(logger.Default().WithFields(map[string]any{
+		xhop.LoggerOption(log.WithFields(map[string]any{
 			"kind": "hop",
 			"hop":  cfg.Name,
 		})),

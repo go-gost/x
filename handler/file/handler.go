@@ -73,6 +73,7 @@ func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 	if auther := h.options.Auther; auther != nil {
 		u, p, _ := r.BasicAuth()
 		if _, ok := auther.Authenticate(r.Context(), u, p); !ok {
+			w.Header().Set("WWW-Authenticate", "Basic")
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

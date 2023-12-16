@@ -3,6 +3,7 @@ package rudp
 import (
 	"context"
 	"net"
+	"sync"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/listener"
@@ -27,6 +28,7 @@ type rudpListener struct {
 	logger  logger.Logger
 	md      metadata
 	options listener.Options
+	mu      sync.Mutex
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
@@ -72,8 +74,9 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 	default:
 	}
 
-	if l.ln == nil {
-		l.ln, err = l.router.Bind(
+	ln := l.getListener()
+	if ln == nil {
+		ln, err = l.router.Bind(
 			context.Background(), "udp", l.laddr.String(),
 			chain.BacklogBindOption(l.md.backlog),
 			chain.UDPConnTTLBindOption(l.md.ttl),
@@ -83,11 +86,20 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 		if err != nil {
 			return nil, listener.NewAcceptError(err)
 		}
+		l.setListener(ln)
 	}
+
+	select {
+	case <-l.closed:
+		ln.Close()
+		return nil, net.ErrClosed
+	default:
+	}
+
 	conn, err = l.ln.Accept()
 	if err != nil {
 		l.ln.Close()
-		l.ln = nil
+		l.setListener(nil)
 		return nil, listener.NewAcceptError(err)
 	}
 
@@ -109,13 +121,24 @@ func (l *rudpListener) Close() error {
 	case <-l.closed:
 	default:
 		close(l.closed)
-		if l.ln != nil {
-			l.ln.Close()
-			// l.ln = nil
+		if ln := l.getListener(); ln != nil {
+			ln.Close()
 		}
 	}
 
 	return nil
+}
+
+func (l *rudpListener) setListener(ln net.Listener) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ln = ln
+}
+
+func (l *rudpListener) getListener() net.Listener {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ln
 }
 
 type bindAddr struct {

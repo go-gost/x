@@ -33,8 +33,9 @@ func AutherOption(auther auth.Authenticator) Option {
 }
 
 type metricService struct {
-	s  *http.Server
-	ln net.Listener
+	s      *http.Server
+	ln     net.Listener
+	cclose chan struct{}
 }
 
 func NewService(addr string, opts ...Option) (service.Service, error) {
@@ -66,7 +67,8 @@ func NewService(addr string, opts ...Option) (service.Service, error) {
 		s: &http.Server{
 			Handler: mux,
 		},
-		ln: ln,
+		ln:     ln,
+		cclose: make(chan struct{}),
 	}, nil
 }
 
@@ -80,4 +82,13 @@ func (s *metricService) Addr() net.Addr {
 
 func (s *metricService) Close() error {
 	return s.s.Close()
+}
+
+func (s *metricService) IsClosed() bool {
+	select {
+	case <-s.cclose:
+		return true
+	default:
+		return false
+	}
 }
