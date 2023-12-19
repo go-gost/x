@@ -22,6 +22,7 @@ import (
 	auth_parser "github.com/go-gost/x/config/parsing/auth"
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
+	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	xnet "github.com/go-gost/x/internal/net"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -42,10 +43,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		}
 	}
 
-	log := registry.LoggerRegistry().Get(cfg.Logger)
-	if log == nil {
-		log = logger.Default()
+	log := logger.Default()
+	if loggers := logger_parser.List(cfg.Logger, cfg.Loggers...); len(loggers) > 0 {
+		log = logger.LoggerGroup(loggers...)
 	}
+
 	serviceLogger := log.WithFields(map[string]any{
 		"kind":     "service",
 		"service":  cfg.Name,

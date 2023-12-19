@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	xlogger "github.com/go-gost/x/logger"
+	"github.com/go-gost/x/registry"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -52,4 +53,18 @@ func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 	opts = append(opts, xlogger.OutputOption(out))
 
 	return xlogger.NewLogger(opts...)
+}
+
+func List(name string, names ...string) []logger.Logger {
+	var loggers []logger.Logger
+	if adm := registry.LoggerRegistry().Get(name); adm != nil {
+		loggers = append(loggers, adm)
+	}
+	for _, s := range names {
+		if lg := registry.LoggerRegistry().Get(s); lg != nil {
+			loggers = append(loggers, lg)
+		}
+	}
+
+	return loggers
 }

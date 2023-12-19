@@ -402,6 +402,7 @@ type ServiceConfig struct {
 	CLimiter   string            `yaml:"climiter,omitempty" json:"climiter,omitempty"`
 	RLimiter   string            `yaml:"rlimiter,omitempty" json:"rlimiter,omitempty"`
 	Logger     string            `yaml:",omitempty" json:"logger,omitempty"`
+	Loggers    []string          `yaml:",omitempty" json:"loggers,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
