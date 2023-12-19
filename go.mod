@@ -36,7 +36,7 @@ require (
 	github.com/xtaci/smux v1.5.24
 	github.com/xtaci/tcpraw v1.2.25
 	github.com/yl2chen/cidranger v1.0.2
-	golang.org/x/crypto v0.16.0
+	golang.org/x/crypto v0.17.0
 	golang.org/x/net v0.19.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/time v0.3.0
