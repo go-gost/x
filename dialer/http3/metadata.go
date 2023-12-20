@@ -50,7 +50,7 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	d.md.host = mdutil.GetString(md, "host")
-	if !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
+	if md == nil || !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
 		d.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if d.md.keepAlivePeriod <= 0 {
 			d.md.keepAlivePeriod = 10 * time.Second
