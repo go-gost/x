@@ -149,7 +149,9 @@ func (d *kcpDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pac
 	smuxConfig.Version = config.SmuxVer
 	smuxConfig.MaxReceiveBuffer = config.SmuxBuf
 	smuxConfig.MaxStreamBuffer = config.StreamBuf
-	smuxConfig.KeepAliveInterval = time.Duration(config.KeepAlive) * time.Second
+	if config.KeepAlive > 0 {
+		smuxConfig.KeepAliveInterval = time.Duration(config.KeepAlive) * time.Second
+	}
 	var cc net.Conn = kcpconn
 	if !config.NoComp {
 		cc = kcp_util.CompStreamConn(kcpconn)

@@ -160,7 +160,9 @@ func (l *kcpListener) mux(conn net.Conn) {
 	smuxConfig.Version = l.md.config.SmuxVer
 	smuxConfig.MaxReceiveBuffer = l.md.config.SmuxBuf
 	smuxConfig.MaxStreamBuffer = l.md.config.StreamBuf
-	smuxConfig.KeepAliveInterval = time.Duration(l.md.config.KeepAlive) * time.Second
+	if l.md.config.KeepAlive > 0 {
+		smuxConfig.KeepAliveInterval = time.Duration(l.md.config.KeepAlive) * time.Second
+	}
 
 	if !l.md.config.NoComp {
 		conn = kcp_util.CompStreamConn(conn)
