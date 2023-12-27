@@ -90,8 +90,10 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	rw := xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:]), conn), conn)
+
+	tlsVersion := binary.BigEndian.Uint16(hdr[1:3])
 	if hdr[0] == dissector.Handshake &&
-		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
+		(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
 		return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), log)
 	}
 	return h.handleHTTP(ctx, rw, conn.RemoteAddr(), log)

@@ -109,9 +109,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			conn.SetReadDeadline(time.Time{})
 		}
 		rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:n]), rw), rw)
+		tlsVersion := binary.BigEndian.Uint16(hdr[1:3])
 		if err == nil &&
 			hdr[0] == dissector.Handshake &&
-			binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
+			(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
 			return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), dstAddr, log)
 		}
 

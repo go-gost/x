@@ -21,9 +21,10 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 	var hdr [dissector.RecordHeaderLen]byte
 	n, err := io.ReadFull(rw, hdr[:])
 	rw = xio.NewReadWriter(io.MultiReader(bytes.NewReader(hdr[:n]), rw), rw)
+	tlsVersion := binary.BigEndian.Uint16(hdr[1:3])
 	if err == nil &&
 		hdr[0] == dissector.Handshake &&
-		binary.BigEndian.Uint16(hdr[1:3]) == tls.VersionTLS10 {
+		(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
 		rw, host, err = sniffSNI(ctx, rw)
 		protocol = ProtoTLS
 		return
