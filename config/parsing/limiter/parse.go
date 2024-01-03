@@ -14,6 +14,7 @@ import (
 	xconn "github.com/go-gost/x/limiter/conn"
 	xrate "github.com/go-gost/x/limiter/rate"
 	xtraffic "github.com/go-gost/x/limiter/traffic"
+	traffic_plugin "github.com/go-gost/x/limiter/traffic/plugin"
 )
 
 func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter) {
@@ -31,13 +32,13 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xtraffic.NewHTTPPlugin(
+			return traffic_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xtraffic.NewGRPCPlugin(
+			return traffic_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

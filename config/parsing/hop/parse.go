@@ -13,6 +13,7 @@ import (
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	xhop "github.com/go-gost/x/hop"
+	hop_plugin "github.com/go-gost/x/hop/plugin"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 )
@@ -32,13 +33,13 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xhop.NewHTTPPlugin(
+			return hop_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			), nil
 		default:
-			return xhop.NewGRPCPlugin(
+			return hop_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

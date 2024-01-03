@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	xhosts "github.com/go-gost/x/hosts"
+	hosts_plugin "github.com/go-gost/x/hosts/plugin"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 )
@@ -28,13 +29,13 @@ func ParseHostMapper(cfg *config.HostsConfig) hosts.HostMapper {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xhosts.NewHTTPPlugin(
+			return hosts_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xhosts.NewGRPCPlugin(
+			return hosts_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

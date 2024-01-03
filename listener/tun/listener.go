@@ -14,6 +14,7 @@ import (
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -27,7 +28,7 @@ type tunListener struct {
 	logger  logger.Logger
 	md      metadata
 	options listener.Options
-	routes []*router.Route
+	routes  []*router.Route
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
@@ -91,6 +92,7 @@ func (l *tunListener) listenLoop() {
 				cancel: cancel,
 			}
 			c = metrics.WrapConn(l.options.Service, c)
+			c = stats.WrapConn(c, l.options.Stats)
 			c = limiter.WrapConn(l.options.TrafficLimiter, c)
 			c = withMetadata(mdx.NewMetadata(map[string]any{
 				"config": l.md.config,

@@ -22,7 +22,7 @@ type readWriter struct {
 	key        string
 }
 
-func WrapReadWriter(limiter limiter.TrafficLimiter, rw io.ReadWriter, key string, opts ...limiter.Option) io.ReadWriter {
+func WrapReadWriter(limiter limiter.TrafficLimiter, rw io.ReadWriter, opts ...limiter.Option) io.ReadWriter {
 	if limiter == nil {
 		return rw
 	}

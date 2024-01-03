@@ -29,6 +29,7 @@ import (
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
+	"github.com/go-gost/x/stats"
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
@@ -96,6 +97,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	ifce := cfg.Interface
 	var preUp, preDown, postUp, postDown []string
 	var ignoreChain bool
+	var pStats *stats.Stats
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
@@ -112,6 +114,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		postUp = mdutil.GetStrings(md, parsing.MDKeyPostUp)
 		postDown = mdutil.GetStrings(md, parsing.MDKeyPostDown)
 		ignoreChain = mdutil.GetBool(md, parsing.MDKeyIgnoreChain)
+
+		if mdutil.GetBool(md, parsing.MDKeyEnableStats) {
+			pStats = &stats.Stats{}
+		}
 	}
 
 	listenOpts := []listener.Option{
@@ -125,6 +131,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.LoggerOption(listenerLogger),
 		listener.ServiceOption(cfg.Name),
 		listener.ProxyProtocolOption(ppv),
+		listener.StatsOption(pStats),
 	}
 	if !ignoreChain {
 		listenOpts = append(listenOpts,
@@ -218,6 +225,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
 			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
+			handler.ObserverOption(registry.ObserverRegistry().Get(cfg.Handler.Observer)),
 			handler.LoggerOption(handlerLogger),
 			handler.ServiceOption(cfg.Name),
 		)
@@ -249,6 +257,8 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.PostUpOption(postUp),
 		xservice.PostDownOption(postDown),
 		xservice.RecordersOption(recorders...),
+		xservice.StatsOption(pStats),
+		xservice.ObserverOption(registry.ObserverRegistry().Get(cfg.Observer)),
 		xservice.LoggerOption(serviceLogger),
 	)
 

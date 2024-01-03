@@ -8,7 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/registry"
+	"github.com/go-gost/x/service"
+	"github.com/go-gost/x/stats"
 )
+
+type serviceStatus interface {
+	Status() *service.Status
+}
 
 // swagger:parameters getConfigRequest
 type getConfigRequest struct {
@@ -37,6 +44,40 @@ func getConfig(ctx *gin.Context) {
 	var req getConfigRequest
 	ctx.ShouldBindQuery(&req)
 
+	config.OnUpdate(func(c *config.Config) error {
+		for _, svc := range c.Services {
+			if svc == nil {
+				continue
+			}
+			s := registry.ServiceRegistry().Get(svc.Name)
+			ss, ok := s.(serviceStatus)
+			if ok && ss != nil {
+				status := ss.Status()
+				svc.Status = &config.ServiceStatus{
+					CreateTime: status.CreateTime().Unix(),
+					State:      string(status.State()),
+				}
+				if st := status.Stats(); st != nil {
+					svc.Status.Stats = &config.ServiceStats{
+						TotalConns:   st.Get(stats.KindTotalConns),
+						CurrentConns: st.Get(stats.KindCurrentConns),
+						TotalErrs:    st.Get(stats.KindTotalErrs),
+						InputBytes:   st.Get(stats.KindInputBytes),
+						OutputBytes:  st.Get(stats.KindOutputBytes),
+					}
+				}
+				for _, ev := range status.Events() {
+					if !ev.Time.IsZero() {
+						svc.Status.Events = append(svc.Status.Events, config.ServiceEvent{
+							Time: ev.Time.Unix(),
+							Msg:  ev.Message,
+						})
+					}
+				}
+			}
+		}
+		return nil
+	})
 	var resp getConfigResponse
 	resp.Config = config.Global()
 

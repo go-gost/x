@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	xbypass "github.com/go-gost/x/bypass"
+	bypass_plugin "github.com/go-gost/x/bypass/plugin"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
@@ -28,13 +29,13 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xbypass.NewHTTPPlugin(
+			return bypass_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xbypass.NewGRPCPlugin(
+			return bypass_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

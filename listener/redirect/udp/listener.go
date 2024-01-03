@@ -10,6 +10,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -54,6 +55,7 @@ func (l *redirectListener) Accept() (conn net.Conn, err error) {
 		return
 	}
 	conn = metrics.WrapConn(l.options.Service, conn)
+	conn = stats.WrapConn(conn, l.options.Stats)
 	conn = admission.WrapConn(l.options.Admission, conn)
 	conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
 	return

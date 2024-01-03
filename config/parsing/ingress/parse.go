@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	xingress "github.com/go-gost/x/ingress"
+	ingress_plugin "github.com/go-gost/x/ingress/plugin"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 )
@@ -27,13 +28,13 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xingress.NewHTTPPlugin(
+			return ingress_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xingress.NewGRPCPlugin(
+			return ingress_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

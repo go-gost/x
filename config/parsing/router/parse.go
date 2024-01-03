@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 	xrouter "github.com/go-gost/x/router"
+	router_plugin "github.com/go-gost/x/router/plugin"
 )
 
 func ParseRouter(cfg *config.RouterConfig) router.Router {
@@ -28,13 +29,13 @@ func ParseRouter(cfg *config.RouterConfig) router.Router {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xrouter.NewHTTPPlugin(
+			return router_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xrouter.NewGRPCPlugin(
+			return router_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

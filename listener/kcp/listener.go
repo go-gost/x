@@ -13,6 +13,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 	"github.com/xtaci/kcp-go/v5"
 	"github.com/xtaci/smux"
 	"github.com/xtaci/tcpraw"
@@ -75,6 +76,7 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 	}
 
 	conn = metrics.WrapUDPConn(l.options.Service, conn)
+	conn = stats.WrapUDPConn(conn, l.options.Stats)
 	conn = admission.WrapUDPConn(l.options.Admission, conn)
 	conn = limiter.WrapUDPConn(l.options.TrafficLimiter, conn)
 

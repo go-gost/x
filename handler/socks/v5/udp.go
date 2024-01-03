@@ -10,8 +10,11 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
+	"github.com/go-gost/x/stats"
+	stats_wrapper "github.com/go-gost/x/stats/wrapper"
 )
 
 func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger.Logger) error {
@@ -67,7 +70,17 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 		return err
 	}
 
-	r := udp.NewRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
+	var lc net.PacketConn = cc
+	clientID := ctxvalue.ClientIDFromContext(ctx)
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(string(clientID))
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		lc = stats_wrapper.WrapPacketConn(lc, pstats)
+	}
+
+	r := udp.NewRelay(socks.UDPConn(lc, h.md.udpBufferSize), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
 	r.SetBufferSize(h.md.udpBufferSize)

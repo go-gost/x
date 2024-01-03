@@ -12,6 +12,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -95,6 +96,7 @@ func (l *serialListener) listenLoop() {
 
 			c := serial.NewConn(port, l.addr, cancel)
 			c = metrics.WrapConn(l.options.Service, c)
+			c = stats.WrapConn(c, l.options.Stats)
 			c = limiter.WrapConn(l.options.TrafficLimiter, c)
 
 			l.cqueue <- c

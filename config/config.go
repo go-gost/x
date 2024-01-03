@@ -312,6 +312,11 @@ type LimiterConfig struct {
 	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
+type ObserverConfig struct {
+	Name   string        `json:"name"`
+	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
+}
+
 type ListenerConfig struct {
 	Type       string            `json:"type"`
 	Chain      string            `yaml:",omitempty" json:"chain,omitempty"`
@@ -333,6 +338,7 @@ type HandlerConfig struct {
 	Auth       *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
 	TLS        *TLSConfig        `yaml:",omitempty" json:"tls,omitempty"`
 	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
+	Observer   string            `yaml:",omitempty" json:"observer,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
@@ -403,11 +409,34 @@ type ServiceConfig struct {
 	RLimiter   string            `yaml:"rlimiter,omitempty" json:"rlimiter,omitempty"`
 	Logger     string            `yaml:",omitempty" json:"logger,omitempty"`
 	Loggers    []string          `yaml:",omitempty" json:"loggers,omitempty"`
+	Observer   string            `yaml:",omitempty" json:"observer,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`
+	// service status, read-only
+	Status *ServiceStatus `yaml:",omitempty" json:"status,omitempty"`
+}
+
+type ServiceStatus struct {
+	CreateTime int64          `yaml:"createTime" json:"createTime"`
+	State      string         `yaml:"state" json:"state"`
+	Events     []ServiceEvent `yaml:",omitempty" json:"events,omitempty"`
+	Stats      *ServiceStats  `yaml:",omitempty" json:"stats,omitempty"`
+}
+
+type ServiceEvent struct {
+	Time int64  `yaml:"time" json:"time"`
+	Msg  string `yaml:"msg" json:"msg"`
+}
+
+type ServiceStats struct {
+	TotalConns   uint64 `yaml:"totalConns" json:"totalConns"`
+	CurrentConns uint64 `yaml:"currentConns" json:"currentConns"`
+	TotalErrs    uint64 `yaml:"totalErrs" json:"totalErrs"`
+	InputBytes   uint64 `yaml:"inputBytes" json:"inputBytes"`
+	OutputBytes  uint64 `yaml:"outputBytes" json:"outputBytes"`
 }
 
 type ChainConfig struct {
@@ -475,6 +504,7 @@ type Config struct {
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
 	RLimiters  []*LimiterConfig   `yaml:"rlimiters,omitempty" json:"rlimiters,omitempty"`
+	Observers  []*ObserverConfig  `yaml:",omitempty" json:"observers,omitempty"`
 	Loggers    []*LoggerConfig    `yaml:",omitempty" json:"loggers,omitempty"`
 	TLS        *TLSConfig         `yaml:",omitempty" json:"tls,omitempty"`
 	Log        *LogConfig         `yaml:",omitempty" json:"log,omitempty"`

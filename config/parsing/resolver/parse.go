@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 	"github.com/go-gost/x/registry"
 	xresolver "github.com/go-gost/x/resolver"
+	resolver_plugin "github.com/go-gost/x/resolver/plugin"
 )
 
 func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
@@ -28,13 +29,13 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xresolver.NewHTTPPlugin(
+			return resolver_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			), nil
 		default:
-			return xresolver.NewGRPCPlugin(
+			return resolver_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

@@ -7,7 +7,7 @@ import (
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
-	xsd "github.com/go-gost/x/sd"
+	sd_plugin "github.com/go-gost/x/sd/plugin"
 )
 
 func ParseSD(cfg *config.SDConfig) sd.SD {
@@ -24,13 +24,13 @@ func ParseSD(cfg *config.SDConfig) sd.SD {
 	}
 	switch strings.ToLower(cfg.Plugin.Type) {
 	case "http":
-		return xsd.NewHTTPPlugin(
+		return sd_plugin.NewHTTPPlugin(
 			cfg.Name, cfg.Plugin.Addr,
 			plugin.TLSConfigOption(tlsCfg),
 			plugin.TimeoutOption(cfg.Plugin.Timeout),
 		)
 	default:
-		return xsd.NewGRPCPlugin(
+		return sd_plugin.NewGRPCPlugin(
 			cfg.Name, cfg.Plugin.Addr,
 			plugin.TokenOption(cfg.Plugin.Token),
 			plugin.TLSConfigOption(tlsCfg),

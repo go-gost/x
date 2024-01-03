@@ -100,7 +100,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		req.WriteTo(cc)
 	}
 
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, tunnelID.String(),
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
 		traffic.NetworkOption(network),
 		traffic.AddrOption(dstAddr),
 		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),

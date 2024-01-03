@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/socks"
+	stats_util "github.com/go-gost/x/internal/util/stats"
 	"github.com/go-gost/x/registry"
 )
 
@@ -29,6 +30,8 @@ type socks5Handler struct {
 	router   *chain.Router
 	md       metadata
 	options  handler.Options
+	stats    *stats_util.HandlerStats
+	cancel   context.CancelFunc
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -39,6 +42,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &socks5Handler{
 		options: options,
+		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -57,6 +61,13 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 		TLSConfig:     h.options.TLSConfig,
 		logger:        h.options.Logger,
 		noTLS:         h.md.noTLS,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+
+	if h.options.Observer != nil {
+		go h.observeStats(ctx)
 	}
 
 	return
@@ -125,6 +136,13 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 }
 
+func (h *socks5Handler) Close() error {
+	if h.cancel != nil {
+		h.cancel()
+	}
+	return nil
+}
+
 func (h *socks5Handler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
@@ -135,4 +153,22 @@ func (h *socks5Handler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func (h *socks5Handler) observeStats(ctx context.Context) {
+	if h.options.Observer == nil {
+		return
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			h.options.Observer.Observe(ctx, h.stats.Events())
+		case <-ctx.Done():
+			return
+		}
+	}
 }

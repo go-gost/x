@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
 	xrecorder "github.com/go-gost/x/recorder"
+	recorder_plugin "github.com/go-gost/x/recorder/plugin"
 )
 
 func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
@@ -25,13 +26,13 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xrecorder.NewHTTPPlugin(
+			return recorder_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xrecorder.NewGRPCPlugin(
+			return recorder_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

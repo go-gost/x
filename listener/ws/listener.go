@@ -19,6 +19,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 	"github.com/gorilla/websocket"
 )
 
@@ -102,6 +103,7 @@ func (l *wsListener) Init(md md.Metadata) (err error) {
 	}
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
+	ln = stats.WrapListener(ln, l.options.Stats)
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)

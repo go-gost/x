@@ -14,6 +14,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -105,6 +106,7 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 
 	if pc, ok := conn.(net.PacketConn); ok {
 		uc := metrics.WrapUDPConn(l.options.Service, pc)
+		uc = stats.WrapUDPConn(uc, l.options.Stats)
 		uc = admission.WrapUDPConn(l.options.Admission, uc)
 		conn = limiter.WrapUDPConn(l.options.TrafficLimiter, uc)
 	}

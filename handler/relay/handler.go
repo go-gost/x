@@ -11,10 +11,10 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/registry"
+	stats_util "github.com/go-gost/x/internal/util/stats"
 )
 
 var (
@@ -33,7 +33,8 @@ type relayHandler struct {
 	router  *chain.Router
 	md      metadata
 	options handler.Options
-	ep      service.Service
+	stats   *stats_util.HandlerStats
+	cancel  context.CancelFunc
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -44,6 +45,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &relayHandler{
 		options: options,
+		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -55,6 +57,13 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 	h.router = h.options.Router
 	if h.router == nil {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+
+	if h.options.Observer != nil {
+		go h.observeStats(ctx)
 	}
 
 	return nil
@@ -172,8 +181,8 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 // Close implements io.Closer interface.
 func (h *relayHandler) Close() error {
-	if h.ep != nil {
-		return h.ep.Close()
+	if h.cancel != nil {
+		h.cancel()
 	}
 	return nil
 }
@@ -188,4 +197,22 @@ func (h *relayHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func (h *relayHandler) observeStats(ctx context.Context) {
+	if h.options.Observer == nil {
+		return
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			h.options.Observer.Observe(ctx, h.stats.Events())
+		case <-ctx.Done():
+			return
+		}
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/logger"
 	xadmission "github.com/go-gost/x/admission"
+	admission_plugin "github.com/go-gost/x/admission/plugin"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
@@ -28,13 +29,13 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
 		case "http":
-			return xadmission.NewHTTPPlugin(
+			return admission_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xadmission.NewGRPCPlugin(
+			return admission_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

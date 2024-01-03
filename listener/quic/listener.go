@@ -13,6 +13,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 	"github.com/quic-go/quic-go"
 )
 
@@ -102,6 +103,7 @@ func (l *quicListener) Accept() (conn net.Conn, err error) {
 	select {
 	case conn = <-l.cqueue:
 		conn = metrics.WrapConn(l.options.Service, conn)
+		conn = stats.WrapConn(conn, l.options.Stats)
 		conn = admission.WrapConn(l.options.Admission, conn)
 		conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
 	case err, ok = <-l.errChan:

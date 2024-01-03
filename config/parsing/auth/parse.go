@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	xauth "github.com/go-gost/x/auth"
+	auth_plugin "github.com/go-gost/x/auth/plugin"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
@@ -28,13 +29,13 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		}
 		switch cfg.Plugin.Type {
 		case "http":
-			return xauth.NewHTTPPlugin(
+			return auth_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		default:
-			return xauth.NewGRPCPlugin(
+			return auth_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),

@@ -16,6 +16,9 @@ import (
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/registry"
+	stats_util "github.com/go-gost/x/internal/util/stats"
+	"github.com/go-gost/x/stats"
+	stats_wrapper "github.com/go-gost/x/stats/wrapper"
 )
 
 var (
@@ -32,6 +35,8 @@ type socks4Handler struct {
 	router  *chain.Router
 	md      metadata
 	options handler.Options
+	stats   *stats_util.HandlerStats
+	cancel  context.CancelFunc
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -42,6 +47,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &socks4Handler{
 		options: options,
+		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -53,6 +59,13 @@ func (h *socks4Handler) Init(md md.Metadata) (err error) {
 	h.router = h.options.Router
 	if h.router == nil {
 		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+
+	if h.options.Observer != nil {
+		go h.observeStats(ctx)
 	}
 
 	return nil
@@ -114,6 +127,13 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 }
 
+func (h *socks4Handler) Close() error {
+	if h.cancel != nil {
+		h.cancel()
+	}
+	return nil
+}
+
 func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *gosocks4.Request, log logger.Logger) error {
 	addr := req.Addr.String()
 
@@ -151,12 +171,20 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		return err
 	}
 
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, conn.RemoteAddr().String(),
+	clientID := ctxvalue.ClientIDFromContext(ctx)
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
 		traffic.NetworkOption("tcp"),
 		traffic.AddrOption(addr),
-		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),
+		traffic.ClientOption(string(clientID)),
 		traffic.SrcOption(conn.RemoteAddr().String()),
 	)
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(string(clientID))
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	}
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
@@ -183,4 +211,22 @@ func (h *socks4Handler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func (h *socks4Handler) observeStats(ctx context.Context) {
+	if h.options.Observer == nil {
+		return
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			h.options.Observer.Observe(ctx, h.stats.Events())
+		case <-ctx.Done():
+			return
+		}
+	}
 }

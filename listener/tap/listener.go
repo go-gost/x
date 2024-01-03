@@ -13,6 +13,7 @@ import (
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -90,6 +91,7 @@ func (l *tapListener) listenLoop() {
 				cancel: cancel,
 			}
 			c = metrics.WrapConn(l.options.Service, c)
+			c = stats.WrapConn(c, l.options.Stats)
 			c = limiter.WrapConn(l.options.TrafficLimiter, c)
 			c = withMetadata(mdx.NewMetadata(map[string]any{
 				"config": l.md.config,

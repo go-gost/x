@@ -13,6 +13,8 @@ import (
 	ctxvalue "github.com/go-gost/x/internal/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
+	"github.com/go-gost/x/stats"
+	stats_wrapper "github.com/go-gost/x/stats/wrapper"
 )
 
 func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network string, log logger.Logger) error {
@@ -87,12 +89,20 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		conn = rc
 	}
 
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn, conn.RemoteAddr().String(),
+	clientID := ctxvalue.ClientIDFromContext(ctx)
+	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
 		traffic.NetworkOption(network),
 		traffic.AddrOption(target.Addr),
-		traffic.ClientOption(string(ctxvalue.ClientIDFromContext(ctx))),
+		traffic.ClientOption(string(clientID)),
 		traffic.SrcOption(conn.RemoteAddr().String()),
 	)
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(string(clientID))
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	}
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)

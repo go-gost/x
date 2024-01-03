@@ -15,6 +15,7 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	"github.com/go-gost/x/registry"
+	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {
@@ -84,6 +85,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 			return nil, listener.NewAcceptError(err)
 		}
 		ln = metrics.WrapListener(l.options.Service, ln)
+		ln = stats.WrapListener(ln, l.options.Stats)
 		ln = admission.WrapListener(l.options.Admission, ln)
 		ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 		ln = climiter.WrapListener(l.options.ConnLimiter, ln)

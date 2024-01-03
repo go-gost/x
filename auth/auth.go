@@ -110,7 +110,7 @@ func (p *authenticator) Authenticate(ctx context.Context, user, password string,
 	}
 
 	v, ok := p.kvs[user]
-	return "", ok && (v == "" || password == v)
+	return user, ok && (v == "" || password == v)
 }
 
 func (p *authenticator) periodReload(ctx context.Context) error {
