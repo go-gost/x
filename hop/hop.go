@@ -168,16 +168,24 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		if len(filters) == 0 {
 			filters = nodes
 		}
-	} else if protocol := options.Protocol; protocol != "" {
-		filters = nil
-		for _, node := range ns {
+	}
+
+	if protocol := options.Protocol; protocol != "" {
+		p.options.logger.Debugf("filter by protocol: %s", protocol)
+		var nodes []*chain.Node
+		for _, node := range filters {
 			if node == nil {
 				continue
 			}
+			if node.Options().Protocol == "" {
+				nodes = append(nodes, node)
+				continue
+			}
 			if node.Options().Protocol == protocol {
-				filters = append(filters, node)
+				nodes = append(nodes, node)
 			}
 		}
+		filters = nodes
 	}
 
 	// filter by path
