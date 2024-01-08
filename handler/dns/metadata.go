@@ -2,6 +2,7 @@ package dns
 
 import (
 	"net"
+	"strings"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -45,7 +46,14 @@ func (h *dnsHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if sip != "" {
 		h.md.clientIP = net.ParseIP(sip)
 	}
-	h.md.dns = mdutil.GetStrings(md, dns)
+	for _, v := range strings.Split(mdutil.GetString(md, dns), ",") {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		h.md.dns = append(h.md.dns, v)
+	}
+
 	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = defaultBufferSize
