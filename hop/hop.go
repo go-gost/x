@@ -133,80 +133,15 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		opt(&options)
 	}
 
-	ns := p.Nodes()
-	if len(ns) == 0 {
-		return nil
-	}
-
 	// hop level bypass
 	if p.options.bypass != nil &&
 		p.options.bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOpton(options.Host)) {
 		return nil
 	}
 
-	filters := ns
-	if host := options.Host; host != "" {
-		filters = nil
-		if v, _, _ := net.SplitHostPort(host); v != "" {
-			host = v
-		}
-		var nodes []*chain.Node
-		for _, node := range ns {
-			if node == nil {
-				continue
-			}
-			vhost := node.Options().Host
-			if vhost == "" {
-				nodes = append(nodes, node)
-				continue
-			}
-			if vhost == host ||
-				vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
-				filters = append(filters, node)
-			}
-		}
-		if len(filters) == 0 {
-			filters = nodes
-		}
-	}
-
-	if protocol := options.Protocol; protocol != "" {
-		p.options.logger.Debugf("filter by protocol: %s", protocol)
-		var nodes []*chain.Node
-		for _, node := range filters {
-			if node == nil {
-				continue
-			}
-			if node.Options().Protocol == "" {
-				nodes = append(nodes, node)
-				continue
-			}
-			if node.Options().Protocol == protocol {
-				nodes = append(nodes, node)
-			}
-		}
-		filters = nodes
-	}
-
-	// filter by path
-	if path := options.Path; path != "" {
-		p.options.logger.Debugf("filter by path: %s", path)
-		sort.SliceStable(filters, func(i, j int) bool {
-			return len(filters[i].Options().Path) > len(filters[j].Options().Path)
-		})
-		var nodes []*chain.Node
-		for _, node := range filters {
-			if node.Options().Path == "" {
-				nodes = append(nodes, node)
-				continue
-			}
-			if strings.HasPrefix(path, node.Options().Path) {
-				nodes = append(nodes, node)
-				break
-			}
-		}
-		filters = nodes
-	}
+	filters := p.filterByHost(options.Host, p.Nodes()...)
+	filters = p.filterByProtocol(options.Protocol, filters...)
+	filters = p.filterByPath(options.Path, filters...)
 
 	var nodes []*chain.Node
 	for _, node := range filters {
@@ -229,6 +164,108 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return s.Select(ctx, nodes...)
 	}
 	return nodes[0]
+}
+
+func (p *chainHop) filterByHost(host string, nodes ...*chain.Node) (filters []*chain.Node) {
+	if host == "" || len(nodes) == 0 {
+		return nodes
+	}
+
+	if v, _, _ := net.SplitHostPort(host); v != "" {
+		host = v
+	}
+	p.options.logger.Debugf("filter by host: %s", host)
+
+	found := false
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		vhost := node.Options().Host
+		if vhost == "" { // backup node
+			if !found {
+				filters = append(filters, node)
+			}
+			continue
+		}
+
+		if vhost == host ||
+			vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
+			if !found { // clear all backup nodes when matched node found
+				filters = nil
+			}
+			filters = append(filters, node)
+			found = true
+			continue
+		}
+
+	}
+
+	return
+}
+
+func (p *chainHop) filterByProtocol(protocol string, nodes ...*chain.Node) (filters []*chain.Node) {
+	if protocol == "" || len(nodes) == 0 {
+		return nodes
+	}
+
+	p.options.logger.Debugf("filter by protocol: %s", protocol)
+	found := false
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+
+		if node.Options().Protocol == "" {
+			if !found {
+				filters = append(filters, node)
+			}
+			continue
+		}
+
+		if node.Options().Protocol == protocol {
+			if !found {
+				filters = nil
+			}
+			filters = append(filters, node)
+			found = true
+			continue
+		}
+	}
+
+	return
+}
+
+func (p *chainHop) filterByPath(path string, nodes ...*chain.Node) (filters []*chain.Node) {
+	if path == "" || len(nodes) == 0 {
+		return nodes
+	}
+
+	p.options.logger.Debugf("filter by path: %s", path)
+
+	sort.SliceStable(nodes, func(i, j int) bool {
+		return len(nodes[i].Options().Path) > len(nodes[j].Options().Path)
+	})
+
+	found := false
+	for _, node := range nodes {
+		if node.Options().Path == "" {
+			if !found {
+				filters = append(filters, node)
+			}
+			continue
+		}
+
+		if strings.HasPrefix(path, node.Options().Path) {
+			if !found {
+				filters = nil
+			}
+			filters = append(filters, node)
+			break
+		}
+	}
+
+	return
 }
 
 func (p *chainHop) periodReload(ctx context.Context) error {

@@ -54,7 +54,7 @@ func getConfig(ctx *gin.Context) {
 			if ok && ss != nil {
 				status := ss.Status()
 				svc.Status = &config.ServiceStatus{
-					CreateTime: status.CreateTime().Unix(),
+					CreateTime: status.CreateTime().UnixNano(),
 					State:      string(status.State()),
 				}
 				if st := status.Stats(); st != nil {
@@ -69,7 +69,7 @@ func getConfig(ctx *gin.Context) {
 				for _, ev := range status.Events() {
 					if !ev.Time.IsZero() {
 						svc.Status.Events = append(svc.Status.Events, config.ServiceEvent{
-							Time: ev.Time.Unix(),
+							Time: ev.Time.UnixNano(),
 							Msg:  ev.Message,
 						})
 					}

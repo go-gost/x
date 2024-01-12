@@ -11,6 +11,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
 	"github.com/go-gost/gosocks5"
+	ctxvalue "github.com/go-gost/x/internal/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
@@ -79,6 +80,7 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	if log.IsLevelEnabled(logger.DebugLevel) {

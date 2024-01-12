@@ -360,6 +360,7 @@ type ForwardNodeConfig struct {
 	HTTP     *HTTPNodeConfig `yaml:",omitempty" json:"http,omitempty"`
 	TLS      *TLSNodeConfig  `yaml:",omitempty" json:"tls,omitempty"`
 	Auth     *AuthConfig     `yaml:",omitempty" json:"auth,omitempty"`
+	Metadata map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type HTTPNodeConfig struct {
@@ -482,10 +483,10 @@ type NodeConfig struct {
 	Hosts     string           `yaml:",omitempty" json:"hosts,omitempty"`
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
-	Metadata  map[string]any   `yaml:",omitempty" json:"metadata,omitempty"`
 	HTTP      *HTTPNodeConfig  `yaml:",omitempty" json:"http,omitempty"`
 	TLS       *TLSNodeConfig   `yaml:",omitempty" json:"tls,omitempty"`
 	Auth      *AuthConfig      `yaml:",omitempty" json:"auth,omitempty"`
+	Metadata  map[string]any   `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type Config struct {

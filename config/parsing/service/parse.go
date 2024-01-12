@@ -234,7 +234,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	if forwarder, ok := h.(handler.Forwarder); ok {
-		hop, err := parseForwarder(cfg.Forwarder)
+		hop, err := parseForwarder(cfg.Forwarder, log)
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +266,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	return s, nil
 }
 
-func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
+func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -298,12 +298,13 @@ func parseForwarder(cfg *config.ForwarderConfig) (hop.Hop, error) {
 					HTTP:     node.HTTP,
 					TLS:      node.TLS,
 					Auth:     node.Auth,
+					Metadata: node.Metadata,
 				})
 			}
 		}
 	}
 	if len(hc.Nodes) > 0 {
-		return hop_parser.ParseHop(&hc, logger.Default())
+		return hop_parser.ParseHop(&hc, log)
 	}
 	return registry.HopRegistry().Get(hc.Name), nil
 }
