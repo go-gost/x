@@ -10,25 +10,25 @@ type randomWeightedItem[T any] struct {
 	weight int
 }
 
-type randomWeighted[T any] struct {
+type RandomWeighted[T any] struct {
 	items []*randomWeightedItem[T]
 	sum   int
 	r     *rand.Rand
 }
 
-func newRandomWeighted[T any]() *randomWeighted[T] {
-	return &randomWeighted[T]{
+func NewRandomWeighted[T any]() *RandomWeighted[T] {
+	return &RandomWeighted[T]{
 		r: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
-func (rw *randomWeighted[T]) Add(item T, weight int) {
+func (rw *RandomWeighted[T]) Add(item T, weight int) {
 	ri := &randomWeightedItem[T]{item: item, weight: weight}
 	rw.items = append(rw.items, ri)
 	rw.sum += weight
 }
 
-func (rw *randomWeighted[T]) Next() (v T) {
+func (rw *RandomWeighted[T]) Next() (v T) {
 	if len(rw.items) == 0 {
 		return
 	}
@@ -46,7 +46,7 @@ func (rw *randomWeighted[T]) Next() (v T) {
 	return rw.items[len(rw.items)-1].item
 }
 
-func (rw *randomWeighted[T]) Reset() {
+func (rw *RandomWeighted[T]) Reset() {
 	rw.items = nil
 	rw.sum = 0
 }

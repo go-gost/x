@@ -35,7 +35,7 @@ func (s *roundRobinStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 }
 
 type randomStrategy[T any] struct {
-	rw *randomWeighted[T]
+	rw *RandomWeighted[T]
 	mu sync.Mutex
 }
 
@@ -43,7 +43,7 @@ type randomStrategy[T any] struct {
 // The node will be selected randomly.
 func RandomStrategy[T any]() selector.Strategy[T] {
 	return &randomStrategy[T]{
-		rw: newRandomWeighted[T](),
+		rw: NewRandomWeighted[T](),
 	}
 }
 

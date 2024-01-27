@@ -30,6 +30,8 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if network == "udp" {
 		connectorID = relay.NewUDPConnectorID(uuid[:])
 	}
+	// copy weight from tunnelID
+	connectorID = connectorID.SetWeight(tunnelID.Weight())
 
 	v := md5.Sum([]byte(tunnelID.String()))
 	endpoint := hex.EncodeToString(v[:8])
