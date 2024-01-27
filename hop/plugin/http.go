@@ -24,10 +24,6 @@ type httpPluginRequest struct {
 	Src     string `json:"src"`
 }
 
-type httpPluginResponse struct {
-	Node string `json:"node"`
-}
-
 type httpPlugin struct {
 	name   string
 	url    string
@@ -101,18 +97,8 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		return nil
 	}
 
-	res := httpPluginResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		p.log.Error(resp.Status)
-		return nil
-	}
-
-	if res.Node == "" {
-		return nil
-	}
-
 	var cfg config.NodeConfig
-	if err := json.NewDecoder(bytes.NewReader([]byte(res.Node))).Decode(&cfg); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
 		p.log.Error(err)
 		return nil
 	}

@@ -27,7 +27,7 @@ func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
 		readBufferSize = "readBufferSize"
 		readQueueSize  = "readQueueSize"
 		backlog        = "backlog"
-		keepAlive      = "keepAlive"
+		keepalive      = "keepalive"
 		ttl            = "ttl"
 	)
 
@@ -49,7 +49,7 @@ func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
-	l.md.keepalive = mdutil.GetBool(md, keepAlive)
+	l.md.keepalive = mdutil.GetBool(md, keepalive)
 
 	return
 }
