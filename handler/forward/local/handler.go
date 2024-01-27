@@ -247,18 +247,19 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 			})
 			log.Debugf("find node for host %s -> %s(%s)", req.Host, target.Name, target.Addr)
 
-			if auther := target.Options().Auther; auther != nil {
-				username, password, _ := req.BasicAuth()
-				id, ok := auther.Authenticate(ctx, username, password)
-				if !ok {
-					resp.StatusCode = http.StatusUnauthorized
-					resp.Header.Set("WWW-Authenticate", "Basic")
-					log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
-					return resp.Write(rw)
-				}
-				ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
-			}
 			if httpSettings := target.Options().HTTP; httpSettings != nil {
+				if auther := httpSettings.Auther; auther != nil {
+					username, password, _ := req.BasicAuth()
+					id, ok := auther.Authenticate(ctx, username, password)
+					if !ok {
+						resp.StatusCode = http.StatusUnauthorized
+						resp.Header.Set("WWW-Authenticate", "Basic")
+						log.Warnf("node %s(%s) 401 unauthorized", target.Name, target.Addr)
+						return resp.Write(rw)
+					}
+					ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
+				}
+
 				if httpSettings.Host != "" {
 					req.Host = httpSettings.Host
 				}

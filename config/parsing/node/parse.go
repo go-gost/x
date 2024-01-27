@@ -168,10 +168,28 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		chain.NetworkNodeOption(cfg.Network),
 	}
 	if cfg.HTTP != nil {
-		opts = append(opts, chain.HTTPNodeOption(&chain.HTTPNodeSettings{
+		settings := &chain.HTTPNodeSettings{
 			Host:   cfg.HTTP.Host,
 			Header: cfg.HTTP.Header,
-		}))
+		}
+
+		auth := cfg.HTTP.Auth
+		if auth == nil {
+			auth = cfg.Auth
+		}
+		if auth != nil {
+			settings.Auther = xauth.NewAuthenticator(
+				xauth.AuthsOption(map[string]string{auth.Username: auth.Password}),
+				xauth.LoggerOption(log.WithFields(map[string]any{
+					"kind":     "node",
+					"node":     cfg.Name,
+					"addr":     cfg.Addr,
+					"host":     cfg.Host,
+					"protocol": cfg.Protocol,
+				})),
+			)
+		}
+		opts = append(opts, chain.HTTPNodeOption(settings))
 	}
 	if cfg.TLS != nil {
 		tlsCfg := &chain.TLSNodeSettings{
@@ -184,19 +202,6 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			tlsCfg.Options.CipherSuites = o.CipherSuites
 		}
 		opts = append(opts, chain.TLSNodeOption(tlsCfg))
-	}
-	if cfg.Auth != nil {
-		opts = append(opts, chain.AutherNodeOption(
-			xauth.NewAuthenticator(
-				xauth.AuthsOption(map[string]string{cfg.Auth.Username: cfg.Auth.Password}),
-				xauth.LoggerOption(logger.Default().WithFields(map[string]any{
-					"kind":     "node",
-					"node":     cfg.Name,
-					"addr":     cfg.Addr,
-					"host":     cfg.Host,
-					"protocol": cfg.Protocol,
-				})),
-			)))
 	}
 	return chain.NewNode(cfg.Name, cfg.Addr, opts...), nil
 }
