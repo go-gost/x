@@ -121,7 +121,6 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 	rw.Reset()
 
 	found := false
-	var connectors []*Connector
 	for _, c := range t.connectors {
 		if c.Session().IsClosed() {
 			continue
@@ -135,18 +134,14 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 		if network == "udp" && c.id.IsUDP() ||
 			network != "udp" && !c.id.IsUDP() {
 			if weight == MaxWeight && !found {
-				connectors = nil
+				rw.Reset()
 				found = true
 			}
 
 			if weight == MaxWeight || !found {
-				connectors = append(connectors, c)
 				rw.Add(c, int(weight))
 			}
 		}
-	}
-	if len(connectors) == 0 {
-		return nil
 	}
 
 	return rw.Next()
