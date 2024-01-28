@@ -49,7 +49,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	}
 	resp.Features = append(resp.Features, af,
 		&relay.TunnelFeature{
-			ID: connectorID.ID(),
+			ID: connectorID,
 		},
 	)
 	resp.WriteTo(conn)
@@ -86,7 +86,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		}
 	}
 
-	log.Debugf("%s/%s: tunnel=%s, connector=%s established", addr, network, tunnelID, connectorID)
+	log.Debugf("%s/%s: tunnel=%s, connector=%s, weight=%d established", addr, network, tunnelID, connectorID, connectorID.Weight())
 
 	return
 }

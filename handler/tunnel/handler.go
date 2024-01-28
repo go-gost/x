@@ -216,7 +216,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
-				tunnelID = relay.NewTunnelID(feature.ID[:])
+				tunnelID = feature.ID
 			}
 		case relay.FeatureNetwork:
 			if feature, _ := f.(*relay.NetworkFeature); feature != nil {

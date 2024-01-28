@@ -27,7 +27,8 @@ func (c *tunnelConnector) Bind(ctx context.Context, conn net.Conn, network, addr
 		"endpoint": endpoint,
 		"tunnel":   c.md.tunnelID.String(),
 	})
-	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s", addr, network, c.md.tunnelID.String(), cid)
+	log.Infof("create tunnel on %s/%s OK, tunnel=%s, connector=%s, weight=%d",
+		addr, network, c.md.tunnelID.String(), cid, cid.Weight())
 
 	session, err := mux.ServerSession(conn, c.md.muxCfg)
 	if err != nil {
@@ -72,7 +73,7 @@ func (c *tunnelConnector) initTunnel(conn net.Conn, network, address string) (ad
 	req.Features = append(req.Features, af) // dst address
 
 	req.Features = append(req.Features, &relay.TunnelFeature{
-		ID: c.md.tunnelID.ID(),
+		ID: c.md.tunnelID,
 	})
 	if _, err = req.WriteTo(conn); err != nil {
 		return
@@ -100,7 +101,7 @@ func (c *tunnelConnector) initTunnel(conn net.Conn, network, address string) (ad
 			}
 		case relay.FeatureTunnel:
 			if feature, _ := f.(*relay.TunnelFeature); feature != nil {
-				cid = relay.NewConnectorID(feature.ID[:])
+				cid = feature.ID
 			}
 		}
 	}

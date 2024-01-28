@@ -86,7 +86,7 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	req.Features = append(req.Features, af) // dst address
 
 	req.Features = append(req.Features, &relay.TunnelFeature{
-		ID: c.md.tunnelID.ID(),
+		ID: c.md.tunnelID,
 	})
 
 	if _, err := req.WriteTo(conn); err != nil {
