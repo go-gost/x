@@ -11,7 +11,7 @@ require (
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.4.0
 	github.com/go-gost/plugin v0.0.0-20240103125338-9c84e29cb81a
-	github.com/go-gost/relay v0.4.1-0.20240128081525-e36d5f4a8322
+	github.com/go-gost/relay v0.5.0
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3

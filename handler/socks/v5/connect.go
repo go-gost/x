@@ -9,7 +9,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/stats"

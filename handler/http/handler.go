@@ -22,7 +22,7 @@ import (
 	traffic "github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"

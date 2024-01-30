@@ -9,7 +9,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/registry"
 )
 

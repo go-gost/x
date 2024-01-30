@@ -12,9 +12,9 @@ import (
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
-	"github.com/go-gost/x/registry"
+	ctxvalue "github.com/go-gost/x/ctx"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	"github.com/go-gost/x/registry"
 )
 
 var (

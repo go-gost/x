@@ -11,7 +11,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 )
 

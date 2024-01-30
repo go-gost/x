@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 )
 

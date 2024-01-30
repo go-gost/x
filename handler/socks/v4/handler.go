@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/registry"

@@ -8,7 +8,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/plugin/resolver/proto"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )

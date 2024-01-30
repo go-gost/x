@@ -11,7 +11,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
 	"github.com/go-gost/x/limiter/traffic/wrapper"

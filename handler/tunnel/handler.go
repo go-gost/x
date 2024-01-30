@@ -15,7 +15,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"

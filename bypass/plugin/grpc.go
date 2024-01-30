@@ -7,7 +7,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/bypass/proto"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )

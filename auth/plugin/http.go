@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
-	ctxvalue "github.com/go-gost/x/internal/ctx"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 )
 
