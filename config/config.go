@@ -364,10 +364,16 @@ type ForwardNodeConfig struct {
 	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
+type HTTPURLRewriteConfig struct {
+	Match       string
+	Replacement string
+}
+
 type HTTPNodeConfig struct {
-	Host   string            `yaml:",omitempty" json:"host,omitempty"`
-	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
-	Auth   *AuthConfig       `yaml:",omitempty" json:"auth,omitempty"`
+	Host    string                 `yaml:",omitempty" json:"host,omitempty"`
+	Header  map[string]string      `yaml:",omitempty" json:"header,omitempty"`
+	Auth    *AuthConfig            `yaml:",omitempty" json:"auth,omitempty"`
+	Rewrite []HTTPURLRewriteConfig `yaml:",omitempty" json:"rewrite,omitempty"`
 }
 
 type TLSNodeConfig struct {

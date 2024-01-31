@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -188,6 +189,14 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 					"protocol": cfg.Protocol,
 				})),
 			)
+		}
+		for _, v := range cfg.HTTP.Rewrite {
+			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
+				settings.Rewrite = append(settings.Rewrite, chain.HTTPURLRewriteSetting{
+					Pattern:     pattern,
+					Replacement: v.Replacement,
+				})
+			}
 		}
 		opts = append(opts, chain.HTTPNodeOption(settings))
 	}

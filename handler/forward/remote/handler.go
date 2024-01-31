@@ -266,6 +266,15 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				for k, v := range httpSettings.Header {
 					req.Header.Set(k, v)
 				}
+
+				for _, re := range httpSettings.Rewrite {
+					if re.Pattern.MatchString(req.URL.Path) {
+						if s := re.Pattern.ReplaceAllString(req.URL.Path, re.Replacement); s != "" {
+							req.URL.Path = s
+							break
+						}
+					}
+				}
 			}
 
 			cc, err = h.router.Dial(ctx, "tcp", target.Addr)
