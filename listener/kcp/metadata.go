@@ -52,7 +52,12 @@ func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.config.KeepAlive = mdutil.GetInt(md, "kcp.keepalive")
 	l.md.config.Interval = mdutil.GetInt(md, "kcp.interval")
 	l.md.config.MTU = mdutil.GetInt(md, "kcp.mtu")
-	l.md.config.SmuxVer = mdutil.GetInt(md, "kcp.smuxVer")
+	l.md.config.RcvWnd = mdutil.GetInt(md, "kcp.rcvwnd")
+	l.md.config.SndWnd = mdutil.GetInt(md, "kcp.sndwnd")
+	l.md.config.SmuxVer = mdutil.GetInt(md, "kcp.smuxver")
+	l.md.config.SmuxBuf = mdutil.GetInt(md, "kcp.smuxbuf")
+	l.md.config.StreamBuf = mdutil.GetInt(md, "kcp.streambuf")
+	l.md.config.NoComp = mdutil.GetBool(md, "kcp.nocomp")
 
 	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {

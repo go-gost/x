@@ -49,7 +49,12 @@ func (d *kcpDialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.config.KeepAlive = mdutil.GetInt(md, "kcp.keepalive")
 	d.md.config.Interval = mdutil.GetInt(md, "kcp.interval")
 	d.md.config.MTU = mdutil.GetInt(md, "kcp.mtu")
+	d.md.config.RcvWnd = mdutil.GetInt(md, "kcp.rcvwnd")
+	d.md.config.SndWnd = mdutil.GetInt(md, "kcp.sndwnd")
 	d.md.config.SmuxVer = mdutil.GetInt(md, "kcp.smuxver")
+	d.md.config.SmuxBuf = mdutil.GetInt(md, "kcp.smuxbuf")
+	d.md.config.StreamBuf = mdutil.GetInt(md, "kcp.streambuf")
+	d.md.config.NoComp = mdutil.GetBool(md, "kcp.nocomp")
 
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	return
