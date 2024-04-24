@@ -36,6 +36,7 @@ require (
 	github.com/xtaci/smux v1.5.24
 	github.com/xtaci/tcpraw v1.2.25
 	github.com/yl2chen/cidranger v1.0.2
+	github.com/zalando/go-keyring v0.2.4
 	golang.org/x/crypto v0.17.0
 	golang.org/x/net v0.19.0
 	golang.org/x/sys v0.15.0
@@ -49,12 +50,14 @@ require (
 
 require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
+	github.com/alessio/shellescape v1.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/sonic v1.10.2 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
 	github.com/chenzhuoyu/iasm v0.9.1 // indirect
 	github.com/coreos/go-iptables v0.5.0 // indirect
+	github.com/danieljoos/wincred v1.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -64,6 +67,7 @@ require (
 	github.com/go-playground/validator/v10 v10.16.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20230912144702-c363fe2c2ed8 // indirect

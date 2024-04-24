@@ -1,11 +1,13 @@
 package ssh
 
 import (
+	"fmt"
 	"os"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
+	"github.com/zalando/go-keyring"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -34,7 +36,15 @@ func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
 			return err
 		}
 
-		pp := mdutil.GetString(md, passphrase)
+		var pp string
+		if mdutil.GetBool(md, "passphraseFromKeyring") {
+			pp, err = keyring.Get(fmt.Sprintf("SSH %s", key), l.options.Auth.Username())
+			if err != nil {
+				return fmt.Errorf("unable to get secret(%s) from keyring: %w", key, err)
+			}
+		} else {
+			pp = mdutil.GetString(md, passphrase)
+		}
 		if pp == "" {
 			l.md.signer, err = ssh.ParsePrivateKey(data)
 		} else {
