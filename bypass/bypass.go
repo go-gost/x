@@ -235,9 +235,15 @@ func (bp *localBypass) Contains(ctx context.Context, network, addr string, opts 
 	b := !bp.options.whitelist && matched ||
 		bp.options.whitelist && !matched
 	if b {
-		bp.options.logger.Debugf("bypass: %s", addr)
+		bp.options.logger.Debugf("bypass: %s, whitelist: %t", addr, bp.options.whitelist)
+	} else {
+		bp.options.logger.Debugf("pass: %s, whitelist: %t", addr, bp.options.whitelist)
 	}
 	return b
+}
+
+func (p *localBypass) IsWhitelist() bool {
+	return p.options.whitelist
 }
 
 func (bp *localBypass) parseLine(s string) string {
