@@ -165,6 +165,14 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/routers/:router", updateRouter)
 	config.DELETE("/routers/:router", deleteRouter)
 
+	config.POST("/observers", createObserver)
+	config.PUT("/observers/:observer", updateObserver)
+	config.DELETE("/observers/:observer", deleteObserver)
+
+	config.POST("/sds", createSD)
+	config.PUT("/sds/:sd", updateSD)
+	config.DELETE("/sds/:sd", deleteSD)
+
 	config.POST("/limiters", createLimiter)
 	config.PUT("/limiters/:limiter", updateLimiter)
 	config.DELETE("/limiters/:limiter", deleteLimiter)
