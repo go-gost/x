@@ -188,8 +188,18 @@ definitions:
                 x-go-name: Limiters
             log:
                 $ref: '#/definitions/LogConfig'
+            loggers:
+                items:
+                    $ref: '#/definitions/LoggerConfig'
+                type: array
+                x-go-name: Loggers
             metrics:
                 $ref: '#/definitions/MetricsConfig'
+            observers:
+                items:
+                    $ref: '#/definitions/ObserverConfig'
+                type: array
+                x-go-name: Observers
             profiling:
                 $ref: '#/definitions/ProfilingConfig'
             recorders:
@@ -301,6 +311,10 @@ definitions:
                 x-go-name: Host
             http:
                 $ref: '#/definitions/HTTPNodeConfig'
+            metadata:
+                additionalProperties: {}
+                type: object
+                x-go-name: Metadata
             name:
                 type: string
                 x-go-name: Name
@@ -342,6 +356,8 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     HTTPNodeConfig:
         properties:
+            auth:
+                $ref: '#/definitions/AuthConfig'
             header:
                 additionalProperties:
                     type: string
@@ -350,6 +366,11 @@ definitions:
             host:
                 type: string
                 x-go-name: Host
+            rewrite:
+                items:
+                    $ref: '#/definitions/HTTPURLRewriteConfig'
+                type: array
+                x-go-name: Rewrite
         type: object
         x-go-package: github.com/go-gost/x/config
     HTTPRecorder:
@@ -359,6 +380,14 @@ definitions:
             url:
                 type: string
                 x-go-name: URL
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    HTTPURLRewriteConfig:
+        properties:
+            Match:
+                type: string
+            Replacement:
+                type: string
         type: object
         x-go-package: github.com/go-gost/x/config
     HandlerConfig:
@@ -385,6 +414,9 @@ definitions:
                 additionalProperties: {}
                 type: object
                 x-go-name: Metadata
+            observer:
+                type: string
+                x-go-name: Observer
             retries:
                 format: int64
                 type: integer
@@ -615,6 +647,15 @@ definitions:
                 x-go-name: MaxSize
         type: object
         x-go-package: github.com/go-gost/x/config
+    LoggerConfig:
+        properties:
+            log:
+                $ref: '#/definitions/LogConfig'
+            name:
+                type: string
+                x-go-name: Name
+        type: object
+        x-go-package: github.com/go-gost/x/config
     MetricsConfig:
         properties:
             addr:
@@ -712,6 +753,15 @@ definitions:
                 $ref: '#/definitions/SockOptsConfig'
             tls:
                 $ref: '#/definitions/TLSNodeConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    ObserverConfig:
+        properties:
+            name:
+                type: string
+                x-go-name: Name
+            plugin:
+                $ref: '#/definitions/PluginConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
     PluginConfig:
@@ -927,6 +977,14 @@ definitions:
                 x-go-name: Limiter
             listener:
                 $ref: '#/definitions/ListenerConfig'
+            logger:
+                type: string
+                x-go-name: Logger
+            loggers:
+                items:
+                    type: string
+                type: array
+                x-go-name: Loggers
             metadata:
                 additionalProperties: {}
                 type: object
@@ -934,6 +992,9 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            observer:
+                type: string
+                x-go-name: Observer
             recorders:
                 items:
                     $ref: '#/definitions/RecorderObject'
@@ -947,6 +1008,61 @@ definitions:
                 x-go-name: RLimiter
             sockopts:
                 $ref: '#/definitions/SockOptsConfig'
+            status:
+                $ref: '#/definitions/ServiceStatus'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    ServiceEvent:
+        properties:
+            msg:
+                type: string
+                x-go-name: Msg
+            time:
+                format: int64
+                type: integer
+                x-go-name: Time
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    ServiceStats:
+        properties:
+            currentConns:
+                format: uint64
+                type: integer
+                x-go-name: CurrentConns
+            inputBytes:
+                format: uint64
+                type: integer
+                x-go-name: InputBytes
+            outputBytes:
+                format: uint64
+                type: integer
+                x-go-name: OutputBytes
+            totalConns:
+                format: uint64
+                type: integer
+                x-go-name: TotalConns
+            totalErrs:
+                format: uint64
+                type: integer
+                x-go-name: TotalErrs
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    ServiceStatus:
+        properties:
+            createTime:
+                format: int64
+                type: integer
+                x-go-name: CreateTime
+            events:
+                items:
+                    $ref: '#/definitions/ServiceEvent'
+                type: array
+                x-go-name: Events
+            state:
+                type: string
+                x-go-name: State
+            stats:
+                $ref: '#/definitions/ServiceStats'
         type: object
         x-go-package: github.com/go-gost/x/config
     SockOptsConfig:
@@ -1588,6 +1704,64 @@ paths:
             summary: Update limiter by name, the limiter must already exist.
             tags:
                 - Limiter
+    /config/observers:
+        post:
+            operationId: createObserverRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/ObserverConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createObserverResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new observer, the name of the observer must be unique in observer list.
+            tags:
+                - Observer
+    /config/observers/{observer}:
+        delete:
+            operationId: deleteObserverRequest
+            parameters:
+                - in: path
+                  name: observer
+                  required: true
+                  type: string
+                  x-go-name: Observer
+            responses:
+                "200":
+                    $ref: '#/responses/deleteObserverResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete observer by name.
+            tags:
+                - Observer
+        put:
+            operationId: updateObserverRequest
+            parameters:
+                - in: path
+                  name: observer
+                  required: true
+                  type: string
+                  x-go-name: Observer
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/ObserverConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateObserverResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update observer by name, the observer must already exist.
+            tags:
+                - Observer
     /config/resolvers:
         post:
             operationId: createResolverRequest
@@ -1762,6 +1936,64 @@ paths:
             summary: Update router by name, the router must already exist.
             tags:
                 - Router
+    /config/sds:
+        post:
+            operationId: createSDRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/SDConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createSDResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new SD, the name of the SD must be unique in SD list.
+            tags:
+                - SD
+    /config/sds/{sd}:
+        delete:
+            operationId: deleteSDRequest
+            parameters:
+                - in: path
+                  name: sd
+                  required: true
+                  type: string
+                  x-go-name: SD
+            responses:
+                "200":
+                    $ref: '#/responses/deleteSDResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete SD by name.
+            tags:
+                - SD
+        put:
+            operationId: updateSDRequest
+            parameters:
+                - in: path
+                  name: sd
+                  required: true
+                  type: string
+                  x-go-name: SD
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/SDConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateSDResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update SD by name, the SD must already exist.
+            tags:
+                - SD
     /config/services:
         post:
             operationId: createServiceRequest
@@ -1877,6 +2109,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createObserverResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createRateLimiterResponse:
         description: successful operation.
         headers:
@@ -1890,6 +2128,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     createRouterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    createSDResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -1955,6 +2199,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    deleteObserverResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     deleteRateLimiterResponse:
         description: successful operation.
         headers:
@@ -1968,6 +2218,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteRouterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteSDResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -2045,6 +2301,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    updateObserverResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     updateRateLimiterResponse:
         description: successful operation.
         headers:
@@ -2058,6 +2320,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateRouterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateSDResponse:
         description: successful operation.
         headers:
             Data: {}
