@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 
 	"github.com/go-gost/core/dialer"
@@ -12,11 +13,13 @@ import (
 
 func init() {
 	registry.DialerRegistry().Register("ohttp", NewDialer)
+	registry.DialerRegistry().Register("ohttps", NewDialer)
 }
 
 type obfsHTTPDialer struct {
-	md     metadata
-	logger logger.Logger
+	tlsEnabled bool
+	md         metadata
+	logger     logger.Logger
 }
 
 func NewDialer(opts ...dialer.Option) dialer.Dialer {
@@ -27,6 +30,18 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 
 	return &obfsHTTPDialer{
 		logger: options.Logger,
+	}
+}
+
+func NewTLSDialer(opts ...dialer.Option) dialer.Dialer {
+	options := &dialer.Options{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	return &obfsHTTPDialer{
+		tlsEnabled: true,
+		logger:     options.Logger,
 	}
 }
 
@@ -59,9 +74,16 @@ func (d *obfsHTTPDialer) Handshake(ctx context.Context, conn net.Conn, options .
 		host = opts.Addr
 	}
 
+	if d.tlsEnabled {
+		conn = tls.Client(conn, &tls.Config{
+			ServerName: host,
+		})
+	}
+
 	return &obfsHTTPConn{
 		Conn:   conn,
 		host:   host,
+		path:   d.md.path,
 		header: d.md.header,
 		logger: d.logger,
 	}, nil

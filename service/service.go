@@ -129,6 +129,10 @@ func (s *defaultService) Addr() net.Addr {
 func (s *defaultService) Serve() error {
 	s.execCmds("post-up", s.options.postUp)
 	s.setState(StateReady)
+	s.status.addEvent(Event{
+		Time:    time.Now(),
+		Message: fmt.Sprintf("service %s is listening on %s", s.name, s.listener.Addr()),
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

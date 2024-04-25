@@ -18,6 +18,7 @@ import (
 type obfsHTTPConn struct {
 	net.Conn
 	host           string
+	path           string
 	rbuf           bytes.Buffer
 	wbuf           bytes.Buffer
 	headerDrained  bool

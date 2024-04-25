@@ -15,11 +15,29 @@ var (
 	ErrSave     = &Error{statusCode: http.StatusInternalServerError, Code: 40005, Msg: "save config failed"}
 )
 
+type ErrCode int
+
+const (
+	ErrCodeInvalid          = 40001
+	ErrCodeDup              = 40002
+	ErrCodeFailed           = 40003
+	ErrCodeNotFound         = 40004
+	ErrCodeSaveConfigFailed = 40005
+)
+
 // Error is an api error.
 type Error struct {
 	statusCode int
 	Code       int    `json:"code"`
 	Msg        string `json:"msg"`
+}
+
+func NewError(status, code int, msg string) error {
+	return &Error{
+		statusCode: status,
+		Code:       code,
+		Msg:        msg,
+	}
 }
 
 func (e *Error) Error() string {

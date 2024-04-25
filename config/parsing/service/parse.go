@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
@@ -34,14 +35,17 @@ import (
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Listener == nil {
-		cfg.Listener = &config.ListenerConfig{
-			Type: "tcp",
-		}
+		cfg.Listener = &config.ListenerConfig{}
 	}
+	if lt := strings.TrimSpace(cfg.Listener.Type); lt == "" {
+		cfg.Listener.Type = "tcp"
+	}
+
 	if cfg.Handler == nil {
-		cfg.Handler = &config.HandlerConfig{
-			Type: "auto",
-		}
+		cfg.Handler = &config.HandlerConfig{}
+	}
+	if ht := strings.TrimSpace(cfg.Handler.Type); ht == "" {
+		cfg.Handler.Type = "auto"
 	}
 
 	log := logger.Default()
@@ -143,7 +147,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if rf := registry.ListenerRegistry().Get(cfg.Listener.Type); rf != nil {
 		ln = rf(listenOpts...)
 	} else {
-		return nil, fmt.Errorf("unregistered listener: %s", cfg.Listener.Type)
+		return nil, fmt.Errorf("unknown listener: %s", cfg.Listener.Type)
 	}
 
 	if cfg.Listener.Metadata == nil {
@@ -230,7 +234,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.ServiceOption(cfg.Name),
 		)
 	} else {
-		return nil, fmt.Errorf("unregistered handler: %s", cfg.Handler.Type)
+		return nil, fmt.Errorf("unknown handler: %s", cfg.Handler.Type)
 	}
 
 	if forwarder, ok := h.(handler.Forwarder); ok {

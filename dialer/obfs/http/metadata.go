@@ -7,24 +7,29 @@ import (
 	mdutil "github.com/go-gost/core/metadata/util"
 )
 
+const (
+	defaultPath = "/"
+)
+
 type metadata struct {
 	host   string
+	path   string
 	header http.Header
 }
 
 func (d *obfsHTTPDialer) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		header = "header"
-		host   = "host"
-	)
+	d.md.host = mdutil.GetString(md, "obfs.host", "host")
+	d.md.path = mdutil.GetString(md, "obfs.path", "path")
+	if d.md.path == "" {
+		d.md.path = defaultPath
+	}
 
-	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
+	if m := mdutil.GetStringMapString(md, "obfs.header", "header"); len(m) > 0 {
 		h := http.Header{}
 		for k, v := range m {
 			h.Add(k, v)
 		}
 		d.md.header = h
 	}
-	d.md.host = mdutil.GetString(md, host)
 	return
 }
