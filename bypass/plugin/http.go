@@ -96,3 +96,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	}
 	return res.OK
 }
+
+func (p *httpPlugin) IsWhitelist() bool {
+	return false
+}

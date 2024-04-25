@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package redirect
 
@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-func (h *redirectHandler) getOriginalDstAddr(conn net.Conn) (addr net.Addr, err error) {
+func (h *redirectHandler) getOriginalDstAddr(_ net.Conn) (addr net.Addr, err error) {
 	err = errors.New("TCP redirect is not available on non-linux platform")
 	return
 }

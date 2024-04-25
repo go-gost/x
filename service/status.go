@@ -72,5 +72,8 @@ func (p *Status) addEvent(event Event) {
 }
 
 func (p *Status) Stats() *stats.Stats {
+	if p == nil {
+		return nil
+	}
 	return p.stats
 }

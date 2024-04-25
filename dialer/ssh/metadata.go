@@ -1,11 +1,14 @@
 package ssh
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/mitchellh/go-homedir"
+	"github.com/zalando/go-keyring"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -20,21 +23,35 @@ type metadata struct {
 
 func (d *sshDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		handshakeTimeout = "handshakeTimeout"
-		privateKeyFile   = "privateKeyFile"
-		passphrase       = "passphrase"
+		handshakeTimeout      = "handshakeTimeout"
+		privateKeyFile        = "privateKeyFile"
+		passphrase            = "passphrase"
+		passphraseFromKeyring = "passphraseFromKeyring"
 	)
 
 	if key := mdutil.GetString(md, privateKeyFile); key != "" {
+		key, err = homedir.Expand(key)
+		if err != nil {
+			return err
+		}
 		data, err := os.ReadFile(key)
 		if err != nil {
 			return err
 		}
 
-		if pp := mdutil.GetString(md, passphrase); pp != "" {
-			d.md.signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pp))
+		var pp string
+		if mdutil.GetBool(md, passphraseFromKeyring) {
+			pp, err = keyring.Get(fmt.Sprintf("SSH %s", key), d.options.Auth.Username())
+			if err != nil {
+				return fmt.Errorf("unable to get secret(%s) from keyring: %w", key, err)
+			}
 		} else {
+			pp = mdutil.GetString(md, passphrase)
+		}
+		if pp == "" {
 			d.md.signer, err = ssh.ParsePrivateKey(data)
+		} else {
+			d.md.signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pp))
 		}
 		if err != nil {
 			return err

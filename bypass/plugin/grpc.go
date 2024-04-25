@@ -75,3 +75,7 @@ func (p *grpcPlugin) Close() error {
 	}
 	return nil
 }
+
+func (p *grpcPlugin) IsWhitelist() bool {
+	return false
+}
