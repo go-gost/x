@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/router"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/songgao/water/waterutil"
 	"golang.org/x/net/ipv4"
@@ -203,11 +204,13 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				if addr := h.findRouteFor(ctx, dst, config.Router); addr != nil {
-					log.Debugf("find route: %s -> %s", dst, addr)
+				if !h.md.p2p {
+					if addr := h.findRouteFor(ctx, dst, config.Router); addr != nil {
+						log.Debugf("find route: %s -> %s", dst, addr)
 
-					_, err := conn.WriteTo(b[:n], addr)
-					return err
+						_, err := conn.WriteTo(b[:n], addr)
+						return err
+					}
 				}
 
 				if _, err := tun.Write(b[:n]); err != nil {
@@ -231,6 +234,9 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 }
 
 func (h *tunHandler) updateRoute(ip net.IP, addr net.Addr, log logger.Logger) {
+	if h.md.p2p {
+		ip = net.IPv6zero
+	}
 	rkey := ipToTunRouteKey(ip)
 	if actual, loaded := h.routes.LoadOrStore(rkey, addr); loaded {
 		if actual.(net.Addr).String() != addr.String() {
@@ -241,4 +247,26 @@ func (h *tunHandler) updateRoute(ip net.IP, addr net.Addr, log logger.Logger) {
 	} else {
 		log.Debugf("new route: %s -> %s", ip, addr)
 	}
+}
+
+func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router.Router) net.Addr {
+	if h.md.p2p {
+		dst = net.IPv6zero
+		router = nil
+	}
+
+	if v, ok := h.routes.Load(ipToTunRouteKey(dst)); ok {
+		return v.(net.Addr)
+	}
+
+	if router == nil {
+		return nil
+	}
+
+	if route := router.GetRoute(ctx, dst); route != nil && route.Gateway != nil {
+		if v, ok := h.routes.Load(ipToTunRouteKey(route.Gateway)); ok {
+			return v.(net.Addr)
+		}
+	}
+	return nil
 }

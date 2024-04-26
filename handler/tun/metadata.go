@@ -16,28 +16,23 @@ type metadata struct {
 	bufferSize      int
 	keepAlivePeriod time.Duration
 	passphrase      string
+	p2p             bool
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		bufferSize      = "bufferSize"
-		keepAlive       = "keepAlive"
-		keepAlivePeriod = "ttl"
-		passphrase      = "passphrase"
-	)
-
-	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
+	h.md.bufferSize = mdutil.GetInt(md, "tun.bufsize", "bufsize", "buffersize")
 	if h.md.bufferSize <= 0 {
 		h.md.bufferSize = defaultBufferSize
 	}
 
-	if mdutil.GetBool(md, keepAlive) {
-		h.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
+	if mdutil.GetBool(md, "tun.keepalive", "keepalive") {
+		h.md.keepAlivePeriod = mdutil.GetDuration(md, "tun.ttl", "ttl")
 		if h.md.keepAlivePeriod <= 0 {
 			h.md.keepAlivePeriod = defaultKeepAlivePeriod
 		}
 	}
 
-	h.md.passphrase = mdutil.GetString(md, passphrase)
+	h.md.passphrase = mdutil.GetString(md, "tun.token", "token", "passphrase")
+	h.md.p2p = mdutil.GetBool(md, "tun.p2p", "p2p")
 	return
 }
