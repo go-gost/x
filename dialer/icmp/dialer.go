@@ -81,7 +81,11 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			id = rand.New(rand.NewSource(time.Now().UnixNano())).Intn(math.MaxUint16) + 1
 			raddr.Port = id
 		}
-		pc = icmp_pkg.ClientConn(pc, id)
+		if d.md.seqBySeqMode {
+			pc = icmp_pkg.ClientConn2(pc, raddr)
+		} else {
+			pc = icmp_pkg.ClientConn(pc, id)
+		}
 
 		session, err = d.initSession(ctx, raddr, pc)
 		if err != nil {

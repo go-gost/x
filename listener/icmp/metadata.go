@@ -16,7 +16,8 @@ type metadata struct {
 	handshakeTimeout time.Duration
 	maxIdleTimeout   time.Duration
 
-	backlog int
+	backlog      int
+	seqBySeqMode bool
 }
 
 func (l *icmpListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -26,7 +27,8 @@ func (l *icmpListener) parseMetadata(md mdata.Metadata) (err error) {
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
 
-		backlog = "backlog"
+		backlog      = "backlog"
+		seqBySeqMode = "seqBySeqMode"
 	)
 
 	l.md.backlog = mdutil.GetInt(md, backlog)
@@ -42,6 +44,10 @@ func (l *icmpListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+
+	if mdutil.GetBool(md, seqBySeqMode) {
+		l.md.seqBySeqMode = true
+	}
 
 	return
 }

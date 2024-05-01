@@ -11,6 +11,7 @@ type metadata struct {
 	keepAlivePeriod  time.Duration
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
+	seqBySeqMode     bool
 }
 
 func (d *icmpDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -19,6 +20,7 @@ func (d *icmpDialer) parseMetadata(md mdata.Metadata) (err error) {
 		keepAlivePeriod  = "ttl"
 		handshakeTimeout = "handshakeTimeout"
 		maxIdleTimeout   = "maxIdleTimeout"
+		seqBySeqMode     = "seqBySeqMode"
 	)
 
 	if mdutil.GetBool(md, keepAlive) {
@@ -29,6 +31,7 @@ func (d *icmpDialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	d.md.seqBySeqMode = mdutil.GetBool(md, seqBySeqMode)
 
 	return
 }

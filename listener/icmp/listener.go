@@ -56,7 +56,11 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 	if err != nil {
 		return
 	}
-	conn = icmp_pkg.ServerConn(conn)
+	if l.md.seqBySeqMode {
+		conn = icmp_pkg.ServerConn2(conn)
+	} else {
+		conn = icmp_pkg.ServerConn(conn)
+	}
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
 	conn = stats.WrapPacketConn(conn, l.options.Stats)
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
