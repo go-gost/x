@@ -32,7 +32,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			}
 		}
 		switch strings.ToLower(cfg.Plugin.Type) {
-		case "http":
+		case plugin.HTTP:
 			return hop_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TLSConfigOption(tlsCfg),

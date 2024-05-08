@@ -147,46 +147,47 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		chain.TimeoutTransportOption(10*time.Second),
 	)
 
-	// convert *.example.com to .example.com
-	// convert *example.com to example.com
-	host := cfg.Host
-	if strings.HasPrefix(host, "*") {
-		host = host[1:]
-		if !strings.HasPrefix(host, ".") {
-			host = "." + host
-		}
-	}
-
 	opts := []chain.NodeOption{
 		chain.TransportNodeOption(tr),
 		chain.BypassNodeOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		chain.ResoloverNodeOption(registry.ResolverRegistry().Get(cfg.Resolver)),
 		chain.HostMapperNodeOption(registry.HostsRegistry().Get(cfg.Hosts)),
 		chain.MetadataNodeOption(nm),
-		chain.HostNodeOption(host),
-		chain.ProtocolNodeOption(cfg.Protocol),
-		chain.PathNodeOption(cfg.Path),
 		chain.NetworkNodeOption(cfg.Network),
 	}
+
+	if filter := cfg.Filter; filter != nil {
+		// convert *.example.com to .example.com
+		// convert *example.com to example.com
+		host := filter.Host
+		if strings.HasPrefix(host, "*") {
+			host = host[1:]
+			if !strings.HasPrefix(host, ".") {
+				host = "." + host
+			}
+		}
+
+		settings := &chain.NodeFilterSettings{
+			Protocol: filter.Protocol,
+			Host:     host,
+			Path:     filter.Path,
+		}
+		opts = append(opts, chain.NodeFilterOption(settings))
+	}
+
 	if cfg.HTTP != nil {
 		settings := &chain.HTTPNodeSettings{
 			Host:   cfg.HTTP.Host,
 			Header: cfg.HTTP.Header,
 		}
 
-		auth := cfg.HTTP.Auth
-		if auth == nil {
-			auth = cfg.Auth
-		}
-		if auth != nil {
+		if auth := cfg.HTTP.Auth; auth != nil && auth.Username != "" {
 			settings.Auther = xauth.NewAuthenticator(
 				xauth.AuthsOption(map[string]string{auth.Username: auth.Password}),
 				xauth.LoggerOption(log.WithFields(map[string]any{
-					"kind":     "node",
-					"node":     cfg.Name,
-					"addr":     cfg.Addr,
-					"host":     cfg.Host,
-					"protocol": cfg.Protocol,
+					"kind": "node",
+					"node": cfg.Name,
+					"addr": cfg.Addr,
 				})),
 			)
 		}
@@ -200,6 +201,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		}
 		opts = append(opts, chain.HTTPNodeOption(settings))
 	}
+
 	if cfg.TLS != nil {
 		tlsCfg := &chain.TLSNodeSettings{
 			ServerName: cfg.TLS.ServerName,

@@ -12,6 +12,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+const (
+	GRPC string = "grpc"
+	HTTP string = "http"
+)
+
 type Options struct {
 	Token     string
 	TLSConfig *tls.Config

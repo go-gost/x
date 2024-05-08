@@ -275,6 +275,14 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 		return nil, nil
 	}
 
+	hopName := cfg.Hop
+	if hopName == "" {
+		hopName = cfg.Name
+	}
+	if hopName != "" {
+		return registry.HopRegistry().Get(hopName), nil
+	}
+
 	hc := config.HopConfig{
 		Name:     cfg.Name,
 		Selector: cfg.Selector,
@@ -290,27 +298,42 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 				if i > 0 {
 					name = fmt.Sprintf("%s-%d", node.Name, i)
 				}
+
+				filter := node.Filter
+				if filter == nil {
+					if node.Protocol != "" || node.Host != "" || node.Path != "" {
+						filter = &config.NodeFilterConfig{
+							Protocol: node.Protocol,
+							Host:     node.Host,
+							Path:     node.Path,
+						}
+					}
+				}
+
+				httpCfg := node.HTTP
+				if node.Auth != nil {
+					if httpCfg == nil {
+						httpCfg = &config.HTTPNodeConfig{}
+					}
+					if httpCfg.Auth == nil {
+						httpCfg.Auth = node.Auth
+					}
+				}
 				hc.Nodes = append(hc.Nodes, &config.NodeConfig{
 					Name:     name,
 					Addr:     addr,
-					Host:     node.Host,
 					Network:  node.Network,
-					Protocol: node.Protocol,
-					Path:     node.Path,
 					Bypass:   node.Bypass,
 					Bypasses: node.Bypasses,
-					HTTP:     node.HTTP,
+					Filter:   filter,
+					HTTP:     httpCfg,
 					TLS:      node.TLS,
-					Auth:     node.Auth,
 					Metadata: node.Metadata,
 				})
 			}
 		}
 	}
-	if len(hc.Nodes) > 0 {
-		return hop_parser.ParseHop(&hc, log)
-	}
-	return registry.HopRegistry().Get(hc.Name), nil
+	return hop_parser.ParseHop(&hc, log)
 }
 
 func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
