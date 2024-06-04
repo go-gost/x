@@ -144,7 +144,7 @@ func saveConfig(ctx *gin.Context) {
 	if err != nil {
 		writeError(ctx, &Error{
 			statusCode: http.StatusInternalServerError,
-			Code:       40005,
+			Code:       ErrCodeSaveConfigFailed,
 			Msg:        fmt.Sprintf("create file: %s", err.Error()),
 		})
 		return
@@ -154,8 +154,8 @@ func saveConfig(ctx *gin.Context) {
 	if err := config.Global().Write(f, req.Format); err != nil {
 		writeError(ctx, &Error{
 			statusCode: http.StatusInternalServerError,
-			Code:       40006,
-			Msg:        fmt.Sprintf("write: %s", err.Error()),
+			Code:       ErrCodeSaveConfigFailed,
+			Msg:        fmt.Sprintf("save config: %s", err.Error()),
 		})
 		return
 	}

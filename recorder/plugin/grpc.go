@@ -69,6 +69,10 @@ func (p *grpcPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 }
 
 func (p *grpcPlugin) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}

@@ -37,7 +37,11 @@ func mwBasicAuth(auther auth.Authenticator) gin.HandlerFunc {
 		u, p, _ := c.Request.BasicAuth()
 		if _, ok := auther.Authenticate(c, u, p); !ok {
 			c.Writer.Header().Set("WWW-Authenticate", "Basic")
-			c.AbortWithStatus(http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, Response{
+				Code: http.StatusUnauthorized,
+				Msg:  "Unauthorized",
+			})
+			c.Abort()
 		}
 	}
 }

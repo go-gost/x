@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,19 +37,25 @@ func createResolver(ctx *gin.Context) {
 	var req createResolverRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "resolver name is required"))
+		return
+	}
+
+	if registry.ResolverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))
 		return
 	}
 
 	v, err := parser.ParseResolver(&req.Data)
 	if err != nil {
-		writeError(ctx, ErrCreate)
+		writeError(ctx, NewError(http.StatusInternalServerError, ErrCodeFailed, fmt.Sprintf("create resolver %s failed: %s", name, err.Error())))
 		return
 	}
 
-	if err := registry.ResolverRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.ResolverRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))
 		return
 	}
 
@@ -91,29 +99,31 @@ func updateResolver(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.ResolverRegistry().IsRegistered(req.Resolver) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Resolver)
+
+	if !registry.ResolverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("resolver %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Resolver
+	req.Data.Name = name
 
 	v, err := parser.ParseResolver(&req.Data)
 	if err != nil {
-		writeError(ctx, ErrCreate)
+		writeError(ctx, NewError(http.StatusInternalServerError, ErrCodeFailed, fmt.Sprintf("create resolver %s failed: %s", name, err.Error())))
 		return
 	}
 
-	registry.ResolverRegistry().Unregister(req.Resolver)
+	registry.ResolverRegistry().Unregister(name)
 
-	if err := registry.ResolverRegistry().Register(req.Resolver, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.ResolverRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.Resolvers {
-			if c.Resolvers[i].Name == req.Resolver {
+			if c.Resolvers[i].Name == name {
 				c.Resolvers[i] = &req.Data
 				break
 			}
@@ -153,17 +163,19 @@ func deleteResolver(ctx *gin.Context) {
 	var req deleteResolverRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.ResolverRegistry().IsRegistered(req.Resolver) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Resolver)
+
+	if !registry.ResolverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("resolver %s not found", name)))
 		return
 	}
-	registry.ResolverRegistry().Unregister(req.Resolver)
+	registry.ResolverRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		resolvers := c.Resolvers
 		c.Resolvers = nil
 		for _, s := range resolvers {
-			if s.Name == req.Resolver {
+			if s.Name == name {
 				continue
 			}
 			c.Resolvers = append(c.Resolvers, s)

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,15 +37,21 @@ func createBypass(ctx *gin.Context) {
 	var req createBypassRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "bypass name is required"))
+		return
+	}
+
+	if registry.BypassRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseBypass(&req.Data)
 
-	if err := registry.BypassRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.BypassRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))
 		return
 	}
 
@@ -87,25 +95,27 @@ func updateBypass(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.BypassRegistry().IsRegistered(req.Bypass) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Bypass)
+
+	if !registry.BypassRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("bypass %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Bypass
+	req.Data.Name = name
 
 	v := parser.ParseBypass(&req.Data)
 
-	registry.BypassRegistry().Unregister(req.Bypass)
+	registry.BypassRegistry().Unregister(name)
 
-	if err := registry.BypassRegistry().Register(req.Bypass, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.BypassRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.Bypasses {
-			if c.Bypasses[i].Name == req.Bypass {
+			if c.Bypasses[i].Name == name {
 				c.Bypasses[i] = &req.Data
 				break
 			}
@@ -145,17 +155,19 @@ func deleteBypass(ctx *gin.Context) {
 	var req deleteBypassRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.BypassRegistry().IsRegistered(req.Bypass) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Bypass)
+
+	if !registry.BypassRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("bypass %s not found", name)))
 		return
 	}
-	registry.BypassRegistry().Unregister(req.Bypass)
+	registry.BypassRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		bypasses := c.Bypasses
 		c.Bypasses = nil
 		for _, s := range bypasses {
-			if s.Name == req.Bypass {
+			if s.Name == name {
 				continue
 			}
 			c.Bypasses = append(c.Bypasses, s)

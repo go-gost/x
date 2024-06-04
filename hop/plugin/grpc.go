@@ -94,6 +94,10 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 }
 
 func (p *grpcPlugin) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}

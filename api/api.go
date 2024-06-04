@@ -169,6 +169,10 @@ func registerConfig(config *gin.RouterGroup) {
 	config.PUT("/observers/:observer", updateObserver)
 	config.DELETE("/observers/:observer", deleteObserver)
 
+	config.POST("/recorders", createRecorder)
+	config.PUT("/recorders/:recorder", updateRecorder)
+	config.DELETE("/recorders/:recorder", deleteRecorder)
+
 	config.POST("/sds", createSD)
 	config.PUT("/sds/:sd", updateSD)
 	config.DELETE("/sds/:sd", deleteSD)

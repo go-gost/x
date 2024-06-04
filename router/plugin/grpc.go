@@ -63,6 +63,10 @@ func (p *grpcPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Op
 }
 
 func (p *grpcPlugin) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}

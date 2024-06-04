@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,14 +37,20 @@ func createAuther(ctx *gin.Context) {
 	var req createAutherRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "auther name is required"))
+		return
+	}
+
+	if registry.AutherRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseAuther(&req.Data)
-	if err := registry.AutherRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.AutherRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
 	}
 
@@ -86,24 +94,26 @@ func updateAuther(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.AutherRegistry().IsRegistered(req.Auther) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Auther)
+
+	if !registry.AutherRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("auther %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Auther
+	req.Data.Name = name
 
 	v := parser.ParseAuther(&req.Data)
-	registry.AutherRegistry().Unregister(req.Auther)
+	registry.AutherRegistry().Unregister(name)
 
-	if err := registry.AutherRegistry().Register(req.Auther, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.AutherRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.Authers {
-			if c.Authers[i].Name == req.Auther {
+			if c.Authers[i].Name == name {
 				c.Authers[i] = &req.Data
 				break
 			}
@@ -143,17 +153,19 @@ func deleteAuther(ctx *gin.Context) {
 	var req deleteAutherRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.AutherRegistry().IsRegistered(req.Auther) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Auther)
+
+	if !registry.AutherRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("auther %s not found", name)))
 		return
 	}
-	registry.AutherRegistry().Unregister(req.Auther)
+	registry.AutherRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		authers := c.Authers
 		c.Authers = nil
 		for _, s := range authers {
-			if s.Name == req.Auther {
+			if s.Name == name {
 				continue
 			}
 			c.Authers = append(c.Authers, s)

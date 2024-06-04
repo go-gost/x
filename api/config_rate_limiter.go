@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,15 +37,21 @@ func createRateLimiter(ctx *gin.Context) {
 	var req createRateLimiterRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "limiter name is required"))
+		return
+	}
+
+	if registry.RateLimiterRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseRateLimiter(&req.Data)
 
-	if err := registry.RateLimiterRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.RateLimiterRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))
 		return
 	}
 
@@ -87,25 +95,27 @@ func updateRateLimiter(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Limiter)
+
+	if !registry.RateLimiterRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("limiter %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Limiter
+	req.Data.Name = name
 
 	v := parser.ParseRateLimiter(&req.Data)
 
-	registry.RateLimiterRegistry().Unregister(req.Limiter)
+	registry.RateLimiterRegistry().Unregister(name)
 
-	if err := registry.RateLimiterRegistry().Register(req.Limiter, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.RateLimiterRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.RLimiters {
-			if c.RLimiters[i].Name == req.Limiter {
+			if c.RLimiters[i].Name == name {
 				c.RLimiters[i] = &req.Data
 				break
 			}
@@ -145,17 +155,19 @@ func deleteRateLimiter(ctx *gin.Context) {
 	var req deleteRateLimiterRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.RateLimiterRegistry().IsRegistered(req.Limiter) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Limiter)
+
+	if !registry.RateLimiterRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("limiter %s not found", name)))
 		return
 	}
-	registry.RateLimiterRegistry().Unregister(req.Limiter)
+	registry.RateLimiterRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		limiteres := c.RLimiters
 		c.RLimiters = nil
 		for _, s := range limiteres {
-			if s.Name == req.Limiter {
+			if s.Name == name {
 				continue
 			}
 			c.RLimiters = append(c.RLimiters, s)

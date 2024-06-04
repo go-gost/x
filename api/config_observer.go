@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,15 +37,21 @@ func createObserver(ctx *gin.Context) {
 	var req createObserverRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "observer name is required"))
+		return
+	}
+
+	if registry.ObserverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("observer %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseObserver(&req.Data)
 
-	if err := registry.ObserverRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.ObserverRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("observer %s already exists", name)))
 		return
 	}
 
@@ -87,25 +95,27 @@ func updateObserver(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.ObserverRegistry().IsRegistered(req.Observer) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Observer)
+
+	if !registry.ObserverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("observer %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Observer
+	req.Data.Name = name
 
 	v := parser.ParseObserver(&req.Data)
 
-	registry.ObserverRegistry().Unregister(req.Observer)
+	registry.ObserverRegistry().Unregister(name)
 
-	if err := registry.ObserverRegistry().Register(req.Observer, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.ObserverRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("observer %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.Observers {
-			if c.Observers[i].Name == req.Observer {
+			if c.Observers[i].Name == name {
 				c.Observers[i] = &req.Data
 				break
 			}
@@ -145,17 +155,19 @@ func deleteObserver(ctx *gin.Context) {
 	var req deleteObserverRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.ObserverRegistry().IsRegistered(req.Observer) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Observer)
+
+	if !registry.ObserverRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("observer %s not found", name)))
 		return
 	}
-	registry.ObserverRegistry().Unregister(req.Observer)
+	registry.ObserverRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		observers := c.Observers
 		c.Observers = nil
 		for _, s := range observers {
-			if s.Name == req.Observer {
+			if s.Name == name {
 				continue
 			}
 			c.Observers = append(c.Observers, s)

@@ -95,6 +95,10 @@ func (p *grpcPlugin) Out(ctx context.Context, key string, opts ...traffic.Option
 }
 
 func (p *grpcPlugin) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}

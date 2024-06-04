@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,15 +37,21 @@ func createSD(ctx *gin.Context) {
 	var req createSDRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "sd name is required"))
+		return
+	}
+
+	if registry.SDRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("sd %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseSD(&req.Data)
 
-	if err := registry.SDRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.SDRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("sd %s already exists", name)))
 		return
 	}
 
@@ -87,25 +95,27 @@ func updateSD(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.SDRegistry().IsRegistered(req.SD) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.SD)
+
+	if !registry.SDRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("sd %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.SD
+	req.Data.Name = name
 
 	v := parser.ParseSD(&req.Data)
 
-	registry.SDRegistry().Unregister(req.SD)
+	registry.SDRegistry().Unregister(name)
 
-	if err := registry.SDRegistry().Register(req.SD, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.SDRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("sd %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.SDs {
-			if c.SDs[i].Name == req.SD {
+			if c.SDs[i].Name == name {
 				c.SDs[i] = &req.Data
 				break
 			}
@@ -145,17 +155,19 @@ func deleteSD(ctx *gin.Context) {
 	var req deleteSDRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.SDRegistry().IsRegistered(req.SD) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.SD)
+
+	if !registry.SDRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("sd %s not found", name)))
 		return
 	}
-	registry.SDRegistry().Unregister(req.SD)
+	registry.SDRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		sds := c.SDs
 		c.SDs = nil
 		for _, s := range sds {
-			if s.Name == req.SD {
+			if s.Name == name {
 				continue
 			}
 			c.SDs = append(c.SDs, s)

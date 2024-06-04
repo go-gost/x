@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
@@ -35,15 +37,21 @@ func createHosts(ctx *gin.Context) {
 	var req createHostsRequest
 	ctx.ShouldBindJSON(&req.Data)
 
-	if req.Data.Name == "" {
-		writeError(ctx, ErrInvalid)
+	name := strings.TrimSpace(req.Data.Name)
+	if name == "" {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "hosts name is required"))
+		return
+	}
+
+	if registry.HostsRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))
 		return
 	}
 
 	v := parser.ParseHostMapper(&req.Data)
 
-	if err := registry.HostsRegistry().Register(req.Data.Name, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.HostsRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))
 		return
 	}
 
@@ -87,25 +95,27 @@ func updateHosts(ctx *gin.Context) {
 	ctx.ShouldBindUri(&req)
 	ctx.ShouldBindJSON(&req.Data)
 
-	if !registry.HostsRegistry().IsRegistered(req.Hosts) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Hosts)
+
+	if !registry.HostsRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("hosts %s not found", name)))
 		return
 	}
 
-	req.Data.Name = req.Hosts
+	req.Data.Name = name
 
 	v := parser.ParseHostMapper(&req.Data)
 
-	registry.HostsRegistry().Unregister(req.Hosts)
+	registry.HostsRegistry().Unregister(name)
 
-	if err := registry.HostsRegistry().Register(req.Hosts, v); err != nil {
-		writeError(ctx, ErrDup)
+	if err := registry.HostsRegistry().Register(name, v); err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))
 		return
 	}
 
 	config.OnUpdate(func(c *config.Config) error {
 		for i := range c.Hosts {
-			if c.Hosts[i].Name == req.Hosts {
+			if c.Hosts[i].Name == name {
 				c.Hosts[i] = &req.Data
 				break
 			}
@@ -145,17 +155,19 @@ func deleteHosts(ctx *gin.Context) {
 	var req deleteHostsRequest
 	ctx.ShouldBindUri(&req)
 
-	if !registry.HostsRegistry().IsRegistered(req.Hosts) {
-		writeError(ctx, ErrNotFound)
+	name := strings.TrimSpace(req.Hosts)
+
+	if !registry.HostsRegistry().IsRegistered(name) {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeNotFound, fmt.Sprintf("hosts %s not found", name)))
 		return
 	}
-	registry.HostsRegistry().Unregister(req.Hosts)
+	registry.HostsRegistry().Unregister(name)
 
 	config.OnUpdate(func(c *config.Config) error {
 		hosts := c.Hosts
 		c.Hosts = nil
 		for _, s := range hosts {
-			if s.Name == req.Hosts {
+			if s.Name == name {
 				continue
 			}
 			c.Hosts = append(c.Hosts, s)

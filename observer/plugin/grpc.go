@@ -33,6 +33,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) observer.Obs
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
 		log.Error(err)
+		return nil
 	}
 
 	p := &grpcPlugin{

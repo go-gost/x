@@ -71,6 +71,10 @@ func (p *grpcPlugin) Lookup(ctx context.Context, network, host string, opts ...h
 }
 
 func (p *grpcPlugin) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+
 	if closer, ok := p.conn.(io.Closer); ok {
 		return closer.Close()
 	}

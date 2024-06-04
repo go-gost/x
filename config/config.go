@@ -297,9 +297,9 @@ type RedisRecorder struct {
 }
 
 type RecorderObject struct {
-	Name     string `json:"name"`
-	Record   string `json:"record"`
-	Metadata map[string]any
+	Name     string         `json:"name"`
+	Record   string         `json:"record"`
+	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type LimiterConfig struct {

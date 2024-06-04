@@ -306,7 +306,10 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Bypasses
+            filter:
+                $ref: '#/definitions/NodeFilterConfig'
             host:
+                description: DEPRECATED by filter.host
                 type: string
                 x-go-name: Host
             http:
@@ -322,9 +325,11 @@ definitions:
                 type: string
                 x-go-name: Network
             path:
+                description: DEPRECATED by filter.path
                 type: string
                 x-go-name: Path
             protocol:
+                description: DEPRECATED by filter.protocol
                 type: string
                 x-go-name: Protocol
             tls:
@@ -333,7 +338,12 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     ForwarderConfig:
         properties:
+            hop:
+                description: the referenced hop name
+                type: string
+                x-go-name: Hop
             name:
+                description: DEPRECATED by hop field
                 type: string
                 x-go-name: Name
             nodes:
@@ -705,8 +715,6 @@ definitions:
             addr:
                 type: string
                 x-go-name: Addr
-            auth:
-                $ref: '#/definitions/AuthConfig'
             bypass:
                 type: string
                 x-go-name: Bypass
@@ -719,9 +727,8 @@ definitions:
                 $ref: '#/definitions/ConnectorConfig'
             dialer:
                 $ref: '#/definitions/DialerConfig'
-            host:
-                type: string
-                x-go-name: Host
+            filter:
+                $ref: '#/definitions/NodeFilterConfig'
             hosts:
                 type: string
                 x-go-name: Hosts
@@ -740,12 +747,6 @@ definitions:
             network:
                 type: string
                 x-go-name: Network
-            path:
-                type: string
-                x-go-name: Path
-            protocol:
-                type: string
-                x-go-name: Protocol
             resolver:
                 type: string
                 x-go-name: Resolver
@@ -753,6 +754,19 @@ definitions:
                 $ref: '#/definitions/SockOptsConfig'
             tls:
                 $ref: '#/definitions/TLSNodeConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    NodeFilterConfig:
+        properties:
+            host:
+                type: string
+                x-go-name: Host
+            path:
+                type: string
+                x-go-name: Path
+            protocol:
+                type: string
+                x-go-name: Protocol
         type: object
         x-go-package: github.com/go-gost/x/config
     ObserverConfig:
@@ -1762,6 +1776,64 @@ paths:
             summary: Update observer by name, the observer must already exist.
             tags:
                 - Observer
+    /config/recorders:
+        post:
+            operationId: createRecorderRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/RecorderConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createRecorderResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Create a new recorder, the name of the recorder must be unique in recorder list.
+            tags:
+                - Recorder
+    /config/recorders/{recorder}:
+        delete:
+            operationId: deleteRecorderRequest
+            parameters:
+                - in: path
+                  name: recorder
+                  required: true
+                  type: string
+                  x-go-name: Recorder
+            responses:
+                "200":
+                    $ref: '#/responses/deleteRecorderResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Delete recorder by name.
+            tags:
+                - Recorder
+        put:
+            operationId: updateRecorderRequest
+            parameters:
+                - in: path
+                  name: recorder
+                  required: true
+                  type: string
+                  x-go-name: Recorder
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/RecorderConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateRecorderResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Update recorder by name, the recorder must already exist.
+            tags:
+                - Recorder
     /config/resolvers:
         post:
             operationId: createResolverRequest
@@ -2121,6 +2193,12 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    createRecorderResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     createResolverResponse:
         description: successful operation.
         headers:
@@ -2206,6 +2284,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     deleteRateLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    deleteRecorderResponse:
         description: successful operation.
         headers:
             Data: {}
@@ -2308,6 +2392,12 @@ responses:
         schema:
             $ref: '#/definitions/Response'
     updateRateLimiterResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
+    updateRecorderResponse:
         description: successful operation.
         headers:
             Data: {}
