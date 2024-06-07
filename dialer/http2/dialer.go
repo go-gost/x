@@ -70,6 +70,19 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 			opt(&options)
 		}
 
+		{
+			// Check whether the connection is established properly
+			netd := options.NetDialer
+			if netd == nil {
+				netd = net_dialer.DefaultNetDialer
+			}
+			conn, err := netd.Dial(ctx, "tcp", address)
+			if err != nil {
+				return nil, err
+			}
+			conn.Close()
+		}
+
 		client = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: d.options.TLSConfig,
@@ -81,17 +94,16 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 					return netd.Dial(ctx, network, addr)
 				},
 				ForceAttemptHTTP2:     true,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
+				MaxIdleConns:          16,
+				IdleConnTimeout:       30 * time.Second,
+				TLSHandshakeTimeout:   30 * time.Second,
+				ExpectContinueTimeout: 15 * time.Second,
 			},
 		}
 		d.clients[address] = client
 	}
 
-	var c net.Conn
-	c = &conn{
+	var c net.Conn = &conn{
 		localAddr:  &net.TCPAddr{},
 		remoteAddr: raddr,
 		onClose: func() {

@@ -104,7 +104,7 @@ func (c *Chain) Route(ctx context.Context, network, address string, opts ...chai
 			tr.Options().Route = rt
 			node = node.Copy()
 			node.Options().Transport = tr
-			rt = NewRoute()
+			rt = NewRoute(ChainRouteOption(c))
 		}
 
 		rt.addNode(node)
