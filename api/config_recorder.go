@@ -42,6 +42,7 @@ func createRecorder(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "recorder name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.RecorderRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("recorder %s already exists", name)))

@@ -42,6 +42,7 @@ func createResolver(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "resolver name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.ResolverRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))

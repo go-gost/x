@@ -42,6 +42,7 @@ func createService(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "service name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.ServiceRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("service %s already exists", name)))

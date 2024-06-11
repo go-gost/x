@@ -42,6 +42,7 @@ func createObserver(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "observer name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.ObserverRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("observer %s already exists", name)))

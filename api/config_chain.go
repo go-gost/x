@@ -43,6 +43,7 @@ func createChain(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "chain name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.ChainRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("chain %s already exists", name)))

@@ -42,6 +42,7 @@ func createHosts(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "hosts name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.HostsRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))

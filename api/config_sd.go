@@ -42,6 +42,7 @@ func createSD(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "sd name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.SDRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("sd %s already exists", name)))

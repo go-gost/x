@@ -42,6 +42,7 @@ func createAdmission(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "admission name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.AdmissionRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("admission %s already exists", name)))

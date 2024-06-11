@@ -42,6 +42,7 @@ func createRouter(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "router name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.RouterRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("router %s already exists", name)))

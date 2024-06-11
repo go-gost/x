@@ -42,6 +42,7 @@ func createBypass(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "bypass name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.BypassRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))

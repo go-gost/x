@@ -43,6 +43,7 @@ func createHop(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "hop name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.HopRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hop %s already exists", name)))

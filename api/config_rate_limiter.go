@@ -42,6 +42,7 @@ func createRateLimiter(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "limiter name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.RateLimiterRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))

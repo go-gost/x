@@ -42,6 +42,7 @@ func createIngress(ctx *gin.Context) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "ingress name is required"))
 		return
 	}
+	req.Data.Name = name
 
 	if registry.IngressRegistry().IsRegistered(name) {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("ingress %s already exists", name)))
