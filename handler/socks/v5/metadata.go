@@ -18,32 +18,23 @@ type metadata struct {
 	compatibilityMode bool
 	hash              string
 	muxCfg            *mux.Config
+	observePeriod     time.Duration
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		readTimeout       = "readTimeout"
-		noTLS             = "notls"
-		enableBind        = "bind"
-		enableUDP         = "udp"
-		udpBufferSize     = "udpBufferSize"
-		compatibilityMode = "comp"
-		hash              = "hash"
-	)
+	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	h.md.noTLS = mdutil.GetBool(md, "notls")
+	h.md.enableBind = mdutil.GetBool(md, "bind")
+	h.md.enableUDP = mdutil.GetBool(md, "udp")
 
-	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
-	h.md.noTLS = mdutil.GetBool(md, noTLS)
-	h.md.enableBind = mdutil.GetBool(md, enableBind)
-	h.md.enableUDP = mdutil.GetBool(md, enableUDP)
-
-	if bs := mdutil.GetInt(md, udpBufferSize); bs > 0 {
+	if bs := mdutil.GetInt(md, "udpBufferSize"); bs > 0 {
 		h.md.udpBufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
 	} else {
 		h.md.udpBufferSize = 4096
 	}
 
-	h.md.compatibilityMode = mdutil.GetBool(md, compatibilityMode)
-	h.md.hash = mdutil.GetString(md, hash)
+	h.md.compatibilityMode = mdutil.GetBool(md, "comp")
+	h.md.hash = mdutil.GetString(md, "hash")
 
 	h.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),
@@ -54,6 +45,8 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 	}
+
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
 
 	return nil
 }

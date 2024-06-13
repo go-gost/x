@@ -67,15 +67,17 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 
 		if v.Connector == nil {
-			v.Connector = &config.ConnectorConfig{
-				Type: "http",
-			}
+			v.Connector = &config.ConnectorConfig{}
+		}
+		if strings.TrimSpace(v.Connector.Type) == "" {
+			v.Connector.Type = "http"
 		}
 
 		if v.Dialer == nil {
-			v.Dialer = &config.DialerConfig{
-				Type: "tcp",
-			}
+			v.Dialer = &config.DialerConfig{}
+		}
+		if strings.TrimSpace(v.Dialer.Type) == "" {
+			v.Dialer.Type = "tcp"
 		}
 
 		node, err := node_parser.ParseNode(cfg.Name, v, log)

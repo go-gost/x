@@ -14,9 +14,9 @@ import (
 	"github.com/go-gost/gosocks4"
 	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
+	stats_util "github.com/go-gost/x/internal/util/stats"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	"github.com/go-gost/x/registry"
-	stats_util "github.com/go-gost/x/internal/util/stats"
 	"github.com/go-gost/x/stats"
 	stats_wrapper "github.com/go-gost/x/stats/wrapper"
 )
@@ -218,7 +218,11 @@ func (h *socks4Handler) observeStats(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	d := h.md.observePeriod
+	if d < time.Millisecond {
+		d = 5 * time.Second
+	}
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for {

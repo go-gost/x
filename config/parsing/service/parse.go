@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
@@ -37,14 +38,14 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Listener == nil {
 		cfg.Listener = &config.ListenerConfig{}
 	}
-	if lt := strings.TrimSpace(cfg.Listener.Type); lt == "" {
+	if strings.TrimSpace(cfg.Listener.Type) == "" {
 		cfg.Listener.Type = "tcp"
 	}
 
 	if cfg.Handler == nil {
 		cfg.Handler = &config.HandlerConfig{}
 	}
-	if ht := strings.TrimSpace(cfg.Handler.Type); ht == "" {
+	if strings.TrimSpace(cfg.Handler.Type) == "" {
 		cfg.Handler.Type = "auto"
 	}
 
@@ -102,6 +103,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var preUp, preDown, postUp, postDown []string
 	var ignoreChain bool
 	var pStats *stats.Stats
+	var observePeriod time.Duration
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
@@ -122,6 +124,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		if mdutil.GetBool(md, parsing.MDKeyEnableStats) {
 			pStats = &stats.Stats{}
 		}
+		observePeriod = mdutil.GetDuration(md, "observePeriod")
 	}
 
 	listenOpts := []listener.Option{
@@ -263,6 +266,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.RecordersOption(recorders...),
 		xservice.StatsOption(pStats),
 		xservice.ObserverOption(registry.ObserverRegistry().Get(cfg.Observer)),
+		xservice.ObservePeriodOption(observePeriod),
 		xservice.LoggerOption(serviceLogger),
 	)
 

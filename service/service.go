@@ -24,15 +24,16 @@ import (
 )
 
 type options struct {
-	admission admission.Admission
-	recorders []recorder.RecorderObject
-	preUp     []string
-	postUp    []string
-	preDown   []string
-	postDown  []string
-	stats     *stats.Stats
-	observer  observer.Observer
-	logger    logger.Logger
+	admission     admission.Admission
+	recorders     []recorder.RecorderObject
+	preUp         []string
+	postUp        []string
+	preDown       []string
+	postDown      []string
+	stats         *stats.Stats
+	observer      observer.Observer
+	observePeriod time.Duration
+	logger        logger.Logger
 }
 
 type Option func(opts *options)
@@ -82,6 +83,12 @@ func StatsOption(stats *stats.Stats) Option {
 func ObserverOption(observer observer.Observer) Option {
 	return func(opts *options) {
 		opts.observer = observer
+	}
+}
+
+func ObservePeriodOption(period time.Duration) Option {
+	return func(opts *options) {
+		opts.observePeriod = period
 	}
 }
 
@@ -294,7 +301,12 @@ func (s *defaultService) observeStats(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	d := s.options.observePeriod
+	if d < time.Millisecond {
+		d = 5 * time.Second
+	}
+
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for {

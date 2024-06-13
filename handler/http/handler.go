@@ -452,7 +452,11 @@ func (h *httpHandler) observeStats(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	d := h.md.observePeriod
+	if d < time.Millisecond {
+		d = 5 * time.Second
+	}
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for {

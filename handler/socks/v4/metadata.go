@@ -8,17 +8,14 @@ import (
 )
 
 type metadata struct {
-	readTimeout time.Duration
-	hash        string
+	readTimeout   time.Duration
+	hash          string
+	observePeriod time.Duration
 }
 
 func (h *socks4Handler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		readTimeout = "readTimeout"
-		hash        = "hash"
-	)
-
-	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
-	h.md.hash = mdutil.GetString(md, hash)
+	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	h.md.hash = mdutil.GetString(md, "hash")
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
 	return
 }
