@@ -160,7 +160,7 @@ func NewHTTP3Server(addr string, quicConfig *quic.Config, opts ...ServerOption) 
 		http3Server: &http3.Server{
 			Addr:       addr,
 			TLSConfig:  options.tlsConfig,
-			QuicConfig: quicConfig,
+			QUICConfig: quicConfig,
 		},
 		cqueue:  make(chan net.Conn, options.backlog),
 		closed:  make(chan struct{}),
