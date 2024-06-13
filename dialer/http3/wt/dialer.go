@@ -98,6 +98,7 @@ func (d *wtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 						},
 					*/
 					MaxIncomingStreams: int64(d.md.maxStreams),
+					EnableDatagrams:    true,
 				},
 			},
 		}
