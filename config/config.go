@@ -487,6 +487,7 @@ type HopConfig struct {
 	Redis     *RedisLoader    `yaml:",omitempty" json:"redis,omitempty"`
 	HTTP      *HTTPLoader     `yaml:"http,omitempty" json:"http,omitempty"`
 	Plugin    *PluginConfig   `yaml:",omitempty" json:"plugin,omitempty"`
+	Metadata  map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type NodeConfig struct {
@@ -500,6 +501,7 @@ type NodeConfig struct {
 	Connector *ConnectorConfig  `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig     `yaml:",omitempty" json:"dialer,omitempty"`
 	Interface string            `yaml:",omitempty" json:"interface,omitempty"`
+	Netns     string            `yaml:",omitempty" json:"netns,omitempty"`
 	SockOpts  *SockOptsConfig   `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	Filter    *NodeFilterConfig `yaml:",omitempty" json:"filter,omitempty"`
 	HTTP      *HTTPNodeConfig   `yaml:",omitempty" json:"http,omitempty"`

@@ -3,7 +3,7 @@ package tls
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -234,7 +234,7 @@ func loadCA(caFile string) (cp *x509.CertPool, err error) {
 		return nil, err
 	}
 	if !cp.AppendCertsFromPEM(data) {
-		return nil, errors.New("AppendCertsFromPEM failed")
+		return nil, fmt.Errorf("loadCA %s: AppendCertsFromPEM failed", caFile)
 	}
 	return
 }
