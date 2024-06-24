@@ -144,6 +144,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.ServiceOption(cfg.Name),
 		listener.ProxyProtocolOption(ppv),
 		listener.StatsOption(pStats),
+		listener.NetnsOption(netnsIn),
 	}
 	if !ignoreChain {
 		listenOpts = append(listenOpts,
@@ -262,6 +263,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.ObserverOption(registry.ObserverRegistry().Get(cfg.Handler.Observer)),
 			handler.LoggerOption(handlerLogger),
 			handler.ServiceOption(cfg.Name),
+			handler.NetnsOption(netnsIn),
 		)
 	} else {
 		return nil, fmt.Errorf("unknown handler: %s", cfg.Handler.Type)

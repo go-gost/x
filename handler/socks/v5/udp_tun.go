@@ -2,12 +2,14 @@ package v5
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
 	"github.com/go-gost/x/stats"
@@ -24,28 +26,52 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		bindAddr = &net.UDPAddr{}
 	}
 
+	var pc net.PacketConn
+	// relay mode
 	if bindAddr.Port == 0 {
-		// relay mode
 		if !h.md.enableUDP {
 			reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
 			log.Trace(reply)
 			log.Error("socks5: UDP relay is disabled")
 			return reply.Write(conn)
 		}
-	} else {
-		// BIND mode
+
+		// obtain a udp connection
+		c, err := h.router.Dial(ctx, "udp", "") // UDP association
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer c.Close()
+
+		var ok bool
+		pc, ok = c.(net.PacketConn)
+		if !ok {
+			err := errors.New("socks5: wrong connection type")
+			log.Error(err)
+			return err
+		}
+
+	} else { // BIND mode
 		if !h.md.enableBind {
 			reply := gosocks5.NewReply(gosocks5.NotAllowed, nil)
 			log.Trace(reply)
 			log.Error("socks5: BIND is disabled")
 			return reply.Write(conn)
 		}
-	}
 
-	pc, err := net.ListenUDP(network, bindAddr)
-	if err != nil {
-		log.Error(err)
-		return err
+		lc := xnet.ListenConfig{
+			Netns: h.options.Netns,
+		}
+		var err error
+		pc, err = lc.ListenPacket(ctx, "udp", bindAddr.String())
+		if err != nil {
+			log.Error(err)
+			reply := gosocks5.NewReply(gosocks5.Failure, nil)
+			log.Trace(reply)
+			reply.Write(conn)
+			return err
+		}
 	}
 	defer pc.Close()
 

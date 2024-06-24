@@ -69,6 +69,10 @@ func (c *udpRelayConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	if err = socksAddr.ParseFrom(addr.String()); err != nil {
 		return
 	}
+	if socksAddr.Host == "" {
+		socksAddr.Type = gosocks5.AddrIPv4
+		socksAddr.Host = "127.0.0.1"
+	}
 
 	header := gosocks5.UDPHeader{
 		Addr: &socksAddr,

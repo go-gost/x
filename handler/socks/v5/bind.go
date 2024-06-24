@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
 	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 )
 
 func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -31,7 +32,10 @@ func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, 
 }
 
 func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
-	ln, err := net.Listen(network, address) // strict mode: if the port already in use, it will return error
+	lc := xnet.ListenConfig{
+		Netns: h.options.Netns,
+	}
+	ln, err := lc.Listen(ctx, network, address) // strict mode: if the port already in use, it will return error
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -95,7 +99,7 @@ func (h *socks5Handler) serveBind(ctx context.Context, conn net.Conn, ln net.Lis
 			defer close(errc)
 			defer pc1.Close()
 
-			errc <- netpkg.Transport(conn, pc1)
+			errc <- xnet.Transport(conn, pc1)
 		}()
 
 		return errc

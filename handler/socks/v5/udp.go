@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
 	"github.com/go-gost/x/stats"
@@ -29,7 +30,11 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 		return reply.Write(conn)
 	}
 
-	cc, err := net.ListenUDP("udp", nil)
+	lc := xnet.ListenConfig{
+		Netns: h.options.Netns,
+	}
+	laddr := &net.UDPAddr{IP: conn.LocalAddr().(*net.TCPAddr).IP, Port: 0} // use out-going interface's IP
+	cc, err := lc.ListenPacket(ctx, "udp", laddr.String())
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -41,8 +46,6 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(cc.LocalAddr().String())
-	saddr.Type = 0
-	saddr.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String()) // replace the IP to the out-going interface's
 	reply := gosocks5.NewReply(gosocks5.Succeeded, &saddr)
 	log.Trace(reply)
 	if err := reply.Write(conn); err != nil {
@@ -70,17 +73,16 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 		return err
 	}
 
-	var lc net.PacketConn = cc
 	clientID := ctxvalue.ClientIDFromContext(ctx)
 	if h.options.Observer != nil {
 		pstats := h.stats.Stats(string(clientID))
 		pstats.Add(stats.KindTotalConns, 1)
 		pstats.Add(stats.KindCurrentConns, 1)
 		defer pstats.Add(stats.KindCurrentConns, -1)
-		lc = stats_wrapper.WrapPacketConn(lc, pstats)
+		cc = stats_wrapper.WrapPacketConn(cc, pstats)
 	}
 
-	r := udp.NewRelay(socks.UDPConn(lc, h.md.udpBufferSize), pc).
+	r := udp.NewRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
 	r.SetBufferSize(h.md.udpBufferSize)

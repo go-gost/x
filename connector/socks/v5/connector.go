@@ -130,6 +130,10 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		log.Error(err)
 		return nil, err
 	}
+	if addr.Host == "" {
+		addr.Type = gosocks5.AddrIPv4
+		addr.Host = "127.0.0.1"
+	}
 
 	req := gosocks5.NewRequest(gosocks5.CmdConnect, &addr)
 	log.Trace(req)
@@ -201,11 +205,11 @@ func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.
 	}
 	log.Trace(reply)
 
-	log.Debugf("bind on: %v", reply.Addr)
-
 	if reply.Rep != gosocks5.Succeeded {
 		return nil, errors.New("get socks5 UDP tunnel failure")
 	}
+
+	log.Debugf("bind on: %v", reply.Addr)
 
 	cc, err := opts.NetDialer.Dial(ctx, "udp", reply.Addr.String())
 	if err != nil {
