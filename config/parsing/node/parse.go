@@ -5,7 +5,6 @@ import (
 	"net"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
@@ -145,7 +144,6 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		chain.InterfaceTransportOption(cfg.Interface),
 		chain.NetnsTransportOption(cfg.Netns),
 		chain.SockOptsTransportOption(sockOpts),
-		chain.TimeoutTransportOption(10*time.Second),
 	)
 
 	opts := []chain.NodeOption{

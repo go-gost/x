@@ -60,10 +60,10 @@ func (l *rtcpListener) Init(md md.Metadata) (err error) {
 		l.laddr = &bindAddr{addr: l.options.Addr}
 	}
 
-	l.router = chain.NewRouter(
-		chain.ChainRouterOption(l.options.Chain),
-		chain.LoggerRouterOption(l.logger),
-	)
+	l.router = l.options.Router
+	if l.router == nil {
+		l.router = chain.NewRouter(chain.LoggerRouterOption(l.logger))
+	}
 
 	return
 }
