@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	defaultRealm = "gost"
+	defaultRealm      = "gost"
+	defaultProxyAgent = "gost/3.0"
 )
 
 type metadata struct {
@@ -20,6 +21,7 @@ type metadata struct {
 	hash            string
 	authBasicRealm  string
 	observePeriod   time.Duration
+	proxyAgent      string
 }
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
@@ -45,6 +47,11 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	h.md.authBasicRealm = mdutil.GetString(md, "authBasicRealm")
 
 	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
+
+	h.md.proxyAgent = mdutil.GetString(md, "http.proxyAgent", "proxyAgent")
+	if h.md.proxyAgent == "" {
+		h.md.proxyAgent = defaultProxyAgent
+	}
 
 	return nil
 }

@@ -161,12 +161,17 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	resp := &http.Response{
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     h.md.header,
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        h.md.header,
+		ContentLength: -1,
 	}
 	if resp.Header == nil {
 		resp.Header = http.Header{}
+	}
+
+	if resp.Header.Get("Proxy-Agent") == "" {
+		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
 	}
 
 	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
