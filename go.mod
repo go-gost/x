@@ -11,7 +11,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-gost/core v0.0.0-20240625123708-4e831b95e8cc
 	github.com/go-gost/gosocks4 v0.0.1
-	github.com/go-gost/gosocks5 v0.3.1
+	github.com/go-gost/gosocks5 v0.4.1
 	github.com/go-gost/plugin v0.0.0-20240103125338-9c84e29cb81a
 	github.com/go-gost/relay v0.5.0
 	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
