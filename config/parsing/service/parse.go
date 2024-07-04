@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
@@ -32,7 +33,6 @@ import (
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
-	"github.com/go-gost/x/stats"
 	"github.com/vishvananda/netns"
 )
 

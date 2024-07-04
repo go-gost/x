@@ -7,9 +7,9 @@ import (
 	"syscall"
 
 	"github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer/stats"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
-	"github.com/go-gost/x/stats"
 )
 
 var (

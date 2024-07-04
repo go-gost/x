@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/x/internal/plugin"
 	"github.com/go-gost/x/service"
-	"github.com/go-gost/x/stats"
 )
 
 type observeRequest struct {

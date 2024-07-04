@@ -3,7 +3,7 @@ package wrapper
 import (
 	"net"
 
-	"github.com/go-gost/x/stats"
+	"github.com/go-gost/core/observer/stats"
 )
 
 type listener struct {

@@ -11,14 +11,14 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks4"
 	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
-	"github.com/go-gost/x/stats"
-	stats_wrapper "github.com/go-gost/x/stats/wrapper"
 )
 
 var (

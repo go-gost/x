@@ -7,10 +7,10 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/service"
-	"github.com/go-gost/x/stats"
 )
 
 type serviceStatus interface {

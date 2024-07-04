@@ -12,8 +12,8 @@ import (
 	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
+	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
-	stats "github.com/go-gost/x/stats/wrapper"
 )
 
 func init() {

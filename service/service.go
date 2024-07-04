@@ -15,11 +15,11 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/observer"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xmetrics "github.com/go-gost/x/metrics"
-	"github.com/go-gost/x/stats"
 	"github.com/rs/xid"
 )
 

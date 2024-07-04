@@ -3,7 +3,7 @@ package wrapper
 import (
 	"io"
 
-	"github.com/go-gost/x/stats"
+	"github.com/go-gost/core/observer/stats"
 )
 
 // readWriter is an io.ReadWriter with Stats.
