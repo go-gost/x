@@ -17,24 +17,19 @@ type metadata struct {
 	noTLS          bool
 	relay          string
 	udpBufferSize  int
+	udpTimeout     time.Duration
 	muxCfg         *mux.Config
 }
 
 func (c *socks5Connector) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		connectTimeout = "timeout"
-		noTLS          = "notls"
-		relay          = "relay"
-		udpBufferSize  = "udpBufferSize"
-	)
-
-	c.md.connectTimeout = mdutil.GetDuration(md, connectTimeout)
-	c.md.noTLS = mdutil.GetBool(md, noTLS)
-	c.md.relay = mdutil.GetString(md, relay)
-	c.md.udpBufferSize = mdutil.GetInt(md, udpBufferSize)
+	c.md.connectTimeout = mdutil.GetDuration(md, "timeout")
+	c.md.noTLS = mdutil.GetBool(md, "notls")
+	c.md.relay = mdutil.GetString(md, "relay")
+	c.md.udpBufferSize = mdutil.GetInt(md, "udp.bufferSize", "udpBufferSize")
 	if c.md.udpBufferSize <= 0 {
 		c.md.udpBufferSize = defaultUDPBufferSize
 	}
+	c.md.udpTimeout = mdutil.GetDuration(md, "udp.timeout")
 
 	c.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),

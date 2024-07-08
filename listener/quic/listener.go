@@ -52,11 +52,10 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 	}
 
 	network := "udp"
-	if xnet.IsIPv4(l.options.Addr) {
+	if xnet.IsIPv4(addr) {
 		network = "udp4"
 	}
-	var laddr *net.UDPAddr
-	laddr, err = net.ResolveUDPAddr(network, addr)
+	laddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
 		return
 	}

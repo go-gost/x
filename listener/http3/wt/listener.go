@@ -50,11 +50,22 @@ func (l *wtListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	addr := l.options.Addr
+	if addr == "" {
+		addr = ":https"
+	}
+
 	network := "udp"
-	if xnet.IsIPv4(l.options.Addr) {
+	if xnet.IsIPv4(addr) {
 		network = "udp4"
 	}
-	l.addr, err = net.ResolveUDPAddr(network, l.options.Addr)
+	laddr, err := net.ResolveUDPAddr(network, addr)
+	if err != nil {
+		return
+	}
+	l.addr = laddr
+
+	pc, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return
 	}
@@ -62,23 +73,25 @@ func (l *wtListener) Init(md md.Metadata) (err error) {
 	mux := http.NewServeMux()
 	mux.Handle(l.md.path, http.HandlerFunc(l.upgrade))
 
+	quicCfg := &quic.Config{
+		KeepAlivePeriod:      l.md.keepAlivePeriod,
+		HandshakeIdleTimeout: l.md.handshakeTimeout,
+		MaxIdleTimeout:       l.md.maxIdleTimeout,
+		/*
+			Versions: []quic.VersionNumber{
+				quic.Version1,
+				quic.Version2,
+			},
+		*/
+		MaxIncomingStreams: int64(l.md.maxStreams),
+		Allow0RTT:          true,
+	}
 	l.srv = &wt.Server{
 		H3: http3.Server{
-			Addr:      l.options.Addr,
-			TLSConfig: l.options.TLSConfig,
-			QUICConfig: &quic.Config{
-				KeepAlivePeriod:      l.md.keepAlivePeriod,
-				HandshakeIdleTimeout: l.md.handshakeTimeout,
-				MaxIdleTimeout:       l.md.maxIdleTimeout,
-				/*
-					Versions: []quic.VersionNumber{
-						quic.Version1,
-						quic.Version2,
-					},
-				*/
-				MaxIncomingStreams: int64(l.md.maxStreams),
-			},
-			Handler: mux,
+			Addr:       l.options.Addr,
+			TLSConfig:  l.options.TLSConfig,
+			QUICConfig: quicCfg,
+			Handler:    mux,
 		},
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -87,7 +100,7 @@ func (l *wtListener) Init(md md.Metadata) (err error) {
 	l.errChan = make(chan error, 1)
 
 	go func() {
-		if err := l.srv.ListenAndServe(); err != nil {
+		if err := l.srv.Serve(pc); err != nil {
 			l.logger.Error(err)
 		}
 	}()

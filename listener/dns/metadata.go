@@ -17,6 +17,7 @@ type metadata struct {
 	readTimeout    time.Duration
 	writeTimeout   time.Duration
 	backlog        int
+	mptcp          bool
 }
 
 func (l *dnsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -37,6 +38,7 @@ func (l *dnsListener) parseMetadata(md mdata.Metadata) (err error) {
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
 	}
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 
 	return
 }

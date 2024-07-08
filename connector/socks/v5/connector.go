@@ -213,7 +213,13 @@ func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.
 
 	cc, err := opts.NetDialer.Dial(ctx, "udp", reply.Addr.String())
 	if err != nil {
+		c.options.Logger.Error(err)
 		return nil, err
+	}
+	log.Debugf("%s <- %s -> %s", cc.LocalAddr(), cc.RemoteAddr(), addr)
+
+	if c.md.udpTimeout > 0 {
+		cc.SetReadDeadline(time.Now().Add(c.md.udpTimeout))
 	}
 
 	return &udpRelayConn{

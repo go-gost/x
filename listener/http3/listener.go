@@ -46,11 +46,16 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	addr := l.options.Addr
+	if addr == "" {
+		addr = ":https"
+	}
+
 	network := "udp"
-	if xnet.IsIPv4(l.options.Addr) {
+	if xnet.IsIPv4(addr) {
 		network = "udp4"
 	}
-	l.addr, err = net.ResolveUDPAddr(network, l.options.Addr)
+	l.addr, err = net.ResolveUDPAddr(network, addr)
 	if err != nil {
 		return
 	}
@@ -66,15 +71,21 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 				quic.Version1,
 			},
 			MaxIncomingStreams: int64(l.md.maxStreams),
+			Allow0RTT:          true,
 		},
 		Handler: http.HandlerFunc(l.handleFunc),
+	}
+
+	ln, err := quic.ListenAddrEarly(addr, http3.ConfigureTLSConfig(l.server.TLSConfig), l.server.QUICConfig.Clone())
+	if err != nil {
+		return
 	}
 
 	l.cqueue = make(chan net.Conn, l.md.backlog)
 	l.errChan = make(chan error, 1)
 
 	go func() {
-		if err := l.server.ListenAndServe(); err != nil {
+		if err := l.server.ServeListener(ln); err != nil {
 			l.logger.Error(err)
 		}
 	}()

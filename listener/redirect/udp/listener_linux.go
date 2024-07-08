@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 
 	"github.com/go-gost/core/common/bufpool"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
 
@@ -52,6 +55,33 @@ func (l *redirectListener) accept() (conn net.Conn, err error) {
 	}
 
 	l.logger.Infof("%s >> %s", raddr.String(), dstAddr.String())
+
+	if l.options.Netns != "" {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		originNs, err := netns.Get()
+		if err != nil {
+			return nil, fmt.Errorf("netns.Get(): %v", err)
+		}
+		defer netns.Set(originNs)
+
+		var ns netns.NsHandle
+
+		if strings.HasPrefix(l.options.Netns, "/") {
+			ns, err = netns.GetFromPath(l.options.Netns)
+		} else {
+			ns, err = netns.GetFromName(l.options.Netns)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("netns.Get(%s): %v", l.options.Netns, err)
+		}
+		defer ns.Close()
+
+		if err := netns.Set(ns); err != nil {
+			return nil, fmt.Errorf("netns.Set(%s): %v", l.options.Netns, err)
+		}
+	}
 
 	network := "udp"
 	if xnet.IsIPv4(l.options.Addr) {

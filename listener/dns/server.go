@@ -10,29 +10,47 @@ import (
 	"time"
 
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/miekg/dns"
 )
 
 type Server interface {
-	ListenAndServe() error
+	Serve() error
 	Shutdown() error
+}
+
+type dnsServer struct {
+	server *dns.Server
+}
+
+func (s *dnsServer) Serve() error {
+	return s.server.ActivateAndServe()
+}
+
+func (s *dnsServer) Shutdown() error {
+	return s.server.Shutdown()
 }
 
 type dohServer struct {
 	addr      string
 	tlsConfig *tls.Config
+	listener  net.Listener
 	server    *http.Server
 }
 
-func (s *dohServer) ListenAndServe() error {
-	network := "tcp"
-	if xnet.IsIPv4(s.addr) {
-		network = "tcp4"
+func (s *dohServer) Serve() error {
+	var err error
+	ln := s.listener
+	if ln == nil {
+		network := "tcp"
+		if xnet.IsIPv4(s.addr) {
+			network = "tcp4"
+		}
+		ln, err = net.Listen(network, s.addr)
+		if err != nil {
+			return err
+		}
+		ln = tls.NewListener(ln, s.tlsConfig)
 	}
-	ln, err := net.Listen(network, s.addr)
-	if err != nil {
-		return err
-	}
-	ln = tls.NewListener(ln, s.tlsConfig)
 	return s.server.Serve(ln)
 }
 
