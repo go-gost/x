@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/vishvananda/netns"
@@ -48,9 +49,14 @@ func (lc *ListenConfig) Listen(ctx context.Context, network, address string) (ne
 		}
 		defer netns.Set(originNs)
 
-		ns, err := netns.GetFromName(lc.Netns)
+		var ns netns.NsHandle
+		if strings.HasPrefix(lc.Netns, "/") {
+			ns, err = netns.GetFromPath(lc.Netns)
+		} else {
+			ns, err = netns.GetFromName(lc.Netns)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("netns.GetFromName(%s): %v", lc.Netns, err)
+			return nil, fmt.Errorf("netns.Get(%s): %v", lc.Netns, err)
 		}
 		defer ns.Close()
 
@@ -73,9 +79,14 @@ func (lc *ListenConfig) ListenPacket(ctx context.Context, network, address strin
 		}
 		defer netns.Set(originNs)
 
-		ns, err := netns.GetFromName(lc.Netns)
+		var ns netns.NsHandle
+		if strings.HasPrefix(lc.Netns, "/") {
+			ns, err = netns.GetFromPath(lc.Netns)
+		} else {
+			ns, err = netns.GetFromName(lc.Netns)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("netns.GetFromName(%s): %v", lc.Netns, err)
+			return nil, fmt.Errorf("netns.Get(%s): %v", lc.Netns, err)
 		}
 		defer ns.Close()
 

@@ -175,9 +175,15 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		}
 		defer netns.Set(originNs)
 
-		ns, err := netns.GetFromName(netnsIn)
+		var ns netns.NsHandle
+
+		if strings.HasPrefix(netnsIn, "/") {
+			ns, err = netns.GetFromPath(netnsIn)
+		} else {
+			ns, err = netns.GetFromName(netnsIn)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("netns.GetFromName(%s): %v", netnsIn, err)
+			return nil, fmt.Errorf("netns.Get(%s): %v", netnsIn, err)
 		}
 		defer ns.Close()
 
