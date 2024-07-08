@@ -34,7 +34,6 @@ type dnsHandler struct {
 	hop        hop.Hop
 	exchangers map[string]exchanger.Exchanger
 	cache      *resolver_util.Cache
-	router     *chain.Router
 	hostMapper hosts.HostMapper
 	md         metadata
 	options    handler.Options
@@ -60,11 +59,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 
 	h.cache = resolver_util.NewCache().WithLogger(log)
 
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(log))
-	}
-	h.hostMapper = h.router.Options().HostMapper
+	h.hostMapper = h.options.Router.Options().HostMapper
 
 	if h.hop == nil {
 		var nodes []*chain.Node
@@ -88,7 +83,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 		}
 		ex, err := exchanger.NewExchanger(
 			addr,
-			exchanger.RouterOption(h.router),
+			exchanger.RouterOption(h.options.Router),
 			exchanger.TimeoutOption(h.md.timeout),
 			exchanger.LoggerOption(log),
 		)
@@ -102,7 +97,7 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 	if len(h.exchangers) == 0 {
 		ex, err := exchanger.NewExchanger(
 			defaultNameserver,
-			exchanger.RouterOption(h.router),
+			exchanger.RouterOption(h.options.Router),
 			exchanger.TimeoutOption(h.md.timeout),
 			exchanger.LoggerOption(log),
 		)

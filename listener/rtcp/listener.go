@@ -25,7 +25,6 @@ func init() {
 type rtcpListener struct {
 	laddr   net.Addr
 	ln      net.Listener
-	router  *chain.Router
 	logger  logger.Logger
 	closed  chan struct{}
 	options listener.Options
@@ -60,11 +59,6 @@ func (l *rtcpListener) Init(md md.Metadata) (err error) {
 		l.laddr = &bindAddr{addr: l.options.Addr}
 	}
 
-	l.router = l.options.Router
-	if l.router == nil {
-		l.router = chain.NewRouter(chain.LoggerRouterOption(l.logger))
-	}
-
 	return
 }
 
@@ -77,7 +71,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 
 	ln := l.getListener()
 	if ln == nil {
-		ln, err = l.router.Bind(
+		ln, err = l.options.Router.Bind(
 			context.Background(), "tcp", l.laddr.String(),
 			chain.MuxBindOption(true),
 		)

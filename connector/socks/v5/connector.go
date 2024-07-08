@@ -211,7 +211,7 @@ func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.
 
 	log.Debugf("bind on: %v", reply.Addr)
 
-	cc, err := opts.NetDialer.Dial(ctx, "udp", reply.Addr.String())
+	cc, err := opts.Dialer.Dial(ctx, "udp", reply.Addr.String())
 	if err != nil {
 		c.options.Logger.Error(err)
 		return nil, err

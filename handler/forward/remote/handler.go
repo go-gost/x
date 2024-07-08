@@ -38,7 +38,6 @@ func init() {
 
 type forwardHandler struct {
 	hop     hop.Hop
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -57,11 +56,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *forwardHandler) Init(md mdata.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -156,7 +150,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-	cc, err := h.router.Dial(ctx, network, target.Addr)
+	cc, err := h.options.Router.Dial(ctx, network, target.Addr)
 	if err != nil {
 		log.Error(err)
 		// TODO: the router itself may be failed due to the failed node in the router,
@@ -277,7 +271,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 				}
 			}
 
-			cc, err = h.router.Dial(ctx, "tcp", target.Addr)
+			cc, err = h.options.Router.Dial(ctx, "tcp", target.Addr)
 			if err != nil {
 				// TODO: the router itself may be failed due to the failed node in the router,
 				// the dead marker may be a wrong operation.

@@ -45,7 +45,7 @@ func (d *dtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		opt(&options)
 	}
 
-	conn, err := options.NetDialer.Dial(ctx, "udp", addr)
+	conn, err := options.Dialer.Dial(ctx, "udp", addr)
 	if err != nil {
 		return nil, err
 	}

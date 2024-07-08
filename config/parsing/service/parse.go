@@ -28,7 +28,6 @@ import (
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
-	xnet "github.com/go-gost/x/internal/net"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
@@ -151,7 +150,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	listenOpts := []listener.Option{
 		listener.AddrOption(cfg.Addr),
-		listener.RouterOption(chain.NewRouter(routerOpts...)),
+		listener.RouterOption(xchain.NewRouter(routerOpts...)),
 		listener.AutherOption(auther),
 		listener.AuthOption(auth_parser.Info(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
@@ -271,7 +270,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var h handler.Handler
 	if rf := registry.HandlerRegistry().Get(cfg.Handler.Type); rf != nil {
 		h = rf(
-			handler.RouterOption(chain.NewRouter(routerOpts...)),
+			handler.RouterOption(xchain.NewRouter(routerOpts...)),
 			handler.AutherOption(auther),
 			handler.AuthOption(auth_parser.Info(cfg.Handler.Auth)),
 			handler.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
@@ -339,50 +338,41 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 		Selector: cfg.Selector,
 	}
 	for _, node := range cfg.Nodes {
-		if node != nil {
-			addrs := xnet.AddrPortRange(node.Addr).Addrs()
-			if len(addrs) == 0 {
-				addrs = append(addrs, node.Addr)
-			}
-			for i, addr := range addrs {
-				name := node.Name
-				if i > 0 {
-					name = fmt.Sprintf("%s-%d", node.Name, i)
-				}
+		if node == nil {
+			continue
+		}
 
-				filter := node.Filter
-				if filter == nil {
-					if node.Protocol != "" || node.Host != "" || node.Path != "" {
-						filter = &config.NodeFilterConfig{
-							Protocol: node.Protocol,
-							Host:     node.Host,
-							Path:     node.Path,
-						}
-					}
+		filter := node.Filter
+		if filter == nil {
+			if node.Protocol != "" || node.Host != "" || node.Path != "" {
+				filter = &config.NodeFilterConfig{
+					Protocol: node.Protocol,
+					Host:     node.Host,
+					Path:     node.Path,
 				}
-
-				httpCfg := node.HTTP
-				if node.Auth != nil {
-					if httpCfg == nil {
-						httpCfg = &config.HTTPNodeConfig{}
-					}
-					if httpCfg.Auth == nil {
-						httpCfg.Auth = node.Auth
-					}
-				}
-				hc.Nodes = append(hc.Nodes, &config.NodeConfig{
-					Name:     name,
-					Addr:     addr,
-					Network:  node.Network,
-					Bypass:   node.Bypass,
-					Bypasses: node.Bypasses,
-					Filter:   filter,
-					HTTP:     httpCfg,
-					TLS:      node.TLS,
-					Metadata: node.Metadata,
-				})
 			}
 		}
+
+		httpCfg := node.HTTP
+		if node.Auth != nil {
+			if httpCfg == nil {
+				httpCfg = &config.HTTPNodeConfig{}
+			}
+			if httpCfg.Auth == nil {
+				httpCfg.Auth = node.Auth
+			}
+		}
+		hc.Nodes = append(hc.Nodes, &config.NodeConfig{
+			Name:     node.Name,
+			Addr:     node.Addr,
+			Network:  node.Network,
+			Bypass:   node.Bypass,
+			Bypasses: node.Bypasses,
+			Filter:   filter,
+			HTTP:     httpCfg,
+			TLS:      node.TLS,
+			Metadata: node.Metadata,
+		})
 	}
 	return hop_parser.ParseHop(&hc, log)
 }

@@ -71,14 +71,13 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		grpcOpts := []grpc.DialOption{
 			// grpc.WithBlock(),
 			grpc.WithContextDialer(func(c context.Context, s string) (net.Conn, error) {
-				return options.NetDialer.Dial(c, "tcp", s)
+				return options.Dialer.Dial(c, "tcp", s)
 			}),
 			grpc.WithAuthority(host),
 			grpc.WithConnectParams(grpc.ConnectParams{
 				Backoff:           backoff.DefaultConfig,
 				MinConnectTimeout: d.md.minConnectTimeout,
 			}),
-			grpc.FailOnNonTempDialError(true),
 		}
 		if !d.md.insecure {
 			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(d.options.TLSConfig)))
@@ -94,7 +93,7 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			}))
 		}
 
-		cc, err := grpc.DialContext(ctx, addr, grpcOpts...)
+		cc, err := grpc.NewClient(addr, grpcOpts...)
 		if err != nil {
 			d.options.Logger.Error(err)
 			return nil, err

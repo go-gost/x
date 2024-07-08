@@ -108,7 +108,7 @@ func (l *redirectListener) accept() (conn net.Conn, err error) {
 // Out-of-band data is also read in so that the original destination
 // address can be identified and parsed.
 func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, dstAddr *net.UDPAddr, err error) {
-	oob := bufpool.Get(1024)
+	oob := bufpool.Get(8192)
 	defer bufpool.Put(oob)
 
 	n, oobn, _, remoteAddr, err := conn.ReadMsgUDP(b, oob)
@@ -118,14 +118,14 @@ func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, d
 
 	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("parsing socket control message: %s", err)
+		return 0, nil, nil, fmt.Errorf("parsing socket control message: %v", err)
 	}
 
 	for _, msg := range msgs {
 		if msg.Header.Level == unix.SOL_IP && msg.Header.Type == unix.IP_RECVORIGDSTADDR {
 			originalDstRaw := &unix.RawSockaddrInet4{}
 			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
-				return 0, nil, nil, fmt.Errorf("reading original destination address: %s", err)
+				return 0, nil, nil, fmt.Errorf("reading original destination address: %v", err)
 			}
 
 			switch originalDstRaw.Family {
@@ -154,7 +154,7 @@ func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, d
 	}
 
 	if dstAddr == nil {
-		return 0, nil, nil, fmt.Errorf("unable to obtain original destination: %s", err)
+		return 0, nil, nil, fmt.Errorf("unable to obtain original destination: %v", err)
 	}
 
 	return
@@ -166,50 +166,50 @@ func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, d
 func dialUDP(network string, laddr *net.UDPAddr, raddr *net.UDPAddr) (net.Conn, error) {
 	remoteSocketAddress, err := udpAddrToSocketAddr(raddr)
 	if err != nil {
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("build destination socket address: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("build destination socket address: %v", err)}
 	}
 
 	localSocketAddress, err := udpAddrToSocketAddr(laddr)
 	if err != nil {
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("build local socket address: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("build local socket address: %v", err)}
 	}
 
 	fileDescriptor, err := unix.Socket(udpAddrFamily(network, laddr, raddr), unix.SOCK_DGRAM, 0)
 	if err != nil {
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket open: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket open: %v", err)}
 	}
 
 	if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %v", err)}
 	}
 
 	if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_REUSEADDR: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_REUSEADDR: %v", err)}
 	}
 	if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_REUSEPORT: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: SO_REUSEPORT: %v", err)}
 	}
 
 	if err = unix.Bind(fileDescriptor, localSocketAddress); err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket bind %v: %s", laddr, err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket bind %v: %v", laddr, err)}
 	}
 
 	if err = unix.Connect(fileDescriptor, remoteSocketAddress); err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket connect: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket connect: %v", err)}
 	}
 
-	fdFile := os.NewFile(uintptr(fileDescriptor), fmt.Sprintf("net-udp-dial-%s", raddr.String()))
+	fdFile := os.NewFile(uintptr(fileDescriptor), fmt.Sprintf("net-udp-dial-%v", raddr.String()))
 	defer fdFile.Close()
 
 	remoteConn, err := net.FileConn(fdFile)
 	if err != nil {
 		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("convert file descriptor to connection: %s", err)}
+		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("convert file descriptor to connection: %v", err)}
 	}
 
 	return remoteConn, nil

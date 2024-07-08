@@ -39,7 +39,7 @@ func (c *directConnector) Connect(ctx context.Context, _ net.Conn, network, addr
 		opt(&cOpts)
 	}
 
-	conn, err := cOpts.NetDialer.Dial(ctx, network, address)
+	conn, err := cOpts.Dialer.Dial(ctx, network, address)
 	if err != nil {
 		return nil, err
 	}

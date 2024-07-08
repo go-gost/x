@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -29,7 +28,6 @@ func init() {
 }
 
 type forwardHandler struct {
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -48,11 +46,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *forwardHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return nil
@@ -97,7 +90,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 		return nil
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", targetAddr)
+	cc, err := h.options.Router.Dial(ctx, "tcp", targetAddr)
 	if err != nil {
 		return err
 	}

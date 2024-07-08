@@ -37,7 +37,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		}
 
 		// obtain a udp connection
-		c, err := h.router.Dial(ctx, "udp", "") // UDP association
+		c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
 		if err != nil {
 			log.Error(err)
 			return err

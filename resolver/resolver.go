@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/resolver"
+	xchain "github.com/go-gost/x/chain"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
@@ -67,7 +68,7 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 		ex, err := exchanger.NewExchanger(
 			addr,
 			exchanger.RouterOption(
-				chain.NewRouter(
+				xchain.NewRouter(
 					chain.ChainRouterOption(server.Chain),
 					chain.LoggerRouterOption(options.logger),
 				),
@@ -165,7 +166,7 @@ func (r *localResolver) resolveAsync(ctx context.Context, server *NameServer, ho
 	return
 }
 
-func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, host string) (ips []net.IP, ttl time.Duration, ok bool) {
+func (r *localResolver) lookupCache(_ context.Context, server *NameServer, host string) (ips []net.IP, ttl time.Duration, ok bool) {
 	lookup := func(t uint16, host string) (ips []net.IP, ttl time.Duration, ok bool) {
 		mq := dns.Msg{}
 		mq.SetQuestion(dns.Fqdn(host), t)

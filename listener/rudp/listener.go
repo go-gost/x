@@ -24,7 +24,6 @@ func init() {
 type rudpListener struct {
 	laddr   net.Addr
 	ln      net.Listener
-	router  *chain.Router
 	closed  chan struct{}
 	logger  logger.Logger
 	md      metadata
@@ -60,11 +59,6 @@ func (l *rudpListener) Init(md md.Metadata) (err error) {
 		l.laddr = &bindAddr{addr: l.options.Addr}
 	}
 
-	l.router = l.options.Router
-	if l.router == nil {
-		l.router = chain.NewRouter(chain.LoggerRouterOption(l.logger))
-	}
-
 	return
 }
 
@@ -77,7 +71,7 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 
 	ln := l.getListener()
 	if ln == nil {
-		ln, err = l.router.Bind(
+		ln, err = l.options.Router.Bind(
 			context.Background(), "udp", l.laddr.String(),
 			chain.BacklogBindOption(l.md.backlog),
 			chain.UDPConnTTLBindOption(l.md.ttl),

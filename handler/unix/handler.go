@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
@@ -22,7 +22,6 @@ func init() {
 
 type unixHandler struct {
 	hop     hop.Hop
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -41,11 +40,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *unixHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -80,7 +74,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return h.forwardUnix(ctx, conn, target, log)
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", "@")
+	cc, err := h.options.Router.Dial(ctx, "tcp", "@")
 	if err != nil {
 		log.Error(err)
 		return err
@@ -101,8 +95,8 @@ func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *ch
 	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 	var cc io.ReadWriteCloser
 
-	if opts := h.router.Options(); opts != nil && opts.Chain != nil {
-		cc, err = h.router.Dial(ctx, "unix", target.Addr)
+	if opts := h.options.Router.Options(); opts != nil && opts.Chain != nil {
+		cc, err = h.options.Router.Dial(ctx, "unix", target.Addr)
 	} else {
 		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", target.Addr)
 	}

@@ -35,7 +35,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 
 	for {
 		err := func() error {
-			cc, err := h.router.Dial(ctx, "udp", raddr)
+			cc, err := h.options.Router.Dial(ctx, "udp", raddr)
 			if err != nil {
 				return err
 			}

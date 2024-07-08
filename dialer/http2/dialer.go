@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	net_dialer "github.com/go-gost/core/common/net/dialer"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	net_dialer "github.com/go-gost/x/internal/net/dialer"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 )
@@ -72,7 +72,7 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 
 		{
 			// Check whether the connection is established properly
-			netd := options.NetDialer
+			netd := options.Dialer
 			if netd == nil {
 				netd = net_dialer.DefaultNetDialer
 			}
@@ -87,7 +87,7 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 			Transport: &http.Transport{
 				TLSClientConfig: d.options.TLSConfig,
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					netd := options.NetDialer
+					netd := options.Dialer
 					if netd == nil {
 						netd = net_dialer.DefaultNetDialer
 					}

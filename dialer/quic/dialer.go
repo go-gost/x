@@ -67,7 +67,7 @@ func (d *quicDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			opt(options)
 		}
 
-		c, err := options.NetDialer.Dial(ctx, "udp", "")
+		c, err := options.Dialer.Dial(ctx, "udp", "")
 		if err != nil {
 			return nil, err
 		}

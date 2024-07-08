@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
@@ -32,7 +31,6 @@ func init() {
 }
 
 type socks4Handler struct {
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 	stats   *stats_util.HandlerStats
@@ -54,11 +52,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *socks4Handler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,7 +147,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", addr)
+	cc, err := h.options.Router.Dial(ctx, "tcp", addr)
 	if err != nil {
 		resp := gosocks4.NewReply(gosocks4.Failed, nil)
 		log.Trace(resp)

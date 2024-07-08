@@ -29,7 +29,6 @@ func init() {
 type tunHandler struct {
 	hop     hop.Hop
 	routes  sync.Map
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -48,11 +47,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *tunHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return

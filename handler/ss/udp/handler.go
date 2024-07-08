@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
@@ -23,7 +22,6 @@ func init() {
 
 type ssuHandler struct {
 	cipher  core.Cipher
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -51,11 +49,6 @@ func (h *ssuHandler) Init(md md.Metadata) (err error) {
 		if err != nil {
 			return
 		}
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -97,7 +90,7 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	// obtain a udp connection
-	c, err := h.router.Dial(ctx, "udp", "") // UDP association
+	c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
 	if err != nil {
 		log.Error(err)
 		return err

@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	xauth "github.com/go-gost/x/auth"
+	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	auth_parser "github.com/go-gost/x/config/parsing/auth"
@@ -139,7 +140,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		}
 	}
 
-	tr := chain.NewTransport(d, cr,
+	tr := xchain.NewTransport(d, cr,
 		chain.AddrTransportOption(cfg.Addr),
 		chain.InterfaceTransportOption(cfg.Interface),
 		chain.NetnsTransportOption(cfg.Netns),

@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	netpkg "github.com/go-gost/x/internal/net"
@@ -18,7 +17,6 @@ func init() {
 }
 
 type redirectHandler struct {
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -37,11 +35,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *redirectHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -80,7 +73,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		return nil
 	}
 
-	cc, err := h.router.Dial(ctx, dstAddr.Network(), dstAddr.String())
+	cc, err := h.options.Router.Dial(ctx, dstAddr.Network(), dstAddr.String())
 	if err != nil {
 		log.Error(err)
 		return err

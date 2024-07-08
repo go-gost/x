@@ -64,7 +64,7 @@ func (d *sshDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 			opt(&options)
 		}
 
-		conn, err = options.NetDialer.Dial(ctx, "tcp", addr)
+		conn, err = options.Dialer.Dial(ctx, "tcp", addr)
 		if err != nil {
 			return
 		}

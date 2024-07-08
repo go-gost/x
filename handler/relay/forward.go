@@ -38,7 +38,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-	cc, err := h.router.Dial(ctx, network, target.Addr)
+	cc, err := h.options.Router.Dial(ctx, network, target.Addr)
 	if err != nil {
 		// TODO: the router itself may be failed due to the failed node in the router,
 		// the dead marker may be a wrong operation.

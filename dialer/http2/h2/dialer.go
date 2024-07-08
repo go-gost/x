@@ -94,14 +94,14 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 			client.Transport = &http2.Transport{
 				AllowHTTP: true,
 				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-					return options.NetDialer.Dial(ctx, network, addr)
+					return options.Dialer.Dial(ctx, network, addr)
 				},
 			}
 		} else {
 			client.Transport = &http.Transport{
 				TLSClientConfig: d.options.TLSConfig,
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return options.NetDialer.Dial(ctx, network, addr)
+					return options.Dialer.Dial(ctx, network, addr)
 				},
 				ForceAttemptHTTP2:     true,
 				MaxIdleConns:          100,

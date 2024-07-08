@@ -25,7 +25,6 @@ func init() {
 
 type serialHandler struct {
 	hop      hop.Hop
-	router   *chain.Router
 	md       metadata
 	options  handler.Options
 	recorder recorder.RecorderObject
@@ -47,11 +46,7 @@ func (h *serialHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
-	}
-	if opts := h.router.Options(); opts != nil {
+	if opts := h.options.Router.Options(); opts != nil {
 		for _, ro := range opts.Recorders {
 			if ro.Record == xrecorder.RecorderServiceHandlerSerial {
 				h.recorder = ro
@@ -97,7 +92,7 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return h.forwardSerial(ctx, conn, target, log)
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", "@")
+	cc, err := h.options.Router.Dial(ctx, "tcp", "@")
 	if err != nil {
 		log.Error(err)
 		return err
@@ -121,8 +116,8 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 	cfg := serial.ParseConfigFromAddr(conn.LocalAddr().String())
 	cfg.Name = target.Addr
 
-	if opts := h.router.Options(); opts != nil && opts.Chain != nil {
-		port, err = h.router.Dial(ctx, "serial", serial.AddrFromConfig(cfg))
+	if opts := h.options.Router.Options(); opts != nil && opts.Chain != nil {
+		port, err = h.options.Router.Dial(ctx, "serial", serial.AddrFromConfig(cfg))
 	} else {
 		cfg.ReadTimeout = h.md.timeout
 		port, err = serial.OpenPort(cfg)

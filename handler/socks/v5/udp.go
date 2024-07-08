@@ -59,7 +59,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, log logger
 	log.Debugf("bind on %s OK", cc.LocalAddr())
 
 	// obtain a udp connection
-	c, err := h.router.Dial(ctx, "udp", "") // UDP association
+	c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
 	if err != nil {
 		log.Error(err)
 		return err

@@ -14,11 +14,12 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/logger"
+	xchain "github.com/go-gost/x/chain"
 	"github.com/miekg/dns"
 )
 
 type Options struct {
-	router    *chain.Router
+	router    chain.Router
 	tlsConfig *tls.Config
 	timeout   time.Duration
 	logger    logger.Logger
@@ -28,7 +29,7 @@ type Options struct {
 type Option func(opts *Options)
 
 // RouterOption sets the router for Exchanger.
-func RouterOption(router *chain.Router) Option {
+func RouterOption(router chain.Router) Option {
 	return func(opts *Options) {
 		opts.router = router
 	}
@@ -65,7 +66,7 @@ type exchanger struct {
 	network string
 	addr    string
 	rawAddr string
-	router  *chain.Router
+	router  chain.Router
 	client  *http.Client
 	options Options
 }
@@ -102,7 +103,7 @@ func NewExchanger(addr string, opts ...Option) (Exchanger, error) {
 		ex.addr = net.JoinHostPort(ex.addr, "53")
 	}
 	if ex.router == nil {
-		ex.router = chain.NewRouter(chain.LoggerRouterOption(options.logger))
+		ex.router = xchain.NewRouter(chain.LoggerRouterOption(options.logger))
 	}
 
 	switch ex.network {

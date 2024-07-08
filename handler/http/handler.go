@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	traffic "github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
@@ -37,7 +36,6 @@ func init() {
 }
 
 type httpHandler struct {
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 	stats   *stats_util.HandlerStats
@@ -59,11 +57,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *httpHandler) Init(md md.Metadata) error {
 	if err := h.parseMetadata(md); err != nil {
 		return err
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -215,7 +208,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.router.Dial(ctx, network, addr)
+	cc, err := h.options.Router.Dial(ctx, network, addr)
 	if err != nil {
 		resp.StatusCode = http.StatusServiceUnavailable
 

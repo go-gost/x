@@ -87,7 +87,7 @@ func (d *phtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 		tr := &http.Transport{
 			// Proxy: http.ProxyFromEnvironment,
 			DialContext: func(ctx context.Context, network, adr string) (net.Conn, error) {
-				return options.NetDialer.Dial(ctx, network, addr)
+				return options.Dialer.Dial(ctx, network, addr)
 			},
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          100,

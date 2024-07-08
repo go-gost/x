@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
@@ -27,7 +26,6 @@ func init() {
 
 type socks5Handler struct {
 	selector gosocks5.Selector
-	router   *chain.Router
 	md       metadata
 	options  handler.Options
 	stats    *stats_util.HandlerStats
@@ -49,11 +47,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	h.selector = &serverSelector{

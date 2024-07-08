@@ -33,7 +33,6 @@ type tapHandler struct {
 	routes  sync.Map
 	exit    chan struct{}
 	cipher  core.Cipher
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -62,11 +61,6 @@ func (h *tapHandler) Init(md md.Metadata) (err error) {
 		if err != nil {
 			return
 		}
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -135,7 +129,7 @@ func (h *tapHandler) handleLoop(ctx context.Context, conn net.Conn, addr net.Add
 			var pc net.PacketConn
 
 			if addr != nil {
-				cc, err := h.router.Dial(ctx, addr.Network(), "")
+				cc, err := h.options.Router.Dial(ctx, addr.Network(), "")
 				if err != nil {
 					return err
 				}

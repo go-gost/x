@@ -66,7 +66,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	case "serial":
 		cc, err = serial.OpenPort(serial.ParseConfigFromAddr(address))
 	default:
-		cc, err = h.router.Dial(ctx, network, address)
+		cc, err = h.options.Router.Dial(ctx, network, address)
 	}
 	if err != nil {
 		resp.Status = relay.StatusNetworkUnreachable

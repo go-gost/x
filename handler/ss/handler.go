@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
@@ -23,7 +22,6 @@ func init() {
 
 type ssHandler struct {
 	cipher  core.Cipher
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 }
@@ -50,11 +48,6 @@ func (h *ssHandler) Init(md md.Metadata) (err error) {
 		if err != nil {
 			return
 		}
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	return
@@ -111,7 +104,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr.String()})
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", addr.String())
+	cc, err := h.options.Router.Dial(ctx, "tcp", addr.String())
 	if err != nil {
 		return err
 	}

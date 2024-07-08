@@ -79,7 +79,7 @@ func (d *http3Dialer) Dial(ctx context.Context, addr string, opts ...dialer.Dial
 							return nil, err
 						}
 
-						udpConn, err := options.NetDialer.Dial(ctx, "udp", "")
+						udpConn, err := options.Dialer.Dial(ctx, "udp", "")
 						if err != nil {
 							return nil, err
 						}

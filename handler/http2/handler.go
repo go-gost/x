@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
@@ -38,7 +37,6 @@ func init() {
 }
 
 type http2Handler struct {
-	router  *chain.Router
 	md      metadata
 	options handler.Options
 	stats   *stats_util.HandlerStats
@@ -60,11 +58,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *http2Handler) Init(md md.Metadata) error {
 	if err := h.parseMetadata(md); err != nil {
 		return err
-	}
-
-	h.router = h.options.Router
-	if h.router == nil {
-		h.router = chain.NewRouter(chain.LoggerRouterOption(h.options.Logger))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -188,7 +181,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.router.Dial(ctx, "tcp", addr)
+	cc, err := h.options.Router.Dial(ctx, "tcp", addr)
 	if err != nil {
 		log.Error(err)
 		w.WriteHeader(http.StatusServiceUnavailable)
