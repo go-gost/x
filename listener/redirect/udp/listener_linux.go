@@ -19,15 +19,30 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// https://github.com/KatelynHaworth/go-tproxy
 func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
+	laddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+
 	lc := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
-					l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
-				}
-				if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_RECVORIGDSTADDR, 1); err != nil {
-					l.logger.Errorf("SetsockoptInt(SOL_IP, IP_RECVORIGDSTADDR, 1): %v", err)
+				if laddr.IP.To4() != nil {
+					if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
+						l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
+					}
+					if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_RECVORIGDSTADDR, 1); err != nil {
+						l.logger.Errorf("SetsockoptInt(SOL_IP, IP_RECVORIGDSTADDR, 1): %v", err)
+					}
+				} else {
+					if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_TRANSPARENT, 1); err != nil {
+						l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_TRANSPARENT, 1): %v", err)
+					}
+					if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_RECVORIGDSTADDR, 1); err != nil {
+						l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_RECVORIGDSTADDR, 1): %v", err)
+					}
 				}
 			})
 		},
@@ -83,11 +98,7 @@ func (l *redirectListener) accept() (conn net.Conn, err error) {
 		}
 	}
 
-	network := "udp"
-	if xnet.IsIPv4(l.options.Addr) {
-		network = "udp4"
-	}
-	c, err := dialUDP(network, dstAddr, raddr)
+	c, err := dialUDP("udp", dstAddr, raddr)
 	if err != nil {
 		l.logger.Error(err)
 		return
@@ -128,28 +139,24 @@ func readFromUDP(conn *net.UDPConn, b []byte) (n int, remoteAddr *net.UDPAddr, d
 				return 0, nil, nil, fmt.Errorf("reading original destination address: %v", err)
 			}
 
-			switch originalDstRaw.Family {
-			case unix.AF_INET:
-				pp := (*unix.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
-				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-				dstAddr = &net.UDPAddr{
-					IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
-					Port: int(p[0])<<8 + int(p[1]),
-				}
-
-			case unix.AF_INET6:
-				pp := (*unix.RawSockaddrInet6)(unsafe.Pointer(originalDstRaw))
-				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-				dstAddr = &net.UDPAddr{
-					IP:   net.IP(pp.Addr[:]),
-					Port: int(p[0])<<8 + int(p[1]),
-					Zone: strconv.Itoa(int(pp.Scope_id)),
-				}
-
-			default:
-				return 0, nil, nil, fmt.Errorf("original destination is an unsupported network family")
+			pp := (*unix.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
+			p := (*[2]byte)(unsafe.Pointer(&pp.Port))
+			dstAddr = &net.UDPAddr{
+				IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
+				Port: int(p[0])<<8 + int(p[1]),
 			}
-			break
+		} else if msg.Header.Level == unix.SOL_IPV6 && msg.Header.Type == unix.IPV6_RECVORIGDSTADDR {
+			inet6 := &unix.RawSockaddrInet6{}
+			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, inet6); err != nil {
+				return 0, nil, nil, fmt.Errorf("reading original destination address: %v", err)
+			}
+
+			p := (*[2]byte)(unsafe.Pointer(&inet6.Port))
+			dstAddr = &net.UDPAddr{
+				IP:   net.IP(inet6.Addr[:]),
+				Port: int(p[0])<<8 + int(p[1]),
+				Zone: strconv.Itoa(int(inet6.Scope_id)),
+			}
 		}
 	}
 
@@ -179,9 +186,16 @@ func dialUDP(network string, laddr *net.UDPAddr, raddr *net.UDPAddr) (net.Conn, 
 		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("socket open: %v", err)}
 	}
 
-	if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
-		unix.Close(fileDescriptor)
-		return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %v", err)}
+	if laddr.IP.To4() != nil {
+		if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
+			unix.Close(fileDescriptor)
+			return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %v", err)}
+		}
+	} else {
+		if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_IPV6, unix.IPV6_TRANSPARENT, 1); err != nil {
+			unix.Close(fileDescriptor)
+			return nil, &net.OpError{Op: "dial", Err: fmt.Errorf("set socket option: IPV6_TRANSPARENT: %v", err)}
+		}
 	}
 
 	if err = unix.SetsockoptInt(fileDescriptor, unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
@@ -230,9 +244,12 @@ func udpAddrToSocketAddr(addr *net.UDPAddr) (unix.Sockaddr, error) {
 		ip := [16]byte{}
 		copy(ip[:], addr.IP.To16())
 
-		zoneID, err := strconv.ParseUint(addr.Zone, 10, 32)
-		if err != nil {
-			return nil, err
+		var zoneID uint64
+		if addr.Zone != "" {
+			zoneID, _ = strconv.ParseUint(addr.Zone, 10, 32)
+			if zoneID == 0 {
+				zoneID = 2
+			}
 		}
 
 		return &unix.SockaddrInet6{Addr: ip, Port: addr.Port, ZoneId: uint32(zoneID)}, nil
@@ -251,7 +268,7 @@ func udpAddrFamily(net string, laddr, raddr *net.UDPAddr) int {
 	}
 
 	if (laddr == nil || laddr.IP.To4() != nil) &&
-		(raddr == nil || laddr.IP.To4() != nil) {
+		(raddr == nil || raddr.IP.To4() != nil) {
 		return unix.AF_INET
 	}
 	return unix.AF_INET6

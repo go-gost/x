@@ -132,7 +132,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 
 			host := req.Host
 			if h, _, _ := net.SplitHostPort(host); h == "" {
-				host = net.JoinHostPort(host, "80")
+				host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 			}
 
 			if node == ep.node {

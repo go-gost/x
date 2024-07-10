@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -88,7 +89,7 @@ func (h *http3Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req *http.Request, log logger.Logger) error {
 	addr := req.Host
 	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr = net.JoinHostPort(addr, "80")
+		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {

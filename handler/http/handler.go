@@ -136,7 +136,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 	addr := req.Host
 	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr = net.JoinHostPort(addr, "80")
+		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
 	}
 
 	fields := map[string]any{

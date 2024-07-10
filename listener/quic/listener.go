@@ -3,6 +3,7 @@ package quic
 import (
 	"context"
 	"net"
+	"strings"
 
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
@@ -48,7 +49,7 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 
 	addr := l.options.Addr
 	if _, _, err := net.SplitHostPort(addr); err != nil {
-		addr = net.JoinHostPort(addr, "0")
+		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "0")
 	}
 
 	network := "udp"

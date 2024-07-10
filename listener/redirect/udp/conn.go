@@ -16,15 +16,15 @@ type redirConn struct {
 }
 
 func (c *redirConn) Read(b []byte) (n int, err error) {
-	if c.ttl > 0 {
-		c.SetReadDeadline(time.Now().Add(c.ttl))
-		defer c.SetReadDeadline(time.Time{})
-	}
-
 	c.once.Do(func() {
 		n = copy(b, c.buf)
 		bufpool.Put(c.buf)
 	})
+
+	if c.ttl > 0 {
+		c.SetReadDeadline(time.Now().Add(c.ttl))
+		defer c.SetReadDeadline(time.Time{})
+	}
 
 	if n == 0 {
 		n, err = c.Conn.Read(b)

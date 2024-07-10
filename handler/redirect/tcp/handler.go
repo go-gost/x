@@ -152,7 +152,7 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 
 	host := req.Host
 	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = net.JoinHostPort(host, "80")
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 	}
 	log = log.WithFields(map[string]any{
 		"host": host,
@@ -227,7 +227,7 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 			if port == "" {
 				port = "443"
 			}
-			host = net.JoinHostPort(host, port)
+			host = net.JoinHostPort(strings.Trim(host, "[]"), port)
 		}
 		log = log.WithFields(map[string]any{
 			"host": host,
@@ -263,7 +263,7 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	return nil
 }
 
-func (h *redirectHandler) getServerName(ctx context.Context, r io.Reader) (host string, err error) {
+func (h *redirectHandler) getServerName(_ context.Context, r io.Reader) (host string, err error) {
 	record, err := dissector.ReadRecord(r)
 	if err != nil {
 		return

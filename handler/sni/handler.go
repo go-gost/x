@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -105,7 +106,7 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 
 	host := req.Host
 	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = net.JoinHostPort(host, "80")
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 	}
 	log = log.WithFields(map[string]any{
 		"host": host,
@@ -171,7 +172,7 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 	}
 
 	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = net.JoinHostPort(host, "443")
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "443")
 	}
 
 	log = log.WithFields(map[string]any{

@@ -110,7 +110,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = net.JoinHostPort(host, "0")
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "0")
 	}
 
 	var target *chain.Node
@@ -202,7 +202,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 
 			host := req.Host
 			if _, _, err := net.SplitHostPort(host); err != nil {
-				host = net.JoinHostPort(host, "80")
+				host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 			}
 			if bp := h.options.Bypass; bp != nil && bp.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
 				log.Debugf("bypass: %s %s", host, req.RequestURI)

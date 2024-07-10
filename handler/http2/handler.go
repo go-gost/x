@@ -132,7 +132,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	addr := req.Host
 	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr = net.JoinHostPort(addr, "80")
+		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
 	}
 
 	fields := map[string]any{
