@@ -330,7 +330,12 @@ func cutHost(s string) (host, remain string) {
 	} else {
 		end += start
 	}
+	// auth info
+	if n = strings.LastIndexByte(s[start:end], '@'); n >= 0 {
+		start += (n + 1)
+	}
 	host = s[start:end]
+
 	remain = s[:start] + s[end:]
 
 	return
