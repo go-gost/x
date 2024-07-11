@@ -21,28 +21,27 @@ import (
 
 // https://github.com/KatelynHaworth/go-tproxy
 func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
-	laddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return nil, err
-	}
+	/*
+		laddr, err := net.ResolveUDPAddr("udp", addr)
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	lc := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				if laddr.IP.To4() != nil {
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
-						l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
-					}
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_RECVORIGDSTADDR, 1); err != nil {
-						l.logger.Errorf("SetsockoptInt(SOL_IP, IP_RECVORIGDSTADDR, 1): %v", err)
-					}
-				} else {
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_TRANSPARENT, 1); err != nil {
-						l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_TRANSPARENT, 1): %v", err)
-					}
-					if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_RECVORIGDSTADDR, 1); err != nil {
-						l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_RECVORIGDSTADDR, 1): %v", err)
-					}
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
+					l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
+				}
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_RECVORIGDSTADDR, 1); err != nil {
+					l.logger.Errorf("SetsockoptInt(SOL_IP, IP_RECVORIGDSTADDR, 1): %v", err)
+				}
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_TRANSPARENT, 1); err != nil {
+					l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_TRANSPARENT, 1): %v", err)
+				}
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_RECVORIGDSTADDR, 1); err != nil {
+					l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_RECVORIGDSTADDR, 1): %v", err)
 				}
 			})
 		},
@@ -244,11 +243,14 @@ func udpAddrToSocketAddr(addr *net.UDPAddr) (unix.Sockaddr, error) {
 		ip := [16]byte{}
 		copy(ip[:], addr.IP.To16())
 
+		var err error
 		var zoneID uint64
 		if addr.Zone != "" {
-			zoneID, _ = strconv.ParseUint(addr.Zone, 10, 32)
-			if zoneID == 0 {
-				zoneID = 2
+			zoneID, err = strconv.ParseUint(addr.Zone, 10, 32)
+			if err != nil {
+				if itf, _ := net.InterfaceByName(addr.Zone); itf != nil {
+					zoneID = uint64(itf.Index)
+				}
 			}
 		}
 
