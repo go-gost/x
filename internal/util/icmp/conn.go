@@ -12,6 +12,12 @@ import (
 	"github.com/go-gost/core/logger"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
+)
+
+const (
+	ICMPv4 = 1
+	ICMPv6 = 58
 )
 
 const (
@@ -79,13 +85,15 @@ func (m *message) Decode(b []byte) (n int, err error) {
 }
 
 type clientConn struct {
+	ip6 bool
 	net.PacketConn
 	id  int
 	seq uint32
 }
 
-func ClientConn(conn net.PacketConn, id int) net.PacketConn {
+func ClientConn(ip6 bool, conn net.PacketConn, id int) net.PacketConn {
 	return &clientConn{
+		ip6:        ip6,
 		PacketConn: conn,
 		id:         id,
 	}
@@ -101,13 +109,17 @@ func (c *clientConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 
-		m, err := icmp.ParseMessage(1, buf[:n])
+		proto := ICMPv4
+		if c.ip6 {
+			proto = ICMPv6
+		}
+		m, err := icmp.ParseMessage(proto, buf[:n])
 		if err != nil {
 			// logger.Default().Error("icmp: parse message %v", err)
 			return 0, addr, err
 		}
 		echo, ok := m.Body.(*icmp.Echo)
-		if !ok || m.Type != ipv4.ICMPTypeEchoReply {
+		if !ok || m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
 			// logger.Default().Warnf("icmp: invalid type %s (discarded)", m.Type)
 			continue // discard
 		}
@@ -135,6 +147,7 @@ func (c *clientConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 		addr = &net.UDPAddr{
 			IP:   v.IP,
 			Port: c.id,
+			Zone: v.Zone,
 		}
 	}
 	// logger.Default().Infof("icmp: read from: %v %d", addr, n)
@@ -146,7 +159,7 @@ func (c *clientConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	// logger.Default().Infof("icmp: write to: %v %d", addr, len(b))
 	switch v := addr.(type) {
 	case *net.UDPAddr:
-		addr = &net.IPAddr{IP: v.IP}
+		addr = &net.IPAddr{IP: v.IP, Zone: v.Zone}
 	}
 
 	buf := bufpool.Get(writeBufferSize)
@@ -170,6 +183,10 @@ func (c *clientConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		Code: 0,
 		Body: &echo,
 	}
+	if c.ip6 {
+		m.Type = ipv6.ICMPTypeEchoRequest
+	}
+
 	wb, err := m.Marshal(nil)
 	if err != nil {
 		return 0, err
@@ -180,12 +197,14 @@ func (c *clientConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 }
 
 type serverConn struct {
+	ip6 bool
 	net.PacketConn
 	seqs [65535]uint32
 }
 
-func ServerConn(conn net.PacketConn) net.PacketConn {
+func ServerConn(ip6 bool, conn net.PacketConn) net.PacketConn {
 	return &serverConn{
+		ip6:        ip6,
 		PacketConn: conn,
 	}
 }
@@ -200,14 +219,18 @@ func (c *serverConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 
-		m, err := icmp.ParseMessage(1, buf[:n])
+		proto := ICMPv4
+		if c.ip6 {
+			proto = ICMPv6
+		}
+		m, err := icmp.ParseMessage(proto, buf[:n])
 		if err != nil {
 			// logger.Default().Error("icmp: parse message %v", err)
 			return 0, addr, err
 		}
 
 		echo, ok := m.Body.(*icmp.Echo)
-		if !ok || m.Type != ipv4.ICMPTypeEcho || echo.ID <= 0 {
+		if !ok || echo.ID <= 0 || m.Type != ipv4.ICMPTypeEcho && m.Type != ipv6.ICMPTypeEchoRequest {
 			// logger.Default().Warnf("icmp: invalid type %s (discarded)", m.Type)
 			continue
 		}
@@ -229,6 +252,7 @@ func (c *serverConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 			addr = &net.UDPAddr{
 				IP:   v.IP,
 				Port: echo.ID,
+				Zone: v.Zone,
 			}
 		}
 		break
@@ -244,7 +268,7 @@ func (c *serverConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	var id int
 	switch v := addr.(type) {
 	case *net.UDPAddr:
-		addr = &net.IPAddr{IP: v.IP}
+		addr = &net.IPAddr{IP: v.IP, Zone: v.Zone}
 		id = v.Port
 	}
 
@@ -275,6 +299,10 @@ func (c *serverConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		Code: 0,
 		Body: &echo,
 	}
+	if c.ip6 {
+		m.Type = ipv6.ICMPTypeEchoReply
+	}
+
 	wb, err := m.Marshal(nil)
 	if err != nil {
 		return 0, err

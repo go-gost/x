@@ -11,10 +11,7 @@ type metadata struct {
 }
 
 func (l *redirectListener) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		tproxy = "tproxy"
-	)
-	l.md.tproxy = mdutil.GetBool(md, tproxy)
+	l.md.tproxy = mdutil.GetBool(md, "tproxy")
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	return
 }

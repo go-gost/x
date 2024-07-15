@@ -19,9 +19,11 @@ import (
 
 func init() {
 	registry.ListenerRegistry().Register("icmp", NewListener)
+	registry.ListenerRegistry().Register("icmp6", NewListener6)
 }
 
 type icmpListener struct {
+	ip6     bool
 	ln      quic.EarlyListener
 	cqueue  chan net.Conn
 	errChan chan error
@@ -41,6 +43,18 @@ func NewListener(opts ...listener.Option) listener.Listener {
 	}
 }
 
+func NewListener6(opts ...listener.Option) listener.Listener {
+	options := listener.Options{}
+	for _, opt := range opts {
+		opt(&options)
+	}
+	return &icmpListener{
+		ip6:     true,
+		logger:  options.Logger,
+		options: options,
+	}
+}
+
 func (l *icmpListener) Init(md md.Metadata) (err error) {
 	if err = l.parseMetadata(md); err != nil {
 		return
@@ -52,11 +66,15 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 	}
 
 	var conn net.PacketConn
-	conn, err = icmp.ListenPacket("ip4:icmp", addr)
+	if l.ip6 {
+		conn, err = icmp.ListenPacket("ip6:ipv6-icmp", addr)
+	} else {
+		conn, err = icmp.ListenPacket("ip4:icmp", addr)
+	}
 	if err != nil {
 		return
 	}
-	conn = icmp_pkg.ServerConn(conn)
+	conn = icmp_pkg.ServerConn(l.ip6, conn)
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
 	conn = stats.WrapPacketConn(conn, l.options.Stats)
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
