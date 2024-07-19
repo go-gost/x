@@ -376,6 +376,13 @@ type HTTPURLRewriteConfig struct {
 	Replacement string
 }
 
+type HTTPBodyRewriteConfig struct {
+	// filter by MIME types
+	Type        string
+	Match       string
+	Replacement string
+}
+
 type NodeFilterConfig struct {
 	Host     string `yaml:",omitempty" json:"host,omitempty"`
 	Protocol string `yaml:",omitempty" json:"protocol,omitempty"`
@@ -383,10 +390,16 @@ type NodeFilterConfig struct {
 }
 
 type HTTPNodeConfig struct {
-	Host    string                 `yaml:",omitempty" json:"host,omitempty"`
-	Header  map[string]string      `yaml:",omitempty" json:"header,omitempty"`
+	// rewrite host header
+	Host string `yaml:",omitempty" json:"host,omitempty"`
+	// additional request header
+	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
+	// rewrite URL
 	Rewrite []HTTPURLRewriteConfig `yaml:",omitempty" json:"rewrite,omitempty"`
-	Auth    *AuthConfig            `yaml:",omitempty" json:"auth,omitempty"`
+	// rewrite response body
+	RewriteBody []HTTPBodyRewriteConfig `yaml:"rewriteBody,omitempty" json:"rewriteBody,omitempty"`
+	// HTTP basic auth
+	Auth *AuthConfig `yaml:",omitempty" json:"auth,omitempty"`
 }
 
 type TLSNodeConfig struct {

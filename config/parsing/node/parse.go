@@ -193,9 +193,18 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		}
 		for _, v := range cfg.HTTP.Rewrite {
 			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
-				settings.Rewrite = append(settings.Rewrite, chain.HTTPURLRewriteSetting{
+				settings.RewriteURL = append(settings.RewriteURL, chain.HTTPURLRewriteSetting{
 					Pattern:     pattern,
 					Replacement: v.Replacement,
+				})
+			}
+		}
+		for _, v := range cfg.HTTP.RewriteBody {
+			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
+				settings.RewriteBody = append(settings.RewriteBody, chain.HTTPBodyRewriteSettings{
+					Type:        v.Type,
+					Pattern:     pattern,
+					Replacement: []byte(v.Replacement),
 				})
 			}
 		}
