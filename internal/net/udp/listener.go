@@ -178,12 +178,15 @@ func (c *conn) Read(b []byte) (n int, err error) {
 	return
 }
 
-func (c *conn) Write(b []byte) (n int, err error) {
-	n, err = c.WriteTo(b, c.remoteAddr)
+func (c *conn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	if !c.keepAlive {
-		c.Close()
+		defer c.Close()
 	}
-	return
+	return c.PacketConn.WriteTo(b, addr)
+}
+
+func (c *conn) Write(b []byte) (n int, err error) {
+	return c.WriteTo(b, c.remoteAddr)
 }
 
 func (c *conn) Close() error {
