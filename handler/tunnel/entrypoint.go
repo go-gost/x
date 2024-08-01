@@ -123,12 +123,14 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				timeout: 15 * time.Second,
 				log:     log,
 			}
-			cc, node, cid, err := d.Dial(ctx, "tcp", tunnelID.String())
+			c, node, cid, err := d.Dial(ctx, "tcp", tunnelID.String())
 			if err != nil {
 				log.Error(err)
 				return resp.Write(conn)
 			}
 			log.Debugf("new connection to tunnel: %s, connector: %s", tunnelID, cid)
+
+			cc = c
 
 			host := req.Host
 			if h, _, _ := net.SplitHostPort(host); h == "" {
@@ -149,17 +151,26 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					Version:  relay.Version1,
 					Status:   relay.StatusOK,
 					Features: features,
-				}).WriteTo(cc)
+				}).WriteTo(c)
 			}
 
-			if err := req.Write(cc); err != nil {
-				cc.Close()
+			// HTTP/1.0
+			if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+				if strings.ToLower(req.Header.Get("Connection")) == "keep-alive" {
+					req.Header.Del("Connection")
+				} else {
+					req.Header.Set("Connection", "close")
+				}
+			}
+
+			if err := req.Write(c); err != nil {
+				c.Close()
 				log.Errorf("send request: %v", err)
 				return resp.Write(conn)
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.Transport(cc, xio.NewReadWriter(br, conn))
+				err := xnet.Transport(c, xio.NewReadWriter(br, conn))
 				if err == nil {
 					err = io.EOF
 				}
@@ -167,7 +178,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 			}
 
 			go func() {
-				defer cc.Close()
+				defer c.Close()
 
 				t := time.Now()
 				log.Debugf("%s <-> %s", remoteAddr, host)
@@ -178,7 +189,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					}).Debugf("%s >-< %s", remoteAddr, host)
 				}()
 
-				res, err := http.ReadResponse(bufio.NewReader(cc), req)
+				res, err := http.ReadResponse(bufio.NewReader(c), req)
 				if err != nil {
 					log.Errorf("read response: %v", err)
 					resp.Write(conn)
@@ -190,7 +201,21 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					log.Trace(string(dump))
 				}
 
+				if res.Close {
+					defer conn.Close()
+				}
+
+				// HTTP/1.0
+				if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+					if !res.Close {
+						res.Header.Set("Connection", "keep-alive")
+					}
+					res.ProtoMajor = req.ProtoMajor
+					res.ProtoMinor = req.ProtoMinor
+				}
+
 				if err = res.Write(conn); err != nil {
+					conn.Close()
 					log.Errorf("write response: %v", err)
 				}
 			}()

@@ -245,7 +245,7 @@ func (ing *localIngress) GetRule(ctx context.Context, host string, opts ...ingre
 	}
 
 	if ep != nil {
-		ing.options.logger.Debugf("ingress: %s -> %s", host, ep)
+		ing.options.logger.Debugf("ingress: %s -> %s:%s", host, ep.Hostname, ep.Endpoint)
 	}
 
 	return ep

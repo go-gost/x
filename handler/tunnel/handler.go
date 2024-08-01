@@ -264,6 +264,10 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 // Close implements io.Closer interface.
 func (h *tunnelHandler) Close() error {
+	if h.epSvc != nil {
+		h.epSvc.Close()
+	}
+	h.pool.Close()
 	return nil
 }
 

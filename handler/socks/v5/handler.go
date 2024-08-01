@@ -101,6 +101,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	if clientID := sc.ID(); clientID != "" {
 		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		log = log.WithFields(map[string]any{"user": clientID})
 	}
 
 	conn = sc

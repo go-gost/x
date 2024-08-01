@@ -106,7 +106,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	if protocol == forward.ProtoHTTP {
-		h.handleHTTP(ctx, rw, conn.RemoteAddr(), log)
+		h.handleHTTP(ctx, xio.NewReadWriteCloser(rw, rw, conn), conn.RemoteAddr(), log)
 		return nil
 	}
 
@@ -177,7 +177,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	return nil
 }
 
-func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remoteAddr net.Addr, log logger.Logger) (err error) {
+func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, remoteAddr net.Addr, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
 
 	for {
@@ -334,12 +334,18 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, remot
 					log.Trace(string(dump))
 				}
 
+				if res.Close {
+					defer rw.Close()
+				}
+
 				if err := h.rewriteBody(res, bodyRewrites...); err != nil {
+					rw.Close()
 					log.Errorf("rewrite body: %v", err)
 					return
 				}
 
 				if err = res.Write(rw); err != nil {
+					rw.Close()
 					log.Errorf("write response from node %s(%s): %v", target.Name, target.Addr, err)
 				}
 			}()

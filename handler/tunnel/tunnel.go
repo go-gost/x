@@ -66,6 +66,14 @@ func (c *Connector) Session() *mux.Session {
 	return c.s
 }
 
+func (c *Connector) Close() error {
+	if c == nil || c.s == nil {
+		return nil
+	}
+
+	return c.s.Close()
+}
+
 type Tunnel struct {
 	node       string
 	id         relay.TunnelID
@@ -75,7 +83,7 @@ type Tunnel struct {
 	mu         sync.RWMutex
 	sd         sd.SD
 	ttl        time.Duration
-	rw         *selector.RandomWeighted[*Connector]
+	// rw         *selector.RandomWeighted[*Connector]
 }
 
 func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {
@@ -85,7 +93,7 @@ func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {
 		t:     time.Now(),
 		close: make(chan struct{}),
 		ttl:   ttl,
-		rw:    selector.NewRandomWeighted[*Connector](),
+		// rw:    selector.NewRandomWeighted[*Connector](),
 	}
 	if t.ttl <= 0 {
 		t.ttl = defaultTTL
@@ -117,8 +125,14 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	rw := t.rw
-	rw.Reset()
+	// rw := t.rw
+	// rw.Reset()
+
+	if len(t.connectors) == 1 {
+		return t.connectors[0]
+	}
+
+	rw := selector.NewRandomWeighted[*Connector]()
 
 	found := false
 	for _, c := range t.connectors {
@@ -145,6 +159,22 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 	}
 
 	return rw.Next()
+}
+
+func (t *Tunnel) Close() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	select {
+	case <-t.close:
+	default:
+		for _, c := range t.connectors {
+			c.Close()
+		}
+		close(t.close)
+	}
+
+	return nil
 }
 
 func (t *Tunnel) CloseOnIdle() bool {
@@ -254,6 +284,22 @@ func (p *ConnectorPool) Get(network string, tid string) *Connector {
 	}
 
 	return t.GetConnector(network)
+}
+
+func (p *ConnectorPool) Close() error {
+	if p == nil {
+		return nil
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for k, v := range p.tunnels {
+		v.Close()
+		delete(p.tunnels, k)
+	}
+
+	return nil
 }
 
 func (p *ConnectorPool) closeIdles() {

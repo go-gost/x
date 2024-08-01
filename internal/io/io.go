@@ -13,3 +13,17 @@ func NewReadWriter(r io.Reader, w io.Writer) io.ReadWriter {
 		Writer: w,
 	}
 }
+
+type readWriteCloser struct {
+	io.Reader
+	io.Writer
+	io.Closer
+}
+
+func NewReadWriteCloser(r io.Reader, w io.Writer, c io.Closer) io.ReadWriteCloser {
+	return &readWriteCloser{
+		Reader: r,
+		Writer: w,
+		Closer: c,
+	}
+}

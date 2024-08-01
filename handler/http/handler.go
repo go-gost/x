@@ -279,6 +279,9 @@ func (h *httpHandler) handleProxy(rw, cc io.ReadWriter, req *http.Request, log l
 		err := func() error {
 			req, err := http.ReadRequest(bufio.NewReader(rw))
 			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
 				return err
 			}
 
