@@ -24,6 +24,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -236,7 +237,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	if req.Method != http.MethodConnect {
-		return h.handleProxy(rw, cc, req, log)
+		return h.handleProxy(xio.NewReadWriteCloser(rw, rw, conn), cc, req, log)
 	}
 
 	resp.StatusCode = http.StatusOK
@@ -261,50 +262,92 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	return nil
 }
 
-func (h *httpHandler) handleProxy(rw, cc io.ReadWriter, req *http.Request, log logger.Logger) (err error) {
-	req.Header.Del("Proxy-Connection")
+func (h *httpHandler) handleProxy(rw io.ReadWriteCloser, cc io.ReadWriter, req *http.Request, log logger.Logger) (err error) {
+	roundTrip := func(req *http.Request) error {
+		if req == nil {
+			return nil
+		}
 
-	if err = req.Write(cc); err != nil {
-		log.Error(err)
-		return err
-	}
+		resp := &http.Response{
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Header:     http.Header{},
+			StatusCode: http.StatusServiceUnavailable,
+		}
 
-	ch := make(chan error, 1)
+		// HTTP/1.0
+		if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+			if strings.ToLower(req.Header.Get("Connection")) == "keep-alive" {
+				req.Header.Del("Connection")
+			} else {
+				req.Header.Set("Connection", "close")
+			}
+		}
 
-	go func() {
-		ch <- netpkg.CopyBuffer(rw, cc, 32*1024)
-	}()
+		req.Header.Del("Proxy-Connection")
 
-	for {
-		err := func() error {
-			req, err := http.ReadRequest(bufio.NewReader(rw))
+		if err = req.Write(cc); err != nil {
+			resp.Write(rw)
+			return err
+		}
+
+		go func() {
+			res, err := http.ReadResponse(bufio.NewReader(cc), req)
 			if err != nil {
-				if err == io.EOF {
-					return nil
-				}
-				return err
+				h.options.Logger.Errorf("read response: %v", err)
+				resp.Write(rw)
+				return
 			}
 
 			if log.IsLevelEnabled(logger.TraceLevel) {
-				dump, _ := httputil.DumpRequest(req, false)
+				dump, _ := httputil.DumpResponse(res, false)
 				log.Trace(string(dump))
 			}
 
-			req.Header.Del("Proxy-Connection")
-
-			if err = req.Write(cc); err != nil {
-				return err
+			if res.Close {
+				defer rw.Close()
 			}
-			return nil
-		}()
-		ch <- err
 
-		if err != nil {
-			break
-		}
+			// HTTP/1.0
+			if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+				if !res.Close {
+					res.Header.Set("Connection", "keep-alive")
+				}
+				res.ProtoMajor = req.ProtoMajor
+				res.ProtoMinor = req.ProtoMinor
+			}
+
+			if err = res.Write(rw); err != nil {
+				rw.Close()
+				log.Errorf("write response: %v", err)
+			}
+		}()
+
+		return nil
 	}
 
-	return <-ch
+	if err = roundTrip(req); err != nil {
+		return err
+	}
+
+	for {
+		req, err := http.ReadRequest(bufio.NewReader(rw))
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+			return err
+		}
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpRequest(req, false)
+			log.Trace(string(dump))
+		}
+
+		if err = roundTrip(req); err != nil {
+			return err
+		}
+	}
 }
 
 func (h *httpHandler) decodeServerName(s string) (string, error) {
