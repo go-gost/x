@@ -78,7 +78,7 @@ func (*defaultRoute) Bind(ctx context.Context, network, address string, opts ...
 			ReadQueueSize:  options.UDPDataQueueSize,
 			ReadBufferSize: options.UDPDataBufferSize,
 			TTL:            options.UDPConnTTL,
-			KeepAlive:      true,
+			Keepalive:      true,
 			Logger:         logger,
 		})
 		return ln, err

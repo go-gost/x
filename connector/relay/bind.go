@@ -73,7 +73,7 @@ func (c *relayConnector) bindUDP(ctx context.Context, conn net.Conn, network, ad
 			ReadQueueSize:  opts.UDPDataQueueSize,
 			ReadBufferSize: opts.UDPDataBufferSize,
 			TTL:            opts.UDPConnTTL,
-			KeepAlive:      true,
+			Keepalive:      true,
 			Logger:         log,
 		})
 

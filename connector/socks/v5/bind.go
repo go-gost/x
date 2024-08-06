@@ -87,7 +87,7 @@ func (c *socks5Connector) bindUDP(ctx context.Context, conn net.Conn, network, a
 			ReadQueueSize:  opts.UDPDataQueueSize,
 			ReadBufferSize: opts.UDPDataBufferSize,
 			TTL:            opts.UDPConnTTL,
-			KeepAlive:      true,
+			Keepalive:      true,
 			Logger:         log,
 		})
 

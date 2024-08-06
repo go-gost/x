@@ -83,6 +83,9 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				log.Trace(string(dump))
 			}
 
+			resp.ProtoMajor = req.ProtoMajor
+			resp.ProtoMinor = req.ProtoMinor
+
 			var tunnelID relay.TunnelID
 			if ep.ingress != nil {
 				if rule := ep.ingress.GetRule(ctx, req.Host); rule != nil {

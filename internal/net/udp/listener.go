@@ -17,17 +17,16 @@ type ListenConfig struct {
 	ReadQueueSize  int
 	ReadBufferSize int
 	TTL            time.Duration
-	KeepAlive      bool
+	Keepalive      bool
 	Logger         logger.Logger
 }
 type listener struct {
 	conn     net.PacketConn
 	cqueue   chan net.Conn
 	connPool *connPool
-	// mux      sync.Mutex
-	closed  chan struct{}
-	errChan chan error
-	config  *ListenConfig
+	closed   chan struct{}
+	errChan  chan error
+	config   *ListenConfig
 }
 
 func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
@@ -42,9 +41,7 @@ func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
 		errChan: make(chan error, 1),
 		config:  cfg,
 	}
-	if cfg.KeepAlive {
-		ln.connPool = newConnPool(cfg.TTL).WithLogger(cfg.Logger)
-	}
+	ln.connPool = newConnPool(cfg.TTL).WithLogger(cfg.Logger)
 	go ln.listenLoop()
 
 	return ln
@@ -113,15 +110,12 @@ func (ln *listener) Close() error {
 }
 
 func (ln *listener) getConn(raddr net.Addr) *conn {
-	// ln.mux.Lock()
-	// defer ln.mux.Unlock()
-
 	c, ok := ln.connPool.Get(raddr.String())
-	if ok {
+	if ok && !c.isClosed() {
 		return c
 	}
 
-	c = newConn(ln.conn, ln.Addr(), raddr, ln.config.ReadQueueSize, ln.config.KeepAlive)
+	c = newConn(ln.conn, ln.Addr(), raddr, ln.config.ReadQueueSize, ln.config.Keepalive)
 	select {
 	case ln.cqueue <- c:
 		ln.connPool.Set(raddr.String(), c)
@@ -142,17 +136,17 @@ type conn struct {
 	idle       int32       // indicate the connection is idle
 	closed     chan struct{}
 	closeMutex sync.Mutex
-	keepAlive  bool
+	keepalive  bool
 }
 
-func newConn(c net.PacketConn, laddr, remoteAddr net.Addr, queueSize int, keepAlive bool) *conn {
+func newConn(c net.PacketConn, laddr, remoteAddr net.Addr, queueSize int, keepalive bool) *conn {
 	return &conn{
 		PacketConn: c,
 		localAddr:  laddr,
 		remoteAddr: remoteAddr,
 		rc:         make(chan []byte, queueSize),
 		closed:     make(chan struct{}),
-		keepAlive:  keepAlive,
+		keepalive:  keepalive,
 	}
 }
 
@@ -179,7 +173,7 @@ func (c *conn) Read(b []byte) (n int, err error) {
 }
 
 func (c *conn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
-	if !c.keepAlive {
+	if !c.keepalive {
 		defer c.Close()
 	}
 	return c.PacketConn.WriteTo(b, addr)
@@ -199,6 +193,15 @@ func (c *conn) Close() error {
 		close(c.closed)
 	}
 	return nil
+}
+
+func (c *conn) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *conn) LocalAddr() net.Addr {

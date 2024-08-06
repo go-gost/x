@@ -64,7 +64,7 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 			ReadQueueSize:  l.md.readQueueSize,
 			ReadBufferSize: l.md.readBufferSize,
 			TTL:            l.md.ttl,
-			KeepAlive:      true,
+			Keepalive:      true,
 			Logger:         l.logger,
 		})
 	return
