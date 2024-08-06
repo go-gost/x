@@ -42,12 +42,6 @@ func (r *Router) Options() *chain.RouterOptions {
 }
 
 func (r *Router) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	if r.options.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
-		defer cancel()
-	}
-
 	host := address
 	if h, _, _ := net.SplitHostPort(address); h != "" {
 		host = h
@@ -93,6 +87,13 @@ func (r *Router) dial(ctx context.Context, network, address string) (conn net.Co
 	r.options.Logger.Debugf("dial %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
+		ctx := ctx
+		if r.options.Timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
+			defer cancel()
+		}
+
 		var ipAddr string
 		ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, r.options.Logger)
 		if err != nil {
@@ -133,12 +134,6 @@ func (r *Router) dial(ctx context.Context, network, address string) (conn net.Co
 }
 
 func (r *Router) Bind(ctx context.Context, network, address string, opts ...chain.BindOption) (ln net.Listener, err error) {
-	if r.options.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
-		defer cancel()
-	}
-
 	count := r.options.Retries + 1
 	if count <= 0 {
 		count = 1
@@ -146,6 +141,13 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 	r.options.Logger.Debugf("bind on %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
+		ctx := ctx
+		if r.options.Timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
+			defer cancel()
+		}
+
 		var route chain.Route
 		if r.options.Chain != nil {
 			route = r.options.Chain.Route(ctx, network, address)
