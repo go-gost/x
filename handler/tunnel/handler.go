@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	stats_util "github.com/go-gost/x/internal/util/stats"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
@@ -45,6 +46,8 @@ type tunnelHandler struct {
 	ep       *entrypoint
 	md       metadata
 	log      logger.Logger
+	stats    *stats_util.HandlerStats
+	cancel   context.CancelFunc
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -55,6 +58,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &tunnelHandler{
 		options: options,
+		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -95,6 +99,13 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	}
 	if err = h.initEntrypoint(); err != nil {
 		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+
+	if h.options.Observer != nil {
+		go h.observeStats(ctx)
 	}
 
 	return nil
@@ -268,6 +279,11 @@ func (h *tunnelHandler) Close() error {
 		h.epSvc.Close()
 	}
 	h.pool.Close()
+
+	if h.cancel != nil {
+		h.cancel()
+	}
+
 	return nil
 }
 
@@ -281,4 +297,26 @@ func (h *tunnelHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+func (h *tunnelHandler) observeStats(ctx context.Context) {
+	if h.options.Observer == nil {
+		return
+	}
+
+	d := h.md.observePeriod
+	if d < time.Millisecond {
+		d = 5 * time.Second
+	}
+	ticker := time.NewTicker(d)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			h.options.Observer.Observe(ctx, h.stats.Events())
+		case <-ctx.Done():
+			return
+		}
+	}
 }

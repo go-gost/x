@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
@@ -60,7 +61,11 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		return
 	}
 
-	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd), h.md.tunnelTTL)
+	var stats *stats.Stats
+	if h.stats != nil {
+		stats = h.stats.Stats(tunnelID.String())
+	}
+	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd, stats), h.md.tunnelTTL)
 	if h.md.ingress != nil {
 		h.md.ingress.SetRule(ctx, &ingress.Rule{
 			Hostname: endpoint,

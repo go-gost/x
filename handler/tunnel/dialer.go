@@ -30,7 +30,7 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 			break
 		}
 
-		conn, err = c.Session().GetConn()
+		conn, err = c.GetConn()
 		if err != nil {
 			d.log.Error(err)
 			continue

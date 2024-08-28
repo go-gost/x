@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"syscall"
 
 	"github.com/go-gost/core/metadata"
@@ -18,17 +19,23 @@ var (
 
 type conn struct {
 	net.Conn
-	stats *stats.Stats
+	stats  *stats.Stats
+	closed chan struct{}
+	mu     sync.Mutex
 }
 
-func WrapConn(c net.Conn, stats *stats.Stats) net.Conn {
-	if stats == nil {
+func WrapConn(c net.Conn, pStats *stats.Stats) net.Conn {
+	if pStats == nil {
 		return c
 	}
 
+	pStats.Add(stats.KindTotalConns, 1)
+	pStats.Add(stats.KindCurrentConns, 1)
+
 	return &conn{
-		Conn:  c,
-		stats: stats,
+		Conn:   c,
+		stats:  pStats,
+		closed: make(chan struct{}),
 	}
 }
 
@@ -42,6 +49,21 @@ func (c *conn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
 	c.stats.Add(stats.KindOutputBytes, int64(n))
 	return
+}
+
+func (c *conn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	select {
+	case <-c.closed:
+		return nil
+	default:
+		close(c.closed)
+	}
+
+	c.stats.Add(stats.KindCurrentConns, -1)
+	return c.Conn.Close()
 }
 
 func (c *conn) SyscallConn() (rc syscall.RawConn, err error) {

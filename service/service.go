@@ -187,8 +187,6 @@ func (s *defaultService) Serve() error {
 			s.setState(StateReady)
 		}
 
-		s.status.stats.Add(stats.KindTotalConns, 1)
-
 		clientAddr := conn.RemoteAddr().String()
 		clientIP := clientAddr
 		if h, _, _ := net.SplitHostPort(clientAddr); h != "" {
@@ -208,16 +206,13 @@ func (s *defaultService) Serve() error {
 			}
 		}
 		if s.options.admission != nil &&
-			!s.options.admission.Admit(ctx, conn.RemoteAddr().String()) {
+			!s.options.admission.Admit(ctx, clientAddr) {
 			conn.Close()
-			s.options.logger.Debugf("admission: %s is denied", conn.RemoteAddr())
+			s.options.logger.Debugf("admission: %s is denied", clientAddr)
 			continue
 		}
 
 		go func() {
-			s.status.stats.Add(stats.KindCurrentConns, 1)
-			defer s.status.stats.Add(stats.KindCurrentConns, -1)
-
 			if v := xmetrics.GetCounter(xmetrics.MetricServiceRequestsCounter,
 				metrics.Labels{"service": s.name, "client": clientIP}); v != nil {
 				v.Inc()

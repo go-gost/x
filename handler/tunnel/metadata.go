@@ -29,6 +29,7 @@ type metadata struct {
 	ingress                 ingress.Ingress
 	sd                      sd.SD
 	muxCfg                  *mux.Config
+	observePeriod           time.Duration
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -80,6 +81,8 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if h.md.muxCfg.Version == 0 {
 		h.md.muxCfg.Version = 2
 	}
+
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
 
 	return
 }
