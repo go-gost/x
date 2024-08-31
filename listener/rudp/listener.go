@@ -4,14 +4,18 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	climiter "github.com/go-gost/x/limiter/conn/wrapper"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -81,6 +85,14 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 		if err != nil {
 			return nil, listener.NewAcceptError(err)
 		}
+
+		ln = limiter_wrapper.WrapListener(
+			l.options.Service,
+			ln,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		)
+		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
+
 		l.setListener(ln)
 	}
 
@@ -102,7 +114,14 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 		uc := metrics.WrapUDPConn(l.options.Service, pc)
 		uc = stats.WrapUDPConn(uc, l.options.Stats)
 		uc = admission.WrapUDPConn(l.options.Admission, uc)
-		conn = limiter.WrapUDPConn(l.options.TrafficLimiter, uc)
+		conn = limiter_wrapper.WrapUDPConn(
+			uc,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			"",
+			limiter.ScopeOption(limiter.ScopeConn),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(conn.LocalAddr().Network()),
+		)
 	}
 
 	return

@@ -5,11 +5,13 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
@@ -92,7 +94,14 @@ func (l *tapListener) listenLoop() {
 			}
 			c = metrics.WrapConn(l.options.Service, c)
 			c = stats.WrapConn(c, l.options.Stats)
-			c = limiter.WrapConn(l.options.TrafficLimiter, c)
+			c = limiter_wrapper.WrapConn(
+				c,
+				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+				c.RemoteAddr().String(),
+				limiter.ScopeOption(limiter.ScopeService),
+				limiter.ServiceOption(l.options.Service),
+				limiter.NetworkOption(c.LocalAddr().Network()),
+			)
 			c = withMetadata(mdx.NewMetadata(map[string]any{
 				"config": l.md.config,
 			}), c)

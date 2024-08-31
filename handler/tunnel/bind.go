@@ -65,7 +65,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if h.stats != nil {
 		stats = h.stats.Stats(tunnelID.String())
 	}
-	h.pool.Add(tunnelID, NewConnector(connectorID, tunnelID, h.id, session, h.md.sd, stats), h.md.tunnelTTL)
+
+	c := NewConnector(connectorID, tunnelID, h.id, session, &ConnectorOptions{
+		service: h.options.Service,
+		sd:      h.md.sd,
+		stats:   stats,
+		limiter: h.limiter,
+	})
+
+	h.pool.Add(tunnelID, c, h.md.tunnelTTL)
 	if h.md.ingress != nil {
 		h.md.ingress.SetRule(ctx, &ingress.Rule{
 			Hostname: endpoint,

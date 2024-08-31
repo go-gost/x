@@ -6,12 +6,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
 
 	"github.com/go-gost/core/observer/stats"
+	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/selector"
 	"github.com/google/uuid"
@@ -21,25 +24,34 @@ const (
 	MaxWeight uint8 = 0xff
 )
 
-type Connector struct {
-	id    relay.ConnectorID
-	tid   relay.TunnelID
-	node  string
-	sd    sd.SD
-	t     time.Time
-	s     *mux.Session
-	stats *stats.Stats
+type ConnectorOptions struct {
+	service string
+	sd      sd.SD
+	stats   *stats.Stats
+	limiter traffic.TrafficLimiter
 }
 
-func NewConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.Session, sd sd.SD, stats *stats.Stats) *Connector {
+type Connector struct {
+	id   relay.ConnectorID
+	tid  relay.TunnelID
+	node string
+	s    *mux.Session
+	t    time.Time
+	opts *ConnectorOptions
+}
+
+func NewConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.Session, opts *ConnectorOptions) *Connector {
+	if opts == nil {
+		opts = &ConnectorOptions{}
+	}
+
 	c := &Connector{
-		id:    id,
-		tid:   tid,
-		node:  node,
-		sd:    sd,
-		stats: stats,
-		t:     time.Now(),
-		s:     s,
+		id:   id,
+		tid:  tid,
+		node: node,
+		s:    s,
+		t:    time.Now(),
+		opts: opts,
 	}
 	go c.accept()
 	return c
@@ -51,8 +63,8 @@ func (c *Connector) accept() {
 		if err != nil {
 			logger.Default().Errorf("connector %s: %v", c.id, err)
 			c.s.Close()
-			if c.sd != nil {
-				c.sd.Deregister(context.Background(), &sd.Service{
+			if c.opts.sd != nil {
+				c.opts.sd.Deregister(context.Background(), &sd.Service{
 					ID:   c.id.String(),
 					Name: c.tid.String(),
 					Node: c.node,
@@ -78,9 +90,22 @@ func (c *Connector) GetConn() (net.Conn, error) {
 		return nil, err
 	}
 
-	if c.stats != nil {
-		conn = stats_wrapper.WrapConn(conn, c.stats)
+	conn = stats_wrapper.WrapConn(conn, c.opts.stats)
+
+	network := "tcp"
+	if c.id.IsUDP() {
+		network = "udp"
 	}
+	conn = traffic_wrapper.WrapConn(
+		conn,
+		c.opts.limiter,
+		c.tid.String(),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.ServiceOption(c.opts.service),
+		limiter.ClientOption(c.tid.String()),
+		limiter.NetworkOption(network),
+		limiter.SrcOption(conn.RemoteAddr().String()),
+	)
 	return conn, nil
 }
 

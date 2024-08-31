@@ -7,74 +7,43 @@ import (
 	"io"
 	"net"
 	"syscall"
-	"time"
 
-	limiter "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
-	"github.com/patrickmn/go-cache"
 )
 
 var (
 	errUnsupport = errors.New("unsupported operation")
 )
 
-// serverConn is a server side Conn with traffic limiter supported.
-type serverConn struct {
+// limitConn is a Conn with traffic limiter supported.
+type limitConn struct {
 	net.Conn
-	rbuf       bytes.Buffer
-	limiter    limiter.TrafficLimiter
-	limiterIn  limiter.Limiter
-	limiterOut limiter.Limiter
-	expIn      int64
-	expOut     int64
-	opts       []limiter.Option
+	rbuf    bytes.Buffer
+	limiter traffic.TrafficLimiter
+	opts    []limiter.Option
+	key     string
 }
 
-func WrapConn(tlimiter limiter.TrafficLimiter, c net.Conn) net.Conn {
+func WrapConn(c net.Conn, tlimiter traffic.TrafficLimiter, key string, opts ...limiter.Option) net.Conn {
 	if tlimiter == nil {
 		return c
 	}
 
-	return &serverConn{
+	return &limitConn{
 		Conn:    c,
 		limiter: tlimiter,
-		opts: []limiter.Option{
-			limiter.NetworkOption(c.LocalAddr().Network()),
-			limiter.SrcOption(c.RemoteAddr().String()),
-			limiter.AddrOption(c.LocalAddr().String()),
-		},
+		opts:    opts,
+		key:     key,
 	}
 }
 
-func (c *serverConn) getInLimiter() limiter.Limiter {
-	now := time.Now().UnixNano()
-	// cache the limiter for 60s
-	if c.limiter != nil && time.Duration(now-c.expIn) > 60*time.Second {
-		if lim := c.limiter.In(context.Background(), c.RemoteAddr().String()); lim != nil {
-			c.limiterIn = lim
-		}
-		c.expIn = now
-	}
-	return c.limiterIn
-}
-
-func (c *serverConn) getOutLimiter() limiter.Limiter {
-	now := time.Now().UnixNano()
-	// cache the limiter for 60s
-	if c.limiter != nil && time.Duration(now-c.expOut) > 60*time.Second {
-		if lim := c.limiter.Out(context.Background(), c.RemoteAddr().String()); lim != nil {
-			c.limiterOut = lim
-		}
-		c.expOut = now
-	}
-	return c.limiterOut
-}
-
-func (c *serverConn) Read(b []byte) (n int, err error) {
-	limiter := c.getInLimiter()
-	if limiter == nil {
+func (c *limitConn) Read(b []byte) (n int, err error) {
+	limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+	if limiter == nil || limiter.Limit() <= 0 {
 		return c.Conn.Read(b)
 	}
 
@@ -102,9 +71,9 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 	return
 }
 
-func (c *serverConn) Write(b []byte) (n int, err error) {
-	limiter := c.getOutLimiter()
-	if limiter == nil {
+func (c *limitConn) Write(b []byte) (n int, err error) {
+	limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+	if limiter == nil || limiter.Limit() <= 0 {
 		return c.Conn.Write(b)
 	}
 
@@ -121,7 +90,7 @@ func (c *serverConn) Write(b []byte) (n int, err error) {
 	return
 }
 
-func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
+func (c *limitConn) SyscallConn() (rc syscall.RawConn, err error) {
 	if sc, ok := c.Conn.(syscall.Conn); ok {
 		rc, err = sc.SyscallConn()
 		return
@@ -130,7 +99,7 @@ func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 	return
 }
 
-func (c *serverConn) Metadata() metadata.Metadata {
+func (c *limitConn) Metadata() metadata.Metadata {
 	if md, ok := c.Conn.(metadata.Metadatable); ok {
 		return md.Metadata()
 	}
@@ -139,69 +108,21 @@ func (c *serverConn) Metadata() metadata.Metadata {
 
 type packetConn struct {
 	net.PacketConn
-	limiter   limiter.TrafficLimiter
-	inLimits  *cache.Cache
-	outLimits *cache.Cache
+	limiter traffic.TrafficLimiter
+	opts    []limiter.Option
+	key     string
 }
 
-func WrapPacketConn(lim limiter.TrafficLimiter, pc net.PacketConn) net.PacketConn {
+func WrapPacketConn(pc net.PacketConn, lim traffic.TrafficLimiter, key string, opts ...limiter.Option) net.PacketConn {
 	if lim == nil {
 		return pc
 	}
 	return &packetConn{
 		PacketConn: pc,
 		limiter:    lim,
-		inLimits:   cache.New(time.Second, 10*time.Second),
-		outLimits:  cache.New(time.Second, 10*time.Second),
+		opts:       opts,
+		key:        key,
 	}
-}
-
-func (c *packetConn) getInLimiter(addr net.Addr) limiter.Limiter {
-	if c.limiter == nil {
-		return nil
-	}
-
-	lim, ok := func() (lim limiter.Limiter, ok bool) {
-		v, ok := c.inLimits.Get(addr.String())
-		if ok {
-			if v != nil {
-				lim = v.(limiter.Limiter)
-			}
-		}
-		return
-	}()
-	if ok {
-		return lim
-	}
-
-	lim = c.limiter.In(context.Background(), addr.String())
-	c.inLimits.Set(addr.String(), lim, 0)
-
-	return lim
-}
-
-func (c *packetConn) getOutLimiter(addr net.Addr) limiter.Limiter {
-	if c.limiter == nil {
-		return nil
-	}
-
-	lim, ok := func() (lim limiter.Limiter, ok bool) {
-		v, ok := c.outLimits.Get(addr.String())
-		if ok {
-			if v != nil {
-				lim = v.(limiter.Limiter)
-			}
-		}
-		return
-	}()
-	if ok {
-		return lim
-	}
-
-	lim = c.limiter.Out(context.Background(), addr.String())
-	c.outLimits.Set(addr.String(), lim, 0)
-
-	return lim
 }
 
 func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
@@ -211,8 +132,8 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 
-		limiter := c.getInLimiter(addr)
-		if limiter == nil {
+		limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+		if limiter == nil || limiter.Limit() <= 0 {
 			return
 		}
 
@@ -227,7 +148,8 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	// discard when exceed the limit size.
-	if limiter := c.getOutLimiter(addr); limiter != nil &&
+	limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+	if limiter != nil && limiter.Limit() > 0 &&
 		limiter.Wait(context.Background(), len(p)) < len(p) {
 		n = len(p)
 		return
@@ -245,66 +167,18 @@ func (c *packetConn) Metadata() metadata.Metadata {
 
 type udpConn struct {
 	net.PacketConn
-	limiter   limiter.TrafficLimiter
-	inLimits  *cache.Cache
-	outLimits *cache.Cache
+	limiter traffic.TrafficLimiter
+	opts    []limiter.Option
+	key     string
 }
 
-func WrapUDPConn(limiter limiter.TrafficLimiter, pc net.PacketConn) udp.Conn {
+func WrapUDPConn(pc net.PacketConn, limiter traffic.TrafficLimiter, key string, opts ...limiter.Option) udp.Conn {
 	return &udpConn{
 		PacketConn: pc,
 		limiter:    limiter,
-		inLimits:   cache.New(time.Second, 10*time.Second),
-		outLimits:  cache.New(time.Second, 10*time.Second),
+		opts:       opts,
+		key:        key,
 	}
-}
-
-func (c *udpConn) getInLimiter(addr net.Addr) limiter.Limiter {
-	if c.limiter == nil {
-		return nil
-	}
-
-	lim, ok := func() (lim limiter.Limiter, ok bool) {
-		v, ok := c.inLimits.Get(addr.String())
-		if ok {
-			if v != nil {
-				lim = v.(limiter.Limiter)
-			}
-		}
-		return
-	}()
-	if ok {
-		return lim
-	}
-
-	lim = c.limiter.In(context.Background(), addr.String())
-	c.inLimits.Set(addr.String(), lim, 0)
-
-	return lim
-}
-
-func (c *udpConn) getOutLimiter(addr net.Addr) limiter.Limiter {
-	if c.limiter == nil {
-		return nil
-	}
-
-	lim, ok := func() (lim limiter.Limiter, ok bool) {
-		v, ok := c.outLimits.Get(addr.String())
-		if ok {
-			if v != nil {
-				lim = v.(limiter.Limiter)
-			}
-		}
-		return
-	}()
-	if ok {
-		return lim
-	}
-
-	lim = c.limiter.Out(context.Background(), addr.String())
-	c.outLimits.Set(addr.String(), lim, 0)
-
-	return lim
 }
 
 func (c *udpConn) RemoteAddr() net.Addr {
@@ -329,12 +203,34 @@ func (c *udpConn) SetWriteBuffer(n int) error {
 }
 
 func (c *udpConn) Read(b []byte) (n int, err error) {
-	if nc, ok := c.PacketConn.(io.Reader); ok {
-		n, err = nc.Read(b)
+	nc, ok := c.PacketConn.(io.Reader)
+	if !ok {
+		err = errUnsupport
 		return
 	}
-	err = errUnsupport
-	return
+
+	for {
+		n, err = nc.Read(b)
+		if err != nil {
+			return
+		}
+
+		if c.limiter == nil {
+			return
+		}
+
+		limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+		if limiter == nil || limiter.Limit() <= 0 {
+			return
+		}
+
+		// discard when exceed the limit size.
+		if limiter.Wait(context.Background(), n) < n {
+			continue
+		}
+
+		return
+	}
 }
 
 func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
@@ -344,105 +240,160 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 
+		if c.limiter == nil {
+			return
+		}
+
+		limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+		if limiter == nil || limiter.Limit() <= 0 {
+			return
+		}
+
 		// discard when exceed the limit size.
-		if limiter := c.getInLimiter(addr); limiter != nil &&
-			limiter.Wait(context.Background(), n) < n {
+		if limiter.Wait(context.Background(), n) < n {
+			continue
+		}
+
+		return
+	}
+}
+
+func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
+	nc, ok := c.PacketConn.(udp.ReadUDP)
+	if !ok {
+		err = errUnsupport
+		return
+	}
+
+	for {
+		n, addr, err = nc.ReadFromUDP(b)
+		if err != nil {
+			return
+		}
+
+		if c.limiter == nil {
+			return
+		}
+
+		limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+		if limiter == nil || limiter.Limit() <= 0 {
+			return
+		}
+
+		// discard when exceed the limit size.
+		if limiter.Wait(context.Background(), n) < n {
+			continue
+		}
+
+		return
+	}
+}
+
+func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
+	nc, ok := c.PacketConn.(udp.ReadUDP)
+	if !ok {
+		err = errUnsupport
+		return
+	}
+
+	for {
+		n, oobn, flags, addr, err = nc.ReadMsgUDP(b, oob)
+		if err != nil {
+			return
+		}
+
+		if c.limiter == nil {
+			return
+		}
+
+		limiter := c.limiter.In(context.Background(), c.key, c.opts...)
+		if limiter == nil || limiter.Limit() <= 0 {
+			return
+		}
+
+		// discard when exceed the limit size.
+		if limiter.Wait(context.Background(), n) < n {
 			continue
 		}
 		return
 	}
 }
 
-func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
-	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
-		for {
-			n, addr, err = nc.ReadFromUDP(b)
-			if err != nil {
-				return
-			}
-
-			// discard when exceed the limit size.
-			if limiter := c.getInLimiter(addr); limiter != nil &&
-				limiter.Wait(context.Background(), n) < n {
-				continue
-			}
-			return
-		}
-	}
-	err = errUnsupport
-	return
-}
-
-func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
-	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
-		for {
-			n, oobn, flags, addr, err = nc.ReadMsgUDP(b, oob)
-			if err != nil {
-				return
-			}
-
-			// discard when exceed the limit size.
-			if limiter := c.getInLimiter(addr); limiter != nil &&
-				limiter.Wait(context.Background(), n) < n {
-				continue
-			}
-			return
-		}
-	}
-	err = errUnsupport
-	return
-}
-
-func (c *udpConn) Write(b []byte) (n int, err error) {
-	if nc, ok := c.PacketConn.(io.Writer); ok {
-		n, err = nc.Write(b)
+func (c *udpConn) Write(p []byte) (n int, err error) {
+	nc, ok := c.PacketConn.(io.Writer)
+	if !ok {
+		err = errUnsupport
 		return
 	}
-	err = errUnsupport
+
+	if c.limiter != nil {
+		// discard when exceed the limit size.
+		limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+		if limiter != nil && limiter.Limit() > 0 &&
+			limiter.Wait(context.Background(), len(p)) < len(p) {
+			n = len(p)
+			return
+		}
+	}
+
+	n, err = nc.Write(p)
 	return
 }
 
 func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	// discard when exceed the limit size.
-	if limiter := c.getOutLimiter(addr); limiter != nil &&
-		limiter.Wait(context.Background(), len(p)) < len(p) {
-		n = len(p)
-		return
+	if c.limiter != nil {
+		// discard when exceed the limit size.
+		limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+		if limiter != nil && limiter.Limit() > 0 &&
+			limiter.Wait(context.Background(), len(p)) < len(p) {
+			n = len(p)
+			return
+		}
 	}
 
 	n, err = c.PacketConn.WriteTo(p, addr)
 	return
 }
 
-func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
-	// discard when exceed the limit size.
-	if limiter := c.getOutLimiter(addr); limiter != nil &&
-		limiter.Wait(context.Background(), len(b)) < len(b) {
-		n = len(b)
+func (c *udpConn) WriteToUDP(p []byte, addr *net.UDPAddr) (n int, err error) {
+	nc, ok := c.PacketConn.(udp.WriteUDP)
+	if !ok {
+		err = errUnsupport
 		return
 	}
 
-	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
-		n, err = nc.WriteToUDP(b, addr)
-		return
+	if c.limiter != nil {
+		// discard when exceed the limit size.
+		limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+		if limiter != nil && limiter.Limit() > 0 &&
+			limiter.Wait(context.Background(), len(p)) < len(p) {
+			n = len(p)
+			return
+		}
 	}
-	err = errUnsupport
+
+	n, err = nc.WriteToUDP(p, addr)
 	return
 }
 
-func (c *udpConn) WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
-	// discard when exceed the limit size.
-	if limiter := c.getOutLimiter(addr); limiter != nil &&
-		limiter.Wait(context.Background(), len(b)) < len(b) {
-		n = len(b)
+func (c *udpConn) WriteMsgUDP(p, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
+	nc, ok := c.PacketConn.(udp.WriteUDP)
+	if !ok {
+		err = errUnsupport
 		return
 	}
 
-	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
-		n, oobn, err = nc.WriteMsgUDP(b, oob, addr)
-		return
+	if c.limiter != nil {
+		// discard when exceed the limit size.
+		limiter := c.limiter.Out(context.Background(), c.key, c.opts...)
+		if limiter != nil && limiter.Limit() > 0 &&
+			limiter.Wait(context.Background(), len(p)) < len(p) {
+			n = len(p)
+			return
+		}
 	}
-	err = errUnsupport
+
+	n, oobn, err = nc.WriteMsgUDP(p, oob, addr)
 	return
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -14,8 +15,9 @@ import (
 	"github.com/go-gost/gosocks4"
 	ctxvalue "github.com/go-gost/x/ctx"
 	netpkg "github.com/go-gost/x/internal/net"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
-	"github.com/go-gost/x/limiter/traffic/wrapper"
+	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
 )
@@ -34,6 +36,7 @@ type socks4Handler struct {
 	md      metadata
 	options handler.Options
 	stats   *stats_util.HandlerStats
+	limiter traffic.TrafficLimiter
 	cancel  context.CancelFunc
 }
 
@@ -45,7 +48,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &socks4Handler{
 		options: options,
-		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -58,7 +60,12 @@ func (h *socks4Handler) Init(md md.Metadata) (err error) {
 	h.cancel = cancel
 
 	if h.options.Observer != nil {
+		h.stats = stats_util.NewHandlerStats(h.options.Service)
 		go h.observeStats(ctx)
+	}
+
+	if limiter := h.options.Limiter; limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
 	return nil
@@ -165,11 +172,16 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	}
 
 	clientID := ctxvalue.ClientIDFromContext(ctx)
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
-		traffic.NetworkOption("tcp"),
-		traffic.AddrOption(addr),
-		traffic.ClientOption(string(clientID)),
-		traffic.SrcOption(conn.RemoteAddr().String()),
+	rw := traffic_wrapper.WrapReadWriter(
+		h.limiter,
+		conn,
+		string(clientID),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.ServiceOption(h.options.Service),
+		limiter.NetworkOption("tcp"),
+		limiter.AddrOption(addr),
+		limiter.ClientOption(string(clientID)),
+		limiter.SrcOption(conn.RemoteAddr().String()),
 	)
 	if h.options.Observer != nil {
 		pstats := h.stats.Stats(string(clientID))

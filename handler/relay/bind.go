@@ -92,6 +92,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	epListener := newTCPListener(ln,
 		listener.AddrOption(address),
 		listener.ServiceOption(serviceName),
+		listener.TrafficLimiterOption(h.options.Limiter),
 		listener.LoggerOption(log.WithFields(map[string]any{
 			"kind": "listener",
 		})),

@@ -19,13 +19,15 @@ import (
 
 	"github.com/asaskevich/govalidator"
 	"github.com/go-gost/core/handler"
-	traffic "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -40,6 +42,7 @@ type httpHandler struct {
 	md      metadata
 	options handler.Options
 	stats   *stats_util.HandlerStats
+	limiter traffic.TrafficLimiter
 	cancel  context.CancelFunc
 }
 
@@ -51,7 +54,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &httpHandler{
 		options: options,
-		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -64,7 +66,12 @@ func (h *httpHandler) Init(md md.Metadata) error {
 	h.cancel = cancel
 
 	if h.options.Observer != nil {
+		h.stats = stats_util.NewHandlerStats(h.options.Service)
 		go h.observeStats(ctx)
+	}
+
+	if limiter := h.options.Limiter; limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
 	return nil
@@ -222,11 +229,16 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	defer cc.Close()
 
-	rw := traffic_wrapper.WrapReadWriter(h.options.Limiter, conn,
-		traffic.NetworkOption(network),
-		traffic.AddrOption(addr),
-		traffic.ClientOption(clientID),
-		traffic.SrcOption(conn.RemoteAddr().String()),
+	rw := traffic_wrapper.WrapReadWriter(
+		h.limiter,
+		conn,
+		clientID,
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.ServiceOption(h.options.Service),
+		limiter.NetworkOption(network),
+		limiter.AddrOption(addr),
+		limiter.ClientOption(clientID),
+		limiter.SrcOption(conn.RemoteAddr().String()),
 	)
 	if h.options.Observer != nil {
 		pstats := h.stats.Stats(clientID)

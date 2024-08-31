@@ -3,22 +3,25 @@ package wrapper
 import (
 	"net"
 
-	limiter "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/traffic"
 )
 
 type listener struct {
 	net.Listener
-	limiter limiter.TrafficLimiter
+	limiter traffic.TrafficLimiter
+	service string
 }
 
-func WrapListener(limiter limiter.TrafficLimiter, ln net.Listener) net.Listener {
+func WrapListener(service string, ln net.Listener, limiter traffic.TrafficLimiter) net.Listener {
 	if limiter == nil {
 		return ln
 	}
 
 	return &listener{
-		limiter:  limiter,
 		Listener: ln,
+		limiter:  limiter,
+		service:  service,
 	}
 }
 
@@ -28,5 +31,9 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return WrapConn(ln.limiter, c), nil
+	return WrapConn(c, ln.limiter, "",
+		limiter.ScopeOption(limiter.ScopeService),
+		limiter.ServiceOption(ln.service),
+		limiter.NetworkOption(ln.Addr().Network()),
+	), nil
 }

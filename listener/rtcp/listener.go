@@ -4,15 +4,18 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -81,7 +84,11 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 		ln = metrics.WrapListener(l.options.Service, ln)
 		ln = stats.WrapListener(ln, l.options.Stats)
 		ln = admission.WrapListener(l.options.Admission, ln)
-		ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
+		ln = limiter_wrapper.WrapListener(
+			l.options.Service,
+			ln,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		)
 		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 		l.setListener(ln)
 	}
@@ -99,6 +106,17 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 		l.setListener(nil)
 		return nil, listener.NewAcceptError(err)
 	}
+
+	conn = limiter_wrapper.WrapConn(
+		conn,
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		conn.RemoteAddr().String(),
+		limiter.ScopeOption(limiter.ScopeConn),
+		limiter.ServiceOption(l.options.Service),
+		limiter.NetworkOption(conn.LocalAddr().Network()),
+		limiter.SrcOption(conn.RemoteAddr().String()),
+	)
+
 	return
 }
 

@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/units"
-	limiter "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/patrickmn/go-cache"
@@ -93,7 +94,7 @@ type trafficLimiter struct {
 	options    options
 }
 
-func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
+func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
@@ -120,20 +121,35 @@ func NewTrafficLimiter(opts ...Option) limiter.TrafficLimiter {
 }
 
 // In obtains a traffic input limiter based on key.
-// The key should be client connection address.
-func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Option) limiter.Limiter {
-	var lims []limiter.Limiter
-
-	// service level limiter
-	if lim, ok := l.inLimits.Get(GlobalLimitKey); ok && lim != nil {
-		lims = append(lims, lim.(limiter.Limiter))
+// For connection scope, the key should be client connection address.
+func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
+	var options limiter.Options
+	for _, opt := range opts {
+		opt(&options)
 	}
+
+	switch options.Scope {
+	case limiter.ScopeService:
+		if lim, ok := l.inLimits.Get(GlobalLimitKey); ok && lim != nil {
+			return lim.(traffic.Limiter)
+		}
+		return nil
+
+	case limiter.ScopeClient:
+		return nil
+
+	case limiter.ScopeConn:
+		fallthrough
+	default:
+	}
+
+	var lims []traffic.Limiter
 
 	// connection level limiter
 	if lim, ok := l.connInLimits.Get(key); ok {
 		if lim != nil {
 			// cached connection level limiter
-			lims = append(lims, lim.(limiter.Limiter))
+			lims = append(lims, lim.(traffic.Limiter))
 			// reset expiration
 			l.connInLimits.Set(key, lim, defaultExpiration)
 		}
@@ -153,7 +169,7 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 	if lim, ok := l.inLimits.Get(host); ok {
 		// cached IP limiter
 		if lim != nil {
-			lims = append(lims, lim.(limiter.Limiter))
+			lims = append(lims, lim.(traffic.Limiter))
 		}
 	} else {
 		l.mu.RLock()
@@ -171,7 +187,7 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 		}
 	}
 
-	var lim limiter.Limiter
+	var lim traffic.Limiter
 	if len(lims) > 0 {
 		lim = newLimiterGroup(lims...)
 	}
@@ -184,20 +200,35 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 }
 
 // Out obtains a traffic output limiter based on key.
-// The key should be client connection address.
-func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Option) limiter.Limiter {
-	var lims []limiter.Limiter
-
-	// service level limiter
-	if lim, ok := l.outLimits.Get(GlobalLimitKey); ok && lim != nil {
-		lims = append(lims, lim.(limiter.Limiter))
+// For connection scope, the key should be client connection address.
+func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
+	var options limiter.Options
+	for _, opt := range opts {
+		opt(&options)
 	}
+
+	switch options.Scope {
+	case limiter.ScopeService:
+		if lim, ok := l.outLimits.Get(GlobalLimitKey); ok && lim != nil {
+			return lim.(traffic.Limiter)
+		}
+		return nil
+
+	case limiter.ScopeClient:
+		return nil
+
+	case limiter.ScopeConn:
+		fallthrough
+	default:
+	}
+
+	var lims []traffic.Limiter
 
 	// connection level limiter
 	if lim, ok := l.connOutLimits.Get(key); ok {
 		if lim != nil {
 			// cached connection level limiter
-			lims = append(lims, lim.(limiter.Limiter))
+			lims = append(lims, lim.(traffic.Limiter))
 			// reset expiration
 			l.connOutLimits.Set(key, lim, defaultExpiration)
 		}
@@ -217,7 +248,7 @@ func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Op
 	if lim, ok := l.outLimits.Get(host); ok {
 		if lim != nil {
 			// cached IP level limiter
-			lims = append(lims, lim.(limiter.Limiter))
+			lims = append(lims, lim.(traffic.Limiter))
 		}
 	} else {
 		l.mu.RLock()
@@ -235,7 +266,7 @@ func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Op
 		}
 	}
 
-	var lim limiter.Limiter
+	var lim traffic.Limiter
 	if len(lims) > 0 {
 		lim = newLimiterGroup(lims...)
 	}
@@ -278,7 +309,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 	{
 		value := values[GlobalLimitKey]
 		if v, _ := l.inLimits.Get(GlobalLimitKey); v != nil {
-			lim := v.(limiter.Limiter)
+			lim := v.(traffic.Limiter)
 			if value.in <= 0 {
 				l.inLimits.Delete(GlobalLimitKey)
 			} else {
@@ -291,7 +322,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 		}
 
 		if v, _ := l.outLimits.Get(GlobalLimitKey); v != nil {
-			lim := v.(limiter.Limiter)
+			lim := v.(traffic.Limiter)
 			if value.out <= 0 {
 				l.outLimits.Delete(GlobalLimitKey)
 			} else {
@@ -321,7 +352,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			if in != value.in {
 				for _, item := range l.connInLimits.Items() {
 					if v := item.Object; v != nil {
-						v.(limiter.Limiter).Set(in)
+						v.(traffic.Limiter).Set(in)
 					}
 				}
 			}
@@ -333,7 +364,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			if out != value.out {
 				for _, item := range l.connOutLimits.Items() {
 					if v := item.Object; v != nil {
-						v.(limiter.Limiter).Set(out)
+						v.(traffic.Limiter).Set(out)
 					}
 				}
 			}
@@ -361,7 +392,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			}
 
 			if v, _ := l.inLimits.Get(key); v != nil {
-				lim := v.(limiter.Limiter)
+				lim := v.(traffic.Limiter)
 				if value.in <= 0 {
 					l.inLimits.Delete(key)
 				} else {
@@ -375,7 +406,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			}
 
 			if v, _ := l.outLimits.Get(key); v != nil {
-				lim := v.(limiter.Limiter)
+				lim := v.(traffic.Limiter)
 				if value.out <= 0 {
 					l.outLimits.Delete(key)
 				} else {
@@ -398,7 +429,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 						l.inLimits.Delete(k)
 						continue
 					}
-					lim := v.Object.(limiter.Limiter)
+					lim := v.Object.(traffic.Limiter)
 					if lim.Limit() != in {
 						lim.Set(in)
 					}
@@ -415,7 +446,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 						l.outLimits.Delete(k)
 						continue
 					}
-					lim := v.Object.(limiter.Limiter)
+					lim := v.Object.(traffic.Limiter)
 					if lim.Limit() != out {
 						lim.Set(out)
 					}

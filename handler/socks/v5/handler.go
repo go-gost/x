@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/limiter/traffic"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	"github.com/go-gost/x/registry"
@@ -29,6 +31,7 @@ type socks5Handler struct {
 	md       metadata
 	options  handler.Options
 	stats    *stats_util.HandlerStats
+	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 }
 
@@ -40,7 +43,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &socks5Handler{
 		options: options,
-		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -60,7 +62,12 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	h.cancel = cancel
 
 	if h.options.Observer != nil {
+		h.stats = stats_util.NewHandlerStats(h.options.Service)
 		go h.observeStats(ctx)
+	}
+
+	if limiter := h.options.Limiter; limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
 	return

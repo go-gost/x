@@ -5,11 +5,13 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	serial "github.com/go-gost/x/internal/util/serial"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -94,12 +96,19 @@ func (l *serialListener) listenLoop() {
 				return err
 			}
 
-			c := serial.NewConn(port, l.addr, cancel)
-			c = metrics.WrapConn(l.options.Service, c)
-			c = stats.WrapConn(c, l.options.Stats)
-			c = limiter.WrapConn(l.options.TrafficLimiter, c)
+			conn := serial.NewConn(port, l.addr, cancel)
+			conn = metrics.WrapConn(l.options.Service, conn)
+			conn = stats.WrapConn(conn, l.options.Stats)
+			conn = limiter_wrapper.WrapConn(
+				conn,
+				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+				"",
+				limiter.ScopeOption(limiter.ScopeService),
+				limiter.ServiceOption(l.options.Service),
+				limiter.NetworkOption(conn.LocalAddr().Network()),
+			)
 
-			l.cqueue <- c
+			l.cqueue <- conn
 
 			return nil
 		}()

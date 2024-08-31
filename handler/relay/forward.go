@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/relay"
@@ -90,11 +90,16 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	}
 
 	clientID := ctxvalue.ClientIDFromContext(ctx)
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
-		traffic.NetworkOption(network),
-		traffic.AddrOption(target.Addr),
-		traffic.ClientOption(string(clientID)),
-		traffic.SrcOption(conn.RemoteAddr().String()),
+	rw := wrapper.WrapReadWriter(
+		h.limiter,
+		conn,
+		string(clientID),
+		limiter.ServiceOption(h.options.Service),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.NetworkOption(network),
+		limiter.AddrOption(target.Addr),
+		limiter.ClientOption(string(clientID)),
+		limiter.SrcOption(conn.RemoteAddr().String()),
 	)
 	if h.options.Observer != nil {
 		pstats := h.stats.Stats(string(clientID))

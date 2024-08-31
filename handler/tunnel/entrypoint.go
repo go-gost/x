@@ -24,7 +24,6 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 )
 
@@ -374,7 +373,6 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = admission.WrapListener(l.options.Admission, ln)
-	ln = limiter.WrapListener(l.options.TrafficLimiter, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 	l.ln = ln
 

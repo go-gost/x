@@ -10,13 +10,16 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -76,6 +79,13 @@ func (l *dnsListener) Init(md md.Metadata) (err error) {
 		if err != nil {
 			return
 		}
+
+		ln = limiter_wrapper.WrapListener(
+			l.options.Service,
+			ln,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		)
+
 		l.server = &dnsServer{
 			server: &dns.Server{
 				Net:          "tcp",
@@ -110,6 +120,12 @@ func (l *dnsListener) Init(md md.Metadata) (err error) {
 			return
 		}
 		ln = tls.NewListener(ln, l.options.TLSConfig)
+
+		ln = limiter_wrapper.WrapListener(
+			l.options.Service,
+			ln,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		)
 
 		l.server = &dnsServer{
 			server: &dns.Server{
@@ -147,6 +163,12 @@ func (l *dnsListener) Init(md md.Metadata) (err error) {
 		}
 		ln = tls.NewListener(ln, l.options.TLSConfig)
 
+		ln = limiter_wrapper.WrapListener(
+			l.options.Service,
+			ln,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		)
+
 		l.server = &dohServer{
 			addr:      l.options.Addr,
 			tlsConfig: l.options.TLSConfig,
@@ -180,6 +202,15 @@ func (l *dnsListener) Init(md md.Metadata) (err error) {
 		if err != nil {
 			return
 		}
+
+		pc = limiter_wrapper.WrapPacketConn(
+			pc,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			"",
+			limiter.ScopeOption(limiter.ScopeService),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(network),
+		)
 
 		l.server = &dnsServer{
 			server: &dns.Server{
@@ -218,7 +249,15 @@ func (l *dnsListener) Accept() (conn net.Conn, err error) {
 		conn = metrics.WrapConn(l.options.Service, conn)
 		conn = stats.WrapConn(conn, l.options.Stats)
 		conn = admission.WrapConn(l.options.Admission, conn)
-		conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
+		conn = limiter_wrapper.WrapConn(
+			conn,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			conn.RemoteAddr().String(),
+			limiter.ScopeOption(limiter.ScopeConn),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(conn.LocalAddr().Network()),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
 	case err, ok = <-l.errChan:
 		if !ok {
 			err = listener.ErrClosed

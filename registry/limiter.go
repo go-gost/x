@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/limiter/traffic"
@@ -32,7 +33,7 @@ type trafficLimiterWrapper struct {
 	r    *trafficLimiterRegistry
 }
 
-func (w *trafficLimiterWrapper) In(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (w *trafficLimiterWrapper) In(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil
@@ -40,7 +41,7 @@ func (w *trafficLimiterWrapper) In(ctx context.Context, key string, opts ...traf
 	return v.In(ctx, key, opts...)
 }
 
-func (w *trafficLimiterWrapper) Out(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (w *trafficLimiterWrapper) Out(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	v := w.r.get(w.name)
 	if v == nil {
 		return nil

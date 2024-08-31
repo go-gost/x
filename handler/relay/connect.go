@@ -8,14 +8,14 @@ import (
 	"net"
 	"time"
 
-	"github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
-	"github.com/go-gost/x/limiter/traffic/wrapper"
+	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 )
 
@@ -108,11 +108,16 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	clientID := ctxvalue.ClientIDFromContext(ctx)
-	rw := wrapper.WrapReadWriter(h.options.Limiter, conn,
-		traffic.NetworkOption(network),
-		traffic.AddrOption(address),
-		traffic.ClientOption(string(clientID)),
-		traffic.SrcOption(conn.RemoteAddr().String()),
+	rw := traffic_wrapper.WrapReadWriter(
+		h.limiter,
+		conn,
+		string(clientID),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.ServiceOption(h.options.Service),
+		limiter.NetworkOption(network),
+		limiter.AddrOption(address),
+		limiter.ClientOption(string(clientID)),
+		limiter.SrcOption(conn.RemoteAddr().String()),
 	)
 	if h.options.Observer != nil {
 		pstats := h.stats.Stats(string(clientID))

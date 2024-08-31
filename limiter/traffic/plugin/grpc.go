@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/limiter/traffic/proto"
@@ -44,18 +45,20 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) traffic.Traf
 	return p
 }
 
-func (p *grpcPlugin) In(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (p *grpcPlugin) In(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	if p.client == nil {
 		return nil
 	}
 
-	var options traffic.Options
+	var options limiter.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	r, err := p.client.Limit(ctx,
 		&proto.LimitRequest{
+			Service: options.Service,
+			Scope:   options.Scope,
 			Network: options.Network,
 			Addr:    options.Addr,
 			Client:  options.Client,
@@ -69,18 +72,20 @@ func (p *grpcPlugin) In(ctx context.Context, key string, opts ...traffic.Option)
 	return xtraffic.NewLimiter(int(r.In))
 }
 
-func (p *grpcPlugin) Out(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (p *grpcPlugin) Out(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	if p.client == nil {
 		return nil
 	}
 
-	var options traffic.Options
+	var options limiter.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	r, err := p.client.Limit(ctx,
 		&proto.LimitRequest{
+			Service: options.Service,
+			Scope:   options.Scope,
 			Network: options.Network,
 			Addr:    options.Addr,
 			Client:  options.Client,

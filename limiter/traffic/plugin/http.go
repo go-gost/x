@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/plugin"
@@ -13,6 +14,8 @@ import (
 )
 
 type httpPluginRequest struct {
+	Service string `json:"service"`
+	Scope   string `json:"scope"`
 	Network string `json:"network"`
 	Addr    string `json:"addr"`
 	Client  string `json:"client"`
@@ -49,17 +52,19 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) traffic.Traff
 	}
 }
 
-func (p *httpPlugin) In(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (p *httpPlugin) In(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	if p.client == nil {
 		return nil
 	}
 
-	var options traffic.Options
+	var options limiter.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	rb := httpPluginRequest{
+		Service: options.Service,
+		Scope:   options.Scope,
 		Network: options.Network,
 		Addr:    options.Addr,
 		Client:  options.Client,
@@ -67,11 +72,13 @@ func (p *httpPlugin) In(ctx context.Context, key string, opts ...traffic.Option)
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 
@@ -81,32 +88,37 @@ func (p *httpPlugin) In(ctx context.Context, key string, opts ...traffic.Option)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		p.log.Errorf("server return non-200 code: %s", resp.Status)
 		return nil
 	}
 
 	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		p.log.Error(err)
 		return nil
 	}
 	return xtraffic.NewLimiter(int(res.In))
 }
 
-func (p *httpPlugin) Out(ctx context.Context, key string, opts ...traffic.Option) traffic.Limiter {
+func (p *httpPlugin) Out(ctx context.Context, key string, opts ...limiter.Option) traffic.Limiter {
 	if p.client == nil {
 		return nil
 	}
 
-	var options traffic.Options
+	var options limiter.Options
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	rb := httpPluginRequest{
+		Service: options.Service,
+		Scope:   options.Scope,
 		Network: options.Network,
 		Addr:    options.Addr,
 		Client:  options.Client,
@@ -114,11 +126,13 @@ func (p *httpPlugin) Out(ctx context.Context, key string, opts ...traffic.Option
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 
@@ -128,16 +142,19 @@ func (p *httpPlugin) Out(ctx context.Context, key string, opts ...traffic.Option
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
+		p.log.Error(err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		p.log.Errorf("server return non-200 code: %s", resp.Status)
 		return nil
 	}
 
 	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		p.log.Error(err)
 		return nil
 	}
 	return xtraffic.NewLimiter(int(res.Out))

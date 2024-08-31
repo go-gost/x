@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -47,6 +49,7 @@ type tunnelHandler struct {
 	md       metadata
 	log      logger.Logger
 	stats    *stats_util.HandlerStats
+	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 }
 
@@ -58,7 +61,6 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &tunnelHandler{
 		options: options,
-		stats:   stats_util.NewHandlerStats(options.Service),
 	}
 }
 
@@ -105,7 +107,12 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	h.cancel = cancel
 
 	if h.options.Observer != nil {
+		h.stats = stats_util.NewHandlerStats(h.options.Service)
 		go h.observeStats(ctx)
+	}
+
+	if limiter := h.options.Limiter; limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
 	return nil

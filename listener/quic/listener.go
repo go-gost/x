@@ -4,14 +4,17 @@ import (
 	"context"
 	"net"
 	"strings"
+	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	quic_util "github.com/go-gost/x/internal/util/quic"
-	limiter "github.com/go-gost/x/limiter/traffic/wrapper"
+	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -70,6 +73,18 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 		conn = quic_util.CipherPacketConn(conn, l.md.cipherKey)
 	}
 
+	conn = metrics.WrapPacketConn(l.options.Service, conn)
+	conn = stats.WrapPacketConn(conn, l.options.Stats)
+	conn = admission.WrapPacketConn(l.options.Admission, conn)
+	conn = limiter_wrapper.WrapPacketConn(
+		conn,
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		"",
+		limiter.ScopeOption(limiter.ScopeService),
+		limiter.ServiceOption(l.options.Service),
+		limiter.NetworkOption(conn.LocalAddr().Network()),
+	)
+
 	config := &quic.Config{
 		KeepAlivePeriod:      l.md.keepAlivePeriod,
 		HandshakeIdleTimeout: l.md.handshakeTimeout,
@@ -102,10 +117,15 @@ func (l *quicListener) Accept() (conn net.Conn, err error) {
 	var ok bool
 	select {
 	case conn = <-l.cqueue:
-		conn = metrics.WrapConn(l.options.Service, conn)
-		conn = stats.WrapConn(conn, l.options.Stats)
-		conn = admission.WrapConn(l.options.Admission, conn)
-		conn = limiter.WrapConn(l.options.TrafficLimiter, conn)
+		conn = limiter_wrapper.WrapConn(
+			conn,
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			conn.RemoteAddr().String(),
+			limiter.ScopeOption(limiter.ScopeConn),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(conn.LocalAddr().Network()),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
 	case err, ok = <-l.errChan:
 		if !ok {
 			err = listener.ErrClosed
