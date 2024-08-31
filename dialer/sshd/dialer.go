@@ -5,12 +5,14 @@ import (
 	"net"
 	"sync"
 	"time"
+	"os"
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 func init() {
@@ -106,6 +108,11 @@ func (d *sshdDialer) initSession(ctx context.Context, addr string, conn net.Conn
 	}
 	if d.md.signer != nil {
 		config.Auth = append(config.Auth, ssh.PublicKeys(d.md.signer))
+	}
+	socket := os.Getenv("SSH_AUTH_SOCK")
+	if agentConn, err := net.Dial("unix", socket); err == nil {
+		agentClient := agent.NewClient(agentConn)
+		config.Auth = append(config.Auth, ssh.PublicKeysCallback(agentClient.Signers))
 	}
 
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, &config)
