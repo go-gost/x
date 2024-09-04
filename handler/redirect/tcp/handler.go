@@ -241,6 +241,10 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 		cc, err = h.options.Router.Dial(ctx, "tcp", host)
 		if err != nil {
 			log.Error(err)
+
+			if !h.md.sniffingFallback {
+				return err
+			}
 		}
 	}
 

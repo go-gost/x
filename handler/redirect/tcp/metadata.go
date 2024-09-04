@@ -11,11 +11,13 @@ type metadata struct {
 	tproxy          bool
 	sniffing        bool
 	sniffingTimeout time.Duration
+	sniffingFallback bool
 }
 
 func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.tproxy = mdutil.GetBool(md, "tproxy")
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+	h.md.sniffingFallback = mdutil.GetBool(md, "sniffing.fallback")
 	return
 }
