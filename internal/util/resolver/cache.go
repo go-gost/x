@@ -1,11 +1,13 @@
 package resolver
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/go-gost/core/logger"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/miekg/dns"
 )
 
@@ -44,7 +46,7 @@ func (c *Cache) WithLogger(logger logger.Logger) *Cache {
 	return c
 }
 
-func (c *Cache) Load(key CacheKey) (msg *dns.Msg, ttl time.Duration) {
+func (c *Cache) Load(ctx context.Context, key CacheKey) (msg *dns.Msg, ttl time.Duration) {
 	v, ok := c.m.Load(key)
 	if !ok {
 		return
@@ -66,12 +68,19 @@ func (c *Cache) Load(key CacheKey) (msg *dns.Msg, ttl time.Duration) {
 	}
 	ttl = item.ttl - time.Since(item.ts)
 
-	c.logger.Debugf("resolver cache hit: %s, ttl: %v", key, ttl)
+	if log := c.logger; log.IsLevelEnabled(logger.DebugLevel) {
+		if sid := ctxvalue.SidFromContext(ctx); sid != "" {
+			log = log.WithFields(map[string]any{
+				"sid": sid,
+			})
+		}
+		log.Debugf("resolver cache hit: %s, ttl: %v", key, ttl)
+	}
 
 	return
 }
 
-func (c *Cache) Store(key CacheKey, mr *dns.Msg, ttl time.Duration) {
+func (c *Cache) Store(ctx context.Context, key CacheKey, mr *dns.Msg, ttl time.Duration) {
 	if key == "" || mr == nil || ttl < 0 {
 		return
 	}
@@ -98,7 +107,14 @@ func (c *Cache) Store(key CacheKey, mr *dns.Msg, ttl time.Duration) {
 		ttl: ttl,
 	})
 
-	c.logger.Debugf("resolver cache store: %s, ttl: %v", key, ttl)
+	if log := c.logger; log.IsLevelEnabled(logger.DebugLevel) {
+		if sid := ctxvalue.SidFromContext(ctx); sid != "" {
+			log = log.WithFields(map[string]any{
+				"sid": sid,
+			})
+		}
+		log.Debugf("resolver cache store: %s, ttl: %v", key, ttl)
+	}
 }
 
 func (c *Cache) RefreshTTL(key CacheKey) {

@@ -1,11 +1,16 @@
 package rate
 
 import (
+	"errors"
 	"sort"
 	"time"
 
 	limiter "github.com/go-gost/core/limiter/rate"
 	"golang.org/x/time/rate"
+)
+
+var (
+	ErrRateLimit = errors.New("rate limit")
 )
 
 type rlimiter struct {

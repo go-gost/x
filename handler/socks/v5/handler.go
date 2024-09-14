@@ -9,11 +9,14 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter/traffic"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -33,6 +36,7 @@ type socks5Handler struct {
 	stats    *stats_util.HandlerStats
 	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -70,28 +74,51 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
-func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
 
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		Network:    "tcp",
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.Duration = time.Since(start)
+		ro.Record(ctx, h.recorder.Recorder)
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	if h.md.readTimeout > 0 {
@@ -109,12 +136,14 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	if clientID := sc.ID(); clientID != "" {
 		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 		log = log.WithFields(map[string]any{"user": clientID})
+		ro.Client = clientID
 	}
 
 	conn = sc
 	conn.SetReadDeadline(time.Time{})
 
 	address := req.Addr.String()
+	ro.Host = address
 
 	switch req.Cmd {
 	case gosocks5.CmdConnect:
@@ -124,8 +153,10 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	case socks.CmdMuxBind:
 		return h.handleMuxBind(ctx, conn, "tcp", address, log)
 	case gosocks5.CmdUdp:
+		ro.Network = "udp"
 		return h.handleUDP(ctx, conn, log)
 	case socks.CmdUDPTun:
+		ro.Network = "udp"
 		return h.handleUDPTun(ctx, conn, "udp", address, log)
 	default:
 		err = ErrUnknownCmd

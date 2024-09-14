@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/recorder"
@@ -12,6 +13,7 @@ import (
 
 type httpRecorderOptions struct {
 	timeout time.Duration
+	header  http.Header
 }
 
 type HTTPRecorderOption func(opts *httpRecorderOptions)
@@ -22,9 +24,16 @@ func TimeoutHTTPRecorderOption(timeout time.Duration) HTTPRecorderOption {
 	}
 }
 
+func HeaderHTTPRecorderOption(header http.Header) HTTPRecorderOption {
+	return func(opts *httpRecorderOptions) {
+		opts.header = header
+	}
+}
+
 type httpRecorder struct {
 	url        string
 	httpClient *http.Client
+	header     http.Header
 }
 
 // HTTPRecorder records data to HTTP service.
@@ -34,11 +43,19 @@ func HTTPRecorder(url string, opts ...HTTPRecorderOption) recorder.Recorder {
 		opt(&options)
 	}
 
+	if url == "" {
+		return nil
+	}
+	if !strings.HasPrefix(url, "http") {
+		url = "http://" + url
+	}
+
 	return &httpRecorder{
 		url: url,
 		httpClient: &http.Client{
 			Timeout: options.timeout,
 		},
+		header: options.header,
 	}
 }
 
@@ -48,14 +65,22 @@ func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Re
 		return err
 	}
 
+	if r.header != nil {
+		req.Header = r.header
+	}
+
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%d %s", resp.StatusCode, resp.Status)
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf(resp.Status)
 	}
 
 	return nil

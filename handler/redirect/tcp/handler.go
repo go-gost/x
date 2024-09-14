@@ -18,9 +18,14 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	dissector "github.com/go-gost/tls-dissector"
+	xbypass "github.com/go-gost/x/bypass"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -31,8 +36,9 @@ func init() {
 }
 
 type redirectHandler struct {
-	md      metadata
-	options handler.Options
+	md       metadata
+	options  handler.Options
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -51,6 +57,13 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
@@ -58,20 +71,39 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		Network:    "tcp",
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if !ro.Time.IsZero() {
+			if err != nil {
+				ro.Err = err.Error()
+			}
+			ro.Duration = time.Since(start)
+			ro.Record(ctx, h.recorder.Recorder)
+		}
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	var dstAddr net.Addr
@@ -85,6 +117,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			return
 		}
 	}
+
+	ro.Host = dstAddr.String()
 
 	log = log.WithFields(map[string]any{
 		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
@@ -111,7 +145,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 		// try to sniff HTTP traffic
 		if isHTTP(string(hdr[:])) {
-			return h.handleHTTP(ctx, rw, conn.RemoteAddr(), dstAddr, log)
+			return h.handleHTTP(ctx, rw, conn.RemoteAddr(), dstAddr, ro, log)
 		}
 	}
 
@@ -119,7 +153,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
 		log.Debug("bypass: ", dstAddr)
-		return nil
+		return xbypass.ErrBypass
 	}
 
 	cc, err := h.options.Router.Dial(ctx, dstAddr.Network(), dstAddr.String())
@@ -139,10 +173,19 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	return nil
 }
 
-func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, log logger.Logger) error {
+func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	req, err := http.ReadRequest(bufio.NewReader(rw))
 	if err != nil {
 		return err
+	}
+
+	ro.HTTP = &xrecorder.HTTPRecorderObject{
+		Host:          req.Host,
+		Proto:         req.Proto,
+		Scheme:        req.URL.Scheme,
+		Method:        req.Method,
+		URI:           req.RequestURI,
+		RequestHeader: req.Header,
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
@@ -150,6 +193,7 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		log.Trace(string(dump))
 	}
 
+	ro.Host = req.Host
 	host := req.Host
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
@@ -160,12 +204,15 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
 		log.Debugf("bypass: %s %s", host, req.RequestURI)
-		return nil
+		return xbypass.ErrBypass
 	}
 
 	cc, err := h.options.Router.Dial(ctx, "tcp", host)
 	if err != nil {
 		log.Error(err)
+		if !h.md.sniffingFallback {
+			return err
+		}
 	}
 
 	if cc == nil {
@@ -190,23 +237,28 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		return err
 	}
 
-	var rw2 io.ReadWriter = cc
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		var buf bytes.Buffer
-		resp, err := http.ReadResponse(bufio.NewReader(io.TeeReader(cc, &buf)), req)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		defer resp.Body.Close()
+	br := bufio.NewReader(cc)
+	resp, err := http.ReadResponse(br, req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer resp.Body.Close()
 
+	ro.HTTP.StatusCode = resp.StatusCode
+	ro.HTTP.ResponseHeader = resp.Header
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
-
-		rw2 = xio.NewReadWriter(io.MultiReader(&buf, cc), cc)
 	}
 
-	netpkg.Transport(rw, rw2)
+	if err := resp.Write(rw); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	netpkg.Transport(rw, xio.NewReadWriter(br, cc))
 
 	return nil
 }

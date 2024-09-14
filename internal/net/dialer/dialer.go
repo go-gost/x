@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/vishvananda/netns"
 )
@@ -39,6 +40,9 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 	if log == nil {
 		log = logger.Default()
 	}
+	log = log.WithFields(map[string]any{
+		"sid": ctxvalue.SidFromContext(ctx),
+	})
 
 	if d.Netns != "" {
 		runtime.LockOSThread()

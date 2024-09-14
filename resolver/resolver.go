@@ -166,11 +166,11 @@ func (r *localResolver) resolveAsync(ctx context.Context, server *NameServer, ho
 	return
 }
 
-func (r *localResolver) lookupCache(_ context.Context, server *NameServer, host string) (ips []net.IP, ttl time.Duration, ok bool) {
+func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, host string) (ips []net.IP, ttl time.Duration, ok bool) {
 	lookup := func(t uint16, host string) (ips []net.IP, ttl time.Duration, ok bool) {
 		mq := dns.Msg{}
 		mq.SetQuestion(dns.Fqdn(host), t)
-		mr, ttl := r.cache.Load(resolver_util.NewCacheKey(&mq.Question[0]))
+		mr, ttl := r.cache.Load(ctx, resolver_util.NewCacheKey(&mq.Question[0]))
 		if mr == nil {
 			return
 		}
@@ -223,14 +223,14 @@ func (r *localResolver) resolveIPs(ctx context.Context, server *NameServer, mq *
 	}
 
 	key := resolver_util.NewCacheKey(&mq.Question[0])
-	mr, ttl := r.cache.Load(key)
+	mr, ttl := r.cache.Load(ctx, key)
 	if ttl <= 0 {
 		resolver_util.AddSubnetOpt(mq, server.ClientIP)
 		mr, err = r.exchange(ctx, server.exchanger, mq)
 		if err != nil {
 			return
 		}
-		r.cache.Store(key, mr, server.TTL)
+		r.cache.Store(ctx, key, mr, server.TTL)
 
 		if r.options.logger.IsLevelEnabled(logger.TraceLevel) {
 			r.options.logger.Trace(mr.String())

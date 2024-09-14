@@ -20,10 +20,14 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	dissector "github.com/go-gost/tls-dissector"
+	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -32,8 +36,9 @@ func init() {
 }
 
 type sniHandler struct {
-	md      metadata
-	options handler.Options
+	md       metadata
+	options  handler.Options
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -54,27 +59,51 @@ func (h *sniHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return nil
 }
 
-func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Network:    "tcp",
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.Duration = time.Since(start)
+		ro.Record(ctx, h.recorder.Recorder)
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	var hdr [dissector.RecordHeaderLen]byte
@@ -88,15 +117,24 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	tlsVersion := binary.BigEndian.Uint16(hdr[1:3])
 	if hdr[0] == dissector.Handshake &&
 		(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
-		return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), log)
+		return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), ro, log)
 	}
-	return h.handleHTTP(ctx, rw, conn.RemoteAddr(), log)
+	return h.handleHTTP(ctx, rw, conn.RemoteAddr(), ro, log)
 }
 
-func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net.Addr, log logger.Logger) error {
+func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	req, err := http.ReadRequest(bufio.NewReader(rw))
 	if err != nil {
 		return err
+	}
+
+	ro.HTTP = &xrecorder.HTTPRecorderObject{
+		Host:          req.Host,
+		Proto:         req.Proto,
+		Scheme:        req.URL.Scheme,
+		Method:        req.Method,
+		URI:           req.RequestURI,
+		RequestHeader: req.Header,
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
@@ -108,13 +146,16 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 	}
+
+	ro.Host = req.Host
+
 	log = log.WithFields(map[string]any{
 		"host": host,
 	})
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
 		log.Debugf("bypass: %s %s", host, req.RequestURI)
-		return nil
+		return xbypass.ErrBypass
 	}
 
 	switch h.md.hash {
@@ -142,28 +183,33 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		return err
 	}
 
-	var rw2 io.ReadWriter = cc
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		var buf bytes.Buffer
-		resp, err := http.ReadResponse(bufio.NewReader(io.TeeReader(cc, &buf)), req)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		defer resp.Body.Close()
+	br := bufio.NewReader(cc)
+	resp, err := http.ReadResponse(br, req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer resp.Body.Close()
 
+	ro.HTTP.StatusCode = resp.StatusCode
+	ro.HTTP.ResponseHeader = resp.Header
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
-
-		rw2 = xio.NewReadWriter(io.MultiReader(&buf, cc), cc)
 	}
 
-	netpkg.Transport(rw, rw2)
+	if err := resp.Write(rw); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	netpkg.Transport(rw, xio.NewReadWriter(br, cc))
 
 	return nil
 }
 
-func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr net.Addr, log logger.Logger) error {
+func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 	host, err := h.decodeHost(io.TeeReader(rw, buf))
 	if err != nil {
@@ -175,6 +221,8 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		host = net.JoinHostPort(strings.Trim(host, "[]"), "443")
 	}
 
+	ro.Host = host
+
 	log = log.WithFields(map[string]any{
 		"dst": host,
 	})
@@ -182,7 +230,7 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 		log.Debug("bypass: ", host)
-		return nil
+		return xbypass.ErrBypass
 	}
 
 	switch h.md.hash {

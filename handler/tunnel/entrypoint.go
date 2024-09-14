@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
@@ -25,14 +26,17 @@ import (
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
 type entrypoint struct {
-	node    string
-	pool    *ConnectorPool
-	ingress ingress.Ingress
-	sd      sd.SD
-	log     logger.Logger
+	node     string
+	service  string
+	pool     *ConnectorPool
+	ingress  ingress.Ingress
+	sd       sd.SD
+	log      logger.Logger
+	recorder recorder.RecorderObject
 }
 
 func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
@@ -77,6 +81,40 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				return err
 			}
 
+			start := time.Now()
+			ro := &xrecorder.HandlerRecorderObject{
+				Node:       ep.node,
+				Service:    ep.service,
+				RemoteAddr: conn.RemoteAddr().String(),
+				LocalAddr:  conn.LocalAddr().String(),
+				Network:    "tcp",
+				Host:       req.Host,
+				Time:       start,
+				HTTP: &xrecorder.HTTPRecorderObject{
+					Host:          req.Host,
+					Method:        req.Method,
+					Proto:         req.Proto,
+					Scheme:        req.URL.Scheme,
+					URI:           req.RequestURI,
+					RequestHeader: req.Header,
+				},
+			}
+			defer func() {
+				if err != nil {
+					d := time.Since(start)
+					log.WithFields(map[string]any{
+						"duration": d,
+					}).Debugf("%s >-< %s", conn.RemoteAddr(), req.Host)
+
+					ro.HTTP.StatusCode = resp.StatusCode
+					ro.HTTP.ResponseHeader = resp.Header
+
+					ro.Duration = d
+					ro.Err = err.Error()
+					ro.Record(ctx, ep.recorder.Recorder)
+				}
+			}()
+
 			if log.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpRequest(req, false)
 				log.Trace(string(dump))
@@ -92,16 +130,21 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 			if tunnelID.IsZero() {
-				err := fmt.Errorf("no route to host %s", req.Host)
+				err = fmt.Errorf("no route to host %s", req.Host)
 				log.Error(err)
 				resp.StatusCode = http.StatusBadGateway
-				return resp.Write(conn)
+				resp.Write(conn)
+				return err
 			}
+
+			ro.Client = tunnelID.String()
+
 			if tunnelID.IsPrivate() {
-				err := fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, req.Host)
+				err = fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, req.Host)
 				log.Error(err)
 				resp.StatusCode = http.StatusBadGateway
-				return resp.Write(conn)
+				resp.Write(conn)
+				return err
 			}
 
 			log = log.WithFields(map[string]any{
@@ -116,6 +159,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				})
 				remoteAddr = addr
 			}
+			ro.RemoteAddr = remoteAddr.String()
 
 			d := &Dialer{
 				node:    ep.node,
@@ -165,14 +209,15 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 
-			if err := req.Write(c); err != nil {
+			if err = req.Write(c); err != nil {
 				c.Close()
 				log.Errorf("send request: %v", err)
-				return resp.Write(conn)
+				resp.Write(conn)
+				return err
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.Transport(c, xio.NewReadWriter(br, conn))
+				err = xnet.Transport(c, xio.NewReadWriter(br, conn))
 				if err == nil {
 					err = io.EOF
 				}
@@ -182,21 +227,35 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 			go func() {
 				defer c.Close()
 
-				t := time.Now()
 				log.Debugf("%s <-> %s", remoteAddr, host)
 
+				var err error
+				var res *http.Response
+
 				defer func() {
+					d := time.Since(start)
 					log.WithFields(map[string]any{
-						"duration": time.Since(t),
+						"duration": d,
 					}).Debugf("%s >-< %s", remoteAddr, host)
+
+					ro.Duration = d
+					if err != nil {
+						ro.Err = err.Error()
+					}
+					if res != nil && ro.HTTP != nil {
+						ro.HTTP.ResponseHeader = res.Header
+						ro.HTTP.StatusCode = res.StatusCode
+					}
+					ro.Record(ctx, ep.recorder.Recorder)
 				}()
 
-				res, err := http.ReadResponse(bufio.NewReader(c), req)
+				res, err = http.ReadResponse(bufio.NewReader(c), req)
 				if err != nil {
 					log.Errorf("read response: %v", err)
 					resp.Write(conn)
 					return
 				}
+				defer res.Body.Close()
 
 				if log.IsLevelEnabled(logger.TraceLevel) {
 					dump, _ := httputil.DumpResponse(res, false)

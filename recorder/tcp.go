@@ -5,11 +5,13 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 )
 
 type tcpRecorderOptions struct {
 	timeout time.Duration
+	log     logger.Logger
 }
 
 type TCPRecorderOption func(opts *tcpRecorderOptions)
@@ -20,9 +22,16 @@ func TimeoutTCPRecorderOption(timeout time.Duration) TCPRecorderOption {
 	}
 }
 
+func LogTCPRecorderOption(log logger.Logger) TCPRecorderOption {
+	return func(opts *tcpRecorderOptions) {
+		opts.log = log
+	}
+}
+
 type tcpRecorder struct {
 	addr   string
 	dialer *net.Dialer
+	log    logger.Logger
 }
 
 // TCPRecorder records data to TCP service.
@@ -37,6 +46,7 @@ func TCPRecorder(addr string, opts ...TCPRecorderOption) recorder.Recorder {
 		dialer: &net.Dialer{
 			Timeout: options.timeout,
 		},
+		log: options.log,
 	}
 }
 

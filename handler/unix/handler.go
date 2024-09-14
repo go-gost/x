@@ -12,7 +12,10 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -21,9 +24,10 @@ func init() {
 }
 
 type unixHandler struct {
-	hop     hop.Hop
-	md      metadata
-	options handler.Options
+	hop      hop.Hop
+	md       metadata
+	options  handler.Options
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -42,6 +46,13 @@ func (h *unixHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
@@ -50,20 +61,43 @@ func (h *unixHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
-func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
-	log := h.options.Logger
+	start := time.Now()
 
-	log = log.WithFields(map[string]any{
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		Network:    "unix",
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
+	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
+
+	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.Duration = time.Since(start)
+		ro.Record(ctx, h.recorder.Recorder)
+
+		log.WithFields(map[string]any{
+			"duration": time.Since(start),
+		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
+	}()
 
 	if h.hop != nil {
 		target := h.hop.Select(ctx)
 		if target == nil {
-			err := errors.New("target not available")
+			err = errors.New("target not available")
 			log.Error(err)
 			return err
 		}
@@ -71,6 +105,8 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 			"node": target.Name,
 			"dst":  target.Addr,
 		})
+		ro.Host = target.Addr
+
 		return h.forwardUnix(ctx, conn, target, log)
 	}
 

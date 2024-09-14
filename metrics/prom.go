@@ -44,13 +44,13 @@ func NewMetrics() metrics.Metrics {
 					Name: string(MetricServiceTransferInputBytesCounter),
 					Help: "Total service input data transfer size in bytes",
 				},
-				[]string{"host", "service"}),
+				[]string{"host", "service", "client"}),
 			MetricServiceTransferOutputBytesCounter: prometheus.NewCounterVec(
 				prometheus.CounterOpts{
 					Name: string(MetricServiceTransferOutputBytesCounter),
 					Help: "Total service output data transfer size in bytes",
 				},
-				[]string{"host", "service"}),
+				[]string{"host", "service", "client"}),
 			MetricServiceHandlerErrorsCounter: prometheus.NewCounterVec(
 				prometheus.CounterOpts{
 					Name: string(MetricServiceHandlerErrorsCounter),

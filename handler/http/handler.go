@@ -24,13 +24,17 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
+	"github.com/go-gost/core/recorder"
+	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -39,11 +43,12 @@ func init() {
 }
 
 type httpHandler struct {
-	md      metadata
-	options handler.Options
-	stats   *stats_util.HandlerStats
-	limiter traffic.TrafficLimiter
-	cancel  context.CancelFunc
+	md       metadata
+	options  handler.Options
+	stats    *stats_util.HandlerStats
+	limiter  traffic.TrafficLimiter
+	cancel   context.CancelFunc
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -74,15 +79,29 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return nil
 }
 
-func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
-	// ctx = sx.ContextWithHash(ctx, &sx.Hash{})
-
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
@@ -90,13 +109,21 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if !ro.Time.IsZero() {
+			if err != nil {
+				ro.Err = err.Error()
+			}
+			ro.Duration = time.Since(start)
+			ro.Record(ctx, h.recorder.Recorder)
+		}
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	req, err := http.ReadRequest(bufio.NewReader(conn))
@@ -106,7 +133,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 	defer req.Body.Close()
 
-	return h.handleRequest(ctx, conn, req, log)
+	return h.handleRequest(ctx, conn, req, ro, log)
 }
 
 func (h *httpHandler) Close() error {
@@ -116,7 +143,7 @@ func (h *httpHandler) Close() error {
 	return nil
 }
 
-func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, log logger.Logger) error {
+func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	if !req.URL.IsAbs() && govalidator.IsDNSName(req.Host) {
 		req.URL.Scheme = "http"
 	}
@@ -125,6 +152,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if network != "udp" {
 		network = "tcp"
 	}
+	ro.Network = network
 
 	// Try to get the actual host.
 	// Compatible with GOST 2.x.
@@ -133,15 +161,13 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			req.Host = h
 		}
 	}
-	req.Header.Del("Gost-Target")
-
 	if v := req.Header.Get("X-Gost-Target"); v != "" {
 		if h, err := h.decodeServerName(v); err == nil {
 			req.Host = h
 		}
 	}
-	req.Header.Del("X-Gost-Target")
 
+	ro.Host = req.Host
 	addr := req.Host
 	if _, port, _ := net.SplitHostPort(addr); port == "" {
 		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
@@ -150,8 +176,10 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	fields := map[string]any{
 		"dst": addr,
 	}
+
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
+		ro.Client = u
 	}
 	log = log.WithFields(fields)
 
@@ -170,14 +198,26 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if resp.Header == nil {
 		resp.Header = http.Header{}
 	}
-
 	if resp.Header.Get("Proxy-Agent") == "" {
 		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
 	}
 
+	ro.HTTP = &xrecorder.HTTPRecorderObject{
+		Host:          req.Host,
+		Proto:         req.Proto,
+		Scheme:        req.URL.Scheme,
+		Method:        req.Method,
+		URI:           req.RequestURI,
+		RequestHeader: req.Header.Clone(),
+	}
+	defer func() {
+		ro.HTTP.StatusCode = resp.StatusCode
+		ro.HTTP.ResponseHeader = resp.Header
+	}()
+
 	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
 	if !ok {
-		return nil
+		return errors.New("authenication failed")
 	}
 	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
@@ -189,8 +229,8 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			log.Trace(string(dump))
 		}
 		log.Debug("bypass: ", addr)
-
-		return resp.Write(conn)
+		resp.Write(conn)
+		return xbypass.ErrBypass
 	}
 
 	if network == "udp" {
@@ -208,8 +248,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 		return resp.Write(conn)
 	}
-
-	req.Header.Del("Proxy-Authorization")
 
 	switch h.md.hash {
 	case "host":
@@ -249,7 +287,11 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	if req.Method != http.MethodConnect {
-		return h.handleProxy(xio.NewReadWriteCloser(rw, rw, conn), cc, req, log)
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro.Time = time.Time{}
+
+		return h.handleProxy(ctx, xio.NewReadWriteCloser(rw, rw, conn), cc, req, ro2, log)
 	}
 
 	resp.StatusCode = http.StatusOK
@@ -274,7 +316,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	return nil
 }
 
-func (h *httpHandler) handleProxy(rw io.ReadWriteCloser, cc io.ReadWriter, req *http.Request, log logger.Logger) (err error) {
+func (h *httpHandler) handleProxy(ctx context.Context, rw io.ReadWriteCloser, cc io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	roundTrip := func(req *http.Request) error {
 		if req == nil {
 			return nil
@@ -287,6 +329,21 @@ func (h *httpHandler) handleProxy(rw io.ReadWriteCloser, cc io.ReadWriter, req *
 			StatusCode: http.StatusServiceUnavailable,
 		}
 
+		start := time.Now()
+		ro.Time = start
+
+		if ro.HTTP != nil {
+			ro.HTTP = &xrecorder.HTTPRecorderObject{
+				Host:          req.Host,
+				Proto:         req.Proto,
+				Scheme:        req.URL.Scheme,
+				Method:        req.Method,
+				URI:           req.RequestURI,
+				RequestHeader: req.Header.Clone(),
+				StatusCode:    resp.StatusCode,
+			}
+		}
+
 		// HTTP/1.0
 		if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
 			if strings.ToLower(req.Header.Get("Connection")) == "keep-alive" {
@@ -296,20 +353,44 @@ func (h *httpHandler) handleProxy(rw io.ReadWriteCloser, cc io.ReadWriter, req *
 			}
 		}
 
+		req.Header.Del("Proxy-Authorization")
 		req.Header.Del("Proxy-Connection")
+		req.Header.Del("Gost-Target")
+		req.Header.Del("X-Gost-Target")
 
 		if err = req.Write(cc); err != nil {
 			resp.Write(rw)
+
+			ro.Duration = time.Since(start)
+			ro.Err = err.Error()
+			ro.Record(ctx, h.recorder.Recorder)
+
 			return err
 		}
 
 		go func() {
-			res, err := http.ReadResponse(bufio.NewReader(cc), req)
+			var err error
+			var res *http.Response
+
+			defer func() {
+				ro.Duration = time.Since(start)
+				if err != nil {
+					ro.Err = err.Error()
+				}
+				if res != nil && ro.HTTP != nil {
+					ro.HTTP.ResponseHeader = res.Header
+					ro.HTTP.StatusCode = res.StatusCode
+				}
+				ro.Record(ctx, h.recorder.Recorder)
+			}()
+
+			res, err = http.ReadResponse(bufio.NewReader(cc), req)
 			if err != nil {
 				h.options.Logger.Errorf("read response: %v", err)
 				resp.Write(rw)
 				return
 			}
+			defer res.Body.Close()
 
 			if log.IsLevelEnabled(logger.TraceLevel) {
 				dump, _ := httputil.DumpResponse(res, false)

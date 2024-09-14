@@ -3,6 +3,7 @@ package bypass
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -13,6 +14,10 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
+)
+
+var (
+	ErrBypass = errors.New("bypass")
 )
 
 type options struct {

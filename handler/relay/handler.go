@@ -11,10 +11,13 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/limiter/traffic"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -22,7 +25,6 @@ var (
 	ErrBadVersion   = errors.New("relay: bad version")
 	ErrUnknownCmd   = errors.New("relay: unknown command")
 	ErrUnauthorized = errors.New("relay: unauthorized")
-	ErrRateLimit    = errors.New("relay: rate limiting exceeded")
 )
 
 func init() {
@@ -30,12 +32,13 @@ func init() {
 }
 
 type relayHandler struct {
-	hop     hop.Hop
-	md      metadata
-	options handler.Options
-	stats   *stats_util.HandlerStats
-	limiter traffic.TrafficLimiter
-	cancel  context.CancelFunc
+	hop      hop.Hop
+	md       metadata
+	options  handler.Options
+	stats    *stats_util.HandlerStats
+	limiter  traffic.TrafficLimiter
+	cancel   context.CancelFunc
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -66,6 +69,13 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return nil
 }
 
@@ -75,25 +85,40 @@ func (h *relayHandler) Forward(hop hop.Hop) {
 }
 
 func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
+	defer conn.Close()
+
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
 	defer func() {
 		if err != nil {
-			conn.Close()
+			ro.Err = err.Error()
 		}
+		ro.Duration = time.Since(start)
+		ro.Record(ctx, h.recorder.Recorder)
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return ErrRateLimit
+		return rate_limiter.ErrRateLimit
 	}
 
 	if h.md.readTimeout > 0 {
@@ -139,6 +164,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if user != "" {
+		ro.Client = user
 		log = log.WithFields(map[string]any{"user": user})
 	}
 
@@ -156,21 +182,18 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	if (req.Cmd & relay.FUDP) == relay.FUDP {
 		network = "udp"
 	}
+	ro.Network = network
+	ro.Host = address
 
 	if h.hop != nil {
-		defer conn.Close()
 		// forward mode
 		return h.handleForward(ctx, conn, network, log)
 	}
 
 	switch req.Cmd & relay.CmdMask {
 	case 0, relay.CmdConnect:
-		defer conn.Close()
-
 		return h.handleConnect(ctx, conn, network, address, log)
 	case relay.CmdBind:
-		defer conn.Close()
-
 		return h.handleBind(ctx, conn, network, address, log)
 	default:
 		resp.Status = relay.StatusBadRequest

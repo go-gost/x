@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/resolver"
+	ctxvalue "github.com/go-gost/x/ctx"
 )
 
 func Resolve(ctx context.Context, network, addr string, r resolver.Resolver, hosts hosts.HostMapper, log logger.Logger) (string, error) {
@@ -19,6 +20,13 @@ func Resolve(ctx context.Context, network, addr string, r resolver.Resolver, hos
 	if host == "" {
 		return addr, nil
 	}
+
+	if log == nil {
+		log = logger.Default()
+	}
+	log = log.WithFields(map[string]any{
+		"sid": ctxvalue.SidFromContext(ctx),
+	})
 
 	if hosts != nil {
 		if ips, _ := hosts.Lookup(ctx, network, host); len(ips) > 0 {

@@ -10,8 +10,12 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/relay"
 	"github.com/go-gost/x/internal/util/ss"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 )
@@ -21,9 +25,10 @@ func init() {
 }
 
 type ssuHandler struct {
-	cipher  core.Cipher
-	md      metadata
-	options handler.Options
+	cipher   core.Cipher
+	md       metadata
+	options  handler.Options
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -51,27 +56,51 @@ func (h *ssuHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
-func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		Network:    "udp",
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.Duration = time.Since(start)
+		ro.Record(ctx, h.recorder.Recorder)
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	pc, ok := conn.(net.PacketConn)
@@ -106,14 +135,14 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), cc.LocalAddr())
-	h.relayPacket(pc, cc, log)
+	h.relayPacket(ctx, pc, cc, ro, log)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
 		Infof("%s >-< %s", conn.LocalAddr(), cc.LocalAddr())
 
 	return nil
 }
 
-func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (err error) {
+func (h *ssuHandler) relayPacket(ctx context.Context, pc1, pc2 net.PacketConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	bufSize := h.md.bufferSize
 	errc := make(chan error, 2)
 
@@ -128,7 +157,11 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), addr.Network(), addr.String()) {
+				if ro.Host == "" {
+					ro.Host = addr.String()
+				}
+
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr.Network(), addr.String()) {
 					log.Warn("bypass: ", addr)
 					return nil
 				}
@@ -160,7 +193,7 @@ func (h *ssuHandler) relayPacket(pc1, pc2 net.PacketConn, log logger.Logger) (er
 					return err
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(context.Background(), raddr.Network(), raddr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, raddr.Network(), raddr.String()) {
 					log.Warn("bypass: ", raddr)
 					return nil
 				}

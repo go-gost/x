@@ -284,8 +284,9 @@ type TCPRecorder struct {
 }
 
 type HTTPRecorder struct {
-	URL     string        `json:"url" yaml:"url"`
-	Timeout time.Duration `json:"timeout"`
+	URL     string            `yaml:"url" json:"url"`
+	Timeout time.Duration     `yaml:",omitempty" json:"timeout,omitempty"`
+	Header  map[string]string `yaml:",omitempty" json:"header,omitempty"`
 }
 
 type RedisRecorder struct {

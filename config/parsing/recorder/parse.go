@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"crypto/tls"
+	"net/http"
 	"strings"
 
 	"github.com/go-gost/core/recorder"
@@ -51,7 +52,14 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 	}
 
 	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
-		return xrecorder.HTTPRecorder(cfg.HTTP.URL, xrecorder.TimeoutHTTPRecorderOption(cfg.HTTP.Timeout))
+		h := http.Header{}
+		for k, v := range cfg.HTTP.Header {
+			h.Add(k, v)
+		}
+		return xrecorder.HTTPRecorder(cfg.HTTP.URL,
+			xrecorder.TimeoutHTTPRecorderOption(cfg.HTTP.Timeout),
+			xrecorder.HeaderHTTPRecorderOption(h),
+		)
 	}
 
 	if cfg.Redis != nil &&

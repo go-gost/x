@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/relay"
+	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
@@ -49,8 +50,8 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
 		log.Debug("bypass: ", address)
 		resp.Status = relay.StatusForbidden
-		_, err = resp.WriteTo(conn)
-		return
+		resp.WriteTo(conn)
+		return xbypass.ErrBypass
 	}
 
 	switch h.md.hash {

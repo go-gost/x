@@ -15,8 +15,12 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xhop "github.com/go-gost/x/hop"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
@@ -37,6 +41,7 @@ type dnsHandler struct {
 	hostMapper hosts.HostMapper
 	md         metadata
 	options    handler.Options
+	recorder   recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -108,6 +113,13 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 		h.exchangers["default"] = ex
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
@@ -116,24 +128,44 @@ func (h *dnsHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
-func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		Network:    conn.LocalAddr().Network(),
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		ro.Duration = time.Since(start)
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+			log.Warnf("recorder: %v", err)
+		}
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
+
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	b := bufpool.Get(h.md.bufferSize)
@@ -145,7 +177,7 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return err
 	}
 
-	reply, err := h.request(ctx, b[:n], log)
+	reply, err := h.request(ctx, b[:n], ro, log)
 	if err != nil {
 		return err
 	}
@@ -170,7 +202,7 @@ func (h *dnsHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
-func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger) ([]byte, error) {
+func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.HandlerRecorderObject, log logger.Logger) ([]byte, error) {
 	mq := dns.Msg{}
 	if err := mq.Unpack(msg); err != nil {
 		log.Error(err)
@@ -181,6 +213,14 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 		return nil, errors.New("msg: empty question")
 	}
 
+	ro.DNS = &xrecorder.DNSRecorderObject{
+		ID:       int(mq.Id),
+		Name:     mq.Question[0].Name,
+		Class:    dns.Class(mq.Question[0].Qclass).String(),
+		Type:     dns.Type(mq.Question[0].Qtype).String(),
+		Question: mq.String(),
+	}
+
 	resolver_util.AddSubnetOpt(&mq, h.md.clientIP)
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
@@ -188,13 +228,15 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 	}
 
 	var mr *dns.Msg
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		defer func() {
-			if mr != nil {
+	defer func() {
+		if mr != nil {
+			if log.IsLevelEnabled(logger.TraceLevel) {
 				log.Trace(mr.String())
 			}
-		}()
-	}
+
+			ro.DNS.Answer = mr.String()
+		}
+	}()
 
 	if h.options.Bypass != nil && mq.Question[0].Qclass == dns.ClassINET {
 		if h.options.Bypass.Contains(context.Background(), "udp", strings.Trim(mq.Question[0].Name, ".")) {
@@ -214,16 +256,24 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 	// only cache for single question message.
 	if len(mq.Question) == 1 {
 		var ttl time.Duration
-		mr, ttl = h.cache.Load(resolver_util.NewCacheKey(&mq.Question[0]))
+		mr, ttl = h.cache.Load(ctx, resolver_util.NewCacheKey(&mq.Question[0]))
 		if mr != nil {
 			mr.Id = mq.Id
 			if int32(ttl.Seconds()) > 0 {
+				ro.DNS.Cached = true
+
 				log.Debugf("message %d (cached): %s", mq.Id, mq.Question[0].String())
 				b := bufpool.Get(h.md.bufferSize)
 				return mr.PackBuffer(b)
 			}
 		}
 	}
+
+	ex := h.selectExchanger(ctx, strings.Trim(mq.Question[0].Name, "."))
+	if ex == nil {
+		return nil, fmt.Errorf("exchange not found for %s", mq.Question[0].Name)
+	}
+	ro.Host = ex.String()
 
 	if mr != nil && h.md.async {
 		b := bufpool.Get(h.md.bufferSize)
@@ -234,26 +284,26 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, log logger.Logger)
 		h.cache.RefreshTTL(resolver_util.NewCacheKey(&mq.Question[0]))
 
 		log.Debugf("exchange message %d (async): %s", mq.Id, mq.Question[0].String())
-		go h.exchange(ctx, &mq)
+		go h.exchange(ctx, ex, &mq)
 		return reply, nil
 	}
 
 	log.Debugf("exchange message %d: %s", mq.Id, mq.Question[0].String())
-	return h.exchange(ctx, &mq)
+	mr, err := h.exchange(ctx, ex, &mq)
+	if err != nil {
+		return nil, err
+	}
+
+	b := bufpool.Get(h.md.bufferSize)
+	return mr.PackBuffer(b)
 }
 
-func (h *dnsHandler) exchange(ctx context.Context, mq *dns.Msg) ([]byte, error) {
+func (h *dnsHandler) exchange(ctx context.Context, ex exchanger.Exchanger, mq *dns.Msg) (*dns.Msg, error) {
 	b := bufpool.Get(h.md.bufferSize)
 	defer bufpool.Put(b)
 
 	query, err := mq.PackBuffer(b)
 	if err != nil {
-		return nil, err
-	}
-
-	ex := h.selectExchanger(ctx, strings.Trim(mq.Question[0].Name, "."))
-	if ex == nil {
-		err = fmt.Errorf("exchange not found for %s", mq.Question[0].Name)
 		return nil, err
 	}
 
@@ -268,10 +318,10 @@ func (h *dnsHandler) exchange(ctx context.Context, mq *dns.Msg) ([]byte, error) 
 	}
 	if len(mq.Question) == 1 {
 		key := resolver_util.NewCacheKey(&mq.Question[0])
-		h.cache.Store(key, mr, h.md.ttl)
+		h.cache.Store(ctx, key, mr, h.md.ttl)
 	}
 
-	return reply, nil
+	return mr, nil
 }
 
 // lookup host mapper

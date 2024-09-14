@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 )
 
@@ -48,7 +49,11 @@ func (r *Router) Dial(ctx context.Context, network, address string) (conn net.Co
 	}
 	r.record(ctx, recorder.RecorderServiceRouterDialAddress, []byte(host))
 
-	conn, err = r.dial(ctx, network, address)
+	log := r.options.Logger.WithFields(map[string]any{
+		"sid": ctxvalue.SidFromContext(ctx),
+	})
+
+	conn, err = r.dial(ctx, network, address, log)
 	if err != nil {
 		r.record(ctx, recorder.RecorderServiceRouterDialAddressError, []byte(host))
 		return
@@ -69,22 +74,19 @@ func (r *Router) record(ctx context.Context, name string, data []byte) error {
 
 	for _, rec := range r.options.Recorders {
 		if rec.Record == name {
-			err := rec.Recorder.Record(ctx, data)
-			if err != nil {
-				r.options.Logger.Errorf("record %s: %v", name, err)
-			}
-			return err
+			return rec.Recorder.Record(ctx, data)
 		}
 	}
 	return nil
 }
 
-func (r *Router) dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
+func (r *Router) dial(ctx context.Context, network, address string, log logger.Logger) (conn net.Conn, err error) {
 	count := r.options.Retries + 1
 	if count <= 0 {
 		count = 1
 	}
-	r.options.Logger.Debugf("dial %s/%s", address, network)
+
+	log.Debugf("dial %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
 		ctx := ctx
@@ -95,9 +97,9 @@ func (r *Router) dial(ctx context.Context, network, address string) (conn net.Co
 		}
 
 		var ipAddr string
-		ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, r.options.Logger)
+		ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, log)
 		if err != nil {
-			r.options.Logger.Error(err)
+			log.Error(err)
 			break
 		}
 
@@ -106,13 +108,13 @@ func (r *Router) dial(ctx context.Context, network, address string) (conn net.Co
 			route = r.options.Chain.Route(ctx, network, ipAddr, chain.WithHostRouteOption(address))
 		}
 
-		if r.options.Logger.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.DebugLevel) {
 			buf := bytes.Buffer{}
 			for _, node := range routePath(route) {
 				fmt.Fprintf(&buf, "%s@%s > ", node.Name, node.Addr)
 			}
 			fmt.Fprintf(&buf, "%s", ipAddr)
-			r.options.Logger.Debugf("route(retry=%d) %s", i, buf.String())
+			log.Debugf("route(retry=%d) %s", i, buf.String())
 		}
 
 		if route == nil {
@@ -122,12 +124,12 @@ func (r *Router) dial(ctx context.Context, network, address string) (conn net.Co
 			chain.InterfaceDialOption(r.options.IfceName),
 			chain.NetnsDialOption(r.options.Netns),
 			chain.SockOptsDialOption(r.options.SockOpts),
-			chain.LoggerDialOption(r.options.Logger),
+			chain.LoggerDialOption(log),
 		)
 		if err == nil {
 			break
 		}
-		r.options.Logger.Errorf("route(retry=%d) %s", i, err)
+		log.Errorf("route(retry=%d) %s", i, err)
 	}
 
 	return
@@ -138,7 +140,12 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 	if count <= 0 {
 		count = 1
 	}
-	r.options.Logger.Debugf("bind on %s/%s", address, network)
+
+	log := r.options.Logger.WithFields(map[string]any{
+		"sid": ctxvalue.SidFromContext(ctx),
+	})
+
+	log.Debugf("bind on %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
 		ctx := ctx
@@ -157,13 +164,13 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 			}
 		}
 
-		if r.options.Logger.IsLevelEnabled(logger.DebugLevel) {
+		if log.IsLevelEnabled(logger.DebugLevel) {
 			buf := bytes.Buffer{}
 			for _, node := range routePath(route) {
 				fmt.Fprintf(&buf, "%s@%s > ", node.Name, node.Addr)
 			}
 			fmt.Fprintf(&buf, "%s", address)
-			r.options.Logger.Debugf("route(retry=%d) %s", i, buf.String())
+			log.Debugf("route(retry=%d) %s", i, buf.String())
 		}
 
 		if route == nil {
@@ -173,7 +180,7 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 		if err == nil {
 			break
 		}
-		r.options.Logger.Errorf("route(retry=%d) %s", i, err)
+		log.Errorf("route(retry=%d) %s", i, err)
 	}
 
 	return

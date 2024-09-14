@@ -20,16 +20,21 @@ var (
 // serverConn is a server side Conn with metrics supported.
 type serverConn struct {
 	net.Conn
-	service string
+	service  string
+	clientIP string
 }
 
 func WrapConn(service string, c net.Conn) net.Conn {
-	if !xmetrics.IsEnabled() {
+	if !xmetrics.IsEnabled() || c == nil {
 		return c
 	}
+
+	host, _, _ := net.SplitHostPort(c.RemoteAddr().String())
+
 	return &serverConn{
-		service: service,
-		Conn:    c,
+		service:  service,
+		Conn:     c,
+		clientIP: host,
 	}
 }
 
@@ -39,6 +44,7 @@ func (c *serverConn) Read(b []byte) (n int, err error) {
 		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  c.clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -51,6 +57,7 @@ func (c *serverConn) Write(b []byte) (n int, err error) {
 		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  c.clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -90,10 +97,17 @@ func WrapPacketConn(service string, pc net.PacketConn) net.PacketConn {
 
 func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.PacketConn.ReadFrom(p)
+
+	var clientIP string
+	if addr != nil {
+		clientIP, _, _ = net.SplitHostPort(addr.String())
+	}
+
 	if counter := xmetrics.GetCounter(
 		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -102,10 +116,17 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 func (c *packetConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	n, err = c.PacketConn.WriteTo(p, addr)
+
+	var clientIP string
+	if addr != nil {
+		clientIP, _, _ = net.SplitHostPort(addr.String())
+	}
+
 	if counter := xmetrics.GetCounter(
 		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -155,10 +176,17 @@ func (c *udpConn) SetWriteBuffer(n int) error {
 func (c *udpConn) Read(b []byte) (n int, err error) {
 	if nc, ok := c.PacketConn.(io.Reader); ok {
 		n, err = nc.Read(b)
+
+		var clientIP string
+		if addr := c.RemoteAddr(); addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}
@@ -170,10 +198,17 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 
 func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.PacketConn.ReadFrom(p)
+
+	var clientIP string
+	if addr != nil {
+		clientIP, _, _ = net.SplitHostPort(addr.String())
+	}
+
 	if counter := xmetrics.GetCounter(
 		xmetrics.MetricServiceTransferInputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -183,10 +218,17 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
 		n, addr, err = nc.ReadFromUDP(b)
+
+		var clientIP string
+		if addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}
@@ -199,10 +241,17 @@ func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
 	if nc, ok := c.PacketConn.(udp.ReadUDP); ok {
 		n, oobn, flags, addr, err = nc.ReadMsgUDP(b, oob)
+
+		var clientIP string
+		if addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferInputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}
@@ -215,10 +264,17 @@ func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAd
 func (c *udpConn) Write(b []byte) (n int, err error) {
 	if nc, ok := c.PacketConn.(io.Writer); ok {
 		n, err = nc.Write(b)
+
+		var clientIP string
+		if addr := c.RemoteAddr(); addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}
@@ -230,10 +286,17 @@ func (c *udpConn) Write(b []byte) (n int, err error) {
 
 func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	n, err = c.PacketConn.WriteTo(p, addr)
+
+	var clientIP string
+	if addr != nil {
+		clientIP, _, _ = net.SplitHostPort(addr.String())
+	}
+
 	if counter := xmetrics.GetCounter(
 		xmetrics.MetricServiceTransferOutputBytesCounter,
 		metrics.Labels{
 			"service": c.service,
+			"client":  clientIP,
 		}); counter != nil {
 		counter.Add(float64(n))
 	}
@@ -243,10 +306,17 @@ func (c *udpConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
 	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
 		n, err = nc.WriteToUDP(b, addr)
+
+		var clientIP string
+		if addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}
@@ -259,10 +329,17 @@ func (c *udpConn) WriteToUDP(b []byte, addr *net.UDPAddr) (n int, err error) {
 func (c *udpConn) WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error) {
 	if nc, ok := c.PacketConn.(udp.WriteUDP); ok {
 		n, oobn, err = nc.WriteMsgUDP(b, oob, addr)
+
+		var clientIP string
+		if addr != nil {
+			clientIP, _, _ = net.SplitHostPort(addr.String())
+		}
+
 		if counter := xmetrics.GetCounter(
 			xmetrics.MetricServiceTransferOutputBytesCounter,
 			metrics.Labels{
 				"service": c.service,
+				"client":  clientIP,
 			}); counter != nil {
 			counter.Add(float64(n))
 		}

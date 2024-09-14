@@ -21,12 +21,16 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/recorder"
+	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/forward"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -37,9 +41,10 @@ func init() {
 }
 
 type forwardHandler struct {
-	hop     hop.Hop
-	md      metadata
-	options handler.Options
+	hop      hop.Hop
+	md       metadata
+	options  handler.Options
+	recorder recorder.RecorderObject
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -58,6 +63,13 @@ func (h *forwardHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	for _, ro := range h.options.Recorders {
+		if ro.Record == xrecorder.RecorderServiceHandler {
+			h.recorder = ro
+			break
+		}
+	}
+
 	return
 }
 
@@ -66,24 +78,42 @@ func (h *forwardHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
-func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.options.Service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
+		if !ro.Time.IsZero() {
+			if err != nil {
+				ro.Err = err.Error()
+			}
+			ro.Duration = time.Since(start)
+			ro.Record(ctx, h.recorder.Recorder)
+		}
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
-		return nil
+		return rate_limiter.ErrRateLimit
 	}
 
 	network := "tcp"
@@ -106,7 +136,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	if protocol == forward.ProtoHTTP {
-		h.handleHTTP(ctx, xio.NewReadWriteCloser(rw, rw, conn), conn.RemoteAddr(), log)
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro.Time = time.Time{}
+
+		h.handleHTTP(ctx, xio.NewReadWriteCloser(rw, rw, conn), conn.RemoteAddr(), ro2, log)
 		return nil
 	}
 
@@ -144,6 +178,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 
+	ro.Network = network
+	ro.Host = addr
+
 	log = log.WithFields(map[string]any{
 		"host": host,
 		"node": target.Name,
@@ -177,7 +214,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	return nil
 }
 
-func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, remoteAddr net.Addr, log logger.Logger) (err error) {
+func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, remoteAddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	br := bufio.NewReader(rw)
 
 	for {
@@ -202,6 +239,27 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 				log.Trace(string(dump))
 			}
 
+			start := time.Now()
+			ro.Time = start
+			ro.HTTP = &xrecorder.HTTPRecorderObject{
+				Host:          req.Host,
+				Proto:         req.Proto,
+				Scheme:        req.URL.Scheme,
+				Method:        req.Method,
+				URI:           req.RequestURI,
+				RequestHeader: req.Header.Clone(),
+			}
+			defer func() {
+				if err != nil {
+					ro.HTTP.StatusCode = resp.StatusCode
+					ro.HTTP.ResponseHeader = resp.Header
+
+					ro.Duration = time.Since(start)
+					ro.Err = err.Error()
+					ro.Record(ctx, h.recorder.Recorder)
+				}
+			}()
+
 			host := req.Host
 			if _, _, err := net.SplitHostPort(host); err != nil {
 				host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
@@ -209,7 +267,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 			if bp := h.options.Bypass; bp != nil && bp.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
 				log.Debugf("bypass: %s %s", host, req.RequestURI)
 				resp.StatusCode = http.StatusForbidden
-				return resp.Write(rw)
+				resp.Write(rw)
+				return xbypass.ErrBypass
 			}
 
 			if addr := getRealClientAddr(req, remoteAddr); addr != remoteAddr {
@@ -235,6 +294,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 				resp.StatusCode = http.StatusBadGateway
 				return resp.Write(rw)
 			}
+
+			ro.Host = target.Addr
 
 			log = log.WithFields(map[string]any{
 				"host": req.Host,
@@ -305,14 +366,15 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 				cc = tls.Client(cc, cfg)
 			}
 
-			if err := req.Write(cc); err != nil {
+			if err = req.Write(cc); err != nil {
 				cc.Close()
 				log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
-				return resp.Write(rw)
+				resp.Write(rw)
+				return err
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
-				err := xnet.Transport(cc, xio.NewReadWriter(br, rw))
+				err = xnet.Transport(cc, xio.NewReadWriter(br, rw))
 				if err == nil {
 					err = io.EOF
 				}
@@ -322,12 +384,28 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 			go func() {
 				defer cc.Close()
 
-				res, err := http.ReadResponse(bufio.NewReader(cc), req)
+				var err error
+				var res *http.Response
+
+				defer func() {
+					ro.Duration = time.Since(start)
+					if err != nil {
+						ro.Err = err.Error()
+					}
+					if res != nil && ro.HTTP != nil {
+						ro.HTTP.ResponseHeader = res.Header
+						ro.HTTP.StatusCode = res.StatusCode
+					}
+					ro.Record(ctx, h.recorder.Recorder)
+				}()
+
+				res, err = http.ReadResponse(bufio.NewReader(cc), req)
 				if err != nil {
 					log.Warnf("read response from node %s(%s): %v", target.Name, target.Addr, err)
 					resp.Write(rw)
 					return
 				}
+				defer res.Body.Close()
 
 				if log.IsLevelEnabled(logger.TraceLevel) {
 					dump, _ := httputil.DumpResponse(res, false)
@@ -338,7 +416,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 					defer rw.Close()
 				}
 
-				if err := h.rewriteBody(res, bodyRewrites...); err != nil {
+				if err = h.rewriteBody(res, bodyRewrites...); err != nil {
 					rw.Close()
 					log.Errorf("rewrite body: %v", err)
 					return
