@@ -203,16 +203,19 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
-		Host:          req.Host,
-		Proto:         req.Proto,
-		Scheme:        req.URL.Scheme,
-		Method:        req.Method,
-		URI:           req.RequestURI,
-		RequestHeader: req.Header.Clone(),
+		Host:   req.Host,
+		Proto:  req.Proto,
+		Scheme: req.URL.Scheme,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		Request: xrecorder.HTTPRequestRecorderObject{
+			ContentLength: req.ContentLength,
+			Header:        req.Header.Clone(),
+		},
 	}
 	defer func() {
 		ro.HTTP.StatusCode = resp.StatusCode
-		ro.HTTP.ResponseHeader = resp.Header
+		ro.HTTP.Response.Header = resp.Header
 	}()
 
 	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
@@ -334,13 +337,16 @@ func (h *httpHandler) handleProxy(ctx context.Context, rw io.ReadWriteCloser, cc
 
 		if ro.HTTP != nil {
 			ro.HTTP = &xrecorder.HTTPRecorderObject{
-				Host:          req.Host,
-				Proto:         req.Proto,
-				Scheme:        req.URL.Scheme,
-				Method:        req.Method,
-				URI:           req.RequestURI,
-				RequestHeader: req.Header.Clone(),
-				StatusCode:    resp.StatusCode,
+				Host:       req.Host,
+				Proto:      req.Proto,
+				Scheme:     req.URL.Scheme,
+				Method:     req.Method,
+				URI:        req.RequestURI,
+				StatusCode: resp.StatusCode,
+				Request: xrecorder.HTTPRequestRecorderObject{
+					ContentLength: req.ContentLength,
+					Header:        req.Header.Clone(),
+				},
 			}
 		}
 
@@ -378,7 +384,8 @@ func (h *httpHandler) handleProxy(ctx context.Context, rw io.ReadWriteCloser, cc
 					ro.Err = err.Error()
 				}
 				if res != nil && ro.HTTP != nil {
-					ro.HTTP.ResponseHeader = res.Header
+					ro.HTTP.Response.ContentLength = res.ContentLength
+					ro.HTTP.Response.Header = res.Header
 					ro.HTTP.StatusCode = res.StatusCode
 				}
 				ro.Record(ctx, h.recorder.Recorder)

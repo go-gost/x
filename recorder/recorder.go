@@ -15,17 +15,25 @@ const (
 	RecorderServiceHandlerTunnel = "recorder.service.handler.tunnel"
 )
 
+type HTTPRequestRecorderObject struct {
+	ContentLength int64       `json:"contentLength"`
+	Header        http.Header `json:"header"`
+}
+
+type HTTPResponseRecorderObject struct {
+	ContentLength int64       `json:"contentLength"`
+	Header        http.Header `json:"header"`
+}
+
 type HTTPRecorderObject struct {
-	Host           string      `json:"host"`
-	Method         string      `json:"method"`
-	Proto          string      `json:"proto"`
-	Scheme         string      `json:"scheme"`
-	URI            string      `json:"uri"`
-	StatusCode     int         `json:"statusCode"`
-	RequestHeader  http.Header `json:"requestHeader"`
-	ResponseHeader http.Header `json:"responseHeader"`
-	// RequestBody    string
-	// ResponseBody   string
+	Host       string                     `json:"host"`
+	Method     string                     `json:"method"`
+	Proto      string                     `json:"proto"`
+	Scheme     string                     `json:"scheme"`
+	URI        string                     `json:"uri"`
+	StatusCode int                        `json:"statusCode"`
+	Request    HTTPRequestRecorderObject  `json:"request"`
+	Response   HTTPResponseRecorderObject `json:"response"`
 }
 
 type DNSRecorderObject struct {

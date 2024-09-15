@@ -129,12 +129,15 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 	}
 
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
-		Host:          req.Host,
-		Proto:         req.Proto,
-		Scheme:        req.URL.Scheme,
-		Method:        req.Method,
-		URI:           req.RequestURI,
-		RequestHeader: req.Header,
+		Host:   req.Host,
+		Proto:  req.Proto,
+		Scheme: req.URL.Scheme,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		Request: xrecorder.HTTPRequestRecorderObject{
+			ContentLength: req.ContentLength,
+			Header:        req.Header,
+		},
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
@@ -192,7 +195,8 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 	defer resp.Body.Close()
 
 	ro.HTTP.StatusCode = resp.StatusCode
-	ro.HTTP.ResponseHeader = resp.Header
+	ro.HTTP.Response.ContentLength = resp.ContentLength
+	ro.HTTP.Response.Header = resp.Header
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)

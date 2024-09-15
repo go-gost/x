@@ -242,17 +242,20 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 			start := time.Now()
 			ro.Time = start
 			ro.HTTP = &xrecorder.HTTPRecorderObject{
-				Host:          req.Host,
-				Proto:         req.Proto,
-				Scheme:        req.URL.Scheme,
-				Method:        req.Method,
-				URI:           req.RequestURI,
-				RequestHeader: req.Header.Clone(),
+				Host:   req.Host,
+				Proto:  req.Proto,
+				Scheme: req.URL.Scheme,
+				Method: req.Method,
+				URI:    req.RequestURI,
+				Request: xrecorder.HTTPRequestRecorderObject{
+					ContentLength: req.ContentLength,
+					Header:        req.Header.Clone(),
+				},
 			}
 			defer func() {
 				if err != nil {
 					ro.HTTP.StatusCode = resp.StatusCode
-					ro.HTTP.ResponseHeader = resp.Header
+					ro.HTTP.Response.Header = resp.Header
 
 					ro.Duration = time.Since(start)
 					ro.Err = err.Error()
@@ -394,7 +397,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 						ro.Err = err.Error()
 					}
 					if res != nil && ro.HTTP != nil {
-						ro.HTTP.ResponseHeader = res.Header
+						ro.HTTP.Response.ContentLength = res.ContentLength
+						ro.HTTP.Response.Header = res.Header
 						ro.HTTP.StatusCode = res.StatusCode
 					}
 					ro.Record(ctx, h.recorder.Recorder)

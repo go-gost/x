@@ -91,12 +91,15 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				Host:       req.Host,
 				Time:       start,
 				HTTP: &xrecorder.HTTPRecorderObject{
-					Host:          req.Host,
-					Method:        req.Method,
-					Proto:         req.Proto,
-					Scheme:        req.URL.Scheme,
-					URI:           req.RequestURI,
-					RequestHeader: req.Header,
+					Host:   req.Host,
+					Method: req.Method,
+					Proto:  req.Proto,
+					Scheme: req.URL.Scheme,
+					URI:    req.RequestURI,
+					Request: xrecorder.HTTPRequestRecorderObject{
+						ContentLength: req.ContentLength,
+						Header:        req.Header,
+					},
 				},
 			}
 			defer func() {
@@ -107,7 +110,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					}).Debugf("%s >-< %s", conn.RemoteAddr(), req.Host)
 
 					ro.HTTP.StatusCode = resp.StatusCode
-					ro.HTTP.ResponseHeader = resp.Header
+					ro.HTTP.Response.Header = resp.Header
 
 					ro.Duration = d
 					ro.Err = err.Error()
@@ -243,8 +246,9 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 						ro.Err = err.Error()
 					}
 					if res != nil && ro.HTTP != nil {
-						ro.HTTP.ResponseHeader = res.Header
 						ro.HTTP.StatusCode = res.StatusCode
+						ro.HTTP.Response.ContentLength = res.ContentLength
+						ro.HTTP.Response.Header = res.Header
 					}
 					ro.Record(ctx, ep.recorder.Recorder)
 				}()
