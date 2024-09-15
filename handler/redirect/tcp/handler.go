@@ -142,7 +142,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		if err == nil &&
 			hdr[0] == dissector.Handshake &&
 			(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
-			return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), dstAddr, log)
+			return h.handleHTTPS(ctx, rw, conn.RemoteAddr(), dstAddr, ro, log)
 		}
 
 		// try to sniff HTTP traffic
@@ -272,7 +272,7 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	return nil
 }
 
-func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, log logger.Logger) error {
+func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 	host, err := h.getServerName(ctx, io.TeeReader(rw, buf))
 	if err != nil {
@@ -293,10 +293,11 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 		log = log.WithFields(map[string]any{
 			"host": host,
 		})
+		ro.Host = host
 
 		if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 			log.Debug("bypass: ", host)
-			return nil
+			return xbypass.ErrBypass
 		}
 
 		cc, err = h.options.Router.Dial(ctx, "tcp", host)
