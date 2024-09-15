@@ -53,7 +53,8 @@ type HandlerRecorderObject struct {
 	RemoteAddr string              `json:"remote"`
 	LocalAddr  string              `json:"local"`
 	Host       string              `json:"host"`
-	Client     string              `json:"client,omitempty"`
+	ClientIP   string              `json:"clientIP"`
+	ClientID   string              `json:"clientID,omitempty"`
 	HTTP       *HTTPRecorderObject `json:"http,omitempty"`
 	DNS        *DNSRecorderObject  `json:"dns,omitempty"`
 	Err        string              `json:"err,omitempty"`

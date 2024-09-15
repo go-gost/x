@@ -29,6 +29,7 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -102,6 +103,7 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
@@ -165,6 +167,10 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		}
 	}
 
+	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
+		ro.ClientIP = clientIP.String()
+	}
+
 	ro.Host = req.Host
 	addr := req.Host
 	if _, port, _ := net.SplitHostPort(addr); port == "" {
@@ -176,7 +182,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
-		ro.Client = u
+		ro.ClientID = u
 	}
 	log = log.WithFields(fields)
 

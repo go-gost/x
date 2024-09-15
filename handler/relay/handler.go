@@ -164,7 +164,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if user != "" {
-		ro.Client = user
+		ro.ClientID = user
 		log = log.WithFields(map[string]any{"user": user})
 	}
 

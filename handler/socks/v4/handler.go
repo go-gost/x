@@ -135,13 +135,14 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	conn.SetReadDeadline(time.Time{})
 
 	if h.options.Auther != nil {
-		id, ok := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
+		clientID, ok := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
 		if !ok {
 			resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
 			log.Trace(resp)
 			return resp.Write(conn)
 		}
-		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
+		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		ro.ClientID = clientID
 	}
 
 	switch req.Cmd {

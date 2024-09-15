@@ -29,6 +29,7 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -101,6 +102,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
@@ -132,6 +134,10 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return err
 	}
 	defer req.Body.Close()
+
+	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
+		ro.ClientIP = clientIP.String()
+	}
 
 	return h.handleRequest(ctx, conn, req, ro, log)
 }
@@ -179,7 +185,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
-		ro.Client = u
+		ro.ClientID = u
 	}
 	log = log.WithFields(fields)
 

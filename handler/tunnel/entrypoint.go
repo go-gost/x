@@ -23,6 +23,7 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -102,6 +103,12 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					},
 				},
 			}
+			if clientIP := xhttp.GetClientIP(req); clientIP != nil {
+				ro.ClientIP = clientIP.String()
+			} else {
+				ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+			}
+
 			defer func() {
 				if err != nil {
 					d := time.Since(start)
@@ -140,7 +147,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				return err
 			}
 
-			ro.Client = tunnelID.String()
+			ro.ClientID = tunnelID.String()
 
 			if tunnelID.IsPrivate() {
 				err = fmt.Errorf("access denied: tunnel %s is private for host %s", tunnelID, req.Host)

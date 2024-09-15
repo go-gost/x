@@ -24,6 +24,7 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -80,6 +81,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
@@ -189,6 +191,9 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 			ContentLength: req.ContentLength,
 			Header:        req.Header,
 		},
+	}
+	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
+		ro.ClientIP = clientIP.String()
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
