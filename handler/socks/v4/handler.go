@@ -95,6 +95,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
