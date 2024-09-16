@@ -32,6 +32,10 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+const (
+	defaultBodySize = 1024 * 1024 * 10 // 10MB
+)
+
 func init() {
 	registry.HandlerRegistry().Register("sni", NewHandler)
 }
@@ -186,9 +190,26 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		}).Infof("%s >-< %s", raddr, host)
 	}()
 
+	var reqBody *xhttp.Body
+	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+		if req.Body != nil {
+			maxSize := opts.MaxBodySize
+			if maxSize <= 0 {
+				maxSize = defaultBodySize
+			}
+			reqBody = xhttp.NewBody(req.Body, maxSize)
+			req.Body = reqBody
+		}
+	}
+
 	if err := req.Write(cc); err != nil {
 		log.Error(err)
 		return err
+	}
+
+	if reqBody != nil {
+		ro.HTTP.Request.Body = reqBody.Content()
+		ro.HTTP.Request.ContentLength = reqBody.Length()
 	}
 
 	br := bufio.NewReader(cc)
@@ -208,9 +229,24 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		log.Trace(string(dump))
 	}
 
+	var respBody *xhttp.Body
+	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+		maxSize := opts.MaxBodySize
+		if maxSize <= 0 {
+			maxSize = defaultBodySize
+		}
+		respBody = xhttp.NewBody(resp.Body, maxSize)
+		resp.Body = respBody
+	}
+
 	if err := resp.Write(rw); err != nil {
 		log.Error(err)
 		return err
+	}
+
+	if respBody != nil {
+		ro.HTTP.Response.Body = respBody.Content()
+		ro.HTTP.Response.ContentLength = resp.ContentLength
 	}
 
 	netpkg.Transport(rw, xio.NewReadWriter(br, cc))

@@ -30,6 +30,10 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+const (
+	defaultBodySize = 1024 * 1024 * 10 // 10MB
+)
+
 func init() {
 	registry.HandlerRegistry().Register("red", NewHandler)
 	registry.HandlerRegistry().Register("redir", NewHandler)
@@ -240,9 +244,25 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 		}).Infof("%s >-< %s", raddr, host)
 	}()
 
+	var reqBody *xhttp.Body
+	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+		if req.Body != nil {
+			maxSize := opts.MaxBodySize
+			if maxSize <= 0 {
+				maxSize = defaultBodySize
+			}
+			reqBody = xhttp.NewBody(req.Body, maxSize)
+			req.Body = reqBody
+		}
+	}
 	if err := req.Write(cc); err != nil {
 		log.Error(err)
 		return err
+	}
+
+	if reqBody != nil {
+		ro.HTTP.Request.Body = reqBody.Content()
+		ro.HTTP.Request.ContentLength = reqBody.Length()
 	}
 
 	br := bufio.NewReader(cc)
@@ -253,18 +273,33 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 	}
 	defer resp.Body.Close()
 
+	ro.HTTP.Response.Header = resp.Header
 	ro.HTTP.StatusCode = resp.StatusCode
 	ro.HTTP.Response.ContentLength = resp.ContentLength
-	ro.HTTP.Response.Header = resp.Header
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
 	}
 
+	var respBody *xhttp.Body
+	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+		maxSize := opts.MaxBodySize
+		if maxSize <= 0 {
+			maxSize = defaultBodySize
+		}
+		respBody = xhttp.NewBody(resp.Body, maxSize)
+		resp.Body = respBody
+	}
+
 	if err := resp.Write(rw); err != nil {
 		log.Error(err)
 		return err
+	}
+
+	if respBody != nil {
+		ro.HTTP.Response.Body = respBody.Content()
+		ro.HTTP.Response.ContentLength = resp.ContentLength
 	}
 
 	netpkg.Transport(rw, xio.NewReadWriter(br, cc))

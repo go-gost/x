@@ -246,6 +246,8 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 				Direction:       mdutil.GetBool(md, parsing.MDKeyRecorderDirection),
 				TimestampFormat: mdutil.GetString(md, parsing.MDKeyRecorderTimestampFormat),
 				Hexdump:         mdutil.GetBool(md, parsing.MDKeyRecorderHexdump),
+				HTTPBody:        mdutil.GetBool(md, parsing.MDKeyRecorderHTTPBody),
+				MaxBodySize:     mdutil.GetInt(md, parsing.MDKeyRecorderHTTPMaxBodySize),
 			},
 		})
 	}

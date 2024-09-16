@@ -37,6 +37,10 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+const (
+	defaultBodySize = 1024 * 1024 * 10 // 10MB
+)
+
 func init() {
 	registry.HandlerRegistry().Register("rtcp", NewHandler)
 	registry.HandlerRegistry().Register("rudp", NewHandler)
@@ -376,11 +380,28 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 
 			cc = proxyproto.WrapClientConn(h.md.proxyProtocol, remoteAddr, localAddr, cc)
 
+			var reqBody *xhttp.Body
+			if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+				if req.Body != nil {
+					maxSize := opts.MaxBodySize
+					if maxSize <= 0 {
+						maxSize = defaultBodySize
+					}
+					reqBody = xhttp.NewBody(req.Body, maxSize)
+					req.Body = reqBody
+				}
+			}
+
 			if err = req.Write(cc); err != nil {
 				cc.Close()
 				log.Warnf("send request to node %s(%s): %v", target.Name, target.Addr, err)
 				resp.Write(rw)
 				return err
+			}
+
+			if reqBody != nil {
+				ro.HTTP.Request.Body = reqBody.Content()
+				ro.HTTP.Request.ContentLength = reqBody.Length()
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
@@ -396,16 +417,21 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 
 				var err error
 				var res *http.Response
+				var respBody *xhttp.Body
 
 				defer func() {
 					ro.Duration = time.Since(start)
 					if err != nil {
 						ro.Err = err.Error()
 					}
-					if res != nil && ro.HTTP != nil {
-						ro.HTTP.Response.ContentLength = res.ContentLength
-						ro.HTTP.Response.Header = res.Header
+					if res != nil {
 						ro.HTTP.StatusCode = res.StatusCode
+						ro.HTTP.Response.Header = res.Header
+						ro.HTTP.Response.ContentLength = res.ContentLength
+						if respBody != nil {
+							ro.HTTP.Response.Body = respBody.Content()
+							ro.HTTP.Response.ContentLength = respBody.Length()
+						}
 					}
 					ro.Record(ctx, h.recorder.Recorder)
 				}()
@@ -431,6 +457,15 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 					rw.Close()
 					log.Errorf("rewrite body: %v", err)
 					return
+				}
+
+				if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
+					maxSize := opts.MaxBodySize
+					if maxSize <= 0 {
+						maxSize = defaultBodySize
+					}
+					respBody = xhttp.NewBody(res.Body, maxSize)
+					res.Body = respBody
 				}
 
 				if err = res.Write(rw); err != nil {

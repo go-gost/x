@@ -15,4 +15,6 @@ const (
 	MDKeyRecorderDirection       = "direction"
 	MDKeyRecorderTimestampFormat = "timeStampFormat"
 	MDKeyRecorderHexdump         = "hexdump"
+	MDKeyRecorderHTTPBody        = "http.body"
+	MDKeyRecorderHTTPMaxBodySize = "http.maxBodySize"
 )

@@ -30,6 +30,10 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+const (
+	defaultBodySize = 1024 * 1024 * 10 // 10MB
+)
+
 type entrypoint struct {
 	node     string
 	service  string
@@ -219,11 +223,28 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 				}
 			}
 
+			var reqBody *xhttp.Body
+			if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+				if req.Body != nil {
+					maxSize := opts.MaxBodySize
+					if maxSize <= 0 {
+						maxSize = defaultBodySize
+					}
+					reqBody = xhttp.NewBody(req.Body, maxSize)
+					req.Body = reqBody
+				}
+			}
+
 			if err = req.Write(c); err != nil {
 				c.Close()
 				log.Errorf("send request: %v", err)
 				resp.Write(conn)
 				return err
+			}
+
+			if reqBody != nil {
+				ro.HTTP.Request.Body = reqBody.Content()
+				ro.HTTP.Request.ContentLength = reqBody.Length()
 			}
 
 			if req.Header.Get("Upgrade") == "websocket" {
@@ -241,6 +262,7 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 
 				var err error
 				var res *http.Response
+				var respBody *xhttp.Body
 
 				defer func() {
 					d := time.Since(start)
@@ -252,10 +274,14 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					if err != nil {
 						ro.Err = err.Error()
 					}
-					if res != nil && ro.HTTP != nil {
+					if res != nil {
 						ro.HTTP.StatusCode = res.StatusCode
-						ro.HTTP.Response.ContentLength = res.ContentLength
 						ro.HTTP.Response.Header = res.Header
+						ro.HTTP.Response.ContentLength = res.ContentLength
+						if respBody != nil {
+							ro.HTTP.Response.Body = respBody.Content()
+							ro.HTTP.Response.ContentLength = respBody.Length()
+						}
 					}
 					ro.Record(ctx, ep.recorder.Recorder)
 				}()
@@ -284,6 +310,15 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 					}
 					res.ProtoMajor = req.ProtoMajor
 					res.ProtoMinor = req.ProtoMinor
+				}
+
+				if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+					maxSize := opts.MaxBodySize
+					if maxSize <= 0 {
+						maxSize = defaultBodySize
+					}
+					respBody = xhttp.NewBody(res.Body, maxSize)
+					res.Body = respBody
 				}
 
 				if err = res.Write(conn); err != nil {

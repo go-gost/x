@@ -8,9 +8,9 @@ import (
 )
 
 type metadata struct {
-	tproxy          bool
-	sniffing        bool
-	sniffingTimeout time.Duration
+	tproxy           bool
+	sniffing         bool
+	sniffingTimeout  time.Duration
 	sniffingFallback bool
 }
 
