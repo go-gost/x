@@ -27,13 +27,14 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
 const (
-	defaultBodySize = 1024 * 1024 * 10 // 10MB
+	defaultBodySize = 1024 * 1024 // 1MB
 )
 
 func init() {
@@ -262,6 +263,17 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		return err
 	}
 
+	clientHello, err := dissector.ParseClientHello(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		return err
+	}
+	ro.TLS = &xrecorder.TLSRecorderObject{
+		ServerName: clientHello.ServerName,
+	}
+	if len(clientHello.SupportedProtos) > 0 {
+		ro.TLS.Proto = clientHello.SupportedProtos[0]
+	}
+
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(strings.Trim(host, "[]"), "443")
 	}
@@ -290,9 +302,28 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 	}
 	defer cc.Close()
 
+	if _, err := buf.WriteTo(cc); err != nil {
+		return err
+	}
+
+	if serverHello, _ := dissector.ParseServerHello(io.TeeReader(cc, buf)); serverHello != nil {
+		ro.TLS.CipherSuite = tls_util.CipherSuite(serverHello.CipherSuite).String()
+		ro.TLS.CompressionMethod = serverHello.CompressionMethod
+		if serverHello.Proto != "" {
+			ro.TLS.Proto = serverHello.Proto
+		}
+		if serverHello.Version > 0 {
+			ro.TLS.Version = tls_util.Version(serverHello.Version).String()
+		}
+	}
+
+	if _, err := buf.WriteTo(rw); err != nil {
+		return err
+	}
+
 	t := time.Now()
 	log.Infof("%s <-> %s", raddr, host)
-	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", raddr, host)

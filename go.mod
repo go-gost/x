@@ -14,7 +14,7 @@ require (
 	github.com/go-gost/gosocks5 v0.4.2
 	github.com/go-gost/plugin v0.1.1
 	github.com/go-gost/relay v0.5.0
-	github.com/go-gost/tls-dissector v0.0.2-0.20220408131628-aac992c27451
+	github.com/go-gost/tls-dissector v0.1.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
 	github.com/golang/snappy v0.0.4

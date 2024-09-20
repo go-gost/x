@@ -25,13 +25,14 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
 const (
-	defaultBodySize = 1024 * 1024 * 10 // 10MB
+	defaultBodySize = 1024 * 1024 // 1MB
 )
 
 func init() {
@@ -100,7 +101,9 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				ro.Err = err.Error()
 			}
 			ro.Duration = time.Since(start)
-			ro.Record(ctx, h.recorder.Recorder)
+			if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+				log.Errorf("record: %v", err)
+			}
 		}
 
 		log.WithFields(map[string]any{
@@ -309,14 +312,21 @@ func (h *redirectHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, radd
 
 func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr, dstAddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
-	host, err := h.getServerName(ctx, io.TeeReader(rw, buf))
+
+	clientHello, err := dissector.ParseClientHello(io.TeeReader(rw, buf))
 	if err != nil {
-		log.Error(err)
 		return err
+	}
+	ro.TLS = &xrecorder.TLSRecorderObject{
+		ServerName: clientHello.ServerName,
+	}
+	if len(clientHello.SupportedProtos) > 0 {
+		ro.TLS.Proto = clientHello.SupportedProtos[0]
 	}
 
 	var cc io.ReadWriteCloser
 
+	host := clientHello.ServerName
 	if host != "" {
 		if _, _, err := net.SplitHostPort(host); err != nil {
 			_, port, _ := net.SplitHostPort(dstAddr.String())
@@ -354,36 +364,33 @@ func (h *redirectHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, rad
 	}
 	defer cc.Close()
 
+	if _, err := buf.WriteTo(cc); err != nil {
+		return err
+	}
+
+	if serverHello, _ := dissector.ParseServerHello(io.TeeReader(cc, buf)); serverHello != nil {
+		ro.TLS.CipherSuite = tls_util.CipherSuite(serverHello.CipherSuite).String()
+		ro.TLS.CompressionMethod = serverHello.CompressionMethod
+		if serverHello.Proto != "" {
+			ro.TLS.Proto = serverHello.Proto
+		}
+		if serverHello.Version > 0 {
+			ro.TLS.Version = tls_util.Version(serverHello.Version).String()
+		}
+	}
+
+	if _, err := buf.WriteTo(rw); err != nil {
+		return err
+	}
+
 	t := time.Now()
 	log.Infof("%s <-> %s", raddr, host)
-	netpkg.Transport(xio.NewReadWriter(io.MultiReader(buf, rw), rw), cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", raddr, host)
 
 	return nil
-}
-
-func (h *redirectHandler) getServerName(_ context.Context, r io.Reader) (host string, err error) {
-	record, err := dissector.ReadRecord(r)
-	if err != nil {
-		return
-	}
-
-	clientHello := dissector.ClientHelloMsg{}
-	if err = clientHello.Decode(record.Opaque); err != nil {
-		return
-	}
-
-	for _, ext := range clientHello.Extensions {
-		if ext.Type() == dissector.ExtServerName {
-			snExtension := ext.(*dissector.ServerNameExtension)
-			host = snExtension.Name
-			break
-		}
-	}
-
-	return
 }
 
 func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
