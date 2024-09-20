@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	ctxvalue "github.com/go-gost/x/ctx"
 	relay_util "github.com/go-gost/x/internal/util/relay"
 	"github.com/go-gost/x/registry"
 )
@@ -44,6 +45,7 @@ func (c *relayConnector) Connect(ctx context.Context, conn net.Conn, network, ad
 		"local":   conn.LocalAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

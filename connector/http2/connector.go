@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -48,6 +49,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		"remote":  conn.RemoteAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

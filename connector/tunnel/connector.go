@@ -43,6 +43,7 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		"local":   conn.LocalAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

@@ -25,7 +25,7 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 	if err == nil &&
 		hdr[0] == dissector.Handshake &&
 		(tlsVersion >= tls.VersionTLS10 && tlsVersion <= tls.VersionTLS13) {
-		rw, host, err = sniffSNI(ctx, rw)
+		rw, host, err = sniffSNI(rw)
 		protocol = ProtoTLS
 		return
 	}
@@ -48,32 +48,19 @@ func Sniffing(ctx context.Context, rdw io.ReadWriter) (rw io.ReadWriter, host st
 	return
 }
 
-func sniffSNI(ctx context.Context, rw io.ReadWriter) (io.ReadWriter, string, error) {
+func sniffSNI(rw io.ReadWriter) (io.ReadWriter, string, error) {
 	buf := new(bytes.Buffer)
-	host, err := getServerName(ctx, io.TeeReader(rw, buf))
+	host, err := getServerName(io.TeeReader(rw, buf))
 	rw = xio.NewReadWriter(io.MultiReader(buf, rw), rw)
 	return rw, host, err
 }
 
-func getServerName(ctx context.Context, r io.Reader) (host string, err error) {
-	record, err := dissector.ReadRecord(r)
+func getServerName(r io.Reader) (host string, err error) {
+	clientHello, err := dissector.ParseClientHello(r)
 	if err != nil {
 		return
 	}
-
-	clientHello := dissector.ClientHelloMsg{}
-	if err = clientHello.Decode(record.Opaque); err != nil {
-		return
-	}
-
-	for _, ext := range clientHello.Extensions {
-		if ext.Type() == dissector.ExtServerName {
-			snExtension := ext.(*dissector.ServerNameExtension)
-			host = snExtension.Name
-			break
-		}
-	}
-
+	host = clientHello.ServerName
 	return
 }
 

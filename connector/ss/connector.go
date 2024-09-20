@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks5"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/ss"
 	"github.com/go-gost/x/registry"
 	"github.com/shadowsocks/go-shadowsocks2/core"
@@ -56,6 +57,7 @@ func (c *ssConnector) Connect(ctx context.Context, conn net.Conn, network, addre
 		"local":   conn.LocalAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

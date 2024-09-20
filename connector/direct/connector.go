@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -57,6 +58,7 @@ func (c *directConnector) Connect(ctx context.Context, _ net.Conn, network, addr
 		"local":   localAddr,
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

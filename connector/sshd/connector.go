@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"github.com/go-gost/x/registry"
 )
@@ -40,6 +41,7 @@ func (c *sshdConnector) Connect(ctx context.Context, conn net.Conn, network, add
 		"local":   conn.LocalAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 

@@ -38,6 +38,14 @@ type HTTPRecorderObject struct {
 	Response   HTTPResponseRecorderObject `json:"response"`
 }
 
+type TLSRecorderObject struct {
+	ServerName        string `json:"serverName"`
+	CipherSuite       string `json:"cipherSuite"`
+	CompressionMethod uint8  `json:"compressionMethod"`
+	Proto             string `json:"proto"`
+	Version           string `json:"version"`
+}
+
 type DNSRecorderObject struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
@@ -58,6 +66,7 @@ type HandlerRecorderObject struct {
 	ClientIP   string              `json:"clientIP"`
 	ClientID   string              `json:"clientID,omitempty"`
 	HTTP       *HTTPRecorderObject `json:"http,omitempty"`
+	TLS        *TLSRecorderObject  `json:"tls,omitempty"`
 	DNS        *DNSRecorderObject  `json:"dns,omitempty"`
 	Err        string              `json:"err,omitempty"`
 	Duration   time.Duration       `json:"duration"`

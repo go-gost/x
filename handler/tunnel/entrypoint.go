@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	defaultBodySize = 1024 * 1024 * 10 // 10MB
+	defaultBodySize = 1024 * 1024 // 1MB
 )
 
 type entrypoint struct {

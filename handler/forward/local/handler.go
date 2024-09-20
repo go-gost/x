@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	defaultBodySize = 1024 * 1024 * 10 // 10MB
+	defaultBodySize = 1024 * 1024 // 1MB
 )
 
 func init() {
@@ -126,6 +126,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if _, ok := conn.(net.PacketConn); ok {
 		network = "udp"
 	}
+	ro.Network = network
 
 	var rw io.ReadWriter = conn
 	var host string

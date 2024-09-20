@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/gosocks4"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -45,6 +46,7 @@ func (c *socks4Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		"local":   conn.LocalAddr().String(),
 		"network": network,
 		"address": address,
+		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 
