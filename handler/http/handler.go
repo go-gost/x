@@ -2,6 +2,7 @@ package http
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/binary"
@@ -267,7 +268,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, network, addr)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
+	ro.Route = buf.String()
 	if err != nil {
 		resp.StatusCode = http.StatusServiceUnavailable
 

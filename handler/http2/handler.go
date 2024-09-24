@@ -243,7 +243,9 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", addr)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", addr)
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		resp.StatusCode = http.StatusServiceUnavailable

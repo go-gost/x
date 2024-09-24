@@ -195,7 +195,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-	cc, err := h.options.Router.Dial(ctx, network, target.Addr)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, target.Addr)
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		// TODO: the router itself may be failed due to the failed node in the router,
@@ -278,7 +280,8 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 			if _, _, err := net.SplitHostPort(host); err != nil {
 				host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 			}
-			if bp := h.options.Bypass; bp != nil && bp.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
+			if bp := h.options.Bypass; bp != nil &&
+				bp.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
 				log.Debugf("bypass: %s %s", host, req.RequestURI)
 				resp.StatusCode = http.StatusForbidden
 				resp.Write(rw)
@@ -350,7 +353,9 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 				bodyRewrites = httpSettings.RewriteBody
 			}
 
-			cc, err = h.options.Router.Dial(ctx, "tcp", target.Addr)
+			var buf bytes.Buffer
+			cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", target.Addr)
+			ro.Route = buf.String()
 			if err != nil {
 				// TODO: the router itself may be failed due to the failed node in the router,
 				// the dead marker may be a wrong operation.
@@ -375,6 +380,7 @@ func (h *forwardHandler) handleHTTP(ctx context.Context, rw io.ReadWriteCloser, 
 					MinVersion:   tlsSettings.Options.MinVersion,
 					MaxVersion:   tlsSettings.Options.MaxVersion,
 					CipherSuites: tlsSettings.Options.CipherSuites,
+					ALPN:         tlsSettings.Options.ALPN,
 				})
 				cc = tls.Client(cc, cfg)
 			}

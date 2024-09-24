@@ -1,6 +1,7 @@
 package redirect
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -100,12 +101,15 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
+	if h.options.Bypass != nil &&
+		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
 		log.Debug("bypass: ", dstAddr)
 		return xbypass.ErrBypass
 	}
 
-	cc, err := h.options.Router.Dial(ctx, dstAddr.Network(), dstAddr.String())
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), dstAddr.Network(), dstAddr.String())
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		return err

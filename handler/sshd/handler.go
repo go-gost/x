@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -132,7 +133,9 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 		return xbypass.ErrBypass
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", targetAddr)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
+	ro.Route = buf.String()
 	if err != nil {
 		return err
 	}

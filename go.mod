@@ -9,12 +9,12 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.6.0
 	github.com/gin-gonic/gin v1.9.1
-	github.com/go-gost/core v0.1.4
+	github.com/go-gost/core v0.1.5
 	github.com/go-gost/gosocks4 v0.0.1
 	github.com/go-gost/gosocks5 v0.4.2
 	github.com/go-gost/plugin v0.1.1
 	github.com/go-gost/relay v0.5.0
-	github.com/go-gost/tls-dissector v0.1.0
+	github.com/go-gost/tls-dissector v0.1.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
 	github.com/golang/snappy v0.0.4

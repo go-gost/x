@@ -1,6 +1,7 @@
 package ss
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -120,7 +121,9 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	// obtain a udp connection
-	c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
+	var buf bytes.Buffer
+	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		return err

@@ -108,14 +108,15 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			route = r.options.Chain.Route(ctx, network, ipAddr, chain.WithHostRouteOption(address))
 		}
 
-		if log.IsLevelEnabled(logger.DebugLevel) {
-			buf := bytes.Buffer{}
-			for _, node := range routePath(route) {
-				fmt.Fprintf(&buf, "%s@%s > ", node.Name, node.Addr)
-			}
-			fmt.Fprintf(&buf, "%s", ipAddr)
-			log.Debugf("route(retry=%d) %s", i, buf.String())
+		buf := ctxvalue.BufferFromContext(ctx)
+		if buf == nil {
+			buf = &bytes.Buffer{}
 		}
+		for _, node := range routePath(route) {
+			fmt.Fprintf(buf, "%s@%s > ", node.Name, node.Addr)
+		}
+		fmt.Fprintf(buf, "%s", ipAddr)
+		log.Debugf("route(retry=%d) %s", i, buf.String())
 
 		if route == nil {
 			route = DefaultRoute

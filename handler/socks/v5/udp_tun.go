@@ -1,6 +1,7 @@
 package v5
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -14,9 +15,10 @@ import (
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"cmd": "udp-tun",
 	})
@@ -37,7 +39,9 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		}
 
 		// obtain a udp connection
-		c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
+		var buf bytes.Buffer
+		c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+		ro.Route = buf.String()
 		if err != nil {
 			log.Error(err)
 			return err

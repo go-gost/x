@@ -220,6 +220,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			tlsCfg.Options.MinVersion = o.MinVersion
 			tlsCfg.Options.MaxVersion = o.MaxVersion
 			tlsCfg.Options.CipherSuites = o.CipherSuites
+			tlsCfg.Options.ALPN = o.ALPN
 		}
 		opts = append(opts, chain.TLSNodeOption(tlsCfg))
 	}

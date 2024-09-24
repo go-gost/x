@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -290,7 +291,10 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 	}
 
 	log.Debugf("exchange message %d: %s", mq.Id, mq.Question[0].String())
-	mr, err := h.exchange(ctx, ex, &mq)
+
+	var buf bytes.Buffer
+	mr, err := h.exchange(ctxvalue.ContextWithBuffer(ctx, &buf), ex, &mq)
+	ro.Route = buf.String()
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,9 +19,10 @@ import (
 	serial "github.com/go-gost/x/internal/util/serial"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) (err error) {
+func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	if network == "unix" || network == "serial" {
 		if host, _, _ := net.SplitHostPort(address); host != "" {
 			address = host
@@ -67,7 +69,9 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	case "serial":
 		cc, err = serial.OpenPort(serial.ParseConfigFromAddr(address))
 	default:
-		cc, err = h.options.Router.Dial(ctx, network, address)
+		var buf bytes.Buffer
+		cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, address)
+		ro.Route = buf.String()
 	}
 	if err != nil {
 		resp.Status = relay.StatusNetworkUnreachable

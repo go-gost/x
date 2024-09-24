@@ -148,17 +148,17 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	switch req.Cmd {
 	case gosocks5.CmdConnect:
-		return h.handleConnect(ctx, conn, "tcp", address, log)
+		return h.handleConnect(ctx, conn, "tcp", address, ro, log)
 	case gosocks5.CmdBind:
 		return h.handleBind(ctx, conn, "tcp", address, log)
 	case socks.CmdMuxBind:
 		return h.handleMuxBind(ctx, conn, "tcp", address, log)
 	case gosocks5.CmdUdp:
 		ro.Network = "udp"
-		return h.handleUDP(ctx, conn, log)
+		return h.handleUDP(ctx, conn, ro, log)
 	case socks.CmdUDPTun:
 		ro.Network = "udp"
-		return h.handleUDPTun(ctx, conn, "udp", address, log)
+		return h.handleUDPTun(ctx, conn, "udp", address, ro, log)
 	default:
 		err = ErrUnknownCmd
 		log.Error(err)

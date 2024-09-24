@@ -193,7 +193,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	switch req.Cmd & relay.CmdMask {
 	case 0, relay.CmdConnect:
-		return h.handleConnect(ctx, conn, network, address, log)
+		return h.handleConnect(ctx, conn, network, address, ro, log)
 	case relay.CmdBind:
 		return h.handleBind(ctx, conn, network, address, log)
 	default:

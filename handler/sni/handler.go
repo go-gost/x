@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"hash/crc32"
 	"io"
@@ -176,7 +177,9 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: host})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", host)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", host)
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		return err
@@ -247,7 +250,7 @@ func (h *sniHandler) handleHTTP(ctx context.Context, rw io.ReadWriter, raddr net
 
 	if respBody != nil {
 		ro.HTTP.Response.Body = respBody.Content()
-		ro.HTTP.Response.ContentLength = resp.ContentLength
+		ro.HTTP.Response.ContentLength = respBody.Length()
 	}
 
 	netpkg.Transport(rw, xio.NewReadWriter(br, cc))
@@ -268,7 +271,8 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		return err
 	}
 	ro.TLS = &xrecorder.TLSRecorderObject{
-		ServerName: clientHello.ServerName,
+		ServerName:  clientHello.ServerName,
+		ClientHello: hex.EncodeToString(buf.Bytes()),
 	}
 	if len(clientHello.SupportedProtos) > 0 {
 		ro.TLS.Proto = clientHello.SupportedProtos[0]
@@ -295,7 +299,9 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: host})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", host)
+	var routeBuf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &routeBuf), "tcp", host)
+	ro.Route = routeBuf.String()
 	if err != nil {
 		log.Error(err)
 		return err
@@ -306,7 +312,8 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		return err
 	}
 
-	if serverHello, _ := dissector.ParseServerHello(io.TeeReader(cc, buf)); serverHello != nil {
+	serverHello, err := dissector.ParseServerHello(io.TeeReader(cc, buf))
+	if serverHello != nil {
 		ro.TLS.CipherSuite = tls_util.CipherSuite(serverHello.CipherSuite).String()
 		ro.TLS.CompressionMethod = serverHello.CompressionMethod
 		if serverHello.Proto != "" {
@@ -315,6 +322,10 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		if serverHello.Version > 0 {
 			ro.TLS.Version = tls_util.Version(serverHello.Version).String()
 		}
+	}
+
+	if buf.Len() > 0 {
+		ro.TLS.ServerHello = hex.EncodeToString(buf.Bytes())
 	}
 
 	if _, err := buf.WriteTo(rw); err != nil {
@@ -328,7 +339,7 @@ func (h *sniHandler) handleHTTPS(ctx context.Context, rw io.ReadWriter, raddr ne
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", raddr, host)
 
-	return nil
+	return err
 }
 
 func (h *sniHandler) decodeHost(r io.Reader) (host string, err error) {

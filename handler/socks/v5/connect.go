@@ -1,6 +1,7 @@
 package v5
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -14,9 +15,10 @@ import (
 	netpkg "github.com/go-gost/x/internal/net"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"dst": fmt.Sprintf("%s/%s", address, network),
 		"cmd": "connect",
@@ -35,7 +37,9 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: address})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, network, address)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, address)
+	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks5.NewReply(gosocks5.NetUnreachable, nil)
 		log.Trace(resp)

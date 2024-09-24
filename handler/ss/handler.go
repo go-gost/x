@@ -1,6 +1,7 @@
 package ss
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -136,7 +137,9 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr.String()})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", addr.String())
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", addr.String())
+	ro.Route = buf.String()
 	if err != nil {
 		return err
 	}

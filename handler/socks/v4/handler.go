@@ -1,6 +1,7 @@
 package v4
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -148,7 +149,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	switch req.Cmd {
 	case gosocks4.CmdConnect:
-		return h.handleConnect(ctx, conn, req, log)
+		return h.handleConnect(ctx, conn, req, ro, log)
 	case gosocks4.CmdBind:
 		return h.handleBind(ctx, conn, req)
 	default:
@@ -165,7 +166,7 @@ func (h *socks4Handler) Close() error {
 	return nil
 }
 
-func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *gosocks4.Request, log logger.Logger) error {
+func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *gosocks4.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	addr := req.Addr.String()
 
 	log = log.WithFields(map[string]any{
@@ -185,7 +186,9 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", addr)
+	var buf bytes.Buffer
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", addr)
+	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks4.NewReply(gosocks4.Failed, nil)
 		log.Trace(resp)
