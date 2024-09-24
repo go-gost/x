@@ -271,8 +271,8 @@ func (bp *localBypass) matched(addr string) bool {
 		host = addr
 	}
 
-	if ip := net.ParseIP(host); ip != nil {
-		return bp.cidrMatcher.Match(host)
+	if ip := net.ParseIP(host); ip != nil && bp.cidrMatcher.Match(host) {
+		return true
 	}
 
 	return bp.wildcardMatcher.Match(addr)
