@@ -57,6 +57,7 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 			opts = append(opts, xtraffic.RedisLoaderOption(loader.RedisListLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -64,6 +65,7 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 			opts = append(opts, xtraffic.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -103,6 +105,7 @@ func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 			opts = append(opts, xconn.RedisLoaderOption(loader.RedisListLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -110,6 +113,7 @@ func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 			opts = append(opts, xconn.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -149,6 +153,7 @@ func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
 			opts = append(opts, xrate.RedisLoaderOption(loader.RedisListLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -156,6 +161,7 @@ func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
 			opts = append(opts, xrate.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))

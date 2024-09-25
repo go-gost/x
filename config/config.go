@@ -186,6 +186,7 @@ type FileLoader struct {
 type RedisLoader struct {
 	Addr     string `json:"addr"`
 	DB       int    `yaml:",omitempty" json:"db,omitempty"`
+	Username string `yaml:",omitempty" json:"username,omitempty"`
 	Password string `yaml:",omitempty" json:"password,omitempty"`
 	Key      string `yaml:",omitempty" json:"key,omitempty"`
 	Type     string `yaml:",omitempty" json:"type,omitempty"`
@@ -293,6 +294,7 @@ type HTTPRecorder struct {
 type RedisRecorder struct {
 	Addr     string `json:"addr"`
 	DB       int    `yaml:",omitempty" json:"db,omitempty"`
+	Username string `yaml:",omitempty" json:"username,omitempty"`
 	Password string `yaml:",omitempty" json:"password,omitempty"`
 	Key      string `yaml:",omitempty" json:"key,omitempty"`
 	Type     string `yaml:",omitempty" json:"type,omitempty"`

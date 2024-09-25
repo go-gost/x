@@ -16,6 +16,7 @@ const (
 
 type redisLoaderOptions struct {
 	db       int
+	username string
 	password string
 	key      string
 }
@@ -25,6 +26,12 @@ type RedisLoaderOption func(opts *redisLoaderOptions)
 func DBRedisLoaderOption(db int) RedisLoaderOption {
 	return func(opts *redisLoaderOptions) {
 		opts.db = db
+	}
+}
+
+func UsernameRedisLoaderOption(username string) RedisLoaderOption {
+	return func(opts *redisLoaderOptions) {
+		opts.username = username
 	}
 }
 

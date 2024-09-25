@@ -9,6 +9,7 @@ import (
 
 type redisRecorderOptions struct {
 	db       int
+	username string
 	password string
 	key      string
 }
@@ -20,6 +21,11 @@ func DBRedisRecorderOption(db int) RedisRecorderOption {
 	}
 }
 
+func UsernameRedisRecorderOption(username string) RedisRecorderOption {
+	return func(opts *redisRecorderOptions) {
+		opts.username = username
+	}
+}
 func PasswordRedisRecorderOption(password string) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.password = password

@@ -130,6 +130,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		opts = append(opts, xhop.RedisLoaderOption(loader.RedisStringLoader(
 			cfg.Redis.Addr,
 			loader.DBRedisLoaderOption(cfg.Redis.DB),
+			loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 			loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 			loader.KeyRedisLoaderOption(cfg.Redis.Key),
 		)))

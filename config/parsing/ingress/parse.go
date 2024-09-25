@@ -70,6 +70,7 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 			opts = append(opts, xingress.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -77,6 +78,7 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 			opts = append(opts, xingress.RedisLoaderOption(loader.RedisHashLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))

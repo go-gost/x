@@ -75,6 +75,7 @@ func ParseHostMapper(cfg *config.HostsConfig) hosts.HostMapper {
 			opts = append(opts, xhosts.RedisLoaderOption(loader.RedisListLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
@@ -82,6 +83,7 @@ func ParseHostMapper(cfg *config.HostsConfig) hosts.HostMapper {
 			opts = append(opts, xhosts.RedisLoaderOption(loader.RedisSetLoader(
 				cfg.Redis.Addr,
 				loader.DBRedisLoaderOption(cfg.Redis.DB),
+				loader.UsernameRedisLoaderOption(cfg.Redis.Username),
 				loader.PasswordRedisLoaderOption(cfg.Redis.Password),
 				loader.KeyRedisLoaderOption(cfg.Redis.Key),
 			)))
