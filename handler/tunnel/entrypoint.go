@@ -30,10 +30,6 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
-const (
-	defaultBodySize = 1024 * 1024 // 1MB
-)
-
 type entrypoint struct {
 	node     string
 	service  string
@@ -69,6 +65,18 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 	if v[0] == relay.Version1 {
 		return ep.handleConnect(ctx, xnet.NewBufferReaderConn(conn, br), log)
 	}
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Node:       ep.node,
+		Service:    ep.service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Network:    "tcp",
+		Time:       start,
+	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
+	return ep.handleHTTP(ctx, xio.NewReadWriter(br, conn), ro, log)
 
 	var cc net.Conn
 	for {

@@ -13,12 +13,10 @@ type metadata struct {
 }
 
 func (h *sniHandler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		readTimeout = "readTimeout"
-		hash        = "hash"
-	)
-
-	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
-	h.md.hash = mdutil.GetString(md, hash)
+	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	if h.md.readTimeout <= 0 {
+		h.md.readTimeout = 15 * time.Second
+	}
+	h.md.hash = mdutil.GetString(md, "hash")
 	return
 }

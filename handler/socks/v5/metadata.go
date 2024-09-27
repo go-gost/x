@@ -19,10 +19,16 @@ type metadata struct {
 	hash              string
 	muxCfg            *mux.Config
 	observePeriod     time.Duration
+	sniffing          bool
+	sniffingTimeout   time.Duration
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	if h.md.readTimeout <= 0 {
+		h.md.readTimeout = 15 * time.Second
+	}
+
 	h.md.noTLS = mdutil.GetBool(md, "notls")
 	h.md.enableBind = mdutil.GetBool(md, "bind")
 	h.md.enableUDP = mdutil.GetBool(md, "udp")
@@ -47,6 +53,9 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
+
+	h.md.sniffing = mdutil.GetBool(md, "sniffing")
+	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 
 	return nil
 }

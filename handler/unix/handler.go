@@ -1,6 +1,7 @@
 package unix
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -14,7 +15,9 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/util/sniffing"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
@@ -108,7 +111,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		})
 		ro.Host = target.Addr
 
-		return h.forwardUnix(ctx, conn, target, log)
+		return h.forwardUnix(ctx, conn, target, ro, log)
 	}
 
 	cc, err := h.options.Router.Dial(ctx, "tcp", "@")
@@ -118,9 +121,35 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 	defer cc.Close()
 
+	var rw io.ReadWriter = conn
+	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
+
+		br := bufio.NewReader(conn)
+		proto, _ := sniffing.Sniff(ctx, br)
+		ro.Proto = proto
+
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
+		rw = xio.NewReadWriter(br, conn)
+		switch proto {
+		case sniffing.ProtoHTTP:
+			ro2 := &xrecorder.HandlerRecorderObject{}
+			*ro2 = *ro
+			ro.Time = time.Time{}
+			return h.handleHTTP(ctx, rw, cc, ro2, log)
+		case sniffing.ProtoTLS:
+			return h.handleTLS(ctx, rw, cc, ro, log)
+		}
+	}
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), "@")
-	xnet.Transport(conn, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), "@")
@@ -128,7 +157,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	return nil
 }
 
-func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *chain.Node, log logger.Logger) (err error) {
+func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *chain.Node, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	log.Debugf("%s >> %s", conn.LocalAddr(), target.Addr)
 	var cc io.ReadWriteCloser
 
@@ -143,9 +172,35 @@ func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *ch
 	}
 	defer cc.Close()
 
+	var rw io.ReadWriter = conn
+	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
+
+		br := bufio.NewReader(conn)
+		proto, _ := sniffing.Sniff(ctx, br)
+		ro.Proto = proto
+
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
+		rw = xio.NewReadWriter(br, conn)
+		switch proto {
+		case sniffing.ProtoHTTP:
+			ro2 := &xrecorder.HandlerRecorderObject{}
+			*ro2 = *ro
+			ro.Time = time.Time{}
+			return h.handleHTTP(ctx, rw, cc, ro2, log)
+		case sniffing.ProtoTLS:
+			return h.handleTLS(ctx, rw, cc, ro, log)
+		}
+	}
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
-	xnet.Transport(conn, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)

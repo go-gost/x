@@ -171,14 +171,14 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		ro.ClientIP = clientIP.String()
 	}
 
-	ro.Host = req.Host
-	addr := req.Host
-	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
+	host := req.Host
+	if _, port, _ := net.SplitHostPort(host); port == "" {
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 	}
+	ro.Host = host
 
 	fields := map[string]any{
-		"dst": addr,
+		"dst": host,
 	}
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
@@ -190,7 +190,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		dump, _ := httputil.DumpRequest(req, false)
 		log.Trace(string(dump))
 	}
-	log.Debugf("%s >> %s", req.RemoteAddr, addr)
+	log.Debugf("%s >> %s", req.RemoteAddr, host)
 
 	for k := range h.md.header {
 		w.Header().Set(k, h.md.header.Get(k))
@@ -221,14 +221,14 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	clientID, ok := h.authenticate(ctx, w, req, resp, log)
 	if !ok {
-		return errors.New("authenication failed")
+		return errors.New("authentication failed")
 	}
 	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 		resp.StatusCode = http.StatusForbidden
 		w.WriteHeader(resp.StatusCode)
-		log.Debug("bypass: ", addr)
+		log.Debug("bypass: ", host)
 		return xbypass.ErrBypass
 	}
 
@@ -240,11 +240,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	switch h.md.hash {
 	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: host})
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", addr)
+	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", host)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -274,11 +274,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			defer conn.Close()
 
 			start := time.Now()
-			log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
+			log.Infof("%s <-> %s", conn.RemoteAddr(), host)
 			netpkg.Transport(conn, cc)
 			log.WithFields(map[string]any{
 				"duration": time.Since(start),
-			}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
+			}).Infof("%s >-< %s", conn.RemoteAddr(), host)
 
 			return nil
 		}
@@ -290,7 +290,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			limiter.ScopeOption(limiter.ScopeClient),
 			limiter.ServiceOption(h.options.Service),
 			limiter.NetworkOption("tcp"),
-			limiter.AddrOption(addr),
+			limiter.AddrOption(host),
 			limiter.ClientOption(clientID),
 			limiter.SrcOption(req.RemoteAddr),
 		)
@@ -303,11 +303,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		}
 
 		start := time.Now()
-		log.Infof("%s <-> %s", req.RemoteAddr, addr)
+		log.Infof("%s <-> %s", req.RemoteAddr, host)
 		netpkg.Transport(rw, cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
-		}).Infof("%s >-< %s", req.RemoteAddr, addr)
+		}).Infof("%s >-< %s", req.RemoteAddr, host)
 		return nil
 	}
 

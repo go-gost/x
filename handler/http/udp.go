@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -9,11 +10,13 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.Logger) error {
+func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"cmd": "udp",
 	})
@@ -51,7 +54,9 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, log logger.L
 	}
 
 	// obtain a udp connection
-	c, err := h.options.Router.Dial(ctx, "udp", "") // UDP association
+	var buf bytes.Buffer
+	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
 		return err

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -17,6 +18,8 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
+	xio "github.com/go-gost/x/internal/io"
+	"github.com/go-gost/x/internal/util/sniffing"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -62,7 +65,6 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	var cc io.ReadWriteCloser
-
 	switch network {
 	case "unix":
 		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", address)
@@ -130,6 +132,31 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		pstats.Add(stats.KindCurrentConns, 1)
 		defer pstats.Add(stats.KindCurrentConns, -1)
 		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	}
+
+	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
+
+		br := bufio.NewReader(conn)
+		proto, _ := sniffing.Sniff(ctx, br)
+		ro.Proto = proto
+
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
+		rw = xio.NewReadWriter(br, conn)
+		switch proto {
+		case sniffing.ProtoHTTP:
+			ro2 := &xrecorder.HandlerRecorderObject{}
+			*ro2 = *ro
+			ro.Time = time.Time{}
+			return h.handleHTTP(ctx, rw, cc, ro2, log)
+		case sniffing.ProtoTLS:
+			return h.handleTLS(ctx, rw, cc, ro, log)
+		}
 	}
 
 	t := time.Now()

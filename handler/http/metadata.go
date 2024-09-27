@@ -15,6 +15,7 @@ const (
 )
 
 type metadata struct {
+	readTimeout     time.Duration
 	probeResistance *probeResistance
 	enableUDP       bool
 	header          http.Header
@@ -22,9 +23,16 @@ type metadata struct {
 	authBasicRealm  string
 	observePeriod   time.Duration
 	proxyAgent      string
+	sniffing        bool
+	sniffingTimeout time.Duration
 }
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
+	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	if h.md.readTimeout <= 0 {
+		h.md.readTimeout = 15 * time.Second
+	}
+
 	if m := mdutil.GetStringMapString(md, "http.header", "header"); len(m) > 0 {
 		hd := http.Header{}
 		for k, v := range m {
@@ -52,6 +60,9 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	if h.md.proxyAgent == "" {
 		h.md.proxyAgent = defaultProxyAgent
 	}
+
+	h.md.sniffing = mdutil.GetBool(md, "sniffing")
+	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 
 	return nil
 }

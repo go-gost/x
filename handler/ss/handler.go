@@ -1,6 +1,7 @@
 package ss
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -12,7 +13,9 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/util/sniffing"
 	"github.com/go-gost/x/internal/util/ss"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -109,9 +112,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		conn = ss.ShadowConn(h.cipher.StreamConn(conn), nil)
 	}
 
-	if h.md.readTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
-	}
+	conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 
 	addr := &gosocks5.Addr{}
 	if _, err := addr.ReadFrom(conn); err != nil {
@@ -120,6 +121,8 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		return err
 	}
 	ro.Host = addr.String()
+
+	conn.SetReadDeadline(time.Time{})
 
 	log = log.WithFields(map[string]any{
 		"dst": addr.String(),
@@ -145,9 +148,35 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	}
 	defer cc.Close()
 
+	var rw io.ReadWriter = conn
+	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
+
+		br := bufio.NewReader(conn)
+		proto, _ := sniffing.Sniff(ctx, br)
+		ro.Proto = proto
+
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
+		rw = xio.NewReadWriter(br, conn)
+		switch proto {
+		case sniffing.ProtoHTTP:
+			ro2 := &xrecorder.HandlerRecorderObject{}
+			*ro2 = *ro
+			ro.Time = time.Time{}
+			return h.handleHTTP(ctx, rw, cc, ro2, log)
+		case sniffing.ProtoTLS:
+			return h.handleTLS(ctx, rw, cc, ro, log)
+		}
+	}
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	netpkg.Transport(conn, cc)
+	netpkg.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)

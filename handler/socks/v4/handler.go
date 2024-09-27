@@ -1,6 +1,7 @@
 package v4
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -16,8 +17,10 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks4"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xio "github.com/go-gost/x/internal/io"
 	netpkg "github.com/go-gost/x/internal/net"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	"github.com/go-gost/x/internal/util/sniffing"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -195,7 +198,6 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		resp.Write(conn)
 		return err
 	}
-
 	defer cc.Close()
 
 	resp := gosocks4.NewReply(gosocks4.Granted, nil)
@@ -223,6 +225,31 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		pstats.Add(stats.KindCurrentConns, 1)
 		defer pstats.Add(stats.KindCurrentConns, -1)
 		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	}
+
+	if h.md.sniffing {
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+		}
+
+		br := bufio.NewReader(conn)
+		proto, _ := sniffing.Sniff(ctx, br)
+		ro.Proto = proto
+
+		if h.md.sniffingTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
+		rw = xio.NewReadWriter(br, conn)
+		switch proto {
+		case sniffing.ProtoHTTP:
+			ro2 := &xrecorder.HandlerRecorderObject{}
+			*ro2 = *ro
+			ro.Time = time.Time{}
+			return h.handleHTTP(ctx, rw, cc, ro2, log)
+		case sniffing.ProtoTLS:
+			return h.handleTLS(ctx, rw, cc, ro, log)
+		}
 	}
 
 	t := time.Now()

@@ -14,13 +14,11 @@ type metadata struct {
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		readTimeout = "readTimeout"
-		sniffing    = "sniffing"
-	)
-
-	h.md.readTimeout = mdutil.GetDuration(md, readTimeout)
-	h.md.sniffing = mdutil.GetBool(md, sniffing)
+	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+	if h.md.readTimeout <= 0 {
+		h.md.readTimeout = 15 * time.Second
+	}
+	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	return
 }

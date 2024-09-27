@@ -1,6 +1,9 @@
 package io
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 type readWriter struct {
 	io.Reader
@@ -26,4 +29,15 @@ func NewReadWriteCloser(r io.Reader, w io.Writer, c io.Closer) io.ReadWriteClose
 		Writer: w,
 		Closer: c,
 	}
+}
+
+type setReadDeadline interface {
+	SetReadDeadline(t time.Time) error
+}
+
+func SetReadDeadline(rw io.ReadWriter, t time.Time) error {
+	if v, _ := rw.(setReadDeadline); v != nil {
+		return v.SetReadDeadline(t)
+	}
+	return nil
 }

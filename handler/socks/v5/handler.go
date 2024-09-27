@@ -122,9 +122,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return rate_limiter.ErrRateLimit
 	}
 
-	if h.md.readTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
-	}
+	conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 
 	sc := gosocks5.ServerConn(conn, h.selector)
 	req, err := gosocks5.ReadRequest(sc)

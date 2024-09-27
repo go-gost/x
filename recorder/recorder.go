@@ -67,6 +67,7 @@ type HandlerRecorderObject struct {
 	Host       string              `json:"host"`
 	ClientIP   string              `json:"clientIP"`
 	ClientID   string              `json:"clientID,omitempty"`
+	Proto      string              `json:"proto,omitempty"`
 	HTTP       *HTTPRecorderObject `json:"http,omitempty"`
 	TLS        *TLSRecorderObject  `json:"tls,omitempty"`
 	DNS        *DNSRecorderObject  `json:"dns,omitempty"`
@@ -78,7 +79,7 @@ type HandlerRecorderObject struct {
 }
 
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
-	if p == nil || r == nil {
+	if p == nil || r == nil || p.Time.IsZero(){
 		return nil
 	}
 
