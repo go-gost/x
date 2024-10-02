@@ -193,14 +193,19 @@ func (s *defaultService) Serve() error {
 			clientIP = h
 		}
 
-		ctx := ctxvalue.ContextWithSid(ctx, ctxvalue.Sid(xid.New().String()))
+		sid := xid.New().String()
+		ctx := ctxvalue.ContextWithSid(ctx, ctxvalue.Sid(sid))
 		ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: clientIP})
+
+		log := s.options.logger.WithFields(map[string]any{
+			"sid": sid,
+		})
 
 		for _, rec := range s.options.recorders {
 			if rec.Record == recorder.RecorderServiceClientAddress {
 				if err := rec.Recorder.Record(ctx, []byte(clientIP)); err != nil {
-					s.options.logger.Errorf("record %s: %v", rec.Record, err)
+					log.Errorf("record %s: %v", rec.Record, err)
 				}
 				break
 			}
@@ -208,7 +213,7 @@ func (s *defaultService) Serve() error {
 		if s.options.admission != nil &&
 			!s.options.admission.Admit(ctx, clientAddr) {
 			conn.Close()
-			s.options.logger.Debugf("admission: %s is denied", clientAddr)
+			log.Debugf("admission: %s is denied", clientAddr)
 			continue
 		}
 
@@ -233,7 +238,7 @@ func (s *defaultService) Serve() error {
 			}
 
 			if err := s.handler.Handle(ctx, conn); err != nil {
-				s.options.logger.Error(err)
+				log.Error(err)
 				if v := xmetrics.GetCounter(xmetrics.MetricServiceHandlerErrorsCounter,
 					metrics.Labels{"service": s.name, "client": clientIP}); v != nil {
 					v.Inc()

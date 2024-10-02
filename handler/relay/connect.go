@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +19,6 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
-	xio "github.com/go-gost/x/internal/io"
 	"github.com/go-gost/x/internal/util/sniffing"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -64,12 +64,19 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: address})
 	}
 
-	var cc io.ReadWriteCloser
+	var cc net.Conn
 	switch network {
 	case "unix":
 		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", address)
 	case "serial":
-		cc, err = serial.OpenPort(serial.ParseConfigFromAddr(address))
+		var port io.ReadWriteCloser
+		port, err = serial.OpenPort(serial.ParseConfigFromAddr(address))
+		if err == nil {
+			cc = &serialConn{
+				ReadWriteCloser: port,
+				port:            address,
+			}
+		}
 	default:
 		var buf bytes.Buffer
 		cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, address)
@@ -139,7 +146,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
 		}
 
-		br := bufio.NewReader(conn)
+		br := bufio.NewReader(rw)
 		proto, _ := sniffing.Sniff(ctx, br)
 		ro.Proto = proto
 
@@ -147,15 +154,31 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		rw = xio.NewReadWriter(br, conn)
+		sniffer := &sniffing.Sniffer{
+			Recorder:           h.recorder.Recorder,
+			RecorderOptions:    h.recorder.Options,
+			RecorderObject:     ro,
+			Certificate:        h.md.certificate,
+			PrivateKey:         h.md.privateKey,
+			NegotiatedProtocol: h.md.alpn,
+			CertPool:           h.certPool,
+			MitmBypass:         h.md.mitmBypass,
+			ReadTimeout:        h.md.readTimeout,
+			Log:                log,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return cc, nil
+			},
+			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+				return cc, nil
+			},
+		}
+
+		conn = xnet.NewReadWriteConn(br, rw, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			ro2 := &xrecorder.HandlerRecorderObject{}
-			*ro2 = *ro
-			ro.Time = time.Time{}
-			return h.handleHTTP(ctx, rw, cc, ro2, log)
+			return sniffer.HandleHTTP(ctx, conn)
 		case sniffing.ProtoTLS:
-			return h.handleTLS(ctx, rw, cc, ro, log)
+			return sniffer.HandleTLS(ctx, conn)
 		}
 	}
 
@@ -167,4 +190,45 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}).Infof("%s >-< %s", conn.RemoteAddr(), address)
 
 	return nil
+}
+
+type serialConn struct {
+	io.ReadWriteCloser
+	port string
+}
+
+func (c *serialConn) LocalAddr() net.Addr {
+	return &serialAddr{
+		port: "@",
+	}
+}
+
+func (c *serialConn) RemoteAddr() net.Addr {
+	return &serialAddr{
+		port: c.port,
+	}
+}
+
+func (c *serialConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *serialConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *serialConn) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
+type serialAddr struct {
+	port string
+}
+
+func (a *serialAddr) Network() string {
+	return "serial"
+}
+
+func (a *serialAddr) String() string {
+	return a.port
 }

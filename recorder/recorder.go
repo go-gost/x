@@ -65,21 +65,21 @@ type HandlerRecorderObject struct {
 	RemoteAddr string              `json:"remote"`
 	LocalAddr  string              `json:"local"`
 	Host       string              `json:"host"`
+	Proto      string              `json:"proto,omitempty"`
 	ClientIP   string              `json:"clientIP"`
 	ClientID   string              `json:"clientID,omitempty"`
-	Proto      string              `json:"proto,omitempty"`
 	HTTP       *HTTPRecorderObject `json:"http,omitempty"`
 	TLS        *TLSRecorderObject  `json:"tls,omitempty"`
 	DNS        *DNSRecorderObject  `json:"dns,omitempty"`
 	Route      string              `json:"route,omitempty"`
 	Err        string              `json:"err,omitempty"`
+	SID        string              `json:"sid"`
 	Duration   time.Duration       `json:"duration"`
 	Time       time.Time           `json:"time"`
-	SID        string              `json:"sid"`
 }
 
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
-	if p == nil || r == nil || p.Time.IsZero(){
+	if p == nil || r == nil || p.Time.IsZero() {
 		return nil
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"time"
@@ -13,8 +14,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
-	xio "github.com/go-gost/x/internal/io"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -83,7 +83,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
 		}
 
-		br := bufio.NewReader(conn)
+		br := bufio.NewReader(rw)
 		proto, _ := sniffing.Sniff(ctx, br)
 		ro.Proto = proto
 
@@ -91,21 +91,37 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		rw = xio.NewReadWriter(br, conn)
+		sniffer := &sniffing.Sniffer{
+			Recorder:           h.recorder.Recorder,
+			RecorderOptions:    h.recorder.Options,
+			RecorderObject:     ro,
+			Certificate:        h.md.certificate,
+			PrivateKey:         h.md.privateKey,
+			NegotiatedProtocol: h.md.alpn,
+			CertPool:           h.certPool,
+			MitmBypass:         h.md.mitmBypass,
+			ReadTimeout:        h.md.readTimeout,
+			Log:                log,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return cc, nil
+			},
+			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+				return cc, nil
+			},
+		}
+
+		conn = xnet.NewReadWriteConn(br, rw, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			ro2 := &xrecorder.HandlerRecorderObject{}
-			*ro2 = *ro
-			ro.Time = time.Time{}
-			return h.handleHTTP(ctx, rw, cc, ro2, log)
+			return sniffer.HandleHTTP(ctx, conn)
 		case sniffing.ProtoTLS:
-			return h.handleTLS(ctx, rw, cc, ro, log)
+			return sniffer.HandleTLS(ctx, conn)
 		}
 	}
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
-	netpkg.Transport(rw, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), address)

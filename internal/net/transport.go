@@ -1,9 +1,7 @@
 package net
 
 import (
-	"bufio"
 	"io"
-	"net"
 
 	"github.com/go-gost/core/common/bufpool"
 )
@@ -35,20 +33,4 @@ func CopyBuffer(dst io.Writer, src io.Reader, bufSize int) error {
 
 	_, err := io.CopyBuffer(dst, src, buf)
 	return err
-}
-
-type bufferReaderConn struct {
-	net.Conn
-	br *bufio.Reader
-}
-
-func NewBufferReaderConn(conn net.Conn, br *bufio.Reader) net.Conn {
-	return &bufferReaderConn{
-		Conn: conn,
-		br:   br,
-	}
-}
-
-func (c *bufferReaderConn) Read(b []byte) (int, error) {
-	return c.br.Read(b)
 }

@@ -1,12 +1,17 @@
 package http
 
 import (
+	"crypto"
+	"crypto/tls"
+	"crypto/x509"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
+	"github.com/go-gost/x/registry"
 )
 
 const (
@@ -23,8 +28,14 @@ type metadata struct {
 	authBasicRealm  string
 	observePeriod   time.Duration
 	proxyAgent      string
+
 	sniffing        bool
 	sniffingTimeout time.Duration
+
+	certificate *x509.Certificate
+	privateKey  crypto.PrivateKey
+	alpn        string
+	mitmBypass  bypass.Bypass
 }
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
@@ -63,6 +74,22 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+
+	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
+	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")
+	if certFile != "" && keyFile != "" {
+		tlsCert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return err
+		}
+		h.md.certificate, err = x509.ParseCertificate(tlsCert.Certificate[0])
+		if err != nil {
+			return err
+		}
+		h.md.privateKey = tlsCert.PrivateKey
+	}
+	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
+	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
 
 	return nil
 }

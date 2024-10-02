@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/gosocks4"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/registry"
 )
 
@@ -101,7 +101,7 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return err
 	}
 
-	conn = netpkg.NewBufferReaderConn(conn, br)
+	conn = xnet.NewReadWriteConn(br, conn, conn)
 	switch b[0] {
 	case gosocks4.Ver4: // socks4
 		if h.socks4Handler != nil {

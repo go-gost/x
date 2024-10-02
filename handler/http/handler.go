@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -28,12 +29,12 @@ import (
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
-	xio "github.com/go-gost/x/internal/io"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	"github.com/go-gost/x/internal/util/sniffing"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -52,6 +53,7 @@ type httpHandler struct {
 	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 	recorder recorder.RecorderObject
+	certPool tls_util.CertPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -87,6 +89,10 @@ func (h *httpHandler) Init(md md.Metadata) error {
 			h.recorder = ro
 			break
 		}
+	}
+
+	if h.md.certificate != nil && h.md.privateKey != nil {
+		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
 	return nil
@@ -324,7 +330,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
 		}
 
-		br := bufio.NewReader(conn)
+		br := bufio.NewReader(rw)
 		proto, _ := sniffing.Sniff(ctx, br)
 		ro.Proto = proto
 
@@ -332,21 +338,37 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		rw = xio.NewReadWriter(br, conn)
+		sniffer := &sniffing.Sniffer{
+			Recorder:           h.recorder.Recorder,
+			RecorderOptions:    h.recorder.Options,
+			RecorderObject:     ro,
+			Certificate:        h.md.certificate,
+			PrivateKey:         h.md.privateKey,
+			NegotiatedProtocol: h.md.alpn,
+			CertPool:           h.certPool,
+			MitmBypass:         h.md.mitmBypass,
+			ReadTimeout:        h.md.readTimeout,
+			Log:                log,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return cc, nil
+			},
+			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+				return cc, nil
+			},
+		}
+
+		conn = xnet.NewReadWriteConn(br, rw, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			ro2 := &xrecorder.HandlerRecorderObject{}
-			*ro2 = *ro
-			ro.Time = time.Time{}
-			return h.handleHTTP(ctx, rw, cc, ro2, log)
+			return sniffer.HandleHTTP(ctx, conn)
 		case sniffing.ProtoTLS:
-			return h.handleTLS(ctx, rw, cc, ro, log)
+			return sniffer.HandleTLS(ctx, conn)
 		}
 	}
 
 	start := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	netpkg.Transport(rw, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
@@ -438,7 +460,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		if req.Body != nil {
 			maxSize := opts.MaxBodySize
 			if maxSize <= 0 {
-				maxSize = defaultBodySize
+				maxSize = sniffing.DefaultBodySize
 			}
 			reqBody = xhttp.NewBody(req.Body, maxSize)
 			req.Body = reqBody
@@ -495,7 +517,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
 		maxSize := opts.MaxBodySize
 		if maxSize <= 0 {
-			maxSize = defaultBodySize
+			maxSize = sniffing.DefaultBodySize
 		}
 		respBody = xhttp.NewBody(resp.Body, maxSize)
 		resp.Body = respBody
@@ -591,7 +613,7 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 			defer cc.Close()
 
 			req.Write(cc)
-			netpkg.Transport(conn, cc)
+			xnet.Transport(conn, cc)
 			return
 		case "file":
 			f, _ := os.Open(pr.Value)

@@ -51,5 +51,8 @@ func isHTTP(s string) bool {
 		strings.HasPrefix(http.MethodPatch, s) ||
 		strings.HasPrefix(http.MethodHead, s[:4]) ||
 		strings.HasPrefix(http.MethodConnect, s) ||
-		strings.HasPrefix(http.MethodTrace, s)
+		strings.HasPrefix(http.MethodTrace, s) ||
+		// HTTP/2 connection preface
+		// PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n
+		strings.HasPrefix(s, "PRI *")
 }

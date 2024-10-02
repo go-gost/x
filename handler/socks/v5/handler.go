@@ -15,6 +15,7 @@ import (
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_util "github.com/go-gost/x/internal/util/stats"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -37,6 +38,7 @@ type socks5Handler struct {
 	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 	recorder recorder.RecorderObject
+	certPool tls_util.CertPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -79,6 +81,10 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 			h.recorder = ro
 			break
 		}
+	}
+
+	if h.md.certificate != nil && h.md.privateKey != nil {
+		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
 	return

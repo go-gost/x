@@ -1,9 +1,14 @@
 package tls
 
 import (
+	"crypto"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"strconv"
@@ -12,6 +17,7 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
+	"github.com/patrickmn/go-cache"
 )
 
 const (
@@ -379,4 +385,77 @@ func WrapTLSClient(conn net.Conn, tlsConfig *tls.Config, timeout time.Duration) 
 	*/
 
 	return tlsConn, err
+}
+
+var (
+	ErrCertNotFound = errors.New("certificate not found")
+)
+
+type CertPool interface {
+	Get(serverName string) (*x509.Certificate, error)
+	Put(serverName string, cert *x509.Certificate)
+}
+
+type memoryCertPool struct {
+	cache *cache.Cache
+}
+
+func NewMemoryCertPool() CertPool {
+	return &memoryCertPool{
+		cache: cache.New(24*7*time.Hour, 1*time.Hour),
+	}
+}
+
+func (p *memoryCertPool) Get(serverName string) (*x509.Certificate, error) {
+	v, ok := p.cache.Get(serverName)
+	if !ok {
+		return nil, ErrCertNotFound
+	}
+	return v.(*x509.Certificate), nil
+}
+
+func (p *memoryCertPool) Put(serverName string, cert *x509.Certificate) {
+	p.cache.Set(serverName, cert, cache.DefaultExpiration)
+}
+
+func GenerateCertificate(serverName string, validity time.Duration, caCert *x509.Certificate, caKey crypto.PrivateKey) (*x509.Certificate, error) {
+	if host, _, _ := net.SplitHostPort(serverName); host != "" {
+		serverName = host
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano() / 100000),
+		Subject: pkix.Name{
+			Organization: []string{"GOST"},
+		},
+		NotBefore:          time.Now().Add(-validity),
+		NotAfter:           time.Now().Add(validity),
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		ExtKeyUsage:        []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+
+	if ip := net.ParseIP(serverName); ip != nil {
+		tmpl.IPAddresses = []net.IP{ip}
+	} else {
+		tmpl.Subject.CommonName = serverName
+		tmpl.DNSNames = []string{serverName}
+	}
+
+	pk, ok := caKey.(privateKey)
+	if !ok {
+		return nil, errors.New("invalid private key type")
+	}
+
+	raw, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, pk.Public(), caKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return x509.ParseCertificate(raw)
+}
+
+// https://pkg.go.dev/crypto#PrivateKey
+type privateKey interface {
+	Public() crypto.PublicKey
+	Equal(x crypto.PrivateKey) bool
 }

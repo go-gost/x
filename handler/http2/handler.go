@@ -28,7 +28,7 @@ import (
 	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
@@ -275,7 +275,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 			start := time.Now()
 			log.Infof("%s <-> %s", conn.RemoteAddr(), host)
-			netpkg.Transport(conn, cc)
+			xnet.Transport(conn, cc)
 			log.WithFields(map[string]any{
 				"duration": time.Since(start),
 			}).Infof("%s >-< %s", conn.RemoteAddr(), host)
@@ -304,7 +304,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 		start := time.Now()
 		log.Infof("%s <-> %s", req.RemoteAddr, host)
-		netpkg.Transport(rw, cc)
+		xnet.Transport(rw, cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >-< %s", req.RemoteAddr, host)

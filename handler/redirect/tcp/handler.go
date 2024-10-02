@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/handler"
@@ -14,9 +15,9 @@ import (
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
-	xio "github.com/go-gost/x/internal/io"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -36,6 +37,7 @@ type redirectHandler struct {
 	md       metadata
 	options  handler.Options
 	recorder recorder.RecorderObject
+	certPool tls_util.CertPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -59,6 +61,10 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 			h.recorder = ro
 			break
 		}
+	}
+
+	if h.md.certificate != nil && h.md.privateKey != nil {
+		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
 	return
@@ -122,7 +128,6 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
 	})
 
-	var rw io.ReadWriter = conn
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
@@ -136,15 +141,59 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		rw = xio.NewReadWriter(br, conn)
+		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			var cc net.Conn
+			var err error
+			if address != "" {
+				host, _, _ := net.SplitHostPort(address)
+				if host == "" {
+					host = address
+				}
+				_, port, _ := net.SplitHostPort(dstAddr.String())
+				address = net.JoinHostPort(strings.Trim(host, "[]"), port)
+				ro.Host = address
+
+				var buf bytes.Buffer
+				cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
+				ro.Route = buf.String()
+				if err != nil && !h.md.sniffingFallback {
+					return nil, err
+				}
+			}
+
+			if cc == nil {
+				var buf bytes.Buffer
+				cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				ro.Route = buf.String()
+				ro.Host = dstAddr.String()
+			}
+
+			return cc, err
+		}
+
+		sniffer := &sniffing.Sniffer{
+			Recorder:           h.recorder.Recorder,
+			RecorderOptions:    h.recorder.Options,
+			RecorderObject:     ro,
+			Certificate:        h.md.certificate,
+			PrivateKey:         h.md.privateKey,
+			NegotiatedProtocol: h.md.alpn,
+			CertPool:           h.certPool,
+			MitmBypass:         h.md.mitmBypass,
+			ReadTimeout:        h.md.readTimeout,
+			Log:                log,
+			Dial:               dial,
+			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+				return dial(ctx, network, address)
+			},
+		}
+
+		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			ro2 := &xrecorder.HandlerRecorderObject{}
-			*ro2 = *ro
-			ro.Time = time.Time{}
-			return h.handleHTTP(ctx, rw, dstAddr, ro2, log)
+			return sniffer.HandleHTTP(ctx, conn)
 		case sniffing.ProtoTLS:
-			return h.handleTLS(ctx, rw, dstAddr, ro, log)
+			return sniffer.HandleTLS(ctx, conn)
 		}
 	}
 
@@ -167,7 +216,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
-	netpkg.Transport(rw, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), dstAddr)

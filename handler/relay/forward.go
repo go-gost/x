@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 )
@@ -111,7 +111,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	netpkg.Transport(rw, cc)
+	xnet.Transport(rw, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)

@@ -135,7 +135,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 			ro.Time = time.Time{}
 			return h.handleHTTP(ctx, rw, ro2, log)
 		case sniffing.ProtoTLS:
-			return h.handleTLS(ctx, rw, ro, log)
+			return h.handleTLS(ctx, xnet.NewReadWriteConn(rw, rw, conn), ro, log)
 		}
 	}
 

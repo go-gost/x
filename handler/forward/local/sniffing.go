@@ -23,7 +23,7 @@ import (
 	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
 	ctxvalue "github.com/go-gost/x/ctx"
-	netpkg "github.com/go-gost/x/internal/net"
+	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -323,16 +323,16 @@ func (h *forwardHandler) httpRoundTrip(ctx context.Context, rw io.ReadWriter, re
 	}
 
 	if req.Header.Get("Upgrade") == "websocket" {
-		netpkg.Transport(rw, cc)
+		xnet.Transport(rw, cc)
 	}
 
 	return resp.Close, nil
 }
 
-func (h *forwardHandler) handleTLS(ctx context.Context, rw io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *forwardHandler) handleTLS(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 
-	clientHello, err := dissector.ParseClientHello(io.TeeReader(rw, buf))
+	clientHello, err := dissector.ParseClientHello(io.TeeReader(conn, buf))
 	if err != nil {
 		return err
 	}
@@ -429,13 +429,13 @@ func (h *forwardHandler) handleTLS(ctx context.Context, rw io.ReadWriter, ro *xr
 		ro.TLS.ServerHello = hex.EncodeToString(buf.Bytes())
 	}
 
-	if _, err := buf.WriteTo(rw); err != nil {
+	if _, err := buf.WriteTo(conn); err != nil {
 		return err
 	}
 
 	t := time.Now()
 	log.Infof("%s <-> %s", ro.RemoteAddr, addr)
-	netpkg.Transport(rw, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", ro.RemoteAddr, addr)

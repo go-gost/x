@@ -3,6 +3,7 @@ package net
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"strings"
@@ -95,4 +96,26 @@ func (lc *ListenConfig) ListenPacket(ctx context.Context, network, address strin
 		}
 	}
 	return lc.ListenConfig.ListenPacket(ctx, network, address)
+}
+
+type readWriteConn struct {
+	net.Conn
+	r io.Reader
+	w io.Writer
+}
+
+func NewReadWriteConn(r io.Reader, w io.Writer, c net.Conn) net.Conn {
+	return &readWriteConn{
+		Conn: c,
+		r:    r,
+		w:    w,
+	}
+}
+
+func (c *readWriteConn) Read(p []byte) (int, error) {
+	return c.r.Read(p)
+}
+
+func (c *readWriteConn) Write(p []byte) (int, error) {
+	return c.w.Write(p)
 }

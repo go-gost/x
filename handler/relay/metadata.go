@@ -1,24 +1,35 @@
 package relay
 
 import (
+	"crypto"
+	"crypto/tls"
+	"crypto/x509"
 	"math"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/x/internal/util/mux"
+	"github.com/go-gost/x/registry"
 )
 
 type metadata struct {
-	readTimeout     time.Duration
-	enableBind      bool
-	udpBufferSize   int
-	noDelay         bool
-	hash            string
-	muxCfg          *mux.Config
-	observePeriod   time.Duration
+	readTimeout   time.Duration
+	enableBind    bool
+	udpBufferSize int
+	noDelay       bool
+	hash          string
+	muxCfg        *mux.Config
+	observePeriod time.Duration
+
 	sniffing        bool
 	sniffingTimeout time.Duration
+
+	certificate *x509.Certificate
+	privateKey  crypto.PrivateKey
+	alpn        string
+	mitmBypass  bypass.Bypass
 }
 
 func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -52,6 +63,22 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+
+	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
+	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")
+	if certFile != "" && keyFile != "" {
+		tlsCert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return err
+		}
+		h.md.certificate, err = x509.ParseCertificate(tlsCert.Certificate[0])
+		if err != nil {
+			return err
+		}
+		h.md.privateKey = tlsCert.PrivateKey
+	}
+	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
+	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
 
 	return
 }
