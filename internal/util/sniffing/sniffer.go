@@ -161,7 +161,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
 	}
 }
 
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request) (close bool, err error) {
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw net.Conn, cc io.ReadWriter, req *http.Request) (close bool, err error) {
 	close = true
 
 	ro := &xrecorder.HandlerRecorderObject{}
@@ -173,6 +173,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		ro.Duration = time.Since(ro.Time)
 		if err != nil {
 			ro.Err = err.Error()
+		}
+		if err := ro.AddTrafficField(rw); err != nil {
+			h.Log.Errorf("error adding traffic field: %s", err)
 		}
 		if err := ro.Record(ctx, h.Recorder); err != nil {
 			h.Log.Errorf("record: %v", err)

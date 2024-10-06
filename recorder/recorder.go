@@ -3,10 +3,13 @@ package recorder
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/go-gost/core/recorder"
+	xnet "github.com/go-gost/x/internal/net"
 )
 
 const (
@@ -91,4 +94,13 @@ func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder)
 	}
 
 	return r.Record(ctx, data)
+}
+func (p *HandlerRecorderObject) AddTrafficField(conn net.Conn) error {
+	if rwConn, ok := xnet.AssertReadWriteConn(conn); ok {
+		p.TotalRead = rwConn.Stats.TotalReadBytes
+		p.TotalWrite = rwConn.Stats.TotalWriteBytes
+		return nil
+	} else {
+		return fmt.Errorf("conn (%T) is not ReadWriteConn", conn)
+	}
 }

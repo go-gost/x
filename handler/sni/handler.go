@@ -94,10 +94,8 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		if err != nil {
 			ro.Err = err.Error()
 		}
-		ro.Duration = time.Since(start)
-		if rwConn, ok := xnet.AssertReadWriteConn(conn); ok {
-			ro.TotalRead = rwConn.Stats.TotalReadBytes
-			ro.TotalWrite = rwConn.Stats.TotalWriteBytes
+		if err := ro.AddTrafficField(conn); err != nil {
+			log.Errorf("error adding traffic field: %s", err)
 		}
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Errorf("record: %v", err)
