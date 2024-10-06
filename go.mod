@@ -119,5 +119,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240701130421-f6361c86f094 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
-
-replace github.com/go-gost/x => github.com/amirdaaee/gost-x v0.2.0
