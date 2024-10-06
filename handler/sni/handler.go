@@ -95,10 +95,13 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 			ro.Err = err.Error()
 		}
 		ro.Duration = time.Since(start)
+		if rwConn, ok := xnet.AssertReadWriteConn(conn); ok {
+			ro.TotalRead = rwConn.Stats.TotalReadBytes
+			ro.TotalWrite = rwConn.Stats.TotalWriteBytes
+		}
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Errorf("record: %v", err)
 		}
-
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())

@@ -76,6 +76,8 @@ type HandlerRecorderObject struct {
 	SID        string              `json:"sid"`
 	Duration   time.Duration       `json:"duration"`
 	Time       time.Time           `json:"time"`
+	TotalWrite int                 `json:"totalWrite,omitempty"`
+	TotalRead  int                 `json:"totalRead,omitempty"`
 }
 
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
