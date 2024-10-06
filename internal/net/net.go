@@ -7,6 +7,7 @@ import (
 	"net"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/vishvananda/netns"
@@ -98,24 +99,52 @@ func (lc *ListenConfig) ListenPacket(ctx context.Context, network, address strin
 	return lc.ListenConfig.ListenPacket(ctx, network, address)
 }
 
+type readWriteConnStats struct {
+	TotalReadBytes  int
+	TotalWriteBytes int
+	lock            sync.Mutex
+}
 type readWriteConn struct {
 	net.Conn
-	r io.Reader
-	w io.Writer
+	r     io.Reader
+	w     io.Writer
+	Stats *readWriteConnStats
 }
 
 func NewReadWriteConn(r io.Reader, w io.Writer, c net.Conn) net.Conn {
 	return &readWriteConn{
-		Conn: c,
-		r:    r,
-		w:    w,
+		Conn:  c,
+		r:     r,
+		w:     w,
+		Stats: &readWriteConnStats{},
 	}
 }
-
+func AssertReadWriteConn(conn net.Conn) (*readWriteConn, bool) {
+	rwConn, ok := conn.(*readWriteConn)
+	return rwConn, ok
+}
 func (c *readWriteConn) Read(p []byte) (int, error) {
-	return c.r.Read(p)
+	n, err := c.r.Read(p)
+	if err == nil {
+		c.addReadStat(n)
+	}
+	return n, err
 }
 
 func (c *readWriteConn) Write(p []byte) (int, error) {
-	return c.w.Write(p)
+	n, err := c.w.Write(p)
+	if err == nil {
+		c.addWriteStat(n)
+	}
+	return n, err
+}
+func (c *readWriteConn) addReadStat(val int) {
+	c.Stats.lock.Lock()
+	defer c.Stats.lock.Unlock()
+	c.Stats.TotalReadBytes += val
+}
+func (c *readWriteConn) addWriteStat(val int) {
+	c.Stats.lock.Lock()
+	defer c.Stats.lock.Unlock()
+	c.Stats.TotalWriteBytes += val
 }
