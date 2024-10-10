@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
 
@@ -21,6 +21,7 @@ const (
 
 type metadata struct {
 	readTimeout     time.Duration
+	keepalive       bool
 	probeResistance *probeResistance
 	enableUDP       bool
 	header          http.Header
@@ -51,6 +52,8 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		}
 		h.md.header = hd
 	}
+
+	h.md.keepalive = mdutil.GetBool(md, "http.keepalive", "keepalive")
 
 	if pr := mdutil.GetString(md, "probeResist", "probe_resist"); pr != "" {
 		if ss := strings.SplitN(pr, ":", 2); len(ss) == 2 {

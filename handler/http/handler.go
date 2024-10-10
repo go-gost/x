@@ -338,31 +338,39 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			conn.SetReadDeadline(time.Time{})
 		}
 
+		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			return cc, nil
+		}
+		dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+			return cc, nil
+		}
 		sniffer := &sniffing.Sniffer{
 			Recorder:           h.recorder.Recorder,
 			RecorderOptions:    h.recorder.Options,
-			RecorderObject:     ro,
 			Certificate:        h.md.certificate,
 			PrivateKey:         h.md.privateKey,
 			NegotiatedProtocol: h.md.alpn,
 			CertPool:           h.certPool,
 			MitmBypass:         h.md.mitmBypass,
 			ReadTimeout:        h.md.readTimeout,
-			Log:                log,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				return cc, nil
-			},
-			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-				return cc, nil
-			},
 		}
 
 		conn = xnet.NewReadWriteConn(br, rw, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			return sniffer.HandleHTTP(ctx, conn)
+			return sniffer.HandleHTTP(ctx, conn,
+				sniffing.WithDial(dial),
+				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx, conn)
+			return sniffer.HandleTLS(ctx, conn,
+				sniffing.WithDial(dial),
+				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
 		}
 	}
 
@@ -448,6 +456,10 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		} else {
 			req.Header.Set("Connection", "close")
 		}
+	}
+
+	if !h.md.keepalive {
+		req.Header.Set("Connection", "close")
 	}
 
 	req.Header.Del("Proxy-Authorization")
