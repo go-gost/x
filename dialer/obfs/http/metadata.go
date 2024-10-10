@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 const (

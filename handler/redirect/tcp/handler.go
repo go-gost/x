@@ -162,6 +162,9 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			}
 
 			if cc == nil {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", dstAddr.String()) {
+					return nil, xbypass.ErrBypass
+				}
 				var buf bytes.Buffer
 				cc, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
 				ro.Route = buf.String()
@@ -170,30 +173,39 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 			return cc, err
 		}
+		dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+			return dial(ctx, network, address)
+		}
 
 		sniffer := &sniffing.Sniffer{
 			Recorder:           h.recorder.Recorder,
 			RecorderOptions:    h.recorder.Options,
-			RecorderObject:     ro,
 			Certificate:        h.md.certificate,
 			PrivateKey:         h.md.privateKey,
 			NegotiatedProtocol: h.md.alpn,
 			CertPool:           h.certPool,
 			MitmBypass:         h.md.mitmBypass,
 			ReadTimeout:        h.md.readTimeout,
-			Log:                log,
-			Dial:               dial,
-			DialTLS: func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-				return dial(ctx, network, address)
-			},
 		}
 
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			return sniffer.HandleHTTP(ctx, conn)
+			return sniffer.HandleHTTP(ctx, conn,
+				sniffing.WithDial(dial),
+				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx, conn)
+			return sniffer.HandleTLS(ctx, conn,
+				sniffing.WithDial(dial),
+				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
 		}
 	}
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	tap_util "github.com/go-gost/x/internal/util/tap"
 )
 

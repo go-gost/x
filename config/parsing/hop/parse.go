@@ -8,7 +8,6 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
-	mdutil "github.com/go-gost/core/metadata/util"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 	"github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {

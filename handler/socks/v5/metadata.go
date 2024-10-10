@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/internal/util/mux"
 	"github.com/go-gost/x/registry"
 )

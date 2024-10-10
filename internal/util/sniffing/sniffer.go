@@ -21,6 +21,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	dissector "github.com/go-gost/tls-dissector"
+	xbypass "github.com/go-gost/x/bypass"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
@@ -38,13 +39,50 @@ var (
 	DefaultCertPool = tls_util.NewMemoryCertPool()
 )
 
-type Sniffer struct {
+type HandleOptions struct {
 	Dial    func(ctx context.Context, network, address string) (net.Conn, error)
 	DialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
 
+	Bypass         bypass.Bypass
+	RecorderObject *xrecorder.HandlerRecorderObject
+	Log            logger.Logger
+}
+
+type HandleOption func(opts *HandleOptions)
+
+func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.Dial = dial
+	}
+}
+
+func WithDialTLS(dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.DialTLS = dialTLS
+	}
+}
+
+func WithBypass(bypass bypass.Bypass) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.Bypass = bypass
+	}
+}
+
+func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.RecorderObject = ro
+	}
+}
+
+func WithLog(log logger.Logger) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.Log = log
+	}
+}
+
+type Sniffer struct {
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
-	RecorderObject  *xrecorder.HandlerRecorderObject
 
 	// MITM TLS termination
 	Certificate        *x509.Certificate
@@ -54,21 +92,25 @@ type Sniffer struct {
 	MitmBypass         bypass.Bypass
 
 	ReadTimeout time.Duration
-	Log         logger.Logger
 }
 
-func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
+func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
+	var o HandleOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)
 	if err != nil {
 		return err
 	}
-	if h.Log.IsLevelEnabled(logger.TraceLevel) {
+	if o.Log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		h.Log.Trace(string(dump))
+		o.Log.Trace(string(dump))
 	}
 
-	ro := h.RecorderObject
+	ro := o.RecorderObject
 	host := req.Host
 	if host != "" {
 		if _, _, err := net.SplitHostPort(host); err != nil {
@@ -76,9 +118,13 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
 		}
 		ro.Host = host
 
-		h.Log = h.Log.WithFields(map[string]any{
+		o.Log = o.Log.WithFields(map[string]any{
 			"host": host,
 		})
+
+		if o.Bypass != nil && o.Bypass.Contains(ctx, "tcp", host) {
+			return xbypass.ErrBypass
+		}
 	}
 
 	// http/2
@@ -96,35 +142,39 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
 
 		ro.Time = time.Time{}
 
+		tr := &http2.Transport{
+			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+				if dial := o.DialTLS; dial != nil {
+					return dial(ctx, network, addr, cfg)
+				}
+
+				cc, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+				if err != nil {
+					return nil, err
+				}
+
+				cc = tls.Client(cc, cfg)
+				return cc, nil
+			},
+		}
+		defer tr.CloseIdleConnections()
+
 		h2s := &http2.Server{}
 		h2s.ServeConn(xnet.NewReadWriteConn(br, conn, conn), &http2.ServeConnOpts{
 			Context:          ctx,
 			SawClientPreface: true,
 			Handler: &h2Handler{
-				Client: &http.Client{
-					Transport: &http2.Transport{
-						DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-							if dial := h.DialTLS; dial != nil {
-								return dial(ctx, network, addr, cfg)
-							}
-
-							cc, err := (&net.Dialer{}).DialContext(ctx, network, addr)
-							if err != nil {
-								return nil, err
-							}
-
-							cc = tls.Client(cc, cfg)
-							return cc, nil
-						},
-					},
-				},
-				Sniffer: h,
+				transport:       tr,
+				recorder:        h.Recorder,
+				recorderOptions: h.RecorderOptions,
+				recorderObject:  ro,
+				log:             o.Log,
 			},
 		})
 		return nil
 	}
 
-	dial := h.Dial
+	dial := o.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
@@ -136,7 +186,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
 
 	ro.Time = time.Time{}
 
-	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req)
+	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, &o)
 	if err != nil || shouldClose {
 		return err
 	}
@@ -150,35 +200,35 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn) error {
 			return err
 		}
 
-		if h.Log.IsLevelEnabled(logger.TraceLevel) {
+		if o.Log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpRequest(req, false)
-			h.Log.Trace(string(dump))
+			o.Log.Trace(string(dump))
 		}
 
-		if shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req); err != nil || shouldClose {
+		if shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, &o); err != nil || shouldClose {
 			return err
 		}
 	}
 }
 
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request) (close bool, err error) {
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request, o *HandleOptions) (close bool, err error) {
 	close = true
 
 	ro := &xrecorder.HandlerRecorderObject{}
-	*ro = *h.RecorderObject
+	*ro = *o.RecorderObject
 
 	ro.Time = time.Now()
-	h.Log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
+	o.Log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
 		ro.Duration = time.Since(ro.Time)
 		if err != nil {
 			ro.Err = err.Error()
 		}
 		if err := ro.Record(ctx, h.Recorder); err != nil {
-			h.Log.Errorf("record: %v", err)
+			o.Log.Errorf("record: %v", err)
 		}
 
-		h.Log.WithFields(map[string]any{
+		o.Log.WithFields(map[string]any{
 			"duration": time.Since(ro.Time),
 		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
 	}()
@@ -231,7 +281,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
 	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
 	if err != nil {
-		h.Log.Errorf("read response: %v", err)
+		o.Log.Errorf("read response: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -241,9 +291,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	ro.HTTP.Response.Header = resp.Header
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 
-	if h.Log.IsLevelEnabled(logger.TraceLevel) {
+	if o.Log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		h.Log.Trace(string(dump))
+		o.Log.Trace(string(dump))
 	}
 
 	// HTTP/1.0
@@ -266,7 +316,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	}
 
 	if err = resp.Write(rw); err != nil {
-		h.Log.Errorf("write response: %v", err)
+		o.Log.Errorf("write response: %v", err)
 		return
 	}
 
@@ -282,14 +332,19 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	return resp.Close, nil
 }
 
-func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn) error {
+func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
+	var o HandleOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	buf := new(bytes.Buffer)
 	clientHello, err := dissector.ParseClientHello(io.TeeReader(conn, buf))
 	if err != nil {
 		return err
 	}
 
-	ro := h.RecorderObject
+	ro := o.RecorderObject
 	ro.TLS = &xrecorder.TLSRecorderObject{
 		ServerName:  clientHello.ServerName,
 		ClientHello: hex.EncodeToString(buf.Bytes()),
@@ -304,9 +359,13 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn) error {
 			host = net.JoinHostPort(strings.Trim(host, "[]"), "443")
 		}
 		ro.Host = host
+
+		if o.Bypass != nil && o.Bypass.Contains(ctx, "tcp", host) {
+			return xbypass.ErrBypass
+		}
 	}
 
-	dial := h.Dial
+	dial := o.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
@@ -322,7 +381,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn) error {
 			host = ro.Host
 		}
 		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, "tcp", host) {
-			return h.terminateTLS(ctx, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello)
+			return h.terminateTLS(ctx, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello, &o)
 		}
 	}
 
@@ -353,17 +412,18 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn) error {
 		return err
 	}
 
-	h.Log.Infof("%s <-> %s", ro.RemoteAddr, ro.Host)
+	o.Log.Infof("%s <-> %s", ro.RemoteAddr, ro.Host)
 	xnet.Transport(conn, cc)
-	h.Log.WithFields(map[string]any{
+	o.Log.WithFields(map[string]any{
 		"duration": time.Since(ro.Time),
 	}).Infof("%s >-< %s", ro.RemoteAddr, ro.Host)
 
 	return err
 }
 
-func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo) error {
-	ro := h.RecorderObject
+func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, o *HandleOptions) error {
+	ro := o.RecorderObject
+	log := o.Log
 
 	nextProtos := clientHello.SupportedProtos
 	if h.NegotiatedProtocol != "" {
@@ -419,8 +479,20 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 				serverName = host
 			}
 			cert, err := certPool.Get(serverName)
+			if cert != nil {
+				pool := x509.NewCertPool()
+				pool.AddCert(h.Certificate)
+				if _, err = cert.Verify(x509.VerifyOptions{
+					DNSName: serverName,
+					Roots:   pool,
+				}); err != nil {
+					log.Warnf("verify cached certificate for %s: %v", serverName, err)
+					cert = nil
+				}
+			}
 			if cert == nil {
 				cert, err = tls_util.GenerateCertificate(serverName, 7*24*time.Hour, h.Certificate, h.PrivateKey)
+				certPool.Put(serverName, cert)
 			}
 			if err != nil {
 				return nil, err
@@ -436,28 +508,32 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 		return err
 	}
 
-	sniffer := &Sniffer{}
-	*sniffer = *h
-
-	sniffer.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
-		return clientConn, nil
+	opts := []HandleOption{
+		WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+			return clientConn, nil
+		}),
+		WithDialTLS(func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+			return clientConn, nil
+		}),
+		WithRecorderObject(ro),
+		WithLog(log),
 	}
-	sniffer.DialTLS = func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-		return clientConn, nil
-	}
-	return sniffer.HandleHTTP(ctx, serverConn)
+	return h.HandleHTTP(ctx, serverConn, opts...)
 }
 
 type h2Handler struct {
-	Client  *http.Client
-	Sniffer *Sniffer
+	transport       http.RoundTripper
+	recorder        recorder.Recorder
+	recorderOptions *recorder.Options
+	recorderObject  *xrecorder.HandlerRecorderObject
+	log             logger.Logger
 }
 
 func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log := h.Sniffer.Log
+	log := h.log
 
 	ro := &xrecorder.HandlerRecorderObject{}
-	*ro = *h.Sniffer.RecorderObject
+	*ro = *h.recorderObject
 	ro.Time = time.Now()
 
 	var err error
@@ -467,7 +543,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			ro.Err = err.Error()
 		}
-		if err := ro.Record(r.Context(), h.Sniffer.Recorder); err != nil {
+		if err := ro.Record(r.Context(), h.recorder); err != nil {
 			log.Errorf("record: %v", err)
 		}
 
@@ -510,7 +586,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var reqBody *xhttp.Body
-	if opts := h.Sniffer.RecorderOptions; opts != nil && opts.HTTPBody {
+	if opts := h.recorderOptions; opts != nil && opts.HTTPBody {
 		if req.Body != nil {
 			maxSize := opts.MaxBodySize
 			if maxSize <= 0 {
@@ -521,7 +597,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := h.Client.Do(req.WithContext(r.Context()))
+	resp, err := h.transport.RoundTrip(req.WithContext(r.Context()))
 	if reqBody != nil {
 		ro.HTTP.Request.Body = reqBody.Content()
 		ro.HTTP.Request.ContentLength = reqBody.Length()
@@ -546,7 +622,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 
 	var respBody *xhttp.Body
-	if opts := h.Sniffer.RecorderOptions; opts != nil && opts.HTTPBody {
+	if opts := h.recorderOptions; opts != nil && opts.HTTPBody {
 		maxSize := opts.MaxBodySize
 		if maxSize <= 0 {
 			maxSize = DefaultBodySize

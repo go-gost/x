@@ -14,7 +14,7 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"

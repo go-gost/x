@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/core/router"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/go-gost/x/registry"

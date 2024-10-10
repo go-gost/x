@@ -5,7 +5,7 @@ import (
 	"os"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"github.com/mitchellh/go-homedir"
 	"github.com/zalando/go-keyring"

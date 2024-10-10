@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/core/metadata/util"
+	mdutil "github.com/go-gost/x/metadata/util"
 	xauth "github.com/go-gost/x/auth"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
