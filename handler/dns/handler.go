@@ -16,11 +16,13 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xhop "github.com/go-gost/x/hop"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/resolver/exchanger"
@@ -152,11 +154,17 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
 	defer func() {
 		ro.Duration = time.Since(start)
 		if err != nil {
 			ro.Err = err.Error()
 		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Warnf("recorder: %v", err)
 		}

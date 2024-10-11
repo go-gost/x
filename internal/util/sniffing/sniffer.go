@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	dissector "github.com/go-gost/tls-dissector"
 	xbypass "github.com/go-gost/x/bypass"
@@ -26,6 +27,7 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http2"
 )
@@ -100,17 +102,22 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		opt(&o)
 	}
 
+	ro := o.RecorderObject
+	log := o.Log
+
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
 	br := bufio.NewReader(conn)
 	req, err := http.ReadRequest(br)
 	if err != nil {
 		return err
 	}
-	if o.Log.IsLevelEnabled(logger.TraceLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
-		o.Log.Trace(string(dump))
+		log.Trace(string(dump))
 	}
 
-	ro := o.RecorderObject
 	host := req.Host
 	if host != "" {
 		if _, _, err := net.SplitHostPort(host); err != nil {
@@ -118,7 +125,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		}
 		ro.Host = host
 
-		o.Log = o.Log.WithFields(map[string]any{
+		log = log.WithFields(map[string]any{
 			"host": host,
 		})
 
@@ -168,7 +175,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 				recorder:        h.Recorder,
 				recorderOptions: h.RecorderOptions,
 				recorderObject:  ro,
-				log:             o.Log,
+				log:             log,
 			},
 		})
 		return nil
@@ -186,12 +193,14 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	ro.Time = time.Time{}
 
-	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, &o)
+	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, ro, &pStats, log)
 	if err != nil || shouldClose {
 		return err
 	}
 
 	for {
+		pStats.Reset()
+
 		req, err := http.ReadRequest(br)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
@@ -200,35 +209,38 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			return err
 		}
 
-		if o.Log.IsLevelEnabled(logger.TraceLevel) {
+		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpRequest(req, false)
-			o.Log.Trace(string(dump))
+			log.Trace(string(dump))
 		}
 
-		if shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, &o); err != nil || shouldClose {
+		if shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, ro, &pStats, log); err != nil || shouldClose {
 			return err
 		}
 	}
 }
 
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request, o *HandleOptions) (close bool, err error) {
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (close bool, err error) {
 	close = true
 
-	ro := &xrecorder.HandlerRecorderObject{}
-	*ro = *o.RecorderObject
+	ro2 := &xrecorder.HandlerRecorderObject{}
+	*ro2 = *ro
+	ro = ro2
 
 	ro.Time = time.Now()
-	o.Log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
+	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
-		ro.Duration = time.Since(ro.Time)
 		if err != nil {
 			ro.Err = err.Error()
 		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		ro.Duration = time.Since(ro.Time)
 		if err := ro.Record(ctx, h.Recorder); err != nil {
-			o.Log.Errorf("record: %v", err)
+			log.Errorf("record: %v", err)
 		}
 
-		o.Log.WithFields(map[string]any{
+		log.WithFields(map[string]any{
 			"duration": time.Since(ro.Time),
 		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
 	}()
@@ -281,7 +293,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
 	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
 	if err != nil {
-		o.Log.Errorf("read response: %v", err)
+		log.Errorf("read response: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -291,9 +303,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	ro.HTTP.Response.Header = resp.Header
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 
-	if o.Log.IsLevelEnabled(logger.TraceLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
-		o.Log.Trace(string(dump))
+		log.Trace(string(dump))
 	}
 
 	// HTTP/1.0
@@ -316,7 +328,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	}
 
 	if err = resp.Write(rw); err != nil {
-		o.Log.Errorf("write response: %v", err)
+		log.Errorf("write response: %v", err)
 		return
 	}
 
@@ -467,6 +479,10 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 		nextProtos = []string{negotiatedProtocol}
 	}
 
+	// cache the tls server handshake record.
+	wb := &bytes.Buffer{}
+	conn = xnet.NewReadWriteConn(conn, io.MultiWriter(wb, conn), conn)
+
 	serverConn := tls.Server(conn, &tls.Config{
 		NextProtos: nextProtos,
 		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -504,7 +520,13 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 			}, nil
 		},
 	})
-	if err := serverConn.HandshakeContext(ctx); err != nil {
+	err := serverConn.HandshakeContext(ctx)
+	if record, _ := dissector.ReadRecord(wb); record != nil {
+		wb.Reset()
+		record.WriteTo(wb)
+		ro.TLS.ServerHello = hex.EncodeToString(wb.Bytes())
+	}
+	if err != nil {
 		return err
 	}
 

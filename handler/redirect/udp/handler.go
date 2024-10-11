@@ -9,11 +9,13 @@ import (
 
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
@@ -75,12 +77,20 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
 		}
 		ro.Duration = time.Since(start)
-		ro.Record(ctx, h.recorder.Recorder)
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+			log.Error("record: %v", err)
+		}
 
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),

@@ -119,10 +119,16 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		"sid":    ctxvalue.SidFromContext(ctx),
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
 		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Error("record: %v", err)
