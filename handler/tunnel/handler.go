@@ -76,7 +76,6 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	h.log = h.options.Logger.WithFields(map[string]any{
 		"node": h.id,
 	})
-
 	h.pool = NewConnectorPool(h.id, h.md.sd)
 
 	h.ep = &entrypoint{
@@ -88,16 +87,17 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		log: h.log.WithFields(map[string]any{
 			"kind": "entrypoint",
 		}),
+		keepalive:   h.md.entryPointKeepalive,
+		readTimeout: h.md.entryPointReadTimeout,
 	}
-	if err = h.initEntrypoint(); err != nil {
-		return
-	}
-
 	for _, ro := range h.options.Recorders {
 		if ro.Record == xrecorder.RecorderServiceHandler {
 			h.ep.recorder = ro
 			break
 		}
+	}
+	if err = h.initEntrypoint(); err != nil {
+		return
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

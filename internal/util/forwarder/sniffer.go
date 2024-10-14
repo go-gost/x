@@ -136,6 +136,18 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 
 	ro := ho.RecorderObject
+	ro.HTTP = &xrecorder.HTTPRecorderObject{
+		Host:   req.Host,
+		Proto:  req.Proto,
+		Scheme: req.URL.Scheme,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		Request: xrecorder.HTTPRequestRecorderObject{
+			ContentLength: req.ContentLength,
+			Header:        req.Header.Clone(),
+		},
+	}
+
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
 	}
@@ -436,6 +448,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 	}
 
 	if err = req.Write(cc); err != nil {
+		res.Write(rw)
 		return
 	}
 
@@ -448,6 +461,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
 	if err != nil {
 		log.Errorf("read response: %v", err)
+		res.Write(rw)
 		return
 	}
 	defer resp.Body.Close()

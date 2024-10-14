@@ -7,11 +7,11 @@ import (
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	xingress "github.com/go-gost/x/ingress"
 	"github.com/go-gost/x/internal/util/mux"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
 
@@ -20,29 +20,39 @@ const (
 )
 
 type metadata struct {
-	readTimeout             time.Duration
+	readTimeout time.Duration
+
 	entryPoint              string
 	entryPointID            relay.TunnelID
 	entryPointProxyProtocol int
-	directTunnel            bool
-	tunnelTTL               time.Duration
-	ingress                 ingress.Ingress
-	sd                      sd.SD
-	muxCfg                  *mux.Config
-	observePeriod           time.Duration
+	entryPointKeepalive     bool
+	entryPointReadTimeout   time.Duration
+
+	directTunnel  bool
+	tunnelTTL     time.Duration
+	ingress       ingress.Ingress
+	sd            sd.SD
+	muxCfg        *mux.Config
+	observePeriod time.Duration
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
+
+	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
+	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
+	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
+	h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
+	h.md.entryPointReadTimeout = mdutil.GetDuration(md, "entrypoint.readTimeout")
+	if h.md.entryPointReadTimeout <= 0 {
+		h.md.entryPointReadTimeout = 15 * time.Second
+	}
 
 	h.md.tunnelTTL = mdutil.GetDuration(md, "tunnel.ttl")
 	if h.md.tunnelTTL <= 0 {
 		h.md.tunnelTTL = defaultTTL
 	}
 	h.md.directTunnel = mdutil.GetBool(md, "tunnel.direct")
-	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
-	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
-	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
 
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
 	if h.md.ingress == nil {

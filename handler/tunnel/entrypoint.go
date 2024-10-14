@@ -12,39 +12,69 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
-	xio "github.com/go-gost/x/internal/io"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
 type entrypoint struct {
-	node     string
-	service  string
-	pool     *ConnectorPool
-	ingress  ingress.Ingress
-	sd       sd.SD
-	log      logger.Logger
-	recorder recorder.RecorderObject
+	node        string
+	service     string
+	pool        *ConnectorPool
+	ingress     ingress.Ingress
+	sd          sd.SD
+	log         logger.Logger
+	recorder    recorder.RecorderObject
+	keepalive   bool
+	readTimeout time.Duration
 }
 
-func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
+func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Node:       ep.node,
+		Service:    ep.service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		Network:    "tcp",
+		Time:       start,
+		SID:        string(ctxvalue.SidFromContext(ctx)),
+	}
+	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
 	log := ep.log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
+		"sid":    ro.SID,
 	})
-
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
+
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
 	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		ro.Duration = time.Since(start)
+		if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
+			log.Errorf("record: %v", err)
+		}
+
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -56,21 +86,13 @@ func (ep *entrypoint) handle(ctx context.Context, conn net.Conn) error {
 	if err != nil {
 		return err
 	}
+
+	conn = xnet.NewReadWriteConn(br, conn, conn)
 	if v[0] == relay.Version1 {
-		return ep.handleConnect(ctx, xnet.NewReadWriteConn(br, conn, conn), log)
+		return ep.handleConnect(ctx, conn, log)
 	}
 
-	ro := &xrecorder.HandlerRecorderObject{
-		Node:       ep.node,
-		Service:    ep.service,
-		RemoteAddr: conn.RemoteAddr().String(),
-		LocalAddr:  conn.LocalAddr().String(),
-		Network:    "tcp",
-		Time:       start,
-	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
-
-	return ep.handleHTTP(ctx, xio.NewReadWriter(br, conn), ro, log)
+	return ep.handleHTTP(ctx, conn, ro, log)
 }
 
 func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, log logger.Logger) error {
