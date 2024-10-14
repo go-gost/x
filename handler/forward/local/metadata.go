@@ -17,6 +17,7 @@ type metadata struct {
 
 	sniffing        bool
 	sniffingTimeout time.Duration
+	httpKeepalive   bool
 
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
@@ -32,6 +33,8 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+
+	h.md.httpKeepalive = mdutil.GetBool(md, "http.keepalive")
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

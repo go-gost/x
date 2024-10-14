@@ -14,7 +14,6 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"
@@ -30,6 +29,7 @@ import (
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 	"github.com/vishvananda/netns"
@@ -73,6 +73,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	if tlsConfig == nil {
 		tlsConfig = parsing.DefaultTLSConfig().Clone()
+		tls_util.SetTLSOptions(tlsConfig, tlsCfg.Options)
 	}
 
 	authers := auth_parser.List(cfg.Listener.Auther, cfg.Listener.Authers...)
@@ -222,6 +223,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	if tlsConfig == nil {
 		tlsConfig = parsing.DefaultTLSConfig().Clone()
+		tls_util.SetTLSOptions(tlsConfig, tlsCfg.Options)
 	}
 
 	authers = auth_parser.List(cfg.Handler.Auther, cfg.Handler.Authers...)
