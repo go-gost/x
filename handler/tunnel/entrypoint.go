@@ -275,6 +275,10 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 		log.Trace(string(dump))
 	}
 
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		return ep.handleUpgradeResponse(rw, req, resp)
+	}
+
 	var respBody *xhttp.Body
 	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
 		maxSize := opts.MaxBodySize
@@ -286,17 +290,12 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	}
 
 	if err = resp.Write(rw); err != nil {
-		log.Errorf("write response: %v", err)
-		return
+		return fmt.Errorf("write response: %v", err)
 	}
 
 	if respBody != nil {
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
-	}
-
-	if resp.StatusCode == http.StatusSwitchingProtocols {
-		return ep.handleUpgradeResponse(rw, req, resp)
 	}
 
 	return
@@ -319,6 +318,11 @@ func (ep *entrypoint) handleUpgradeResponse(rw io.ReadWriter, req *http.Request,
 	backConn, ok := res.Body.(io.ReadWriteCloser)
 	if !ok {
 		return fmt.Errorf("internal error: 101 switching protocols response with non-writable body")
+	}
+
+	res.Body = nil
+	if err := res.Write(rw); err != nil {
+		return fmt.Errorf("response write: %v", err)
 	}
 
 	return xnet.Transport(rw, backConn)
