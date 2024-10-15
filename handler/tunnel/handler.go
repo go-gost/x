@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -32,6 +33,8 @@ var (
 	ErrTunnelID           = errors.New("invalid tunnel ID")
 	ErrTunnelNotAvailable = errors.New("tunnel not available")
 	ErrUnauthorized       = errors.New("unauthorized")
+	ErrTunnelRoute        = errors.New("no route to host")
+	ErrPrivateTunnel      = errors.New("private tunnel")
 )
 
 func init() {
@@ -87,9 +90,14 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		log: h.log.WithFields(map[string]any{
 			"kind": "entrypoint",
 		}),
-		keepalive:   h.md.entryPointKeepalive,
-		readTimeout: h.md.entryPointReadTimeout,
 	}
+	h.ep.transport = &http.Transport{
+		DialContext:           h.ep.dial,
+		IdleConnTimeout:       30 * time.Second,
+		ResponseHeaderTimeout: h.md.entryPointReadTimeout,
+		DisableKeepAlives:     !h.md.entryPointKeepalive,
+	}
+
 	for _, ro := range h.options.Recorders {
 		if ro.Record == xrecorder.RecorderServiceHandler {
 			h.ep.recorder = ro

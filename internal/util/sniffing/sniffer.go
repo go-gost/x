@@ -365,7 +365,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	}
 
-	if req.Header.Get("Upgrade") == "websocket" {
+	if resp.StatusCode == http.StatusSwitchingProtocols {
 		xnet.Transport(rw, cc)
 	}
 

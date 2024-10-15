@@ -42,7 +42,12 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
 	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
 	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
-	h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
+
+	h.md.entryPointKeepalive = true
+	if mdutil.IsExists(md, "entrypoint.keepalive") {
+		h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
+	}
+
 	h.md.entryPointReadTimeout = mdutil.GetDuration(md, "entrypoint.readTimeout")
 	if h.md.entryPointReadTimeout <= 0 {
 		h.md.entryPointReadTimeout = 15 * time.Second

@@ -35,7 +35,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	// client is a public entrypoint.
 	if tunnelID.Equal(h.md.entryPointID) {
 		resp.WriteTo(conn)
-		return h.ep.handle(ctx, conn)
+		return h.ep.Handle(ctx, conn)
 	}
 
 	if !h.md.directTunnel {

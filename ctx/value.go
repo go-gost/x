@@ -3,6 +3,8 @@ package ctx
 import (
 	"bytes"
 	"context"
+
+	"github.com/go-gost/core/logger"
 )
 
 // clientAddrKey saves the client address.
@@ -90,5 +92,20 @@ func ContextWithBuffer(ctx context.Context, buffer *bytes.Buffer) context.Contex
 
 func BufferFromContext(ctx context.Context) *bytes.Buffer {
 	v, _ := ctx.Value(keyBuffer).(*bytes.Buffer)
+	return v
+}
+
+type loggerKey struct{}
+
+var (
+	keyLogger = &loggerKey{}
+)
+
+func ContextWithLogger(ctx context.Context, log logger.Logger) context.Context {
+	return context.WithValue(ctx, keyLogger, log)
+}
+
+func LoggerFromContext(ctx context.Context) logger.Logger {
+	v, _ := ctx.Value(keyLogger).(logger.Logger)
 	return v
 }

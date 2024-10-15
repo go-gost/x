@@ -176,6 +176,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
 	ro.Time = time.Time{}
+
 	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, node, req, &pStats, &ho)
 	if err != nil || shouldClose {
 		return err
@@ -510,7 +511,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	}
 
-	if req.Header.Get("Upgrade") == "websocket" {
+	if resp.StatusCode == http.StatusSwitchingProtocols {
 		xnet.Transport(rw, cc)
 	}
 
