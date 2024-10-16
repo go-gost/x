@@ -364,7 +364,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(ro.Time),
+			"duration":    time.Since(ro.Time),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
 	}()
 

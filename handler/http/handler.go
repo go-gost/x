@@ -303,30 +303,34 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	defer cc.Close()
 
-	rw := traffic_wrapper.WrapReadWriter(
-		h.limiter,
-		conn,
-		clientID,
-		limiter.ScopeOption(limiter.ScopeClient),
-		limiter.ServiceOption(h.options.Service),
-		limiter.NetworkOption(network),
-		limiter.AddrOption(addr),
-		limiter.ClientOption(clientID),
-		limiter.SrcOption(conn.RemoteAddr().String()),
-	)
-	if h.options.Observer != nil {
-		pstats := h.stats.Stats(clientID)
-		pstats.Add(stats.KindTotalConns, 1)
-		pstats.Add(stats.KindCurrentConns, 1)
-		defer pstats.Add(stats.KindCurrentConns, -1)
-		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	{
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			clientID,
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ServiceOption(h.options.Service),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(addr),
+			limiter.ClientOption(clientID),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(clientID)
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
 	if req.Method != http.MethodConnect {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
 		ro.Time = time.Time{}
-		return h.handleProxy(ctx, rw, cc, req, ro2, log)
+		return h.handleProxy(ctx, conn, cc, req, ro2, log)
 	}
 
 	resp.StatusCode = http.StatusOK
@@ -336,7 +340,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
 	}
-	if err = resp.Write(rw); err != nil {
+	if err = resp.Write(conn); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -346,7 +350,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
 		}
 
-		br := bufio.NewReader(rw)
+		br := bufio.NewReader(conn)
 		proto, _ := sniffing.Sniff(ctx, br)
 		ro.Proto = proto
 
@@ -371,7 +375,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			ReadTimeout:        h.md.readTimeout,
 		}
 
-		conn = xnet.NewReadWriteConn(br, rw, conn)
+		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, conn,
@@ -392,7 +396,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 	start := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	xnet.Transport(rw, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)

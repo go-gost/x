@@ -100,7 +100,9 @@ func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(ro.Time),
+			"duration":    time.Since(ro.Time),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
@@ -192,7 +194,9 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(ro.Time),
+			"duration":    time.Since(ro.Time),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
 	}()
 

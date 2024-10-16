@@ -121,24 +121,28 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		}
 	}
 
-	clientID := ctxvalue.ClientIDFromContext(ctx)
-	rw := traffic_wrapper.WrapReadWriter(
-		h.limiter,
-		conn,
-		string(clientID),
-		limiter.ScopeOption(limiter.ScopeClient),
-		limiter.ServiceOption(h.options.Service),
-		limiter.NetworkOption(network),
-		limiter.AddrOption(address),
-		limiter.ClientOption(string(clientID)),
-		limiter.SrcOption(conn.RemoteAddr().String()),
-	)
-	if h.options.Observer != nil {
-		pstats := h.stats.Stats(string(clientID))
-		pstats.Add(stats.KindTotalConns, 1)
-		pstats.Add(stats.KindCurrentConns, 1)
-		defer pstats.Add(stats.KindCurrentConns, -1)
-		rw = stats_wrapper.WrapReadWriter(rw, pstats)
+	{
+		clientID := ctxvalue.ClientIDFromContext(ctx)
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			string(clientID),
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ServiceOption(h.options.Service),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(address),
+			limiter.ClientOption(string(clientID)),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(string(clientID))
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
 	if h.md.sniffing {
@@ -146,7 +150,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
 		}
 
-		br := bufio.NewReader(rw)
+		br := bufio.NewReader(conn)
 		proto, _ := sniffing.Sniff(ctx, br)
 		ro.Proto = proto
 
@@ -171,7 +175,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			ReadTimeout:        h.md.readTimeout,
 		}
 
-		conn = xnet.NewReadWriteConn(br, rw, conn)
+		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, conn,
@@ -192,7 +196,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
-	xnet.Transport(rw, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), address)
