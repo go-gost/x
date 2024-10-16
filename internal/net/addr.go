@@ -153,3 +153,7 @@ func (pr *PortRange) Parse(s string) error {
 func (pr *PortRange) Contains(port int) bool {
 	return port >= pr.Min && port <= pr.Max
 }
+
+type ClientAddr interface {
+	ClientAddr() net.Addr
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	xmetrics "github.com/go-gost/x/metrics"
 	"github.com/rs/xid"
 )
@@ -188,6 +189,11 @@ func (s *defaultService) Serve() error {
 		}
 
 		clientAddr := conn.RemoteAddr().String()
+		if ca, ok := conn.(xnet.ClientAddr); ok {
+			if addr := ca.ClientAddr(); addr != nil {
+				clientAddr = addr.String()
+			}
+		}
 		clientIP := clientAddr
 		if h, _, _ := net.SplitHostPort(clientAddr); h != "" {
 			clientIP = h

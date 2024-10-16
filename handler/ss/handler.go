@@ -89,7 +89,14 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
+	ro.ClientIP = conn.RemoteAddr().String()
+	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
+		ro.ClientIP = string(clientAddr)
+	}
+	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
+		ro.ClientIP = h
+	}
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),

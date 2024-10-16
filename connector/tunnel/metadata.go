@@ -5,9 +5,9 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/relay"
 	"github.com/go-gost/x/internal/util/mux"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/google/uuid"
 )
 
@@ -55,6 +55,9 @@ func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	if c.md.muxCfg.Version == 0 {
 		c.md.muxCfg.Version = 2
+	}
+	if c.md.muxCfg.MaxStreamBuffer == 0 {
+		c.md.muxCfg.MaxStreamBuffer = 1048576
 	}
 
 	return

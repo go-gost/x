@@ -14,6 +14,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	ws_util "github.com/go-gost/x/internal/util/ws"
@@ -177,8 +178,13 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var clientAddr net.Addr
+	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+		clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
 	select {
-	case l.cqueue <- ws_util.Conn(conn):
+	case l.cqueue <- ws_util.ConnWithClientAddr(conn, clientAddr):
 	default:
 		conn.Close()
 		l.logger.Warnf("connection queue is full, client %s discarded", conn.RemoteAddr())

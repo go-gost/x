@@ -96,6 +96,9 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if h.md.muxCfg.Version == 0 {
 		h.md.muxCfg.Version = 2
 	}
+	if h.md.muxCfg.MaxStreamBuffer == 0 {
+		h.md.muxCfg.MaxStreamBuffer = 1048576
+	}
 
 	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
 

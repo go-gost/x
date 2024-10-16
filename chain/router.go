@@ -96,6 +96,11 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			defer cancel()
 		}
 
+		buf := ctxvalue.BufferFromContext(ctx)
+		if buf != nil {
+			buf.Reset()
+		}
+
 		var ipAddr string
 		ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, log)
 		if err != nil {
@@ -103,12 +108,15 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			break
 		}
 
+		if buf != nil {
+			buf.Reset()
+		}
+
 		var route chain.Route
 		if r.options.Chain != nil {
 			route = r.options.Chain.Route(ctx, network, ipAddr, chain.WithHostRouteOption(address))
 		}
 
-		buf := ctxvalue.BufferFromContext(ctx)
 		if buf == nil {
 			buf = &bytes.Buffer{}
 		}

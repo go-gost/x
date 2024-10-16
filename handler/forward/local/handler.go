@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -180,7 +179,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 
-	var target *chain.Node
+	target := &chain.Node{}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
 			hop.ProtocolSelectOption(proto),
@@ -251,28 +250,4 @@ func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
-}
-
-func convertAddr(addr net.Addr) net.Addr {
-	host, sp, _ := net.SplitHostPort(addr.String())
-	ip := net.ParseIP(host)
-	port, _ := strconv.Atoi(sp)
-
-	if ip == nil || ip.Equal(net.IPv6zero) {
-		ip = net.IPv4zero
-	}
-
-	switch addr.Network() {
-	case "tcp", "tcp4", "tcp6":
-		return &net.TCPAddr{
-			IP:   ip,
-			Port: port,
-		}
-
-	default:
-		return &net.UDPAddr{
-			IP:   ip,
-			Port: port,
-		}
-	}
 }
