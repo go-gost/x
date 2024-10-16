@@ -92,6 +92,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 		"sid":    ctxvalue.SidFromContext(ctx),
+		"client": ro.ClientIP,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -110,7 +111,9 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(start),
+			"duration":    time.Since(start),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 

@@ -113,7 +113,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(start),
+			"duration":    time.Since(start),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
