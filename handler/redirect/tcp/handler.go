@@ -131,6 +131,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	log = log.WithFields(map[string]any{
 		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"host": dstAddr.String(),
 	})
 
 	if h.md.sniffing {

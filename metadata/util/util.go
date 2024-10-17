@@ -9,6 +9,10 @@ import (
 )
 
 func IsExists(md metadata.Metadata, keys ...string) bool {
+	if md == nil {
+		return false
+	}
+
 	for _, key := range keys {
 		if md.IsExists(key) {
 			return true

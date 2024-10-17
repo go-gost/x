@@ -178,7 +178,8 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	ro.Host = host
 
 	fields := map[string]any{
-		"dst": host,
+		"dst":  host,
+		"host": host,
 	}
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u

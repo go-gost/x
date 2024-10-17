@@ -53,7 +53,10 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		h.md.header = hd
 	}
 
-	h.md.keepalive = mdutil.GetBool(md, "http.keepalive", "keepalive")
+	h.md.keepalive = true
+	if mdutil.IsExists(md, "http.keepalive", "keepalive") {
+		h.md.keepalive = mdutil.GetBool(md, "http.keepalive", "keepalive")
+	}
 
 	if pr := mdutil.GetString(md, "probeResist", "probe_resist"); pr != "" {
 		if ss := strings.SplitN(pr, ":", 2); len(ss) == 2 {

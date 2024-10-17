@@ -148,7 +148,8 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	conn.SetReadDeadline(time.Time{})
 
 	log = log.WithFields(map[string]any{
-		"dst": addr.String(),
+		"dst":  addr.String(),
+		"host": addr.String(),
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)

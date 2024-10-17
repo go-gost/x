@@ -124,7 +124,8 @@ func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", target.Addr, "tcp"),
+		"dst":  fmt.Sprintf("%s/%s", target.Addr, "tcp"),
+		"host": target.Addr,
 	})
 
 	log.Debugf("%s >> %s", req.RemoteAddr, addr)

@@ -16,6 +16,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		"dst":    fmt.Sprintf("%s/%s", dstAddr, network),
 		"cmd":    "connect",
 		"tunnel": tunnelID.String(),
+		"host":   dstAddr,
 	})
 
 	resp := relay.Response{

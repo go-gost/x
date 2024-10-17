@@ -140,8 +140,9 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 
 	ro.Host = targetAddr
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", targetAddr, "tcp"),
-		"cmd": "connect",
+		"dst":  fmt.Sprintf("%s/%s", targetAddr, "tcp"),
+		"cmd":  "connect",
+		"host": targetAddr,
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), targetAddr)

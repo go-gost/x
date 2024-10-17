@@ -33,8 +33,9 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", address, network),
-		"cmd": "connect",
+		"dst":  fmt.Sprintf("%s/%s", address, network),
+		"cmd":  "connect",
+		"host": address,
 	})
 
 	log.Debugf("%s >> %s/%s", conn.RemoteAddr(), address, network)

@@ -180,7 +180,16 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	*ro2 = *ro
 	ro = ro2
 
+	host := req.Host
+	if _, port, _ := net.SplitHostPort(host); port == "" {
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
+	}
+	ro.Host = host
 	ro.Time = time.Now()
+
+	log = log.WithFields(map[string]any{
+		"host": host,
+	})
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
 		if err != nil {
@@ -344,6 +353,7 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 	if log == nil {
 		log = h.log
 	}
+	log.Debugf("dial: new connection to host %s", addr)
 
 	if tunnelID.IsZero() {
 		return nil, fmt.Errorf("%w %s", ErrTunnelRoute, addr)
@@ -358,7 +368,6 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 	}
 
 	log = log.WithFields(map[string]any{
-		"host":   addr,
 		"tunnel": tunnelID.String(),
 	})
 
@@ -374,7 +383,7 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 	if err != nil {
 		return
 	}
-	log.Debugf("new connection to tunnel: %s, connector: %s", tunnelID, cid)
+	log.Debugf("dial: connected to host %s, tunnel: %s, connector: %s", addr, tunnelID, cid)
 
 	if node == h.node {
 		clientAddr := ctxvalue.ClientAddrFromContext(ctx)

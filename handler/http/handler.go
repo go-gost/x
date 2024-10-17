@@ -40,20 +40,37 @@ import (
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
+	"golang.org/x/net/http/httpguts"
 )
+
+type recorderObjectCtxKey struct{}
+
+var (
+	ctxKeyRecorderObject = &recorderObjectCtxKey{}
+)
+
+func contextWithRecorderObject(ctx context.Context, ro *xrecorder.HandlerRecorderObject) context.Context {
+	return context.WithValue(ctx, ctxKeyRecorderObject, ro)
+}
+
+func recorderObjectFromContext(ctx context.Context) *xrecorder.HandlerRecorderObject {
+	v, _ := ctx.Value(ctxKeyRecorderObject).(*xrecorder.HandlerRecorderObject)
+	return v
+}
 
 func init() {
 	registry.HandlerRegistry().Register("http", NewHandler)
 }
 
 type httpHandler struct {
-	md       metadata
-	options  handler.Options
-	stats    *stats_util.HandlerStats
-	limiter  traffic.TrafficLimiter
-	cancel   context.CancelFunc
-	recorder recorder.RecorderObject
-	certPool tls_util.CertPool
+	md        metadata
+	options   handler.Options
+	stats     *stats_util.HandlerStats
+	limiter   traffic.TrafficLimiter
+	cancel    context.CancelFunc
+	recorder  recorder.RecorderObject
+	certPool  tls_util.CertPool
+	transport http.RoundTripper
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -93,6 +110,13 @@ func (h *httpHandler) Init(md md.Metadata) error {
 
 	if h.md.certificate != nil && h.md.privateKey != nil {
 		h.certPool = tls_util.NewMemoryCertPool()
+	}
+
+	h.transport = &http.Transport{
+		DialContext:           h.dial,
+		IdleConnTimeout:       30 * time.Second,
+		ResponseHeaderTimeout: h.md.readTimeout,
+		DisableKeepAlives:     !h.md.keepalive,
 	}
 
 	return nil
@@ -153,7 +177,8 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return rate_limiter.ErrRateLimit
 	}
 
-	req, err := http.ReadRequest(bufio.NewReader(conn))
+	br := bufio.NewReader(conn)
+	req, err := http.ReadRequest(br)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -163,6 +188,8 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
 	}
+
+	conn = xnet.NewReadWriteConn(br, conn, conn)
 
 	return h.handleRequest(ctx, conn, req, ro, log)
 }
@@ -205,7 +232,8 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	ro.Host = addr
 
 	fields := map[string]any{
-		"dst": addr,
+		"dst":  addr,
+		"host": addr,
 	}
 
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
@@ -249,6 +277,18 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		ro.HTTP.Response.Header = resp.Header
 	}()
 
+	if req.Method == "PRI" ||
+		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
+		resp.StatusCode = http.StatusBadRequest
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpResponse(resp, false)
+			log.Trace(string(dump))
+		}
+
+		return resp.Write(conn)
+	}
+
 	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
 	if !ok {
 		return errors.New("authentication failed")
@@ -270,38 +310,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if network == "udp" {
 		return h.handleUDP(ctx, conn, ro, log)
 	}
-
-	if req.Method == "PRI" ||
-		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
-		resp.StatusCode = http.StatusBadRequest
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpResponse(resp, false)
-			log.Trace(string(dump))
-		}
-
-		return resp.Write(conn)
-	}
-
-	switch h.md.hash {
-	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
-	}
-
-	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
-	ro.Route = buf.String()
-	if err != nil {
-		resp.StatusCode = http.StatusServiceUnavailable
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpResponse(resp, false)
-			log.Trace(string(dump))
-		}
-		resp.Write(conn)
-		return err
-	}
-	defer cc.Close()
 
 	{
 		rw := traffic_wrapper.WrapReadWriter(
@@ -327,11 +335,24 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	if req.Method != http.MethodConnect {
-		ro2 := &xrecorder.HandlerRecorderObject{}
-		*ro2 = *ro
-		ro.Time = time.Time{}
-		return h.handleProxy(ctx, conn, cc, req, ro2, log)
+		return h.handleProxy(ctx, conn, req, ro, log)
 	}
+
+	ctx = contextWithRecorderObject(ctx, ro)
+	ctx = ctxvalue.ContextWithLogger(ctx, log)
+	cc, err := h.dial(ctx, "tcp", addr)
+
+	if err != nil {
+		resp.StatusCode = http.StatusServiceUnavailable
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpResponse(resp, false)
+			log.Trace(string(dump))
+		}
+		resp.Write(conn)
+		return err
+	}
+	defer cc.Close()
 
 	resp.StatusCode = http.StatusOK
 	resp.Status = "200 Connection established"
@@ -404,13 +425,21 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	return nil
 }
 
-func (h *httpHandler) handleProxy(ctx context.Context, rw io.ReadWriter, cc net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	if shouldClose, err := h.proxyRoundTrip(ctx, rw, cc, req, ro, log); err != nil || shouldClose {
+func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	pStats := stats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
+	ro.Time = time.Time{}
+
+	if err := h.proxyRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil {
 		return err
 	}
 
+	br := bufio.NewReader(conn)
 	for {
-		req, err := http.ReadRequest(bufio.NewReader(rw))
+		pStats.Reset()
+
+		req, err := http.ReadRequest(br)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				return nil
@@ -423,40 +452,47 @@ func (h *httpHandler) handleProxy(ctx context.Context, rw io.ReadWriter, cc net.
 			log.Trace(string(dump))
 		}
 
-		if shouldClose, err := h.proxyRoundTrip(ctx, rw, cc, req, ro, log); err != nil || shouldClose {
+		if err := h.proxyRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil {
 			return err
 		}
 	}
 }
 
-func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (close bool, err error) {
-	close = true
+func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (err error) {
+	ro2 := &xrecorder.HandlerRecorderObject{}
+	*ro2 = *ro
+	ro = ro2
 
-	if req == nil {
-		return
+	host := req.Host
+	if _, port, _ := net.SplitHostPort(host); port == "" {
+		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
 	}
+	ro.Host = host
+	ro.Time = time.Now()
 
-	start := time.Now()
-	ro.Time = start
+	log = log.WithFields(map[string]any{
+		"host": host,
+	})
 
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
-		ro.Duration = time.Since(start)
 		if err != nil {
 			ro.Err = err.Error()
 		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		ro.Duration = time.Since(ro.Time)
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Errorf("record: %v", err)
 		}
 
 		log.WithFields(map[string]any{
-			"duration": time.Since(start),
+			"duration":    time.Since(ro.Time),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
 		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
 	}()
 
-	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
-		ro.ClientIP = clientIP.String()
-	}
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
 		Host:   req.Host,
 		Proto:  req.Proto,
@@ -468,6 +504,16 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 			Header:        req.Header.Clone(),
 		},
 	}
+	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
+		ro.ClientIP = clientIP.String()
+	}
+
+	clientAddr := ro.RemoteAddr
+	if ro.ClientIP != "" {
+		if _, port, _ := net.SplitHostPort(ro.RemoteAddr); port != "" {
+			clientAddr = net.JoinHostPort(ro.ClientIP, port)
+		}
+	}
 
 	// HTTP/1.0
 	if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
@@ -478,14 +524,18 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		}
 	}
 
-	if !h.md.keepalive {
-		req.Header.Set("Connection", "close")
-	}
-
 	req.Header.Del("Proxy-Authorization")
 	req.Header.Del("Proxy-Connection")
 	req.Header.Del("Gost-Target")
 	req.Header.Del("X-Gost-Target")
+
+	res := &http.Response{
+		ProtoMajor: req.ProtoMajor,
+		ProtoMinor: req.ProtoMinor,
+		Header:     http.Header{},
+		StatusCode: http.StatusServiceUnavailable,
+	}
+	ro.HTTP.StatusCode = res.StatusCode
 
 	var reqBody *xhttp.Body
 	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
@@ -499,33 +549,21 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		}
 	}
 
-	res := &http.Response{
-		ProtoMajor: req.ProtoMajor,
-		ProtoMinor: req.ProtoMinor,
-		Header:     http.Header{},
-		StatusCode: http.StatusServiceUnavailable,
-	}
-	ro.HTTP.StatusCode = res.StatusCode
+	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
+	ctx = contextWithRecorderObject(ctx, ro)
+	ctx = ctxvalue.ContextWithLogger(ctx, log)
 
-	if err = req.Write(cc); err != nil {
+	resp, err := h.transport.RoundTrip(req.WithContext(ctx))
+	if err != nil {
 		res.Write(rw)
 		return
 	}
+	defer resp.Body.Close()
 
 	if reqBody != nil {
 		ro.HTTP.Request.Body = reqBody.Content()
 		ro.HTTP.Request.ContentLength = reqBody.Length()
 	}
-
-	cc.SetReadDeadline(time.Now().Add(h.md.readTimeout))
-	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
-	if err != nil {
-		log.Errorf("read response: %v", err)
-		res.Write(rw)
-		return
-	}
-	defer resp.Body.Close()
-	cc.SetReadDeadline(time.Time{})
 
 	ro.HTTP.StatusCode = resp.StatusCode
 	ro.HTTP.Response.Header = resp.Header.Clone()
@@ -545,6 +583,10 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		resp.ProtoMinor = req.ProtoMinor
 	}
 
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		return h.handleUpgradeResponse(rw, req, resp)
+	}
+
 	var respBody *xhttp.Body
 	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
 		maxSize := opts.MaxBodySize
@@ -556,8 +598,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 	}
 
 	if err = resp.Write(rw); err != nil {
-		log.Errorf("write response: %v", err)
-		return
+		return fmt.Errorf("write response: %v", err)
 	}
 
 	if respBody != nil {
@@ -565,7 +606,53 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, cc n
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	}
 
-	return resp.Close, nil
+	return
+}
+
+func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
+	switch h.md.hash {
+	case "host":
+		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
+	}
+
+	if log := ctxvalue.LoggerFromContext(ctx); log != nil {
+		log.Debugf("dial: new connection to host %s", addr)
+	}
+
+	var buf bytes.Buffer
+	conn, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
+	if ro := recorderObjectFromContext(ctx); ro != nil {
+		ro.Route = buf.String()
+	}
+
+	return
+}
+
+func upgradeType(h http.Header) string {
+	if !httpguts.HeaderValuesContainsToken(h["Connection"], "Upgrade") {
+		return ""
+	}
+	return h.Get("Upgrade")
+}
+
+func (h *httpHandler) handleUpgradeResponse(rw io.ReadWriter, req *http.Request, res *http.Response) error {
+	reqUpType := upgradeType(req.Header)
+	resUpType := upgradeType(res.Header)
+	if !strings.EqualFold(reqUpType, resUpType) {
+		return fmt.Errorf("backend tried to switch protocol %q when %q was requested", resUpType, reqUpType)
+	}
+
+	backConn, ok := res.Body.(io.ReadWriteCloser)
+	if !ok {
+		return fmt.Errorf("internal error: 101 switching protocols response with non-writable body")
+	}
+
+	res.Body = nil
+	if err := res.Write(rw); err != nil {
+		return fmt.Errorf("response write: %v", err)
+	}
+
+	return xnet.Transport(rw, backConn)
 }
 
 func (h *httpHandler) decodeServerName(s string) (string, error) {

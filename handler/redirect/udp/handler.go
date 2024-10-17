@@ -108,7 +108,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.Host = dstAddr.String()
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"dst":  fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"host": dstAddr.String(),
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)

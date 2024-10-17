@@ -196,7 +196,8 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	addr := req.Addr.String()
 
 	log = log.WithFields(map[string]any{
-		"dst": addr,
+		"dst":  addr,
+		"host": addr,
 	})
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
