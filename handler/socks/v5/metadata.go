@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/internal/util/mux"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
 
@@ -25,8 +25,10 @@ type metadata struct {
 	muxCfg            *mux.Config
 	observePeriod     time.Duration
 
-	sniffing        bool
-	sniffingTimeout time.Duration
+	sniffing                    bool
+	sniffingTimeout             time.Duration
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
 
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
@@ -67,6 +69,8 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

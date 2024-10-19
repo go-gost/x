@@ -28,14 +28,22 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	ws_util "github.com/go-gost/x/internal/util/ws"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 )
 
 const (
-	// Default max body size to record.
-	DefaultBodySize = 1024 * 1024 // 1MB
+	// DefaultBodySize is the default HTTP body or websocket frame size to record.
+	DefaultBodySize = 64 * 1024 // 64KB
+	// MaxBodySize is the maximum HTTP body or websocket frame size to record.
+	MaxBodySize = 1024 * 1024 // 1MB
+	// DeafultSampleRate is the default websocket sample rate (samples per second).
+	DefaultSampleRate = 10.0
+	// MaxSampleRate is the maximum websocket sample rate (samples per second).
+	MaxSampleRate = 100.0
 )
 
 var (
@@ -84,6 +92,9 @@ func WithLog(log logger.Logger) HandleOption {
 }
 
 type Sniffer struct {
+	Websocket           bool
+	WebsocketSampleRate float64
+
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
 
@@ -176,7 +187,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	ro.Time = time.Time{}
 
-	shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, ro, &pStats, log)
+	shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), cc, req, ro, &pStats, log)
 	if err != nil || shouldClose {
 		return err
 	}
@@ -197,7 +208,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			log.Trace(string(dump))
 		}
 
-		if shouldClose, err := h.httpRoundTrip(ctx, conn, cc, req, ro, &pStats, log); err != nil || shouldClose {
+		if shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), cc, req, ro, &pStats, log); err != nil || shouldClose {
 			return err
 		}
 	}
@@ -302,11 +313,14 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	var reqBody *xhttp.Body
 	if opts := h.RecorderOptions; opts != nil && opts.HTTPBody {
 		if req.Body != nil {
-			maxSize := opts.MaxBodySize
-			if maxSize <= 0 {
-				maxSize = DefaultBodySize
+			bodySize := opts.MaxBodySize
+			if bodySize <= 0 {
+				bodySize = DefaultBodySize
 			}
-			reqBody = xhttp.NewBody(req.Body, maxSize)
+			if bodySize > MaxBodySize {
+				bodySize = MaxBodySize
+			}
+			reqBody = xhttp.NewBody(req.Body, bodySize)
 			req.Body = reqBody
 		}
 	}
@@ -323,7 +337,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
 	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
 	if err != nil {
-		log.Errorf("read response: %v", err)
+		err = fmt.Errorf("read response: %w", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -338,6 +352,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		log.Trace(string(dump))
 	}
 
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		h.handleUpgradeResponse(ctx, rw, cc, req, resp, ro, log)
+		return
+	}
+
 	// HTTP/1.0
 	if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
 		if !resp.Close {
@@ -349,16 +368,19 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 
 	var respBody *xhttp.Body
 	if opts := h.RecorderOptions; opts != nil && opts.HTTPBody {
-		maxSize := opts.MaxBodySize
-		if maxSize <= 0 {
-			maxSize = DefaultBodySize
+		bodySize := opts.MaxBodySize
+		if bodySize <= 0 {
+			bodySize = DefaultBodySize
 		}
-		respBody = xhttp.NewBody(resp.Body, maxSize)
+		if bodySize > MaxBodySize {
+			bodySize = MaxBodySize
+		}
+		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}
 
 	if err = resp.Write(rw); err != nil {
-		log.Errorf("write response: %v", err)
+		err = fmt.Errorf("write response: %w", err)
 		return
 	}
 
@@ -367,11 +389,166 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	}
 
-	if resp.StatusCode == http.StatusSwitchingProtocols {
-		xnet.Transport(rw, cc)
+	return resp.Close, nil
+}
+
+func upgradeType(h http.Header) string {
+	if !httpguts.HeaderValuesContainsToken(h["Connection"], "Upgrade") {
+		return ""
+	}
+	return h.Get("Upgrade")
+}
+
+func (h *Sniffer) handleUpgradeResponse(ctx context.Context, rw io.ReadWriter, cc io.ReadWriter, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	reqUpType := upgradeType(req.Header)
+	resUpType := upgradeType(res.Header)
+	if !strings.EqualFold(reqUpType, resUpType) {
+		return fmt.Errorf("backend tried to switch protocol %q when %q was requested", resUpType, reqUpType)
 	}
 
-	return resp.Close, nil
+	res.Body = nil
+	if err := res.Write(rw); err != nil {
+		return fmt.Errorf("response write: %v", err)
+	}
+
+	if reqUpType == "websocket" && h.Websocket {
+		return h.sniffingWebsocketFrame(ctx, rw, cc, ro, log)
+	}
+
+	return xnet.Transport(rw, cc)
+}
+
+func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	errc := make(chan error, 1)
+
+	sampleRate := h.WebsocketSampleRate
+	if sampleRate <= 0 {
+		sampleRate = DefaultSampleRate
+	}
+	if sampleRate > MaxSampleRate {
+		sampleRate = MaxSampleRate
+	}
+	d := time.Duration(1 / sampleRate * 1e9)
+
+	go func() {
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro = ro2
+
+		ticker := time.NewTicker(d)
+		defer ticker.Stop()
+
+		buf := &bytes.Buffer{}
+		for {
+			start := time.Now()
+
+			err := h.copyWebsocketFrame(cc, rw, buf, "client", ro)
+			select {
+			case <-ticker.C:
+				if err != nil {
+					ro.Err = err.Error()
+				}
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, h.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
+			default:
+			}
+
+			if err != nil {
+				errc <- err
+				return
+			}
+		}
+	}()
+
+	go func() {
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro = ro2
+
+		ticker := time.NewTicker(d)
+		defer ticker.Stop()
+
+		buf := &bytes.Buffer{}
+		for {
+			start := time.Now()
+
+			err := h.copyWebsocketFrame(rw, cc, buf, "server", ro)
+			select {
+			case <-ticker.C:
+				if err != nil {
+					ro.Err = err.Error()
+				}
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, h.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
+			default:
+			}
+
+			if err != nil {
+				errc <- err
+				return
+			}
+		}
+	}()
+
+	<-errc
+	return nil
+}
+
+func (h *Sniffer) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
+	fr := ws_util.Frame{}
+	if _, err = fr.ReadFrom(r); err != nil {
+		return err
+	}
+
+	ws := &xrecorder.WebsocketRecorderObject{
+		From:    from,
+		Fin:     fr.Header.Fin,
+		Rsv1:    fr.Header.Rsv1,
+		Rsv2:    fr.Header.Rsv2,
+		Rsv3:    fr.Header.Rsv3,
+		OpCode:  int(fr.Header.OpCode),
+		Masked:  fr.Header.Masked,
+		MaskKey: fr.Header.MaskKey,
+		Length:  fr.Header.PayloadLength,
+	}
+	if opts := h.RecorderOptions; opts != nil && opts.HTTPBody {
+		bodySize := opts.MaxBodySize
+		if bodySize <= 0 {
+			bodySize = DefaultBodySize
+		}
+		if bodySize > MaxBodySize {
+			bodySize = MaxBodySize
+		}
+
+		buf.Reset()
+		if _, err := io.Copy(buf, io.LimitReader(fr.Data, int64(bodySize))); err != nil {
+			return err
+		}
+		ws.Payload = buf.Bytes()
+	}
+
+	ro.Websocket = ws
+	length := uint64(fr.Header.Length()) + uint64(fr.Header.PayloadLength)
+	if from == "client" {
+		ro.InputBytes = length
+		ro.OutputBytes = 0
+	} else {
+		ro.InputBytes = 0
+		ro.OutputBytes = length
+	}
+
+	fr.Data = io.MultiReader(bytes.NewReader(buf.Bytes()), fr.Data)
+	if _, err := fr.WriteTo(w); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
@@ -644,11 +821,15 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var reqBody *xhttp.Body
 	if opts := h.recorderOptions; opts != nil && opts.HTTPBody {
 		if req.Body != nil {
-			maxSize := opts.MaxBodySize
-			if maxSize <= 0 {
-				maxSize = DefaultBodySize
+			bodySize := opts.MaxBodySize
+			if bodySize <= 0 {
+				bodySize = DefaultBodySize
 			}
-			reqBody = xhttp.NewBody(req.Body, maxSize)
+			if bodySize > MaxBodySize {
+				bodySize = MaxBodySize
+			}
+
+			reqBody = xhttp.NewBody(req.Body, bodySize)
 			req.Body = reqBody
 		}
 	}
@@ -679,11 +860,14 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var respBody *xhttp.Body
 	if opts := h.recorderOptions; opts != nil && opts.HTTPBody {
-		maxSize := opts.MaxBodySize
-		if maxSize <= 0 {
-			maxSize = DefaultBodySize
+		bodySize := opts.MaxBodySize
+		if bodySize <= 0 {
+			bodySize = DefaultBodySize
 		}
-		respBody = xhttp.NewBody(resp.Body, maxSize)
+		if bodySize > MaxBodySize {
+			bodySize = MaxBodySize
+		}
+		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}
 

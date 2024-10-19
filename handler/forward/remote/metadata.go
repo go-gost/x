@@ -15,10 +15,12 @@ import (
 type metadata struct {
 	readTimeout   time.Duration
 	proxyProtocol int
+	httpKeepalive bool
 
-	sniffing        bool
-	sniffingTimeout time.Duration
-	httpKeepalive   bool
+	sniffing                    bool
+	sniffingTimeout             time.Duration
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
 
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
@@ -35,6 +37,8 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	h.md.httpKeepalive = mdutil.GetBool(md, "http.keepalive")
 

@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -24,34 +25,19 @@ import (
 	"github.com/go-gost/relay"
 	admission "github.com/go-gost/x/admission/wrapper"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ctx_internal "github.com/go-gost/x/internal/ctx"
+	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
+	"github.com/go-gost/x/internal/util/sniffing"
+	ws_util "github.com/go-gost/x/internal/util/ws"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http/httpguts"
 )
-
-const (
-	defaultBodySize = 1024 * 1024 // 1MB
-)
-
-type recorderObjectCtxKey struct{}
-
-var (
-	ctxKeyRecorderObject = &recorderObjectCtxKey{}
-)
-
-func contextWithRecorderObject(ctx context.Context, ro *xrecorder.HandlerRecorderObject) context.Context {
-	return context.WithValue(ctx, ctxKeyRecorderObject, ro)
-}
-
-func recorderObjectFromContext(ctx context.Context) *xrecorder.HandlerRecorderObject {
-	v, _ := ctx.Value(ctxKeyRecorderObject).(*xrecorder.HandlerRecorderObject)
-	return v
-}
 
 type entrypoint struct {
 	node      string
@@ -62,6 +48,9 @@ type entrypoint struct {
 	log       logger.Logger
 	recorder  recorder.RecorderObject
 	transport http.RoundTripper
+
+	sniffingWebsocket   bool
+	websocketSampleRate float64
 }
 
 func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
@@ -119,6 +108,74 @@ func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
 	return ep.handleHTTP(ctx, conn, ro, log)
 }
 
+func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
+	var tunnelID relay.TunnelID
+	if h.ingress != nil {
+		if rule := h.ingress.GetRule(ctx, addr); rule != nil {
+			tunnelID = parseTunnelID(rule.Endpoint)
+		}
+	}
+
+	log := ctxvalue.LoggerFromContext(ctx)
+	if log == nil {
+		log = h.log
+	}
+	log.Debugf("dial: new connection to host %s", addr)
+
+	if tunnelID.IsZero() {
+		return nil, fmt.Errorf("%w %s", ErrTunnelRoute, addr)
+	}
+
+	if ro := ctx_internal.RecorderObjectFromContext(ctx); ro != nil {
+		ro.ClientID = tunnelID.String()
+	}
+
+	if tunnelID.IsPrivate() {
+		return nil, fmt.Errorf("%w: tunnel %s is private for host %s", ErrPrivateTunnel, tunnelID, addr)
+	}
+
+	log = log.WithFields(map[string]any{
+		"tunnel": tunnelID.String(),
+	})
+
+	d := &Dialer{
+		node:    h.node,
+		pool:    h.pool,
+		sd:      h.sd,
+		retry:   3,
+		timeout: 15 * time.Second,
+		log:     log,
+	}
+	conn, node, cid, err := d.Dial(ctx, "tcp", tunnelID.String())
+	if err != nil {
+		return
+	}
+	log.Debugf("dial: connected to host %s, tunnel: %s, connector: %s", addr, tunnelID, cid)
+
+	if node == h.node {
+		clientAddr := ctxvalue.ClientAddrFromContext(ctx)
+		var features []relay.Feature
+		af := &relay.AddrFeature{}
+		af.ParseFrom(string(clientAddr))
+		features = append(features, af) // src address
+
+		af = &relay.AddrFeature{}
+		af.ParseFrom(addr)
+		features = append(features, af) // dst address
+
+		if _, err = (&relay.Response{
+			Version:  relay.Version1,
+			Status:   relay.StatusOK,
+			Features: features,
+		}).WriteTo(conn); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	}
+
+	return conn, nil
+}
+
 func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	pStats := stats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
@@ -148,7 +205,7 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 
 	ro.Time = time.Time{}
 
-	if err := ep.httpRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil {
+	if err := ep.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -169,7 +226,7 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 			log.Trace(string(dump))
 		}
 
-		if err := ep.httpRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil {
+		if err := ep.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil {
 			return err
 		}
 	}
@@ -250,17 +307,20 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	var reqBody *xhttp.Body
 	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
 		if req.Body != nil {
-			maxSize := opts.MaxBodySize
-			if maxSize <= 0 {
-				maxSize = defaultBodySize
+			bodySize := opts.MaxBodySize
+			if bodySize <= 0 {
+				bodySize = sniffing.DefaultBodySize
 			}
-			reqBody = xhttp.NewBody(req.Body, maxSize)
+			if bodySize > sniffing.MaxBodySize {
+				bodySize = sniffing.MaxBodySize
+			}
+			reqBody = xhttp.NewBody(req.Body, bodySize)
 			req.Body = reqBody
 		}
 	}
 
 	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
-	ctx = contextWithRecorderObject(ctx, ro)
+	ctx = ctx_internal.ContextWithRecorderObject(ctx, ro)
 	ctx = ctxvalue.ContextWithLogger(ctx, log)
 
 	resp, err := ep.transport.RoundTrip(req.WithContext(ctx))
@@ -289,16 +349,19 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	}
 
 	if resp.StatusCode == http.StatusSwitchingProtocols {
-		return ep.handleUpgradeResponse(rw, req, resp)
+		return ep.handleUpgradeResponse(ctx, rw, req, resp, ro, log)
 	}
 
 	var respBody *xhttp.Body
 	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
-		maxSize := opts.MaxBodySize
-		if maxSize <= 0 {
-			maxSize = defaultBodySize
+		bodySize := opts.MaxBodySize
+		if bodySize <= 0 {
+			bodySize = sniffing.DefaultBodySize
 		}
-		respBody = xhttp.NewBody(resp.Body, maxSize)
+		if bodySize > sniffing.MaxBodySize {
+			bodySize = sniffing.MaxBodySize
+		}
+		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}
 
@@ -321,7 +384,7 @@ func upgradeType(h http.Header) string {
 	return h.Get("Upgrade")
 }
 
-func (ep *entrypoint) handleUpgradeResponse(rw io.ReadWriter, req *http.Request, res *http.Response) error {
+func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWriter, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	reqUpType := upgradeType(req.Header)
 	resUpType := upgradeType(res.Header)
 	if !strings.EqualFold(reqUpType, resUpType) {
@@ -332,81 +395,151 @@ func (ep *entrypoint) handleUpgradeResponse(rw io.ReadWriter, req *http.Request,
 	if !ok {
 		return fmt.Errorf("internal error: 101 switching protocols response with non-writable body")
 	}
+	defer backConn.Close()
 
 	res.Body = nil
 	if err := res.Write(rw); err != nil {
 		return fmt.Errorf("response write: %v", err)
 	}
 
+	if reqUpType == "websocket" && ep.sniffingWebsocket {
+		return ep.sniffingWebsocketFrame(ctx, rw, backConn, ro, log)
+	}
+
 	return xnet.Transport(rw, backConn)
 }
 
-func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
-	var tunnelID relay.TunnelID
-	if h.ingress != nil {
-		if rule := h.ingress.GetRule(ctx, addr); rule != nil {
-			tunnelID = parseTunnelID(rule.Endpoint)
+func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	errc := make(chan error, 1)
+
+	sampleRate := ep.websocketSampleRate
+	if sampleRate <= 0 {
+		sampleRate = sniffing.DefaultSampleRate
+	}
+	if sampleRate > sniffing.MaxSampleRate {
+		sampleRate = sniffing.MaxSampleRate
+	}
+	d := time.Duration(1 / sampleRate * 1e9)
+
+	go func() {
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro = ro2
+
+		ticker := time.NewTicker(d)
+		defer ticker.Stop()
+
+		buf := &bytes.Buffer{}
+		for {
+			start := time.Now()
+
+			err := ep.copyWebsocketFrame(cc, rw, buf, "client", ro)
+			select {
+			case <-ticker.C:
+				if err != nil {
+					ro.Err = err.Error()
+				}
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
+			default:
+			}
+
+			if err != nil {
+				errc <- err
+				return
+			}
 		}
-	}
+	}()
 
-	log := ctxvalue.LoggerFromContext(ctx)
-	if log == nil {
-		log = h.log
-	}
-	log.Debugf("dial: new connection to host %s", addr)
+	go func() {
+		ro2 := &xrecorder.HandlerRecorderObject{}
+		*ro2 = *ro
+		ro = ro2
 
-	if tunnelID.IsZero() {
-		return nil, fmt.Errorf("%w %s", ErrTunnelRoute, addr)
-	}
+		ticker := time.NewTicker(d)
+		defer ticker.Stop()
 
-	if ro := recorderObjectFromContext(ctx); ro != nil {
-		ro.ClientID = tunnelID.String()
-	}
+		buf := &bytes.Buffer{}
+		for {
+			start := time.Now()
 
-	if tunnelID.IsPrivate() {
-		return nil, fmt.Errorf("%w: tunnel %s is private for host %s", ErrPrivateTunnel, tunnelID, addr)
-	}
+			err := ep.copyWebsocketFrame(rw, cc, buf, "server", ro)
+			select {
+			case <-ticker.C:
+				if err != nil {
+					ro.Err = err.Error()
+				}
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
+			default:
+			}
 
-	log = log.WithFields(map[string]any{
-		"tunnel": tunnelID.String(),
-	})
-
-	d := &Dialer{
-		node:    h.node,
-		pool:    h.pool,
-		sd:      h.sd,
-		retry:   3,
-		timeout: 15 * time.Second,
-		log:     log,
-	}
-	conn, node, cid, err := d.Dial(ctx, "tcp", tunnelID.String())
-	if err != nil {
-		return
-	}
-	log.Debugf("dial: connected to host %s, tunnel: %s, connector: %s", addr, tunnelID, cid)
-
-	if node == h.node {
-		clientAddr := ctxvalue.ClientAddrFromContext(ctx)
-		var features []relay.Feature
-		af := &relay.AddrFeature{}
-		af.ParseFrom(string(clientAddr))
-		features = append(features, af) // src address
-
-		af = &relay.AddrFeature{}
-		af.ParseFrom(addr)
-		features = append(features, af) // dst address
-
-		if _, err = (&relay.Response{
-			Version:  relay.Version1,
-			Status:   relay.StatusOK,
-			Features: features,
-		}).WriteTo(conn); err != nil {
-			conn.Close()
-			return nil, err
+			if err != nil {
+				errc <- err
+				return
+			}
 		}
+	}()
+
+	<-errc
+	return nil
+}
+
+func (ep *entrypoint) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
+	fr := ws_util.Frame{}
+	if _, err = fr.ReadFrom(r); err != nil {
+		return err
 	}
 
-	return conn, nil
+	ws := &xrecorder.WebsocketRecorderObject{
+		From:    from,
+		Fin:     fr.Header.Fin,
+		Rsv1:    fr.Header.Rsv1,
+		Rsv2:    fr.Header.Rsv2,
+		Rsv3:    fr.Header.Rsv3,
+		OpCode:  int(fr.Header.OpCode),
+		Masked:  fr.Header.Masked,
+		MaskKey: fr.Header.MaskKey,
+		Length:  fr.Header.PayloadLength,
+	}
+	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+		bodySize := opts.MaxBodySize
+		if bodySize <= 0 {
+			bodySize = sniffing.DefaultBodySize
+		}
+		if bodySize > sniffing.MaxBodySize {
+			bodySize = sniffing.MaxBodySize
+		}
+
+		buf.Reset()
+		if _, err := io.Copy(buf, io.LimitReader(fr.Data, int64(bodySize))); err != nil {
+			return err
+		}
+		ws.Payload = buf.Bytes()
+	}
+
+	ro.Websocket = ws
+	length := uint64(fr.Header.Length()) + uint64(fr.Header.PayloadLength)
+	if from == "client" {
+		ro.InputBytes = length
+		ro.OutputBytes = 0
+	} else {
+		ro.InputBytes = 0
+		ro.OutputBytes = length
+	}
+
+	fr.Data = io.MultiReader(bytes.NewReader(buf.Bytes()), fr.Data)
+	if _, err := fr.WriteTo(w); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {

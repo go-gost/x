@@ -180,14 +180,16 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 			return cc, nil
 		}
 		sniffer := &sniffing.Sniffer{
-			Recorder:           h.recorder.Recorder,
-			RecorderOptions:    h.recorder.Options,
-			Certificate:        h.md.certificate,
-			PrivateKey:         h.md.privateKey,
-			NegotiatedProtocol: h.md.alpn,
-			CertPool:           h.certPool,
-			MitmBypass:         h.md.mitmBypass,
-			ReadTimeout:        h.md.readTimeout,
+			Websocket:           h.md.sniffingWebsocket,
+			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+			Recorder:            h.recorder.Recorder,
+			RecorderOptions:     h.recorder.Options,
+			Certificate:         h.md.certificate,
+			PrivateKey:          h.md.privateKey,
+			NegotiatedProtocol:  h.md.alpn,
+			CertPool:            h.certPool,
+			MitmBypass:          h.md.mitmBypass,
+			ReadTimeout:         h.md.readTimeout,
 		}
 
 		switch proto {

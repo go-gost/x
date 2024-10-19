@@ -22,11 +22,13 @@ const (
 type metadata struct {
 	readTimeout time.Duration
 
-	entryPoint              string
-	entryPointID            relay.TunnelID
-	entryPointProxyProtocol int
-	entryPointKeepalive     bool
-	entryPointReadTimeout   time.Duration
+	entryPoint                  string
+	entryPointID                relay.TunnelID
+	entryPointProxyProtocol     int
+	entryPointKeepalive         bool
+	entryPointReadTimeout       time.Duration
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
 
 	directTunnel  bool
 	tunnelTTL     time.Duration
@@ -52,6 +54,9 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	if h.md.entryPointReadTimeout <= 0 {
 		h.md.entryPointReadTimeout = 15 * time.Second
 	}
+
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	h.md.tunnelTTL = mdutil.GetDuration(md, "tunnel.ttl")
 	if h.md.tunnelTTL <= 0 {

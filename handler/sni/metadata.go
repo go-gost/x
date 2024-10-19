@@ -16,6 +16,9 @@ type metadata struct {
 	readTimeout time.Duration
 	hash        string
 
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
+
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
 	alpn        string
@@ -28,6 +31,9 @@ func (h *sniHandler) parseMetadata(md mdata.Metadata) (err error) {
 		h.md.readTimeout = 15 * time.Second
 	}
 	h.md.hash = mdutil.GetString(md, "hash")
+
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

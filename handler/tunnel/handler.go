@@ -90,6 +90,8 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		log: h.log.WithFields(map[string]any{
 			"kind": "entrypoint",
 		}),
+		sniffingWebsocket:   h.md.sniffingWebsocket,
+		websocketSampleRate: h.md.sniffingWebsocketSampleRate,
 	}
 	h.ep.transport = &http.Transport{
 		DialContext:           h.ep.dial,

@@ -16,9 +16,11 @@ type metadata struct {
 	readTimeout time.Duration
 	tproxy      bool
 
-	sniffing         bool
-	sniffingTimeout  time.Duration
-	sniffingFallback bool
+	sniffing                    bool
+	sniffingTimeout             time.Duration
+	sniffingFallback            bool
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
 
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
@@ -36,6 +38,8 @@ func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingFallback = mdutil.GetBool(md, "sniffing.fallback")
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

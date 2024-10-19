@@ -30,8 +30,10 @@ type metadata struct {
 	observePeriod   time.Duration
 	proxyAgent      string
 
-	sniffing        bool
-	sniffingTimeout time.Duration
+	sniffing                    bool
+	sniffingTimeout             time.Duration
+	sniffingWebsocket           bool
+	sniffingWebsocketSampleRate float64
 
 	certificate *x509.Certificate
 	privateKey  crypto.PrivateKey
@@ -80,6 +82,8 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
+	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
+	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

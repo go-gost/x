@@ -128,9 +128,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	}
 
 	ro.Host = dstAddr.String()
+	ro.Dst = dstAddr.String()
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"dst":  fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
 		"host": dstAddr.String(),
 	})
 
@@ -184,14 +185,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		}
 
 		sniffer := &sniffing.Sniffer{
-			Recorder:           h.recorder.Recorder,
-			RecorderOptions:    h.recorder.Options,
-			Certificate:        h.md.certificate,
-			PrivateKey:         h.md.privateKey,
-			NegotiatedProtocol: h.md.alpn,
-			CertPool:           h.certPool,
-			MitmBypass:         h.md.mitmBypass,
-			ReadTimeout:        h.md.readTimeout,
+			Websocket:           h.md.sniffingWebsocket,
+			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+			Recorder:            h.recorder.Recorder,
+			RecorderOptions:     h.recorder.Options,
+			Certificate:         h.md.certificate,
+			PrivateKey:          h.md.privateKey,
+			NegotiatedProtocol:  h.md.alpn,
+			CertPool:            h.certPool,
+			MitmBypass:          h.md.mitmBypass,
+			ReadTimeout:         h.md.readTimeout,
 		}
 
 		conn = xnet.NewReadWriteConn(br, conn, conn)
