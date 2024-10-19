@@ -42,8 +42,6 @@ const (
 	MaxBodySize = 1024 * 1024 // 1MB
 	// DeafultSampleRate is the default websocket sample rate (samples per second).
 	DefaultSampleRate = 10.0
-	// MaxSampleRate is the maximum websocket sample rate (samples per second).
-	MaxSampleRate = 100.0
 )
 
 var (
@@ -422,11 +420,8 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	errc := make(chan error, 1)
 
 	sampleRate := h.WebsocketSampleRate
-	if sampleRate <= 0 {
+	if sampleRate == 0 {
 		sampleRate = DefaultSampleRate
-	}
-	if sampleRate > MaxSampleRate {
-		sampleRate = MaxSampleRate
 	}
 	d := time.Duration(1 / sampleRate * 1e9)
 
@@ -435,8 +430,15 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 		*ro2 = *ro
 		ro = ro2
 
-		ticker := time.NewTicker(d)
-		defer ticker.Stop()
+		ticker := &time.Ticker{}
+		if d > 0 {
+			ticker = time.NewTicker(d)
+			defer ticker.Stop()
+		} else {
+			tc := make(chan time.Time)
+			close(tc)
+			ticker.C = tc
+		}
 
 		buf := &bytes.Buffer{}
 		for {
@@ -468,8 +470,15 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 		*ro2 = *ro
 		ro = ro2
 
-		ticker := time.NewTicker(d)
-		defer ticker.Stop()
+		ticker := &time.Ticker{}
+		if d > 0 {
+			ticker = time.NewTicker(d)
+			defer ticker.Stop()
+		} else {
+			tc := make(chan time.Time)
+			close(tc)
+			ticker.C = tc
+		}
 
 		buf := &bytes.Buffer{}
 		for {

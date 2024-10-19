@@ -673,11 +673,8 @@ func (h *httpHandler) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 	errc := make(chan error, 1)
 
 	sampleRate := h.md.sniffingWebsocketSampleRate
-	if sampleRate <= 0 {
+	if sampleRate == 0 {
 		sampleRate = sniffing.DefaultSampleRate
-	}
-	if sampleRate > sniffing.MaxSampleRate {
-		sampleRate = sniffing.MaxSampleRate
 	}
 	d := time.Duration(1 / sampleRate * 1e9)
 
@@ -686,8 +683,15 @@ func (h *httpHandler) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		*ro2 = *ro
 		ro = ro2
 
-		ticker := time.NewTicker(d)
-		defer ticker.Stop()
+		ticker := &time.Ticker{}
+		if d > 0 {
+			ticker = time.NewTicker(d)
+			defer ticker.Stop()
+		} else {
+			tc := make(chan time.Time)
+			close(tc)
+			ticker.C = tc
+		}
 
 		buf := &bytes.Buffer{}
 		for {
@@ -719,8 +723,15 @@ func (h *httpHandler) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		*ro2 = *ro
 		ro = ro2
 
-		ticker := time.NewTicker(d)
-		defer ticker.Stop()
+		ticker := &time.Ticker{}
+		if d > 0 {
+			ticker = time.NewTicker(d)
+			defer ticker.Stop()
+		} else {
+			tc := make(chan time.Time)
+			close(tc)
+			ticker.C = tc
+		}
 
 		buf := &bytes.Buffer{}
 		for {
