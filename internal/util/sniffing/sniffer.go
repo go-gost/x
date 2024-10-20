@@ -428,7 +428,7 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
-		ro = ro2
+		ro := ro2
 
 		ticker := &time.Ticker{}
 		if d > 0 {
@@ -447,13 +447,12 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 			err := h.copyWebsocketFrame(cc, rw, buf, "client", ro)
 			select {
 			case <-ticker.C:
-				if err != nil {
-					ro.Err = err.Error()
-				}
-				ro.Duration = time.Since(start)
-				ro.Time = time.Now()
-				if err := ro.Record(ctx, h.Recorder); err != nil {
-					log.Errorf("record: %v", err)
+				if err == nil {
+					ro.Duration = time.Since(start)
+					ro.Time = time.Now()
+					if err := ro.Record(ctx, h.Recorder); err != nil {
+						log.Errorf("record: %v", err)
+					}
 				}
 			default:
 			}
@@ -468,7 +467,7 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
-		ro = ro2
+		ro := ro2
 
 		ticker := &time.Ticker{}
 		if d > 0 {
@@ -487,13 +486,12 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 			err := h.copyWebsocketFrame(rw, cc, buf, "server", ro)
 			select {
 			case <-ticker.C:
-				if err != nil {
-					ro.Err = err.Error()
-				}
-				ro.Duration = time.Since(start)
-				ro.Time = time.Now()
-				if err := ro.Record(ctx, h.Recorder); err != nil {
-					log.Errorf("record: %v", err)
+				if err == nil {
+					ro.Duration = time.Since(start)
+					ro.Time = time.Now()
+					if err := ro.Record(ctx, h.Recorder); err != nil {
+						log.Errorf("record: %v", err)
+					}
 				}
 			default:
 			}
