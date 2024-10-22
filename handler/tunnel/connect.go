@@ -72,7 +72,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	}
 	defer cc.Close()
 
-	log.Debugf("new connection to tunnel: %s, connector: %s", tunnelID, cid)
+	log.Debugf("connected to node=%s tunnel=%s connector=%s", node, tunnelID, cid)
 
 	if node == h.id {
 		if _, err := resp.WriteTo(conn); err != nil {

@@ -4,10 +4,10 @@ import (
 	"crypto/tls"
 	"strings"
 
-	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
+	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
@@ -115,7 +115,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		xhop.NameOption(cfg.Name),
 		xhop.NodeOption(nodes...),
 		xhop.SelectorOption(sel),
-		xhop.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
+		xhop.BypassOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		xhop.ReloadPeriodOption(cfg.Reload),
 		xhop.LoggerOption(log.WithFields(map[string]any{
 			"kind": "hop",

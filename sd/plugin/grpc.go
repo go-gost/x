@@ -117,8 +117,9 @@ func (p *grpcPlugin) Get(ctx context.Context, name string) ([]*sd.Service, error
 			continue
 		}
 		services = append(services, &sd.Service{
-			Node:    v.Node,
+			ID:      v.Id,
 			Name:    v.Name,
+			Node:    v.Node,
 			Network: v.Network,
 			Address: v.Address,
 		})

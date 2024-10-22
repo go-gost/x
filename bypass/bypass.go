@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -287,4 +288,46 @@ func (bp *localBypass) Close() error {
 		bp.options.redisLoader.Close()
 	}
 	return nil
+}
+
+type bypassGroup struct {
+	bypasses []bypass.Bypass
+}
+
+func BypassGroup(bypasses ...bypass.Bypass) bypass.Bypass {
+	return &bypassGroup{
+		bypasses: bypasses,
+	}
+}
+
+func (p *bypassGroup) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
+	var whitelist, blacklist []bool
+	for _, bypass := range p.bypasses {
+		result := bypass.Contains(ctx, network, addr, opts...)
+		if bypass.IsWhitelist() {
+			whitelist = append(whitelist, result)
+		} else {
+			blacklist = append(blacklist, result)
+		}
+	}
+	status := false
+	if len(whitelist) > 0 {
+		if slices.Contains(whitelist, false) {
+			status = false
+		} else {
+			status = true
+		}
+	}
+	if !status && len(blacklist) > 0 {
+		if slices.Contains(blacklist, true) {
+			status = true
+		} else {
+			status = false
+		}
+	}
+	return status
+}
+
+func (p *bypassGroup) IsWhitelist() bool {
+	return false
 }

@@ -37,11 +37,15 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	v := md5.Sum([]byte(tunnelID.String()))
 	endpoint := hex.EncodeToString(v[:8])
 
-	addr := address
-	host, port, _ := net.SplitHostPort(addr)
-	if host == "" {
-		addr = net.JoinHostPort(endpoint, port)
+	host, port, _ := net.SplitHostPort(address)
+	if host == "" || h.md.ingress == nil {
+		host = endpoint
+	} else if host != endpoint {
+		if rule := h.md.ingress.GetRule(ctx, host); rule != nil && rule.Endpoint != tunnelID.String() {
+			host = endpoint
+		}
 	}
+	addr := net.JoinHostPort(host, port)
 
 	af := &relay.AddrFeature{}
 	err = af.ParseFrom(addr)

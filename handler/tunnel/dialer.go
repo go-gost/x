@@ -68,11 +68,11 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 	}
 
 	node = service.Node
-	cid = service.Name
+	cid = service.ID
 
 	dialer := net.Dialer{
 		Timeout: d.timeout,
 	}
-	conn, err = dialer.DialContext(ctx, network, service.Address)
+	conn, err = dialer.DialContext(ctx, "tcp", service.Address)
 	return
 }

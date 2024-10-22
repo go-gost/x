@@ -6,9 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
-	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
@@ -18,6 +16,9 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
+	xadmission "github.com/go-gost/x/admission"
+	xauth "github.com/go-gost/x/auth"
+	xbypass "github.com/go-gost/x/bypass"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
@@ -84,7 +85,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	var auther auth.Authenticator
 	if len(authers) > 0 {
-		auther = auth.AuthenticatorGroup(authers...)
+		auther = xauth.AuthenticatorGroup(authers...)
 	}
 
 	admissions := admission_parser.List(cfg.Admission, cfg.Admissions...)
@@ -155,7 +156,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.AutherOption(auther),
 		listener.AuthOption(auth_parser.Info(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
-		listener.AdmissionOption(admission.AdmissionGroup(admissions...)),
+		listener.AdmissionOption(xadmission.AdmissionGroup(admissions...)),
 		listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
 		listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
 		listener.ServiceOption(cfg.Name),
@@ -235,7 +236,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	auther = nil
 	if len(authers) > 0 {
-		auther = auth.AuthenticatorGroup(authers...)
+		auther = xauth.AuthenticatorGroup(authers...)
 	}
 
 	var recorders []recorder.RecorderObject
@@ -277,7 +278,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.RouterOption(xchain.NewRouter(routerOpts...)),
 			handler.AutherOption(auther),
 			handler.AuthOption(auth_parser.Info(cfg.Handler.Auth)),
-			handler.BypassOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
+			handler.BypassOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
 			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
@@ -309,7 +310,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	s := xservice.NewService(cfg.Name, ln, h,
-		xservice.AdmissionOption(admission.AdmissionGroup(admissions...)),
+		xservice.AdmissionOption(xadmission.AdmissionGroup(admissions...)),
 		xservice.PreUpOption(preUp),
 		xservice.PreDownOption(preDown),
 		xservice.PostUpOption(postUp),

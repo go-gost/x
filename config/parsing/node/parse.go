@@ -6,14 +6,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	xauth "github.com/go-gost/x/auth"
+	xbypass "github.com/go-gost/x/bypass"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
@@ -21,6 +20,7 @@ import (
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
 
@@ -149,7 +149,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 
 	opts := []chain.NodeOption{
 		chain.TransportNodeOption(tr),
-		chain.BypassNodeOption(bypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
+		chain.BypassNodeOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		chain.ResoloverNodeOption(registry.ResolverRegistry().Get(cfg.Resolver)),
 		chain.HostMapperNodeOption(registry.HostsRegistry().Get(cfg.Hosts)),
 		chain.MetadataNodeOption(nm),

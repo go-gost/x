@@ -323,13 +323,15 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		}
 	}
 
-	if err = req.Write(cc); err != nil {
-		return
-	}
+	err = req.Write(cc)
 
 	if reqBody != nil {
 		ro.HTTP.Request.Body = reqBody.Content()
 		ro.HTTP.Request.ContentLength = reqBody.Length()
+	}
+
+	if err != nil {
+		return
 	}
 
 	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
@@ -377,14 +379,16 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		resp.Body = respBody
 	}
 
-	if err = resp.Write(rw); err != nil {
-		err = fmt.Errorf("write response: %w", err)
-		return
-	}
+	err = resp.Write(rw)
 
 	if respBody != nil {
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
+	}
+
+	if err != nil {
+		err = fmt.Errorf("write response: %w", err)
+		return
 	}
 
 	return resp.Close, nil

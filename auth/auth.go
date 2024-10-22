@@ -252,3 +252,29 @@ func (p *authenticator) Close() error {
 	}
 	return nil
 }
+
+type authenticatorGroup struct {
+	authers []auth.Authenticator
+}
+
+func AuthenticatorGroup(authers ...auth.Authenticator) auth.Authenticator {
+	return &authenticatorGroup{
+		authers: authers,
+	}
+}
+
+func (p *authenticatorGroup) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
+	if len(p.authers) == 0 {
+		return "", false
+	}
+	for _, auther := range p.authers {
+		if auther == nil {
+			continue
+		}
+
+		if id, ok := auther.Authenticate(ctx, user, password, opts...); ok {
+			return id, ok
+		}
+	}
+	return "", false
+}

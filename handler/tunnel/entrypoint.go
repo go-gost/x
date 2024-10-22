@@ -324,6 +324,12 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	ctx = ctxvalue.ContextWithLogger(ctx, log)
 
 	resp, err := ep.transport.RoundTrip(req.WithContext(ctx))
+
+	if reqBody != nil {
+		ro.HTTP.Request.Body = reqBody.Content()
+		ro.HTTP.Request.ContentLength = reqBody.Length()
+	}
+
 	if err != nil {
 		if errors.Is(err, ErrTunnelRoute) || errors.Is(err, ErrPrivateTunnel) {
 			res.StatusCode = http.StatusBadGateway
@@ -333,11 +339,6 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 		return
 	}
 	defer resp.Body.Close()
-
-	if reqBody != nil {
-		ro.HTTP.Request.Body = reqBody.Content()
-		ro.HTTP.Request.ContentLength = reqBody.Length()
-	}
 
 	ro.HTTP.StatusCode = resp.StatusCode
 	ro.HTTP.Response.Header = resp.Header
@@ -365,13 +366,15 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 		resp.Body = respBody
 	}
 
-	if err = resp.Write(rw); err != nil {
-		return fmt.Errorf("write response: %v", err)
-	}
+	err = resp.Write(rw)
 
 	if respBody != nil {
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
+	}
+
+	if err != nil {
+		return fmt.Errorf("write response: %v", err)
 	}
 
 	return

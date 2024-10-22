@@ -561,16 +561,17 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 	ctx = ctxvalue.ContextWithLogger(ctx, log)
 
 	resp, err := h.transport.RoundTrip(req.WithContext(ctx))
-	if err != nil {
-		res.Write(rw)
-		return
-	}
-	defer resp.Body.Close()
 
 	if reqBody != nil {
 		ro.HTTP.Request.Body = reqBody.Content()
 		ro.HTTP.Request.ContentLength = reqBody.Length()
 	}
+
+	if err != nil {
+		res.Write(rw)
+		return
+	}
+	defer resp.Body.Close()
 
 	ro.HTTP.StatusCode = resp.StatusCode
 	ro.HTTP.Response.Header = resp.Header.Clone()
@@ -607,13 +608,15 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 		resp.Body = respBody
 	}
 
-	if err = resp.Write(rw); err != nil {
-		return fmt.Errorf("write response: %v", err)
-	}
+	err = resp.Write(rw)
 
 	if respBody != nil {
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
+	}
+
+	if err != nil {
+		return fmt.Errorf("write response: %v", err)
 	}
 
 	return
