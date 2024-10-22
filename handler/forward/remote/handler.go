@@ -106,6 +106,12 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
+	network := "tcp"
+	if _, ok := conn.(net.PacketConn); ok {
+		network = "udp"
+	}
+	ro.Network = network
+
 	pStats := stats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
@@ -130,12 +136,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return rate_limiter.ErrRateLimit
 	}
-
-	network := "tcp"
-	if _, ok := conn.(net.PacketConn); ok {
-		network = "udp"
-	}
-	ro.Network = network
 
 	var proto string
 	if network == "tcp" && h.md.sniffing {
