@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -37,6 +38,7 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -564,43 +566,32 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	if sampleRate == 0 {
 		sampleRate = sniffing.DefaultSampleRate
 	}
-	d := time.Duration(1 / sampleRate * 1e9)
+	if sampleRate < 0 {
+		sampleRate = math.MaxFloat64
+	}
 
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
 		ro := ro2
 
-		ticker := &time.Ticker{}
-		if d > 0 {
-			ticker = time.NewTicker(d)
-			defer ticker.Stop()
-		} else {
-			tc := make(chan time.Time)
-			close(tc)
-			ticker.C = tc
-		}
+		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
 		buf := &bytes.Buffer{}
 		for {
 			start := time.Now()
 
-			err := h.copyWebsocketFrame(cc, rw, buf, "client", ro)
-			select {
-			case <-ticker.C:
-				if err == nil {
-					ro.Duration = time.Since(start)
-					ro.Time = time.Now()
-					if err := ro.Record(ctx, h.Recorder); err != nil {
-						log.Errorf("record: %v", err)
-					}
-				}
-			default:
-			}
-
-			if err != nil {
+			if err := h.copyWebsocketFrame(cc, rw, buf, "client", ro); err != nil {
 				errc <- err
 				return
+			}
+
+			if limiter.Allow() {
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, h.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
 			}
 		}
 	}()
@@ -610,36 +601,23 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 		*ro2 = *ro
 		ro := ro2
 
-		ticker := &time.Ticker{}
-		if d > 0 {
-			ticker = time.NewTicker(d)
-			defer ticker.Stop()
-		} else {
-			tc := make(chan time.Time)
-			close(tc)
-			ticker.C = tc
-		}
+		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
 		buf := &bytes.Buffer{}
 		for {
 			start := time.Now()
 
-			err := h.copyWebsocketFrame(rw, cc, buf, "server", ro)
-			select {
-			case <-ticker.C:
-				if err == nil {
-					ro.Duration = time.Since(start)
-					ro.Time = time.Now()
-					if err := ro.Record(ctx, h.Recorder); err != nil {
-						log.Errorf("record: %v", err)
-					}
-				}
-			default:
-			}
-
-			if err != nil {
+			if err := h.copyWebsocketFrame(rw, cc, buf, "server", ro); err != nil {
 				errc <- err
 				return
+			}
+
+			if limiter.Allow() {
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, h.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
 			}
 		}
 	}()

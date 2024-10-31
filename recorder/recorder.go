@@ -89,6 +89,7 @@ type HandlerRecorderObject struct {
 	Route       string                   `json:"route,omitempty"`
 	InputBytes  uint64                   `json:"inputBytes"`
 	OutputBytes uint64                   `json:"outputBytes"`
+	Redirect    string                   `json:"redirect,omitempty"`
 	Err         string                   `json:"err,omitempty"`
 	SID         string                   `json:"sid"`
 	Duration    time.Duration            `json:"duration"`

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -37,6 +38,12 @@ import (
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http/httpguts"
+	"golang.org/x/time/rate"
+)
+
+const (
+	httpHeaderSID           = "Gost-Sid"
+	httpHeaderForwardedNode = "Gost-Forwarded-Node"
 )
 
 type entrypoint struct {
@@ -108,17 +115,17 @@ func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
 	return ep.handleHTTP(ctx, conn, ro, log)
 }
 
-func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
+func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
 	var tunnelID relay.TunnelID
-	if h.ingress != nil {
-		if rule := h.ingress.GetRule(ctx, addr); rule != nil {
+	if ep.ingress != nil {
+		if rule := ep.ingress.GetRule(ctx, addr); rule != nil {
 			tunnelID = parseTunnelID(rule.Endpoint)
 		}
 	}
 
 	log := ctxvalue.LoggerFromContext(ctx)
 	if log == nil {
-		log = h.log
+		log = ep.log
 	}
 	log.Debugf("dial: new connection to host %s", addr)
 
@@ -126,9 +133,8 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 		return nil, fmt.Errorf("%w %s", ErrTunnelRoute, addr)
 	}
 
-	if ro := ctx_internal.RecorderObjectFromContext(ctx); ro != nil {
-		ro.ClientID = tunnelID.String()
-	}
+	ro := ctx_internal.RecorderObjectFromContext(ctx)
+	ro.ClientID = tunnelID.String()
 
 	if tunnelID.IsPrivate() {
 		return nil, fmt.Errorf("%w: tunnel %s is private for host %s", ErrPrivateTunnel, tunnelID, addr)
@@ -139,9 +145,9 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 	})
 
 	d := &Dialer{
-		node:    h.node,
-		pool:    h.pool,
-		sd:      h.sd,
+		node:    ep.node,
+		pool:    ep.pool,
+		sd:      ep.sd,
 		retry:   3,
 		timeout: 15 * time.Second,
 		log:     log,
@@ -152,7 +158,9 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 	}
 	log.Debugf("dial: connected to host %s, tunnel: %s, connector: %s", addr, tunnelID, cid)
 
-	if node == h.node {
+	if node == ep.node {
+		ro.Redirect = ""
+
 		clientAddr := ctxvalue.ClientAddrFromContext(ctx)
 		var features []relay.Feature
 		af := &relay.AddrFeature{}
@@ -171,6 +179,8 @@ func (h *entrypoint) dial(ctx context.Context, network, addr string) (conn net.C
 			conn.Close()
 			return nil, err
 		}
+	} else {
+		ro.Redirect = node
 	}
 
 	return conn, nil
@@ -236,6 +246,13 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
+
+	if sid := req.Header.Get(httpHeaderSID); sid != "" {
+		ro.SID = sid
+	} else {
+		req.Header.Set(httpHeaderSID, ro.SID)
+	}
+	req.Header.Set(httpHeaderForwardedNode, ro.Node)
 
 	host := req.Host
 	if _, port, _ := net.SplitHostPort(host); port == "" {
@@ -419,43 +436,32 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 	if sampleRate == 0 {
 		sampleRate = sniffing.DefaultSampleRate
 	}
-	d := time.Duration(1 / sampleRate * 1e9)
+	if sampleRate < 0 {
+		sampleRate = math.MaxFloat64
+	}
 
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
 		ro := ro2
 
-		ticker := &time.Ticker{}
-		if d > 0 {
-			ticker = time.NewTicker(d)
-			defer ticker.Stop()
-		} else {
-			tc := make(chan time.Time)
-			close(tc)
-			ticker.C = tc
-		}
+		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
 		buf := &bytes.Buffer{}
 		for {
 			start := time.Now()
 
-			err := ep.copyWebsocketFrame(cc, rw, buf, "client", ro)
-			select {
-			case <-ticker.C:
-				if err == nil {
-					ro.Duration = time.Since(start)
-					ro.Time = time.Now()
-					if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
-						log.Errorf("record: %v", err)
-					}
-				}
-			default:
-			}
-
-			if err != nil {
+			if err := ep.copyWebsocketFrame(cc, rw, buf, "client", ro); err != nil {
 				errc <- err
 				return
+			}
+
+			if limiter.Allow() {
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
 			}
 		}
 	}()
@@ -465,36 +471,23 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		*ro2 = *ro
 		ro := ro2
 
-		ticker := &time.Ticker{}
-		if d > 0 {
-			ticker = time.NewTicker(d)
-			defer ticker.Stop()
-		} else {
-			tc := make(chan time.Time)
-			close(tc)
-			ticker.C = tc
-		}
+		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
 		buf := &bytes.Buffer{}
 		for {
 			start := time.Now()
 
-			err := ep.copyWebsocketFrame(rw, cc, buf, "server", ro)
-			select {
-			case <-ticker.C:
-				if err == nil {
-					ro.Duration = time.Since(start)
-					ro.Time = time.Now()
-					if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
-						log.Errorf("record: %v", err)
-					}
-				}
-			default:
-			}
-
-			if err != nil {
+			if err := ep.copyWebsocketFrame(rw, cc, buf, "server", ro); err != nil {
 				errc <- err
 				return
+			}
+
+			if limiter.Allow() {
+				ro.Duration = time.Since(start)
+				ro.Time = time.Now()
+				if err := ro.Record(ctx, ep.recorder.Recorder); err != nil {
+					log.Errorf("record: %v", err)
+				}
 			}
 		}
 	}()
