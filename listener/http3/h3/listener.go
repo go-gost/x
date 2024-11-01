@@ -62,7 +62,7 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 			KeepAlivePeriod:      l.md.keepAlivePeriod,
 			HandshakeIdleTimeout: l.md.handshakeTimeout,
 			MaxIdleTimeout:       l.md.maxIdleTimeout,
-			Versions: []quic.VersionNumber{
+			Versions: []quic.Version{
 				quic.Version1,
 			},
 			MaxIncomingStreams: int64(l.md.maxStreams),

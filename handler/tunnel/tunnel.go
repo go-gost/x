@@ -38,6 +38,7 @@ type Connector struct {
 	s    *mux.Session
 	t    time.Time
 	opts *ConnectorOptions
+	log  logger.Logger
 }
 
 func NewConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.Session, opts *ConnectorOptions) *Connector {
@@ -52,23 +53,30 @@ func NewConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.
 		s:    s,
 		t:    time.Now(),
 		opts: opts,
+		log: logger.Default().WithFields(map[string]any{
+			"node":      node,
+			"tunnel":    tid.String(),
+			"connector": id.String(),
+		}),
 	}
-	go c.accept()
+
+	go c.waitClose()
 	return c
 }
 
-func (c *Connector) accept() {
+func (c *Connector) waitClose() {
 	for {
 		conn, err := c.s.Accept()
 		if err != nil {
-			logger.Default().Errorf("connector %s: %v", c.id, err)
-			c.s.Close()
+			c.log.Errorf("connector %s: %v", c.id, err)
+			c.Close()
 			if c.opts.sd != nil {
 				c.opts.sd.Deregister(context.Background(), &sd.Service{
 					ID:   c.id.String(),
 					Name: c.tid.String(),
 					Node: c.node,
 				})
+				c.log.Debugf("deregister connector %s from sd", c.id.String())
 			}
 			return
 		}
@@ -132,7 +140,6 @@ type Tunnel struct {
 	t          time.Time
 	close      chan struct{}
 	mu         sync.RWMutex
-	sd         sd.SD
 	ttl        time.Duration
 }
 
@@ -149,10 +156,6 @@ func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {
 	}
 	go t.clean()
 	return t
-}
-
-func (t *Tunnel) WithSD(sd sd.SD) {
-	t.sd = sd
 }
 
 func (t *Tunnel) ID() relay.TunnelID {
@@ -175,6 +178,9 @@ func (t *Tunnel) GetConnector(network string) *Connector {
 	defer t.mu.RUnlock()
 
 	if len(t.connectors) == 1 {
+		if t.connectors[0].IsClosed() {
+			return nil
+		}
 		return t.connectors[0]
 	}
 
@@ -250,23 +256,17 @@ func (t *Tunnel) clean() {
 				t.mu.Unlock()
 				break
 			}
+
 			var connectors []*Connector
 			for _, c := range t.connectors {
 				if c.IsClosed() {
-					logger.Default().Debugf("remove tunnel: %s, connector: %s", t.id, c.id)
-					if t.sd != nil {
-						t.sd.Deregister(context.Background(), &sd.Service{
-							ID:   c.id.String(),
-							Name: t.id.String(),
-							Node: t.node,
-						})
-					}
+					c.log.Debugf("remove connector: %s", t.id, c.id)
 					continue
 				}
 
 				connectors = append(connectors, c)
-				if t.sd != nil {
-					t.sd.Renew(context.Background(), &sd.Service{
+				if c.opts.sd != nil {
+					c.opts.sd.Renew(context.Background(), &sd.Service{
 						ID:   c.id.String(),
 						Name: t.id.String(),
 						Node: t.node,
@@ -277,6 +277,7 @@ func (t *Tunnel) clean() {
 				t.connectors = connectors
 			}
 			t.mu.Unlock()
+
 		case <-t.close:
 			return
 		}
@@ -285,18 +286,21 @@ func (t *Tunnel) clean() {
 
 type ConnectorPool struct {
 	node    string
-	sd      sd.SD
 	tunnels map[string]*Tunnel
 	mu      sync.RWMutex
+	cancel  context.CancelFunc
 }
 
-func NewConnectorPool(node string, sd sd.SD) *ConnectorPool {
+func NewConnectorPool(node string) *ConnectorPool {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	p := &ConnectorPool{
 		node:    node,
-		sd:      sd,
 		tunnels: make(map[string]*Tunnel),
+		cancel:  cancel,
 	}
-	go p.closeIdles()
+
+	go p.closeIdles(ctx)
 	return p
 }
 
@@ -309,8 +313,6 @@ func (p *ConnectorPool) Add(tid relay.TunnelID, c *Connector, ttl time.Duration)
 	t := p.tunnels[s]
 	if t == nil {
 		t = NewTunnel(p.node, tid, ttl)
-		t.WithSD(p.sd)
-
 		p.tunnels[s] = t
 	}
 	t.AddConnector(c)
@@ -337,6 +339,10 @@ func (p *ConnectorPool) Close() error {
 		return nil
 	}
 
+	if p.cancel != nil {
+		p.cancel()
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -348,19 +354,25 @@ func (p *ConnectorPool) Close() error {
 	return nil
 }
 
-func (p *ConnectorPool) closeIdles() {
-	ticker := time.NewTicker(1 * time.Hour)
+func (p *ConnectorPool) closeIdles(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		p.mu.Lock()
-		for k, v := range p.tunnels {
-			if v.CloseOnIdle() {
-				delete(p.tunnels, k)
-				logger.Default().Debugf("remove idle tunnel: %s", k)
+	for {
+		select {
+		case <-ticker.C:
+			p.mu.Lock()
+			for k, v := range p.tunnels {
+				if v.CloseOnIdle() {
+					delete(p.tunnels, k)
+					logger.Default().Debugf("remove idle tunnel: %s", k)
+				}
 			}
+			p.mu.Unlock()
+
+		case <-ctx.Done():
+			return
 		}
-		p.mu.Unlock()
 	}
 }
 

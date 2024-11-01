@@ -79,7 +79,7 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	h.log = h.options.Logger.WithFields(map[string]any{
 		"node": h.id,
 	})
-	h.pool = NewConnectorPool(h.id, h.md.sd)
+	h.pool = NewConnectorPool(h.id)
 
 	h.ep = &entrypoint{
 		node:    h.id,

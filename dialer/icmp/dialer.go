@@ -127,7 +127,7 @@ func (d *icmpDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 		KeepAlivePeriod:      d.md.keepAlivePeriod,
 		HandshakeIdleTimeout: d.md.handshakeTimeout,
 		MaxIdleTimeout:       d.md.maxIdleTimeout,
-		Versions: []quic.VersionNumber{
+		Versions: []quic.Version{
 			quic.Version1,
 			quic.Version2,
 		},
