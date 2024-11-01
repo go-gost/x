@@ -424,7 +424,7 @@ func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.
 
 	ro.Time = time.Time{}
 
-	if err := h.proxyRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil {
+	if close, err := h.proxyRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil || close {
 		return err
 	}
 
@@ -445,13 +445,15 @@ func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.
 			log.Trace(string(dump))
 		}
 
-		if err := h.proxyRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil {
+		if close, err := h.proxyRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil || close {
 			return err
 		}
 	}
 }
 
-func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (err error) {
+func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (close bool, err error) {
+	close = true
+
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
@@ -509,7 +511,8 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 	}
 
 	// HTTP/1.0
-	if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+	http10 := req.ProtoMajor == 1 && req.ProtoMinor == 0
+	if http10 {
 		if strings.ToLower(req.Header.Get("Connection")) == "keep-alive" {
 			req.Header.Del("Connection")
 		} else {
@@ -540,7 +543,8 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 		}
 		log.Debug("bypass: ", host)
 		res.Write(rw)
-		return xbypass.ErrBypass
+		err = xbypass.ErrBypass
+		return
 	}
 
 	var reqBody *xhttp.Body
@@ -585,16 +589,17 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 	}
 
 	// HTTP/1.0
-	if req.ProtoMajor == 1 && req.ProtoMinor == 0 {
+	if http10 {
 		if !resp.Close {
 			resp.Header.Set("Connection", "keep-alive")
 		}
-		resp.ProtoMajor = req.ProtoMajor
-		resp.ProtoMinor = req.ProtoMinor
+		resp.ProtoMajor = 1
+		resp.ProtoMinor = 0
 	}
 
 	if resp.StatusCode == http.StatusSwitchingProtocols {
-		return h.handleUpgradeResponse(ctx, rw, req, resp, ro, log)
+		err = h.handleUpgradeResponse(ctx, rw, req, resp, ro, log)
+		return
 	}
 
 	var respBody *xhttp.Body
@@ -618,10 +623,11 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 	}
 
 	if err != nil {
-		return fmt.Errorf("write response: %v", err)
+		err = fmt.Errorf("write response: %v", err)
+		return
 	}
 
-	return
+	return resp.Close, nil
 }
 
 func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {

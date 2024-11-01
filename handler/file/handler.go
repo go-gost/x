@@ -122,7 +122,7 @@ func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
-		}).Infof("%s %s %d %d", r.Method, r.RequestURI, rw.statusCode, rw.contentLength)
+		}).Infof("%s %s %s %d %d", r.Method, r.RequestURI, r.Proto, rw.statusCode, rw.contentLength)
 	}()
 
 	if auther := h.options.Auther; auther != nil {
