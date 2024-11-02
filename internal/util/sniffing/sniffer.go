@@ -393,7 +393,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		return
 	}
 
-	return resp.Close, nil
+	if resp.ContentLength >= 0 {
+		close = resp.Close
+	}
+
+	return
 }
 
 func upgradeType(h http.Header) string {

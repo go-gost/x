@@ -98,6 +98,7 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		IdleConnTimeout:       30 * time.Second,
 		ResponseHeaderTimeout: h.md.entryPointReadTimeout,
 		DisableKeepAlives:     !h.md.entryPointKeepalive,
+		DisableCompression:    !h.md.entryPointCompression,
 	}
 
 	for _, ro := range h.options.Recorders {

@@ -107,6 +107,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		IdleConnTimeout:       30 * time.Second,
 		ResponseHeaderTimeout: h.md.readTimeout,
 		DisableKeepAlives:     !h.md.keepalive,
+		DisableCompression:    !h.md.compression,
 	}
 
 	return nil
@@ -627,7 +628,11 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req 
 		return
 	}
 
-	return resp.Close, nil
+	if resp.ContentLength >= 0 {
+		close = resp.Close
+	}
+
+	return
 }
 
 func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {

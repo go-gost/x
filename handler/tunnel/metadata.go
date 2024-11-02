@@ -26,6 +26,7 @@ type metadata struct {
 	entryPointID                relay.TunnelID
 	entryPointProxyProtocol     int
 	entryPointKeepalive         bool
+	entryPointCompression       bool
 	entryPointReadTimeout       time.Duration
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
@@ -45,10 +46,8 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
 	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
 
-	h.md.entryPointKeepalive = true
-	if mdutil.IsExists(md, "entrypoint.keepalive") {
-		h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
-	}
+	h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
+	h.md.entryPointCompression = mdutil.GetBool(md, "entrypoint.compression")
 
 	h.md.entryPointReadTimeout = mdutil.GetDuration(md, "entrypoint.readTimeout")
 	if h.md.entryPointReadTimeout <= 0 {
