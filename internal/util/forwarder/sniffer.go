@@ -404,6 +404,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		req.Header.Set("Connection", "close")
 	}
 
+	var responseHeader map[string]string
 	var bodyRewrites []chain.HTTPBodyRewriteSettings
 	if httpSettings := node.Options().HTTP; httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
@@ -437,6 +438,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 			}
 		}
 
+		responseHeader = httpSettings.ResponseHeader
 		bodyRewrites = httpSettings.RewriteBody
 	}
 
@@ -476,6 +478,15 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 	}
 	defer resp.Body.Close()
 	xio.SetReadDeadline(cc, time.Time{})
+
+	if len(responseHeader) > 0 {
+		if resp.Header == nil {
+			resp.Header = http.Header{}
+		}
+		for k, v := range responseHeader {
+			resp.Header.Set(k, v)
+		}
+	}
 
 	ro.HTTP.StatusCode = resp.StatusCode
 	ro.HTTP.Response.Header = resp.Header

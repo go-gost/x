@@ -177,8 +177,9 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 
 	if cfg.HTTP != nil {
 		settings := &chain.HTTPNodeSettings{
-			Host:   cfg.HTTP.Host,
-			Header: cfg.HTTP.Header,
+			Host:           cfg.HTTP.Host,
+			Header:         cfg.HTTP.Header,
+			ResponseHeader: cfg.HTTP.ResponseHeader,
 		}
 
 		if auth := cfg.HTTP.Auth; auth != nil && auth.Username != "" {

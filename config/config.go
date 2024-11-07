@@ -398,6 +398,8 @@ type HTTPNodeConfig struct {
 	Host string `yaml:",omitempty" json:"host,omitempty"`
 	// additional request header
 	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
+	// additional response header
+	ResponseHeader map[string]string `yaml:",omitempty" json:"responseHeader,omitempty"`
 	// rewrite URL
 	Rewrite []HTTPURLRewriteConfig `yaml:",omitempty" json:"rewrite,omitempty"`
 	// rewrite response body
