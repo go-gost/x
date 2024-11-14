@@ -75,7 +75,7 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	}
 
 	if limiter := h.options.Limiter; limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, 30*time.Second, 60*time.Second)
+		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, h.md.limiterRefreshInterval, 60*time.Second)
 	}
 
 	for _, ro := range h.options.Recorders {
@@ -216,11 +216,7 @@ func (h *socks5Handler) observeStats(ctx context.Context) {
 		return
 	}
 
-	d := h.md.observePeriod
-	if d < time.Millisecond {
-		d = 5 * time.Second
-	}
-	ticker := time.NewTicker(d)
+	ticker := time.NewTicker(h.md.observePeriod)
 	defer ticker.Stop()
 
 	for {

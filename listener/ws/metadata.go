@@ -24,7 +24,8 @@ type metadata struct {
 	enableCompression bool
 	header            http.Header
 
-	mptcp bool
+	mptcp                  bool
+	limiterRefreshInterval time.Duration
 }
 
 func (l *wsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -53,5 +54,14 @@ func (l *wsListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
+	}
+
 	return
 }

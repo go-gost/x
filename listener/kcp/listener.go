@@ -82,7 +82,7 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 	conn = admission.WrapUDPConn(l.options.Admission, conn)
 	conn = limiter_wrapper.WrapUDPConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 		"",
 		limiter.ScopeOption(limiter.ScopeService),
 		limiter.ServiceOption(l.options.Service),
@@ -124,7 +124,7 @@ func (l *kcpListener) Accept() (conn net.Conn, err error) {
 	case conn = <-l.cqueue:
 		conn = limiter_wrapper.WrapConn(
 			conn,
-			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 			conn.RemoteAddr().String(),
 			limiter.ScopeOption(limiter.ScopeConn),
 			limiter.ServiceOption(l.options.Service),

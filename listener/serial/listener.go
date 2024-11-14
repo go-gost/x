@@ -101,7 +101,7 @@ func (l *serialListener) listenLoop() {
 			conn = stats.WrapConn(conn, l.options.Stats)
 			conn = limiter_wrapper.WrapConn(
 				conn,
-				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 				"",
 				limiter.ScopeOption(limiter.ScopeService),
 				limiter.ServiceOption(l.options.Service),

@@ -15,10 +15,11 @@ const (
 )
 
 type metadata struct {
-	ttl            time.Duration
-	readBufferSize int
-	readQueueSize  int
-	backlog        int
+	ttl                    time.Duration
+	readBufferSize         int
+	readQueueSize          int
+	backlog                int
+	limiterRefreshInterval time.Duration
 }
 
 func (l *rudpListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -46,6 +47,14 @@ func (l *rudpListener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
+	}
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
 	}
 
 	return

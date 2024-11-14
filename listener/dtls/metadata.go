@@ -12,9 +12,10 @@ const (
 )
 
 type metadata struct {
-	mtu            int
-	bufferSize     int
-	flightInterval time.Duration
+	mtu                    int
+	bufferSize             int
+	flightInterval         time.Duration
+	limiterRefreshInterval time.Duration
 }
 
 func (l *dtlsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -25,6 +26,14 @@ func (l *dtlsListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.flightInterval = mdutil.GetDuration(md, "dtls.flightInterval", "flightInterval")
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
+	}
 
 	return nil
 }

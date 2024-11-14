@@ -2,10 +2,11 @@ package ssh
 
 import (
 	"os"
+	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/mitchellh/go-homedir"
 	"golang.org/x/crypto/ssh"
 )
@@ -15,10 +16,11 @@ const (
 )
 
 type metadata struct {
-	signer         ssh.Signer
-	authorizedKeys map[string]bool
-	backlog        int
-	mptcp          bool
+	signer                 ssh.Signer
+	authorizedKeys         map[string]bool
+	backlog                int
+	mptcp                  bool
+	limiterRefreshInterval time.Duration
 }
 
 func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -71,5 +73,14 @@ func (l *sshListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
+	}
+
 	return
 }

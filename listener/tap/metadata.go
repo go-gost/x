@@ -3,10 +3,11 @@ package tap
 import (
 	"net"
 	"strings"
+	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	tap_util "github.com/go-gost/x/internal/util/tap"
+	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 const (
@@ -14,7 +15,8 @@ const (
 )
 
 type metadata struct {
-	config *tap_util.Config
+	config                 *tap_util.Config
+	limiterRefreshInterval time.Duration
 }
 
 func (l *tapListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -70,6 +72,14 @@ func (l *tapListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.config = config
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
+	}
 
 	return
 }

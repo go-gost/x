@@ -9,22 +9,22 @@ import (
 )
 
 type cachedTrafficLimiter struct {
-	inLimits  *Cache
-	outLimits *Cache
-	limiter   traffic.TrafficLimiter
-	ttl       time.Duration
+	inLimits        *Cache
+	outLimits       *Cache
+	limiter         traffic.TrafficLimiter
+	refreshInterval time.Duration
 }
 
-func NewCachedTrafficLimiter(limiter traffic.TrafficLimiter, ttl time.Duration, cleanupInterval time.Duration) traffic.TrafficLimiter {
+func NewCachedTrafficLimiter(limiter traffic.TrafficLimiter, refreshInterval time.Duration, cleanupInterval time.Duration) traffic.TrafficLimiter {
 	if limiter == nil {
 		return nil
 	}
 
 	lim := &cachedTrafficLimiter{
-		inLimits:  NewCache(cleanupInterval),
-		outLimits: NewCache(cleanupInterval),
-		limiter:   limiter,
-		ttl:       ttl,
+		inLimits:        NewCache(cleanupInterval),
+		outLimits:       NewCache(cleanupInterval),
+		limiter:         limiter,
+		refreshInterval: refreshInterval,
 	}
 	return lim
 }
@@ -45,11 +45,11 @@ func (p *cachedTrafficLimiter) In(ctx context.Context, key string, opts ...limit
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {
-		p.inLimits.Set(key, NewItem(limNew, p.ttl))
+		p.inLimits.Set(key, NewItem(limNew, p.refreshInterval))
 		return limNew
 	}
 
-	p.inLimits.Set(key, NewItem(lim, p.ttl))
+	p.inLimits.Set(key, NewItem(lim, p.refreshInterval))
 
 	return lim
 }
@@ -70,11 +70,11 @@ func (p *cachedTrafficLimiter) Out(ctx context.Context, key string, opts ...limi
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {
-		p.outLimits.Set(key, NewItem(limNew, p.ttl))
+		p.outLimits.Set(key, NewItem(limNew, p.refreshInterval))
 		return limNew
 	}
 
-	p.outLimits.Set(key, NewItem(lim, p.ttl))
+	p.outLimits.Set(key, NewItem(lim, p.refreshInterval))
 
 	return lim
 }

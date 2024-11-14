@@ -96,7 +96,7 @@ func (l *tapListener) listenLoop() {
 			c = stats.WrapConn(c, l.options.Stats)
 			c = limiter_wrapper.WrapConn(
 				c,
-				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 				c.RemoteAddr().String(),
 				limiter.ScopeOption(limiter.ScopeService),
 				limiter.ServiceOption(l.options.Service),

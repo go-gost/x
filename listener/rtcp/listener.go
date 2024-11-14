@@ -30,6 +30,7 @@ type rtcpListener struct {
 	ln      net.Listener
 	logger  logger.Logger
 	closed  chan struct{}
+	md      metadata
 	options listener.Options
 	mu      sync.Mutex
 }
@@ -87,7 +88,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 		ln = limiter_wrapper.WrapListener(
 			l.options.Service,
 			ln,
-			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 		)
 		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 		l.setListener(ln)
@@ -109,7 +110,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 
 	conn = limiter_wrapper.WrapConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 		conn.RemoteAddr().String(),
 		limiter.ScopeOption(limiter.ScopeConn),
 		limiter.ServiceOption(l.options.Service),

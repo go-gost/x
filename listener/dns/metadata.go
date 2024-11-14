@@ -12,12 +12,13 @@ const (
 )
 
 type metadata struct {
-	mode           string
-	readBufferSize int
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	backlog        int
-	mptcp          bool
+	mode                   string
+	readBufferSize         int
+	readTimeout            time.Duration
+	writeTimeout           time.Duration
+	backlog                int
+	mptcp                  bool
+	limiterRefreshInterval time.Duration
 }
 
 func (l *dnsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -39,6 +40,14 @@ func (l *dnsListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
+	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if l.md.limiterRefreshInterval == 0 {
+		l.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if l.md.limiterRefreshInterval < time.Second {
+		l.md.limiterRefreshInterval = time.Second
+	}
 
 	return
 }

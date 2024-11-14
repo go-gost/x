@@ -1,4 +1,4 @@
-package forward
+package direct
 
 import (
 	"context"
@@ -16,6 +16,7 @@ func init() {
 }
 
 type directConnector struct {
+	md      metadata
 	options connector.Options
 }
 
@@ -31,13 +32,17 @@ func NewConnector(opts ...connector.Option) connector.Connector {
 }
 
 func (c *directConnector) Init(md md.Metadata) (err error) {
-	return nil
+	return c.parseMetadata(md)
 }
 
 func (c *directConnector) Connect(ctx context.Context, _ net.Conn, network, address string, opts ...connector.ConnectOption) (net.Conn, error) {
 	var cOpts connector.ConnectOptions
 	for _, opt := range opts {
 		opt(&cOpts)
+	}
+
+	if c.md.action == "reject" {
+		return &conn{}, nil
 	}
 
 	conn, err := cOpts.Dialer.Dial(ctx, network, address)

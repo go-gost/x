@@ -13,9 +13,10 @@ import (
 )
 
 type metadata struct {
-	readTimeout   time.Duration
-	hash          string
-	observePeriod time.Duration
+	readTimeout            time.Duration
+	hash                   string
+	observePeriod          time.Duration
+	limiterRefreshInterval time.Duration
 
 	sniffing                    bool
 	sniffingTimeout             time.Duration
@@ -35,7 +36,22 @@ func (h *socks4Handler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	h.md.hash = mdutil.GetString(md, "hash")
-	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
+
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod", "observer.observePeriod")
+	if h.md.observePeriod == 0 {
+		h.md.observePeriod = 5 * time.Second
+	}
+	if h.md.observePeriod < time.Second {
+		h.md.observePeriod = time.Second
+	}
+
+	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if h.md.limiterRefreshInterval == 0 {
+		h.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if h.md.limiterRefreshInterval < time.Second {
+		h.md.limiterRefreshInterval = time.Second
+	}
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")

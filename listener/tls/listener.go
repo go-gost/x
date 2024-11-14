@@ -69,7 +69,7 @@ func (l *tlsListener) Init(md md.Metadata) (err error) {
 	ln = limiter_wrapper.WrapListener(
 		l.options.Service,
 		ln,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 	)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
@@ -86,7 +86,7 @@ func (l *tlsListener) Accept() (conn net.Conn, err error) {
 
 	conn = limiter_wrapper.WrapConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, 30*time.Second, 60*time.Second),
+		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
 		conn.RemoteAddr().String(),
 		limiter.ScopeOption(limiter.ScopeConn),
 		limiter.ServiceOption(l.options.Service),

@@ -20,16 +20,17 @@ const (
 )
 
 type metadata struct {
-	readTimeout     time.Duration
-	keepalive       bool
-	compression     bool
-	probeResistance *probeResistance
-	enableUDP       bool
-	header          http.Header
-	hash            string
-	authBasicRealm  string
-	observePeriod   time.Duration
-	proxyAgent      string
+	readTimeout            time.Duration
+	keepalive              bool
+	compression            bool
+	probeResistance        *probeResistance
+	enableUDP              bool
+	header                 http.Header
+	hash                   string
+	authBasicRealm         string
+	proxyAgent             string
+	observePeriod          time.Duration
+	limiterRefreshInterval time.Duration
 
 	sniffing                    bool
 	sniffingTimeout             time.Duration
@@ -72,7 +73,21 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	h.md.hash = mdutil.GetString(md, "hash")
 	h.md.authBasicRealm = mdutil.GetString(md, "authBasicRealm")
 
-	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod", "observer.observePeriod")
+	if h.md.observePeriod == 0 {
+		h.md.observePeriod = 5 * time.Second
+	}
+	if h.md.observePeriod < time.Second {
+		h.md.observePeriod = time.Second
+	}
+
+	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if h.md.limiterRefreshInterval == 0 {
+		h.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if h.md.limiterRefreshInterval < time.Second {
+		h.md.limiterRefreshInterval = time.Second
+	}
 
 	h.md.proxyAgent = mdutil.GetString(md, "http.proxyAgent", "proxyAgent")
 	if h.md.proxyAgent == "" {

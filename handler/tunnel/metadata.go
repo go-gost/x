@@ -31,12 +31,13 @@ type metadata struct {
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
 
-	directTunnel  bool
-	tunnelTTL     time.Duration
-	ingress       ingress.Ingress
-	sd            sd.SD
-	muxCfg        *mux.Config
-	observePeriod time.Duration
+	directTunnel           bool
+	tunnelTTL              time.Duration
+	ingress                ingress.Ingress
+	sd                     sd.SD
+	muxCfg                 *mux.Config
+	observePeriod          time.Duration
+	limiterRefreshInterval time.Duration
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -104,7 +105,21 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		h.md.muxCfg.MaxStreamBuffer = 1048576
 	}
 
-	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod")
+	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod", "observer.observePeriod")
+	if h.md.observePeriod == 0 {
+		h.md.observePeriod = 5 * time.Second
+	}
+	if h.md.observePeriod < time.Second {
+		h.md.observePeriod = time.Second
+	}
+
+	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	if h.md.limiterRefreshInterval == 0 {
+		h.md.limiterRefreshInterval = 30 * time.Second
+	}
+	if h.md.limiterRefreshInterval < time.Second {
+		h.md.limiterRefreshInterval = time.Second
+	}
 
 	return
 }
