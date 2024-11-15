@@ -56,7 +56,6 @@ func NewGRPCConn(addr string, opts *Options) (*grpc.ClientConn, error) {
 		grpc.WithConnectParams(grpc.ConnectParams{
 			Backoff: backoff.DefaultConfig,
 		}),
-		grpc.FailOnNonTempDialError(true),
 	}
 	if opts.TLSConfig != nil {
 		grpcOpts = append(grpcOpts,
@@ -69,7 +68,7 @@ func NewGRPCConn(addr string, opts *Options) (*grpc.ClientConn, error) {
 	if opts.Token != "" {
 		grpcOpts = append(grpcOpts, grpc.WithPerRPCCredentials(&rpcCredentials{token: opts.Token}))
 	}
-	return grpc.Dial(addr, grpcOpts...)
+	return grpc.NewClient(addr, grpcOpts...)
 }
 
 type rpcCredentials struct {

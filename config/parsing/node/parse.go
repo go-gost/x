@@ -22,6 +22,7 @@ import (
 	mdx "github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
+	"github.com/go-gost/x/routing"
 )
 
 func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.Node, error) {
@@ -173,6 +174,25 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			Path:     filter.Path,
 		}
 		opts = append(opts, chain.NodeFilterOption(settings))
+	}
+
+	if cfg.Matcher != nil {
+		priority := cfg.Matcher.Priority
+
+		if rule := strings.TrimSpace(cfg.Matcher.Rule); rule != "" {
+			if matcher, err := routing.NewMatcher(rule); err == nil {
+				log.Debugf("new matcher for node %s with rule %s", cfg.Name, cfg.Matcher.Rule)
+				if priority == 0 {
+					priority = len(cfg.Matcher.Rule)
+				}
+				opts = append(opts, chain.MatcherNodeOption(matcher))
+			} else {
+				log.Error(err)
+				priority = -1
+			}
+		}
+
+		opts = append(opts, chain.PriorityNodeOption(priority))
 	}
 
 	if cfg.HTTP != nil {

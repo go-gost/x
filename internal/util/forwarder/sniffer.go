@@ -251,9 +251,13 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 	}
 	if ho.Hop != nil {
 		node = ho.Hop.Select(ctx,
-			hop.HostSelectOption(host),
+			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
 			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
+			hop.HostSelectOption(host),
+			hop.MethodSelectOption(req.Method),
 			hop.PathSelectOption(req.URL.Path),
+			hop.QuerySelectOption(req.URL.Query()),
+			hop.HeaderSelectOption(req.Header),
 		)
 	}
 	if node == nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
@@ -132,18 +133,16 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		opt(&options)
 	}
 
+	log := p.options.logger
+
 	// hop level bypass
 	if p.options.bypass != nil &&
 		p.options.bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOpton(options.Host)) {
 		return nil
 	}
 
-	filters := p.filterByHost(options.Host, p.Nodes()...)
-	filters = p.filterByProtocol(options.Protocol, filters...)
-	filters = p.filterByPath(options.Path, filters...)
-
 	var nodes []*chain.Node
-	for _, node := range filters {
+	for _, node := range p.Nodes() {
 		if node == nil {
 			continue
 		}
@@ -153,10 +152,41 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 			continue
 		}
 
+		if matcher := node.Options().Matcher; matcher != nil {
+			req := routing.Request{
+				ClientIP: options.ClientIP,
+				Host:     options.Host,
+				Protocol: options.Protocol,
+				Method:   options.Method,
+				Path:     options.Path,
+				Query:    options.Query,
+				Header:   options.Header,
+			}
+			if !matcher.Match(&req) {
+				continue
+			}
+			log.Debugf("node %s match request %s %s, priority %d", node.Name, req.Protocol, req.Host, node.Options().Priority)
+		} else {
+			if !p.isEligible(node, &options) {
+				continue
+			}
+		}
+
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {
 		return nil
+	}
+	if len(nodes) == 1 {
+		return nodes[0]
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Options().Priority > nodes[j].Options().Priority
+	})
+
+	if nodes[0].Options().Priority > 0 {
+		return nodes[0]
 	}
 
 	if s := p.options.selector; s != nil {
@@ -165,126 +195,66 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	return nodes[0]
 }
 
-func (p *chainHop) filterByHost(host string, nodes ...*chain.Node) (filters []*chain.Node) {
-	if host == "" || len(nodes) == 0 {
-		return nodes
+func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {
+	if node == nil {
+		return false
+	}
+	if node.Options().Filter == nil {
+		return true
+	}
+
+	if !p.checkHost(opts.Host, node) || !p.checkProtocol(opts.Protocol, node) || !p.checkPath(opts.Path, node) {
+		return false
+	}
+	return true
+}
+
+func (p *chainHop) checkHost(host string, node *chain.Node) bool {
+	var vhost string
+	if filter := node.Options().Filter; filter != nil {
+		vhost = filter.Host
+	}
+	if vhost == "" { // backup node
+		return true
+	}
+
+	if host == "" {
+		return false
 	}
 
 	if v, _, _ := net.SplitHostPort(host); v != "" {
 		host = v
 	}
-	p.options.logger.Debugf("filter by host: %s", host)
 
-	found := false
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-
-		var vhost string
-		if filter := node.Options().Filter; filter != nil {
-			vhost = filter.Host
-		}
-		if vhost == "" { // backup node
-			if !found {
-				filters = append(filters, node)
-			}
-			continue
-		}
-
-		if vhost == host ||
-			vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
-			if !found { // clear all backup nodes when matched node found
-				filters = nil
-			}
-			filters = append(filters, node)
-			found = true
-			continue
-		}
-
+	if vhost == host || vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
+		return true
 	}
 
-	return
+	return false
 }
 
-func (p *chainHop) filterByProtocol(protocol string, nodes ...*chain.Node) (filters []*chain.Node) {
-	if protocol == "" || len(nodes) == 0 {
-		return nodes
+func (p *chainHop) checkProtocol(protocol string, node *chain.Node) bool {
+	var prot string
+	if filter := node.Options().Filter; filter != nil {
+		prot = filter.Protocol
 	}
-
-	p.options.logger.Debugf("filter by protocol: %s", protocol)
-	found := false
-	for _, node := range nodes {
-		if node == nil {
-			continue
-		}
-
-		var prot string
-		if filter := node.Options().Filter; filter != nil {
-			prot = filter.Protocol
-		}
-		if prot == "" {
-			if !found {
-				filters = append(filters, node)
-			}
-			continue
-		}
-
-		if prot == protocol {
-			if !found {
-				filters = nil
-			}
-			filters = append(filters, node)
-			found = true
-			continue
-		}
+	if prot == "" {
+		return true
 	}
-
-	return
+	return prot == protocol
 }
 
-func (p *chainHop) filterByPath(path string, nodes ...*chain.Node) (filters []*chain.Node) {
-	if path == "" || len(nodes) == 0 {
-		return nodes
+func (p *chainHop) checkPath(path string, node *chain.Node) bool {
+	var pathFilter string
+	if filter := node.Options().Filter; filter != nil {
+		pathFilter = filter.Path
 	}
 
-	p.options.logger.Debugf("filter by path: %s", path)
-
-	sort.SliceStable(nodes, func(i, j int) bool {
-		filter1 := nodes[i].Options().Filter
-		if filter1 == nil {
-			return false
-		}
-		filter2 := nodes[j].Options().Filter
-		if filter2 == nil {
-			return true
-		}
-		return len(filter1.Path) > len(filter2.Path)
-	})
-
-	found := false
-	for _, node := range nodes {
-		var pathFilter string
-		if filter := node.Options().Filter; filter != nil {
-			pathFilter = filter.Path
-		}
-		if pathFilter == "" {
-			if !found {
-				filters = append(filters, node)
-			}
-			continue
-		}
-
-		if strings.HasPrefix(path, pathFilter) {
-			if !found {
-				filters = nil
-			}
-			filters = append(filters, node)
-			break
-		}
+	if pathFilter == "" {
+		return true
 	}
 
-	return
+	return strings.HasPrefix(path, pathFilter)
 }
 
 func (p *chainHop) periodReload(ctx context.Context) error {

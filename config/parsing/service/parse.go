@@ -375,6 +375,7 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 			Bypass:   node.Bypass,
 			Bypasses: node.Bypasses,
 			Filter:   filter,
+			Matcher:  node.Matcher,
 			HTTP:     httpCfg,
 			TLS:      node.TLS,
 			Metadata: node.Metadata,
