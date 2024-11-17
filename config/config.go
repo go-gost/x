@@ -403,8 +403,10 @@ type NodeMatcherConfig struct {
 type HTTPNodeConfig struct {
 	// rewrite host header
 	Host string `yaml:",omitempty" json:"host,omitempty"`
-	// additional request header
+	// Deprecated: use requestHeader instead
 	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
+	// additional request header
+	RequestHeader map[string]string `yaml:",omitempty" json:"requestHeader,omitempty"`
 	// additional response header
 	ResponseHeader map[string]string `yaml:",omitempty" json:"responseHeader,omitempty"`
 	// rewrite URL

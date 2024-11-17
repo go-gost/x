@@ -404,12 +404,8 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		}
 	}
 
-	if !ho.HTTPKeepalive {
-		req.Header.Set("Connection", "close")
-	}
-
 	var responseHeader map[string]string
-	var bodyRewrites []chain.HTTPBodyRewriteSettings
+	var respBodyRewrites []chain.HTTPBodyRewriteSettings
 	if httpSettings := node.Options().HTTP; httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
 			username, password, _ := req.BasicAuth()
@@ -429,7 +425,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		if httpSettings.Host != "" {
 			req.Host = httpSettings.Host
 		}
-		for k, v := range httpSettings.Header {
+		for k, v := range httpSettings.RequestHeader {
 			req.Header.Set(k, v)
 		}
 
@@ -443,7 +439,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		}
 
 		responseHeader = httpSettings.ResponseHeader
-		bodyRewrites = httpSettings.RewriteBody
+		respBodyRewrites = httpSettings.RewriteResponseBody
 	}
 
 	var reqBody *xhttp.Body
@@ -515,7 +511,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node 
 		resp.ProtoMinor = req.ProtoMinor
 	}
 
-	if err = h.rewriteBody(resp, bodyRewrites...); err != nil {
+	if !ho.HTTPKeepalive {
+		resp.Header.Set("Connection", "close")
+	}
+
+	if err = h.rewriteRespBody(resp, respBodyRewrites...); err != nil {
 		log.Errorf("rewrite body: %v", err)
 		return
 	}
@@ -696,7 +696,7 @@ func (h *Sniffer) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer
 	return nil
 }
 
-func (h *Sniffer) rewriteBody(resp *http.Response, rewrites ...chain.HTTPBodyRewriteSettings) error {
+func (h *Sniffer) rewriteRespBody(resp *http.Response, rewrites ...chain.HTTPBodyRewriteSettings) error {
 	if resp == nil || len(rewrites) == 0 || resp.ContentLength <= 0 {
 		return nil
 	}

@@ -198,8 +198,11 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 	if cfg.HTTP != nil {
 		settings := &chain.HTTPNodeSettings{
 			Host:           cfg.HTTP.Host,
-			Header:         cfg.HTTP.Header,
+			RequestHeader:  cfg.HTTP.RequestHeader,
 			ResponseHeader: cfg.HTTP.ResponseHeader,
+		}
+		if settings.RequestHeader == nil {
+			settings.RequestHeader = cfg.HTTP.Header
 		}
 
 		if auth := cfg.HTTP.Auth; auth != nil && auth.Username != "" {
@@ -222,7 +225,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		}
 		for _, v := range cfg.HTTP.RewriteBody {
 			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
-				settings.RewriteBody = append(settings.RewriteBody, chain.HTTPBodyRewriteSettings{
+				settings.RewriteResponseBody = append(settings.RewriteResponseBody, chain.HTTPBodyRewriteSettings{
 					Type:        v.Type,
 					Pattern:     pattern,
 					Replacement: []byte(v.Replacement),
