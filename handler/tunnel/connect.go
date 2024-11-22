@@ -33,18 +33,34 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 
 	host, _, _ := net.SplitHostPort(dstAddr)
 
-	// client is a public entrypoint.
-	if tunnelID.Equal(h.md.entryPointID) {
-		resp.WriteTo(conn)
-		return h.ep.Handle(ctx, conn)
+	var tid relay.TunnelID
+	if ingress := h.md.ingress; ingress != nil && host != "" {
+		if rule := ingress.GetRule(ctx, host); rule != nil {
+			tid = parseTunnelID(rule.Endpoint)
+		}
 	}
 
-	if !h.md.directTunnel {
-		var tid relay.TunnelID
-		if ingress := h.md.ingress; ingress != nil && host != "" {
-			if rule := ingress.GetRule(ctx, host); rule != nil {
-				tid = parseTunnelID(rule.Endpoint)
-			}
+	// visitor is a public entrypoint.
+	if tunnelID.Equal(h.md.entryPointID) {
+		if tid.IsZero() {
+			resp.Status = relay.StatusNetworkUnreachable
+			resp.WriteTo(conn)
+			err := fmt.Errorf("no route to host %s", host)
+			log.Error(err)
+			return err
+		}
+
+		if tid.IsPrivate() {
+			resp.Status = relay.StatusHostUnreachable
+			resp.WriteTo(conn)
+			err := fmt.Errorf("tunnel %s is private for host %s", tid, host)
+			log.Error(err)
+			return err
+		}
+	} else {
+		// direct routing
+		if h.md.directTunnel {
+			tid = tunnelID
 		}
 		if !tid.Equal(tunnelID) {
 			resp.Status = relay.StatusHostUnreachable
@@ -63,7 +79,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		timeout: 15 * time.Second,
 		log:     log,
 	}
-	cc, node, cid, err := d.Dial(ctx, network, tunnelID.String())
+	cc, node, cid, err := d.Dial(ctx, network, tid.String())
 	if err != nil {
 		log.Error(err)
 		resp.Status = relay.StatusServiceUnavailable
@@ -72,7 +88,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	}
 	defer cc.Close()
 
-	log.Debugf("connected to node=%s tunnel=%s connector=%s", node, tunnelID, cid)
+	log.Debugf("connect to node=%s tunnel=%s connector=%s OK", node, tid, cid)
 
 	if node == h.id {
 		if _, err := resp.WriteTo(conn); err != nil {

@@ -23,6 +23,7 @@ import (
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	mdutil "github.com/go-gost/x/metadata/util"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -93,7 +94,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	ro.ClientIP = conn.RemoteAddr().String()
 	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
 		ro.ClientIP = string(clientAddr)
+	} else {
+		ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(conn.RemoteAddr().String()))
 	}
+
 	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
 		ro.ClientIP = h
 	}
@@ -101,7 +105,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"sid":    ro.SID,
 		"client": ro.ClientIP,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -135,6 +139,13 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return rate_limiter.ErrRateLimit
+	}
+
+	var host string
+	if md, ok := conn.(mdata.Metadatable); ok {
+		if v := mdutil.GetString(md.Metadata(), "host"); v != "" {
+			host = v
+		}
 	}
 
 	var proto string
@@ -193,6 +204,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	var target *chain.Node
+	if host != "" {
+		target = &chain.Node{
+			Addr: host,
+		}
+	}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
 			hop.ProtocolSelectOption(proto),

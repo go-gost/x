@@ -215,7 +215,12 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 				})),
 			)
 		}
-		for _, v := range cfg.HTTP.Rewrite {
+
+		rewriteURL := cfg.HTTP.RewriteURL
+		if rewriteURL == nil {
+			rewriteURL = cfg.HTTP.Rewrite
+		} 
+		for _, v := range rewriteURL {
 			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
 				settings.RewriteURL = append(settings.RewriteURL, chain.HTTPURLRewriteSetting{
 					Pattern:     pattern,

@@ -260,7 +260,7 @@ func (t *Tunnel) clean() {
 			var connectors []*Connector
 			for _, c := range t.connectors {
 				if c.IsClosed() {
-					c.log.Debugf("remove connector: %s", t.id, c.id)
+					c.log.Debugf("remove connector: %s %s", t.id, c.id)
 					continue
 				}
 

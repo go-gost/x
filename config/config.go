@@ -406,11 +406,13 @@ type HTTPNodeConfig struct {
 	// Deprecated: use requestHeader instead
 	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
 	// additional request header
-	RequestHeader map[string]string `yaml:",omitempty" json:"requestHeader,omitempty"`
+	RequestHeader map[string]string `yaml:"requestHeader,omitempty" json:"requestHeader,omitempty"`
 	// additional response header
-	ResponseHeader map[string]string `yaml:",omitempty" json:"responseHeader,omitempty"`
-	// rewrite URL
+	ResponseHeader map[string]string `yaml:"responseHeader,omitempty" json:"responseHeader,omitempty"`
+	// Deprecated: use rewriteURL instead
 	Rewrite []HTTPURLRewriteConfig `yaml:",omitempty" json:"rewrite,omitempty"`
+	// rewrite URL
+	RewriteURL []HTTPURLRewriteConfig `yaml:"rewriteURL,omitempty" json:"rewriteURL,omitempty"`
 	// rewrite response body
 	RewriteBody []HTTPBodyRewriteConfig `yaml:"rewriteBody,omitempty" json:"rewriteBody,omitempty"`
 	// HTTP basic auth
