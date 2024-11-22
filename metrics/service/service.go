@@ -38,8 +38,11 @@ type metricService struct {
 	cclose chan struct{}
 }
 
-func NewService(addr string, opts ...Option) (service.Service, error) {
-	ln, err := net.Listen("tcp", addr)
+func NewService(network, addr string, opts ...Option) (service.Service, error) {
+	if network == "" {
+		network = "tcp"
+	}
+	ln, err := net.Listen(network, addr)
 	if err != nil {
 		return nil, err
 	}
