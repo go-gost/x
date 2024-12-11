@@ -1,8 +1,8 @@
 module github.com/go-gost/x
 
-go 1.22
+go 1.22.0
 
-toolchain go1.22.2
+toolchain go1.23.4
 
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
@@ -27,7 +27,7 @@ require (
 	github.com/pires/go-proxyproto v0.7.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/quic-go/quic-go v0.48.2
-	github.com/quic-go/webtransport-go v0.8.0
+	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/shadowsocks/shadowsocks-go v0.0.0-20200409064450-3e585ff90601
@@ -43,11 +43,11 @@ require (
 	github.com/xtaci/tcpraw v1.2.25
 	github.com/yl2chen/cidranger v1.0.2
 	github.com/zalando/go-keyring v0.2.4
-	golang.org/x/crypto v0.27.0
-	golang.org/x/exp v0.0.0-20240604190554-fc45aab8b7f8
-	golang.org/x/net v0.29.0
-	golang.org/x/sys v0.25.0
-	golang.org/x/text v0.18.0
+	golang.org/x/crypto v0.30.0
+	golang.org/x/exp v0.0.0-20241210194714-1829a127f884
+	golang.org/x/net v0.32.0
+	golang.org/x/sys v0.28.0
+	golang.org/x/text v0.21.0
 	golang.org/x/time v0.5.0
 	golang.zx2c4.com/wireguard v0.0.0-20220703234212-c31a7b1ab478
 	google.golang.org/grpc v1.67.1
@@ -79,7 +79,7 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
-	github.com/google/pprof v0.0.0-20240528025155-186aa0362fba // indirect
+	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
 	github.com/gravitational/trace v1.1.16-0.20220114165159-14a9a7dd6aaf // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
@@ -92,7 +92,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/onsi/ginkgo/v2 v2.19.0 // indirect
+	github.com/onsi/ginkgo/v2 v2.22.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.0.2 // indirect
@@ -116,13 +116,13 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
-	go.uber.org/mock v0.4.0 // indirect
+	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/term v0.24.0 // indirect
-	golang.org/x/tools v0.23.0 // indirect
+	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/tools v0.28.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
