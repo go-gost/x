@@ -1,6 +1,7 @@
 package redirect
 
 import (
+	"encoding/binary"
 	"errors"
 	"net"
 	"syscall"
@@ -45,9 +46,12 @@ func (h *redirectHandler) getOriginalDstAddr(conn net.Conn) (addr net.Addr, err 
 				cerr = err
 				return
 			}
+
+			var buf = make([]byte, 2)
+			binary.BigEndian.PutUint16(buf, info.Addr.Port)
 			addr = &net.TCPAddr{
 				IP:   net.IP(info.Addr.Addr[:]),
-				Port: int(info.Addr.Port),
+				Port: int(binary.NativeEndian.Uint16(buf)),
 			}
 		}
 	})
