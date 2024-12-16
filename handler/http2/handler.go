@@ -109,6 +109,7 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 		"sid":    ctxvalue.SidFromContext(ctx),
+		"client": ro.ClientIP,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
@@ -262,6 +263,8 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			fw.Flush()
 		}
 
+		rw := xio.NewReadWriter(req.Body, flushWriter{w})
+
 		// compatible with HTTP1.x
 		if hj, ok := w.(http.Hijacker); ok && req.ProtoMajor == 1 {
 			// we take over the underly connection
@@ -274,19 +277,12 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			}
 			defer conn.Close()
 
-			start := time.Now()
-			log.Infof("%s <-> %s", conn.RemoteAddr(), host)
-			xnet.Transport(conn, cc)
-			log.WithFields(map[string]any{
-				"duration": time.Since(start),
-			}).Infof("%s >-< %s", conn.RemoteAddr(), host)
-
-			return nil
+			rw = conn
 		}
 
-		rw := traffic_wrapper.WrapReadWriter(
+		rw = traffic_wrapper.WrapReadWriter(
 			h.limiter,
-			xio.NewReadWriter(req.Body, flushWriter{w}),
+			rw,
 			clientID,
 			limiter.ScopeOption(limiter.ScopeClient),
 			limiter.ServiceOption(h.options.Service),
