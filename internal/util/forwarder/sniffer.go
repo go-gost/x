@@ -851,8 +851,11 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 			Addr: host,
 		}
 	}
+
+	ro := ho.RecorderObject
 	if ho.Hop != nil {
 		node = ho.Hop.Select(ctx,
+			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
 			hop.HostSelectOption(host),
 			hop.ProtocolSelectOption(sniffing.ProtoTLS),
 		)
@@ -862,7 +865,6 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 		return
 	}
 
-	ro := ho.RecorderObject
 	addr := node.Addr
 	if opts := node.Options(); opts != nil {
 		switch opts.Network {
