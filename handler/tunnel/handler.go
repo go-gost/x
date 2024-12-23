@@ -92,6 +92,7 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 		}),
 		sniffingWebsocket:   h.md.sniffingWebsocket,
 		websocketSampleRate: h.md.sniffingWebsocketSampleRate,
+		readTimeout:         h.md.entryPointReadTimeout,
 	}
 	h.ep.transport = &http.Transport{
 		DialContext:           h.ep.dial,
