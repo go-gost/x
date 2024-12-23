@@ -3,6 +3,7 @@ package net
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -146,12 +147,51 @@ func (pr *PortRange) Parse(s string) error {
 		return nil
 
 	default:
-		return fmt.Errorf("invalid range: %s", s)
+		return fmt.Errorf("invalid port range: %s", s)
 	}
 }
 
 func (pr *PortRange) Contains(port int) bool {
 	return port >= pr.Min && port <= pr.Max
+}
+
+type IPRange struct {
+	Min netip.Addr
+	Max netip.Addr
+}
+
+func (r *IPRange) Parse(s string) error {
+	minmax := strings.Split(s, "-")
+	switch len(minmax) {
+	case 1:
+		addr, err := netip.ParseAddr(strings.TrimSpace(s))
+		if err != nil {
+			return err
+		}
+
+		r.Min, r.Max = addr, addr
+		return nil
+
+	case 2:
+		min, err := netip.ParseAddr(strings.TrimSpace(minmax[0]))
+		if err != nil {
+			return err
+		}
+		max, err := netip.ParseAddr(strings.TrimSpace(minmax[1]))
+		if err != nil {
+			return err
+		}
+
+		r.Min, r.Max = min, max
+		return nil
+
+	default:
+		return fmt.Errorf("invalid ip range: %s", s)
+	}
+}
+
+func (r *IPRange) Contains(addr netip.Addr) bool {
+	return !(addr.Less(r.Min) || r.Max.Less(addr))
 }
 
 type ClientAddr interface {

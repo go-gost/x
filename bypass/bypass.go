@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
+	xnet "github.com/go-gost/x/internal/net"
 )
 
 var (
@@ -79,6 +80,7 @@ type localBypass struct {
 	cidrMatcher     matcher.Matcher
 	addrMatcher     matcher.Matcher
 	wildcardMatcher matcher.Matcher
+	ipRangeMatcher  matcher.Matcher
 	cancelFunc      context.CancelFunc
 	options         options
 	mu              sync.RWMutex
@@ -141,15 +143,24 @@ func (bp *localBypass) reload(ctx context.Context) error {
 	var addrs []string
 	var inets []*net.IPNet
 	var wildcards []string
+	var ipRanges []xnet.IPRange
 	for _, pattern := range patterns {
 		if _, inet, err := net.ParseCIDR(pattern); err == nil {
 			inets = append(inets, inet)
 			continue
 		}
+
 		if strings.ContainsAny(pattern, "*?") {
 			wildcards = append(wildcards, pattern)
 			continue
 		}
+
+		r := xnet.IPRange{}
+		if err := r.Parse(pattern); err == nil {
+			ipRanges = append(ipRanges, r)
+			continue
+		}
+
 		addrs = append(addrs, pattern)
 	}
 
@@ -159,6 +170,7 @@ func (bp *localBypass) reload(ctx context.Context) error {
 	bp.cidrMatcher = matcher.CIDRMatcher(inets)
 	bp.addrMatcher = matcher.AddrMatcher(addrs)
 	bp.wildcardMatcher = matcher.WildcardMatcher(wildcards)
+	bp.ipRangeMatcher = matcher.IPRangeMatcher(ipRanges)
 
 	return nil
 }
@@ -262,6 +274,10 @@ func (bp *localBypass) parseLine(s string) string {
 func (bp *localBypass) matched(addr string) bool {
 	bp.mu.RLock()
 	defer bp.mu.RUnlock()
+
+	if bp.ipRangeMatcher.Match(addr) {
+		return true
+	}
 
 	if bp.addrMatcher.Match(addr) {
 		return true

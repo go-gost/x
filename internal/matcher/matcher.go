@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -177,6 +178,7 @@ type wildcardMatcherPattern struct {
 	glob glob.Glob
 	pr   *xnet.PortRange
 }
+
 type wildcardMatcher struct {
 	patterns []wildcardMatcherPattern
 }
@@ -222,5 +224,38 @@ func (m *wildcardMatcher) Match(addr string) bool {
 		}
 	}
 
+	return false
+}
+
+type ipRangeMatcher struct {
+	ranges []xnet.IPRange
+}
+
+func IPRangeMatcher(ranges []xnet.IPRange) Matcher {
+	matcher := &ipRangeMatcher{
+		ranges: ranges,
+	}
+	return matcher
+}
+
+func (m *ipRangeMatcher) Match(addr string) bool {
+	if m == nil || len(m.ranges) == 0 {
+		return false
+	}
+
+	host, _, _ := net.SplitHostPort(addr)
+	if host == "" {
+		host = addr
+	}
+	adr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+
+	for _, ra := range m.ranges {
+		if ra.Contains(adr) {
+			return true
+		}
+	}
 	return false
 }
