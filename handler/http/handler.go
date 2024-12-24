@@ -26,6 +26,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
@@ -41,6 +42,7 @@ import (
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
+	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -83,7 +85,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 	h.cancel = cancel
 
 	if h.options.Observer != nil {
-		h.stats = stats_util.NewHandlerStats(h.options.Service)
+		h.stats = stats_util.NewHandlerStats(h.options.Service, h.md.observerResetTraffic)
 		go h.observeStats(ctx)
 	}
 
@@ -143,7 +145,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	pStats := stats.Stats{}
+	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	defer func() {
@@ -420,7 +422,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 }
 
 func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	pStats := stats.Stats{}
+	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	ro.Time = time.Time{}
@@ -452,7 +454,7 @@ func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.
 	}
 }
 
-func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (close bool, err error) {
+func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (close bool, err error) {
 	close = true
 
 	ro2 := &xrecorder.HandlerRecorderObject{}
@@ -949,13 +951,26 @@ func (h *httpHandler) observeStats(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(h.md.observePeriod)
+	var events []observer.Event
+
+	ticker := time.NewTicker(h.md.observerPeriod)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			h.options.Observer.Observe(ctx, h.stats.Events())
+			if len(events) > 0 {
+				if err := h.options.Observer.Observe(ctx, events); err == nil {
+					events = nil
+				}
+				break
+			}
+
+			evs := h.stats.Events()
+			if err := h.options.Observer.Observe(ctx, evs); err != nil {
+				events = evs
+			}
+
 		case <-ctx.Done():
 			return
 		}

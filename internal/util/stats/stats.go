@@ -5,22 +5,25 @@ import (
 
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/observer/stats"
+	xstats "github.com/go-gost/x/observer/stats"
 )
 
 type HandlerStats struct {
-	service string
-	stats   map[string]*stats.Stats
-	mu      sync.RWMutex
+	service      string
+	stats        map[string]stats.Stats
+	resetTraffic bool
+	mu           sync.RWMutex
 }
 
-func NewHandlerStats(service string) *HandlerStats {
+func NewHandlerStats(service string, resetTraffic bool) *HandlerStats {
 	return &HandlerStats{
-		service: service,
-		stats:   make(map[string]*stats.Stats),
+		service:      service,
+		stats:        make(map[string]stats.Stats),
+		resetTraffic: resetTraffic,
 	}
 }
 
-func (p *HandlerStats) Stats(client string) *stats.Stats {
+func (p *HandlerStats) Stats(client string) stats.Stats {
 	p.mu.RLock()
 	pstats := p.stats[client]
 	p.mu.RUnlock()
@@ -32,7 +35,7 @@ func (p *HandlerStats) Stats(client string) *stats.Stats {
 	defer p.mu.Unlock()
 	pstats = p.stats[client]
 	if pstats == nil {
-		pstats = &stats.Stats{}
+		pstats = xstats.NewStats(p.resetTraffic)
 	}
 	p.stats[client] = pstats
 
@@ -47,7 +50,7 @@ func (p *HandlerStats) Events() (events []observer.Event) {
 		if !v.IsUpdated() {
 			continue
 		}
-		events = append(events, stats.StatsEvent{
+		events = append(events, xstats.StatsEvent{
 			Kind:         "handler",
 			Service:      p.service,
 			Client:       k,

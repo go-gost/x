@@ -7,11 +7,11 @@ import (
 )
 
 type listener struct {
-	stats *stats.Stats
+	stats stats.Stats
 	net.Listener
 }
 
-func WrapListener(ln net.Listener, stats *stats.Stats) net.Listener {
+func WrapListener(ln net.Listener, stats stats.Stats) net.Listener {
 	if stats == nil {
 		return ln
 	}

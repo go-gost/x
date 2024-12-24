@@ -9,10 +9,10 @@ import (
 // readWriter is an io.ReadWriter with Stats.
 type readWriter struct {
 	io.ReadWriter
-	stats *stats.Stats
+	stats stats.Stats
 }
 
-func WrapReadWriter(rw io.ReadWriter, stats *stats.Stats) io.ReadWriter {
+func WrapReadWriter(rw io.ReadWriter, stats stats.Stats) io.ReadWriter {
 	if stats == nil {
 		return rw
 	}

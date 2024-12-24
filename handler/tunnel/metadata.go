@@ -36,8 +36,10 @@ type metadata struct {
 	ingress                ingress.Ingress
 	sd                     sd.SD
 	muxCfg                 *mux.Config
-	observePeriod          time.Duration
 	limiterRefreshInterval time.Duration
+
+	observerPeriod       time.Duration
+	observerResetTraffic bool
 }
 
 func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -105,13 +107,14 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		h.md.muxCfg.MaxStreamBuffer = 1048576
 	}
 
-	h.md.observePeriod = mdutil.GetDuration(md, "observePeriod", "observer.observePeriod")
-	if h.md.observePeriod == 0 {
-		h.md.observePeriod = 5 * time.Second
+	h.md.observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period", "observer.observePeriod")
+	if h.md.observerPeriod == 0 {
+		h.md.observerPeriod = 5 * time.Second
 	}
-	if h.md.observePeriod < time.Second {
-		h.md.observePeriod = time.Second
+	if h.md.observerPeriod < time.Second {
+		h.md.observerPeriod = time.Second
 	}
+	h.md.observerResetTraffic = mdutil.GetBool(md, "observer.resetTraffic")
 
 	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
 	if h.md.limiterRefreshInterval == 0 {

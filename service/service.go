@@ -21,20 +21,21 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xmetrics "github.com/go-gost/x/metrics"
+	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/rs/xid"
 )
 
 type options struct {
-	admission     admission.Admission
-	recorders     []recorder.RecorderObject
-	preUp         []string
-	postUp        []string
-	preDown       []string
-	postDown      []string
-	stats         *stats.Stats
-	observer      observer.Observer
-	observePeriod time.Duration
-	logger        logger.Logger
+	admission      admission.Admission
+	recorders      []recorder.RecorderObject
+	preUp          []string
+	postUp         []string
+	preDown        []string
+	postDown       []string
+	stats          stats.Stats
+	observer       observer.Observer
+	observerPeriod time.Duration
+	logger         logger.Logger
 }
 
 type Option func(opts *options)
@@ -75,7 +76,7 @@ func PostDownOption(cmds []string) Option {
 	}
 }
 
-func StatsOption(stats *stats.Stats) Option {
+func StatsOption(stats stats.Stats) Option {
 	return func(opts *options) {
 		opts.stats = stats
 	}
@@ -87,9 +88,9 @@ func ObserverOption(observer observer.Observer) Option {
 	}
 }
 
-func ObservePeriodOption(period time.Duration) Option {
+func ObserverPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
-		opts.observePeriod = period
+		opts.observerPeriod = period
 	}
 }
 
@@ -249,7 +250,9 @@ func (s *defaultService) Serve() error {
 					metrics.Labels{"service": s.name, "client": clientIP}); v != nil {
 					v.Inc()
 				}
-				s.status.stats.Add(stats.KindTotalErrs, 1)
+				if sts := s.status.stats; sts != nil {
+					sts.Add(stats.KindTotalErrs, 1)
+				}
 			}
 		}()
 	}
@@ -307,10 +310,15 @@ func (s *defaultService) observeStats(ctx context.Context) {
 		return
 	}
 
-	d := s.options.observePeriod
-	if d < time.Millisecond {
+	d := s.options.observerPeriod
+	if d == 0 {
 		d = 5 * time.Second
 	}
+	if d < time.Second {
+		d = 1 * time.Second
+	}
+
+	var events []observer.Event
 
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
@@ -318,20 +326,33 @@ func (s *defaultService) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			st := s.status.Stats()
-			if !st.IsUpdated() {
+			if len(events) > 0 {
+				if err := s.options.observer.Observe(ctx, events); err == nil {
+					events = nil
+				}
 				break
 			}
-			s.options.observer.Observe(ctx, []observer.Event{
-				stats.StatsEvent{
+
+			st := s.status.Stats()
+			if st == nil || !st.IsUpdated() {
+				break
+			}
+
+			evs := []observer.Event{
+				xstats.StatsEvent{
 					Kind:         "service",
 					Service:      s.name,
 					TotalConns:   st.Get(stats.KindTotalConns),
 					CurrentConns: st.Get(stats.KindCurrentConns),
 					InputBytes:   st.Get(stats.KindInputBytes),
 					OutputBytes:  st.Get(stats.KindOutputBytes),
+					TotalErrs:    st.Get(stats.KindTotalErrs),
 				},
-			})
+			}
+			if err := s.options.observer.Observe(ctx, evs); err != nil {
+				events = evs
+			}
+
 		case <-ctx.Done():
 			return
 		}

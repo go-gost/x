@@ -34,6 +34,7 @@ import (
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	ws_util "github.com/go-gost/x/internal/util/ws"
+	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http/httpguts"
@@ -123,7 +124,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		opt(&ho)
 	}
 
-	pStats := stats.Stats{}
+	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	br := bufio.NewReader(conn)
@@ -349,7 +350,7 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 	return nil
 }
 
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node *chain.Node, req *http.Request, pStats *stats.Stats, ho *HandleOptions) (close bool, err error) {
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions) (close bool, err error) {
 	close = true
 
 	log := ho.Log

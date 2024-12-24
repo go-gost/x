@@ -65,7 +65,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		return
 	}
 
-	var stats *stats.Stats
+	var stats stats.Stats
 	if h.stats != nil {
 		stats = h.stats.Stats(tunnelID.String())
 	}

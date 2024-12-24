@@ -27,7 +27,7 @@ const (
 type ConnectorOptions struct {
 	service string
 	sd      sd.SD
-	stats   *stats.Stats
+	stats   stats.Stats
 	limiter traffic.TrafficLimiter
 }
 

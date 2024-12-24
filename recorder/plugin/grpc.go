@@ -3,6 +3,7 @@ package recorder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 
 	"github.com/go-gost/core/logger"
@@ -56,7 +57,7 @@ func (p *grpcPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 
 	md, _ := json.Marshal(options.Metadata)
 
-	_, err := p.client.Record(ctx,
+	reply, err := p.client.Record(ctx,
 		&proto.RecordRequest{
 			Data:     b,
 			Metadata: md,
@@ -64,6 +65,9 @@ func (p *grpcPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 	if err != nil {
 		p.log.Error(err)
 		return err
+	}
+	if reply == nil || !reply.Ok {
+		return errors.New("record failed")
 	}
 	return nil
 }

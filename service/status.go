@@ -29,7 +29,7 @@ type Status struct {
 	createTime time.Time
 	state      State
 	events     []Event
-	stats      *stats.Stats
+	stats      stats.Stats
 	mu         sync.RWMutex
 }
 
@@ -71,7 +71,7 @@ func (p *Status) addEvent(event Event) {
 	p.events = append(p.events, event)
 }
 
-func (p *Status) Stats() *stats.Stats {
+func (p *Status) Stats() stats.Stats {
 	if p == nil {
 		return nil
 	}

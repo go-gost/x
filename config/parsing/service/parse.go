@@ -31,6 +31,7 @@ import (
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
+	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 	"github.com/vishvananda/netns"
@@ -101,8 +102,8 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	ifce := cfg.Interface
 	var preUp, preDown, postUp, postDown []string
 	var ignoreChain bool
-	var pStats *stats.Stats
-	var observePeriod time.Duration
+	var pStats stats.Stats
+	var observerPeriod time.Duration
 	var netnsIn, netnsOut string
 	var dialTimeout time.Duration
 	if cfg.Metadata != nil {
@@ -123,9 +124,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		ignoreChain = mdutil.GetBool(md, parsing.MDKeyIgnoreChain)
 
 		if mdutil.GetBool(md, parsing.MDKeyEnableStats) {
-			pStats = &stats.Stats{}
+			pStats = xstats.NewStats(mdutil.GetBool(md, "observer.resetTraffic"))
 		}
-		observePeriod = mdutil.GetDuration(md, "observePeriod")
+		observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period")
+
 		netnsIn = mdutil.GetString(md, "netns")
 		netnsOut = mdutil.GetString(md, "netns.out")
 		dialTimeout = mdutil.GetDuration(md, "dialTimeout")
@@ -318,7 +320,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.RecordersOption(recorders...),
 		xservice.StatsOption(pStats),
 		xservice.ObserverOption(registry.ObserverRegistry().Get(cfg.Observer)),
-		xservice.ObservePeriodOption(observePeriod),
+		xservice.ObserverPeriodOption(observerPeriod),
 		xservice.LoggerOption(serviceLogger),
 	)
 

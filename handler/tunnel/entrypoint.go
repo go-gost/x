@@ -38,6 +38,7 @@ import (
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
+	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http/httpguts"
@@ -86,7 +87,7 @@ func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	pStats := stats.Stats{}
+	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	defer func() {
@@ -195,7 +196,7 @@ func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.
 }
 
 func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
-	pStats := stats.Stats{}
+	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	br := bufio.NewReader(conn)
@@ -250,7 +251,7 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 	}
 }
 
-func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats *stats.Stats, log logger.Logger) (err error) {
+func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (err error) {
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2

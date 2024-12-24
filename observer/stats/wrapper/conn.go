@@ -19,12 +19,12 @@ var (
 
 type conn struct {
 	net.Conn
-	stats  *stats.Stats
+	stats  stats.Stats
 	closed chan struct{}
 	mu     sync.Mutex
 }
 
-func WrapConn(c net.Conn, pStats *stats.Stats) net.Conn {
+func WrapConn(c net.Conn, pStats stats.Stats) net.Conn {
 	if pStats == nil {
 		return c
 	}
@@ -84,10 +84,10 @@ func (c *conn) Metadata() metadata.Metadata {
 
 type packetConn struct {
 	net.PacketConn
-	stats *stats.Stats
+	stats stats.Stats
 }
 
-func WrapPacketConn(pc net.PacketConn, stats *stats.Stats) net.PacketConn {
+func WrapPacketConn(pc net.PacketConn, stats stats.Stats) net.PacketConn {
 	if stats == nil {
 		return pc
 	}
@@ -118,10 +118,10 @@ func (c *packetConn) Metadata() metadata.Metadata {
 
 type udpConn struct {
 	net.PacketConn
-	stats *stats.Stats
+	stats stats.Stats
 }
 
-func WrapUDPConn(pc net.PacketConn, stats *stats.Stats) udp.Conn {
+func WrapUDPConn(pc net.PacketConn, stats stats.Stats) udp.Conn {
 	return &udpConn{
 		PacketConn: pc,
 		stats:      stats,

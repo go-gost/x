@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer"
-	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/x/internal/plugin"
+	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/service"
 )
 
@@ -41,7 +41,7 @@ type statusEvent struct {
 	Msg   string `json:"msg"`
 }
 
-type observeResponse struct {
+type httpPluginResponse struct {
 	OK bool `json:"ok"`
 }
 
@@ -94,7 +94,7 @@ func (p *httpPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 				},
 			})
 		case observer.EventStats:
-			ev := e.(stats.StatsEvent)
+			ev := e.(xstats.StatsEvent)
 			r.Events = append(r.Events, event{
 				Kind:    ev.Kind,
 				Service: ev.Service,
@@ -131,7 +131,16 @@ func (p *httpPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return errors.New(resp.Status)
+	}
+
+	res := httpPluginResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return err
+	}
+
+	if !res.OK {
+		return errors.New("observe failed")
 	}
 
 	return nil

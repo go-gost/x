@@ -2,13 +2,14 @@ package observer
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer"
-	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/plugin/observer/proto"
 	"github.com/go-gost/x/internal/plugin"
+	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/service"
 	"google.golang.org/grpc"
 )
@@ -67,7 +68,7 @@ func (p *grpcPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 				},
 			})
 		case observer.EventStats:
-			ev := event.(stats.StatsEvent)
+			ev := event.(xstats.StatsEvent)
 			req.Events = append(req.Events, &proto.Event{
 				Kind:    ev.Kind,
 				Service: ev.Service,
@@ -83,10 +84,13 @@ func (p *grpcPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 			})
 		}
 	}
-	_, err := p.client.Observe(ctx, &req)
+	reply, err := p.client.Observe(ctx, &req)
 	if err != nil {
 		p.log.Error(err)
 		return err
+	}
+	if reply == nil || !reply.Ok {
+		return errors.New("observe failed")
 	}
 	return nil
 }
