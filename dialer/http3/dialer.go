@@ -92,7 +92,6 @@ func (d *http3Dialer) Dial(ctx context.Context, addr string, opts ...dialer.Dial
 						MaxIdleTimeout:       d.md.maxIdleTimeout,
 						Versions: []quic.Version{
 							quic.Version1,
-							quic.Version2,
 						},
 						MaxIncomingStreams: int64(d.md.maxStreams),
 					},
