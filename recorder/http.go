@@ -3,7 +3,7 @@ package recorder
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -80,7 +80,7 @@ func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Re
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf(resp.Status)
+		return errors.New(resp.Status)
 	}
 
 	return nil

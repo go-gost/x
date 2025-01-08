@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-gost/core/admission"
@@ -157,6 +159,9 @@ func (s *defaultService) Serve() error {
 		defer v.Dec()
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	var tempDelay time.Duration
 	for {
 		conn, e := s.listener.Accept()
@@ -179,7 +184,10 @@ func (s *defaultService) Serve() error {
 				continue
 			}
 			s.setState(StateClosed)
-			s.options.logger.Errorf("accept: %v", e)
+
+			if !errors.Is(e, net.ErrClosed) {
+				s.options.logger.Errorf("accept: %v", e)
+			}
 
 			return e
 		}
@@ -224,7 +232,11 @@ func (s *defaultService) Serve() error {
 			continue
 		}
 
+		wg.Add(1)
+
 		go func() {
+			defer wg.Done()
+
 			if v := xmetrics.GetCounter(xmetrics.MetricServiceRequestsCounter,
 				metrics.Labels{"service": s.name, "client": clientIP}); v != nil {
 				v.Inc()

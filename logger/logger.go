@@ -84,9 +84,14 @@ func NewLogger(opts ...Option) logger.Logger {
 		log.SetLevel(logrus.InfoLevel)
 	}
 
-	return &logrusLogger{
+	l := &logrusLogger{
 		logger: logrus.NewEntry(log),
 	}
+	if options.Name != "" {
+		l.logger = l.logger.WithField("logger", options.Name)
+	}
+
+	return l
 }
 
 // WithFields adds new fields to log.

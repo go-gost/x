@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -20,14 +21,19 @@ import (
 )
 
 var (
-	defaultTLSConfig *tls.Config
+	defaultTLSConfig atomic.Value
 )
 
 func DefaultTLSConfig() *tls.Config {
-	return defaultTLSConfig
+	v, _ := defaultTLSConfig.Load().(*tls.Config)
+	return v
 }
 
-func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
+func SetDefaultTLSConfig(cfg *tls.Config) {
+	defaultTLSConfig.Store(cfg)
+}
+
+func BuildDefaultTLSConfig(cfg *config.TLSConfig) (*tls.Config, error) {
 	log := logger.Default()
 
 	if cfg == nil {
@@ -43,7 +49,7 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 		// generate random self-signed certificate.
 		cert, err := genCertificate(cfg.Validity, cfg.Organization, cfg.CommonName)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		tlsConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
@@ -52,7 +58,8 @@ func BuildDefaultTLSConfig(cfg *config.TLSConfig) {
 	} else {
 		log.Debug("load global TLS certificate files OK")
 	}
-	defaultTLSConfig = tlsConfig
+
+	return tlsConfig, nil
 }
 
 func genCertificate(validity time.Duration, org string, cn string) (cert tls.Certificate, err error) {
