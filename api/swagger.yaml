@@ -41,7 +41,7 @@ definitions:
             reload:
                 $ref: '#/definitions/Duration'
             reverse:
-                description: DEPRECATED by whitelist since beta.4
+                description: 'Deprecated: use whitelist instead'
                 type: boolean
                 x-go-name: Reverse
             whitelist:
@@ -102,7 +102,7 @@ definitions:
             reload:
                 $ref: '#/definitions/Duration'
             reverse:
-                description: DEPRECATED by whitelist since beta.4
+                description: 'Deprecated: use whitelist instead'
                 type: boolean
                 x-go-name: Reverse
             whitelist:
@@ -309,11 +309,13 @@ definitions:
             filter:
                 $ref: '#/definitions/NodeFilterConfig'
             host:
-                description: DEPRECATED by filter.host
+                description: 'Deprecated: use matcher instead'
                 type: string
                 x-go-name: Host
             http:
                 $ref: '#/definitions/HTTPNodeConfig'
+            matcher:
+                $ref: '#/definitions/NodeMatcherConfig'
             metadata:
                 additionalProperties: {}
                 type: object
@@ -325,11 +327,11 @@ definitions:
                 type: string
                 x-go-name: Network
             path:
-                description: DEPRECATED by filter.path
+                description: 'Deprecated: use matcher instead'
                 type: string
                 x-go-name: Path
             protocol:
-                description: DEPRECATED by filter.protocol
+                description: 'Deprecated: use matcher instead'
                 type: string
                 x-go-name: Protocol
             tls:
@@ -343,7 +345,7 @@ definitions:
                 type: string
                 x-go-name: Hop
             name:
-                description: DEPRECATED by hop field
+                description: 'Deprecated: use hop instead'
                 type: string
                 x-go-name: Name
             nodes:
@@ -353,6 +355,17 @@ definitions:
                 x-go-name: Nodes
             selector:
                 $ref: '#/definitions/SelectorConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    HTTPBodyRewriteConfig:
+        properties:
+            Match:
+                type: string
+            Replacement:
+                type: string
+            Type:
+                description: filter by MIME types
+                type: string
         type: object
         x-go-package: github.com/go-gost/x/config
     HTTPLoader:
@@ -371,20 +384,52 @@ definitions:
             header:
                 additionalProperties:
                     type: string
+                description: 'Deprecated: use requestHeader instead'
                 type: object
                 x-go-name: Header
             host:
+                description: rewrite host header
                 type: string
                 x-go-name: Host
+            requestHeader:
+                additionalProperties:
+                    type: string
+                description: additional request header
+                type: object
+                x-go-name: RequestHeader
+            responseHeader:
+                additionalProperties:
+                    type: string
+                description: additional response header
+                type: object
+                x-go-name: ResponseHeader
             rewrite:
+                description: 'Deprecated: use rewriteURL instead'
                 items:
                     $ref: '#/definitions/HTTPURLRewriteConfig'
                 type: array
                 x-go-name: Rewrite
+            rewriteBody:
+                description: rewrite response body
+                items:
+                    $ref: '#/definitions/HTTPBodyRewriteConfig'
+                type: array
+                x-go-name: RewriteBody
+            rewriteURL:
+                description: rewrite URL
+                items:
+                    $ref: '#/definitions/HTTPURLRewriteConfig'
+                type: array
+                x-go-name: RewriteURL
         type: object
         x-go-package: github.com/go-gost/x/config
     HTTPRecorder:
         properties:
+            header:
+                additionalProperties:
+                    type: string
+                type: object
+                x-go-name: Header
             timeout:
                 $ref: '#/definitions/Duration'
             url:
@@ -458,6 +503,10 @@ definitions:
             interface:
                 type: string
                 x-go-name: Interface
+            metadata:
+                additionalProperties: {}
+                type: object
+                x-go-name: Metadata
             name:
                 type: string
                 x-go-name: Name
@@ -737,6 +786,8 @@ definitions:
             interface:
                 type: string
                 x-go-name: Interface
+            matcher:
+                $ref: '#/definitions/NodeMatcherConfig'
             metadata:
                 additionalProperties: {}
                 type: object
@@ -744,6 +795,9 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            netns:
+                type: string
+                x-go-name: Netns
             network:
                 type: string
                 x-go-name: Network
@@ -767,6 +821,17 @@ definitions:
             protocol:
                 type: string
                 x-go-name: Protocol
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    NodeMatcherConfig:
+        properties:
+            priority:
+                format: int64
+                type: integer
+                x-go-name: Priority
+            rule:
+                type: string
+                x-go-name: Rule
         type: object
         x-go-package: github.com/go-gost/x/config
     ObserverConfig:
@@ -821,9 +886,10 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     RecorderObject:
         properties:
-            Metadata:
+            metadata:
                 additionalProperties: {}
                 type: object
+                x-go-name: Metadata
             name:
                 type: string
                 x-go-name: Name
@@ -850,6 +916,9 @@ definitions:
             type:
                 type: string
                 x-go-name: Type
+            username:
+                type: string
+                x-go-name: Username
         type: object
         x-go-package: github.com/go-gost/x/config
     RedisRecorder:
@@ -870,6 +939,9 @@ definitions:
             type:
                 type: string
                 x-go-name: Type
+            username:
+                type: string
+                x-go-name: Username
         type: object
         x-go-package: github.com/go-gost/x/config
     ResolverConfig:
@@ -983,7 +1055,7 @@ definitions:
                 type: string
                 x-go-name: Hosts
             interface:
-                description: DEPRECATED by metadata.interface since beta.5
+                description: 'Deprecated: use metadata.interface instead'
                 type: string
                 x-go-name: Interface
             limiter:
@@ -1139,6 +1211,11 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     TLSOptions:
         properties:
+            alpn:
+                items:
+                    type: string
+                type: array
+                x-go-name: ALPN
             cipherSuites:
                 items:
                     type: string
@@ -1834,6 +1911,18 @@ paths:
             summary: Update recorder by name, the recorder must already exist.
             tags:
                 - Recorder
+    /config/reload:
+        post:
+            operationId: reloadConfigRequest
+            responses:
+                "200":
+                    $ref: '#/responses/reloadConfigResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Hot reload config.
+            tags:
+                - Reload
     /config/resolvers:
         post:
             operationId: createResolverRequest
@@ -2325,6 +2414,12 @@ responses:
             Config: {}
         schema:
             $ref: '#/definitions/Config'
+    reloadConfigResponse:
+        description: successful operation.
+        headers:
+            Data: {}
+        schema:
+            $ref: '#/definitions/Response'
     saveConfigResponse:
         description: successful operation.
         headers:

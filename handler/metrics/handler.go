@@ -1,10 +1,9 @@
-package file
+package metrics
 
 import (
 	"context"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/go-gost/core/handler"
@@ -20,8 +19,7 @@ func init() {
 
 type metricsHandler struct {
 	handler http.Handler
-	server  *http.Server
-	ln      *singleConnListener
+	mux     *http.ServeMux
 	md      metadata
 	options handler.Options
 }
@@ -42,32 +40,33 @@ func (h *metricsHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	xmetrics.Init(xmetrics.NewMetrics())
+	xmetrics.Enable(true)
+
 	h.handler = promhttp.Handler()
 
 	mux := http.NewServeMux()
 	mux.Handle(h.md.path, http.HandlerFunc(h.handleFunc))
-	h.server = &http.Server{
-		Handler: mux,
-	}
-
-	h.ln = &singleConnListener{
-		conn: make(chan net.Conn),
-		done: make(chan struct{}),
-	}
-	go h.server.Serve(h.ln)
+	h.mux = mux
 
 	return
 }
 
 func (h *metricsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
-	h.ln.send(conn)
+	l := &singleConnListener{
+		conn: make(chan net.Conn, 1),
+	}
+	l.send(conn)
 
-	return nil
+	s := http.Server{
+		Handler: h.mux,
+	}
+	s.Serve(l)
+
+	return s.Shutdown(ctx)
 }
 
 func (h *metricsHandler) Close() error {
-	return h.server.Close()
+	return nil
 }
 
 func (h *metricsHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
@@ -88,47 +87,29 @@ func (h *metricsHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 		"remote":   r.RemoteAddr,
 		"duration": time.Since(start),
 	})
-	log.Debugf("%s %s", r.Method, r.RequestURI)
+	log.Infof("%s %s", r.Method, r.RequestURI)
 }
 
 type singleConnListener struct {
 	conn chan net.Conn
-	addr net.Addr
-	done chan struct{}
-	mu   sync.Mutex
 }
 
 func (l *singleConnListener) Accept() (net.Conn, error) {
-	select {
-	case conn := <-l.conn:
+	if conn, ok := <-l.conn; ok {
 		return conn, nil
-
-	case <-l.done:
-		return nil, net.ErrClosed
 	}
+	return nil, net.ErrClosed
 }
 
 func (l *singleConnListener) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	select {
-	case <-l.done:
-	default:
-		close(l.done)
-	}
-
 	return nil
 }
 
 func (l *singleConnListener) Addr() net.Addr {
-	return l.addr
+	return &net.TCPAddr{}
 }
 
 func (l *singleConnListener) send(conn net.Conn) {
-	select {
-	case l.conn <- conn:
-	case <-l.done:
-		return
-	}
+	l.conn <- conn
+	close(l.conn)
 }

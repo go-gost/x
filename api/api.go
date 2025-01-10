@@ -2,13 +2,11 @@ package api
 
 import (
 	"embed"
-	"net"
 	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/core/auth"
-	"github.com/go-gost/core/service"
 )
 
 var (
@@ -21,55 +19,17 @@ type Response struct {
 	Msg  string `json:"msg,omitempty"`
 }
 
-type options struct {
-	accessLog  bool
-	pathPrefix string
-	auther     auth.Authenticator
+type Options struct {
+	AccessLog  bool
+	PathPrefix string
+	Auther     auth.Authenticator
 }
 
-type Option func(*options)
-
-func PathPrefixOption(pathPrefix string) Option {
-	return func(o *options) {
-		o.pathPrefix = pathPrefix
-	}
-}
-
-func AccessLogOption(enable bool) Option {
-	return func(o *options) {
-		o.accessLog = enable
-	}
-}
-
-func AutherOption(auther auth.Authenticator) Option {
-	return func(o *options) {
-		o.auther = auther
-	}
-}
-
-type server struct {
-	s      *http.Server
-	ln     net.Listener
-	cclose chan struct{}
-}
-
-func NewService(network, addr string, opts ...Option) (service.Service, error) {
-	if network == "" {
-		network = "tcp"
-	}
-	ln, err := net.Listen(network, addr)
-	if err != nil {
-		return nil, err
+func Register(r *gin.Engine, opts *Options) {
+	if opts == nil {
+		opts = &Options{}
 	}
 
-	var options options
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	gin.SetMode(gin.ReleaseMode)
-
-	r := gin.New()
 	r.Use(
 		cors.New((cors.Config{
 			AllowAllOrigins:     true,
@@ -79,54 +39,24 @@ func NewService(network, addr string, opts ...Option) (service.Service, error) {
 		})),
 		gin.Recovery(),
 	)
-	if options.accessLog {
+	if opts.AccessLog {
 		r.Use(mwLogger())
 	}
 
 	router := r.Group("")
-	if options.pathPrefix != "" {
-		router = router.Group(options.pathPrefix)
+	if opts.PathPrefix != "" {
+		router = router.Group(opts.PathPrefix)
 	}
 
 	router.StaticFS("/docs", http.FS(swaggerDoc))
 
 	config := router.Group("/config")
-	config.Use(mwBasicAuth(options.auther))
-	registerConfig(config)
+	config.Use(mwBasicAuth(opts.Auther))
 
-	return &server{
-		s: &http.Server{
-			Handler: r,
-		},
-		ln:     ln,
-		cclose: make(chan struct{}),
-	}, nil
-}
-
-func (s *server) Serve() error {
-	return s.s.Serve(s.ln)
-}
-
-func (s *server) Addr() net.Addr {
-	return s.ln.Addr()
-}
-
-func (s *server) Close() error {
-	return s.s.Close()
-}
-
-func (s *server) IsClosed() bool {
-	select {
-	case <-s.cclose:
-		return true
-	default:
-		return false
-	}
-}
-
-func registerConfig(config *gin.RouterGroup) {
 	config.GET("", getConfig)
 	config.POST("", saveConfig)
+
+	config.POST("/reload", reloadConfig)
 
 	config.POST("/services", createService)
 	config.PUT("/services/:service", updateService)

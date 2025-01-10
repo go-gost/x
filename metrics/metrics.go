@@ -1,6 +1,10 @@
 package metrics
 
-import "github.com/go-gost/core/metrics"
+import (
+	"sync/atomic"
+
+	"github.com/go-gost/core/metrics"
+)
 
 const (
 	// Number of services. Labels: host.
@@ -24,29 +28,35 @@ const (
 )
 
 var (
-	global metrics.Metrics = Noop()
+	defaultMetrics metrics.Metrics = NewMetrics()
+	enabled atomic.Bool
 )
 
-func Init(m metrics.Metrics) {
-	if m != nil {
-		global = m
-	} else {
-		global = Noop()
-	}
+func Enable(b bool) {
+	enabled.Store(b)
 }
 
 func IsEnabled() bool {
-	return global != Noop()
+	return enabled.Load()
 }
 
 func GetCounter(name metrics.MetricName, labels metrics.Labels) metrics.Counter {
-	return global.Counter(name, labels)
+	if IsEnabled() {
+		return defaultMetrics.Counter(name, labels)
+	}
+	return noop.Counter(name, labels)
 }
 
 func GetGauge(name metrics.MetricName, labels metrics.Labels) metrics.Gauge {
-	return global.Gauge(name, labels)
+	if IsEnabled() {
+		return defaultMetrics.Gauge(name, labels)
+	}
+	return noop.Gauge(name, labels)
 }
 
 func GetObserver(name metrics.MetricName, labels metrics.Labels) metrics.Observer {
-	return global.Observer(name, labels)
+	if IsEnabled() {
+		return defaultMetrics.Observer(name, labels)
+	}
+	return noop.Observer(name, labels)
 }

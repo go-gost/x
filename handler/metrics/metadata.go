@@ -1,4 +1,4 @@
-package file
+package metrics
 
 import (
 	mdata "github.com/go-gost/core/metadata"
