@@ -279,7 +279,7 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 			}
 			if in != "" || out != "" {
 				limiter.Limits = append(limiter.Limits,
-					fmt.Sprintf("%s %s %s", traffic.GlobalLimitKey, in, out))
+					fmt.Sprintf("%s %s %s", traffic.ServiceLimitKey, in, out))
 			}
 			if cin != "" || cout != "" {
 				limiter.Limits = append(limiter.Limits,

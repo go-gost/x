@@ -2,16 +2,14 @@ package http
 
 import (
 	"net/http"
-	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 type metadata struct {
-	header                 http.Header
-	mptcp                  bool
-	limiterRefreshInterval time.Duration
+	header http.Header
+	mptcp  bool
 }
 
 func (l *obfsListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -28,14 +26,6 @@ func (l *obfsListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
-
-	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if l.md.limiterRefreshInterval == 0 {
-		l.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if l.md.limiterRefreshInterval < time.Second {
-		l.md.limiterRefreshInterval = time.Second
-	}
 
 	return
 }

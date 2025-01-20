@@ -9,8 +9,8 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	serial "github.com/go-gost/x/internal/util/serial"
+	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
@@ -101,8 +101,8 @@ func (l *serialListener) listenLoop() {
 			conn = stats.WrapConn(conn, l.options.Stats)
 			conn = limiter_wrapper.WrapConn(
 				conn,
-				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-				"",
+				l.options.TrafficLimiter,
+				traffic_limiter.ServiceLimitKey,
 				limiter.ScopeOption(limiter.ScopeService),
 				limiter.ServiceOption(l.options.Service),
 				limiter.NetworkOption(conn.LocalAddr().Network()),

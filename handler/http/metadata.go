@@ -20,16 +20,15 @@ const (
 )
 
 type metadata struct {
-	readTimeout            time.Duration
-	keepalive              bool
-	compression            bool
-	probeResistance        *probeResistance
-	enableUDP              bool
-	header                 http.Header
-	hash                   string
-	authBasicRealm         string
-	proxyAgent             string
-	limiterRefreshInterval time.Duration
+	readTimeout     time.Duration
+	keepalive       bool
+	compression     bool
+	probeResistance *probeResistance
+	enableUDP       bool
+	header          http.Header
+	hash            string
+	authBasicRealm  string
+	proxyAgent      string
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -43,6 +42,9 @@ type metadata struct {
 	privateKey  crypto.PrivateKey
 	alpn        string
 	mitmBypass  bypass.Bypass
+
+	limiterRefreshInterval time.Duration
+	limiterCleanupInterval time.Duration
 }
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
@@ -85,14 +87,6 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 
 	h.md.observerResetTraffic = mdutil.GetBool(md, "observer.resetTraffic")
 
-	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if h.md.limiterRefreshInterval == 0 {
-		h.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if h.md.limiterRefreshInterval < time.Second {
-		h.md.limiterRefreshInterval = time.Second
-	}
-
 	h.md.proxyAgent = mdutil.GetString(md, "http.proxyAgent", "proxyAgent")
 	if h.md.proxyAgent == "" {
 		h.md.proxyAgent = defaultProxyAgent
@@ -118,6 +112,9 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	}
 	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
 	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
+
+	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
 
 	return nil
 }

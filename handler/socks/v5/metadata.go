@@ -15,15 +15,14 @@ import (
 )
 
 type metadata struct {
-	readTimeout            time.Duration
-	noTLS                  bool
-	enableBind             bool
-	enableUDP              bool
-	udpBufferSize          int
-	compatibilityMode      bool
-	hash                   string
-	muxCfg                 *mux.Config
-	limiterRefreshInterval time.Duration
+	readTimeout       time.Duration
+	noTLS             bool
+	enableBind        bool
+	enableUDP         bool
+	udpBufferSize     int
+	compatibilityMode bool
+	hash              string
+	muxCfg            *mux.Config
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -37,6 +36,9 @@ type metadata struct {
 	privateKey  crypto.PrivateKey
 	alpn        string
 	mitmBypass  bypass.Bypass
+
+	limiterRefreshInterval time.Duration
+	limiterCleanupInterval time.Duration
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
@@ -77,14 +79,6 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	h.md.observerResetTraffic = mdutil.GetBool(md, "observer.resetTraffic")
 
-	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if h.md.limiterRefreshInterval == 0 {
-		h.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if h.md.limiterRefreshInterval < time.Second {
-		h.md.limiterRefreshInterval = time.Second
-	}
-
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
@@ -105,6 +99,9 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
 	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
+
+	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
+	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
 
 	return nil
 }

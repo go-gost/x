@@ -77,8 +77,12 @@ func (h *http2Handler) Init(md md.Metadata) error {
 		go h.observeStats(ctx)
 	}
 
-	if limiter := h.options.Limiter; limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, h.md.limiterRefreshInterval, 60*time.Second)
+	if h.options.Limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(h.options.Limiter,
+			limiter_util.RefreshIntervalOption(h.md.limiterRefreshInterval),
+			limiter_util.CleanupIntervalOption(h.md.limiterCleanupInterval),
+			limiter_util.ScopeOption(limiter.ScopeClient),
+		)
 	}
 
 	for _, ro := range h.options.Recorders {

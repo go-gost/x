@@ -2,7 +2,6 @@ package kcp
 
 import (
 	"encoding/json"
-	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	kcp_util "github.com/go-gost/x/internal/util/kcp"
@@ -14,9 +13,8 @@ const (
 )
 
 type metadata struct {
-	config                 *kcp_util.Config
-	backlog                int
-	limiterRefreshInterval time.Duration
+	config  *kcp_util.Config
+	backlog int
 }
 
 func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -64,14 +62,6 @@ func (l *kcpListener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.backlog = mdutil.GetInt(md, backlog)
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
-	}
-
-	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if l.md.limiterRefreshInterval == 0 {
-		l.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if l.md.limiterRefreshInterval < time.Second {
-		l.md.limiterRefreshInterval = time.Second
 	}
 
 	return

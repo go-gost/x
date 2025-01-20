@@ -2,7 +2,6 @@ package ftcp
 
 import (
 	"net"
-	"time"
 
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
@@ -11,7 +10,7 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
@@ -55,13 +54,14 @@ func (l *ftcpListener) Init(md md.Metadata) (err error) {
 	if err != nil {
 		return
 	}
+
 	conn = metrics.WrapPacketConn(l.options.Service, conn)
 	conn = stats.WrapPacketConn(conn, l.options.Stats)
 	conn = admission.WrapPacketConn(l.options.Admission, conn)
 	conn = limiter_wrapper.WrapPacketConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-		"",
+		l.options.TrafficLimiter,
+		traffic_limiter.ServiceLimitKey,
 		limiter.ScopeOption(limiter.ScopeService),
 		limiter.ServiceOption(l.options.Service),
 		limiter.NetworkOption(conn.LocalAddr().Network()),
@@ -88,7 +88,7 @@ func (l *ftcpListener) Accept() (conn net.Conn, err error) {
 
 	conn = limiter_wrapper.WrapConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
+		l.options.TrafficLimiter,
 		conn.RemoteAddr().String(),
 		limiter.ScopeOption(limiter.ScopeConn),
 		limiter.ServiceOption(l.options.Service),

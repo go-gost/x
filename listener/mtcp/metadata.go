@@ -1,8 +1,6 @@
 package mtcp
 
 import (
-	"time"
-
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/x/internal/util/mux"
 	mdutil "github.com/go-gost/x/metadata/util"
@@ -13,10 +11,9 @@ const (
 )
 
 type metadata struct {
-	mptcp                  bool
-	muxCfg                 *mux.Config
-	backlog                int
-	limiterRefreshInterval time.Duration
+	mptcp   bool
+	muxCfg  *mux.Config
+	backlog int
 }
 
 func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
@@ -38,14 +35,6 @@ func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
 	l.md.backlog = mdutil.GetInt(md, "backlog")
 	if l.md.backlog <= 0 {
 		l.md.backlog = defaultBacklog
-	}
-
-	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if l.md.limiterRefreshInterval == 0 {
-		l.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if l.md.limiterRefreshInterval < time.Second {
-		l.md.limiterRefreshInterval = time.Second
 	}
 
 	return

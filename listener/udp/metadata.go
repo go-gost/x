@@ -20,7 +20,6 @@ type metadata struct {
 	backlog                int
 	keepalive              bool
 	ttl                    time.Duration
-	limiterRefreshInterval time.Duration
 }
 
 func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -51,14 +50,6 @@ func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 	l.md.keepalive = mdutil.GetBool(md, keepalive)
-
-	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if l.md.limiterRefreshInterval == 0 {
-		l.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if l.md.limiterRefreshInterval < time.Second {
-		l.md.limiterRefreshInterval = time.Second
-	}
 
 	return
 }

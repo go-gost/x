@@ -11,7 +11,7 @@ import (
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/router"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -97,8 +97,8 @@ func (l *tunListener) listenLoop() {
 			c = stats.WrapConn(c, l.options.Stats)
 			c = limiter_wrapper.WrapConn(
 				c,
-				limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-				c.RemoteAddr().String(),
+				l.options.TrafficLimiter,
+				traffic_limiter.ServiceLimitKey,
 				limiter.ScopeOption(limiter.ScopeService),
 				limiter.ServiceOption(l.options.Service),
 				limiter.NetworkOption(c.LocalAddr().Network()),

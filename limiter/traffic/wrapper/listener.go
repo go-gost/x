@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
+	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 )
 
 type listener struct {
@@ -31,7 +32,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return WrapConn(c, ln.limiter, "",
+	return WrapConn(c, ln.limiter, traffic_limiter.ServiceLimitKey,
 		limiter.ScopeOption(limiter.ScopeService),
 		limiter.ServiceOption(ln.service),
 		limiter.NetworkOption(ln.Addr().Network()),

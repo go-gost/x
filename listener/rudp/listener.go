@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/limiter"
@@ -13,7 +12,6 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -86,11 +84,7 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 			return nil, listener.NewAcceptError(err)
 		}
 
-		ln = limiter_wrapper.WrapListener(
-			l.options.Service,
-			ln,
-			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-		)
+		ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
 		ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
 		l.setListener(ln)
@@ -116,8 +110,8 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 		uc = admission.WrapUDPConn(l.options.Admission, uc)
 		conn = limiter_wrapper.WrapUDPConn(
 			uc,
-			limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-			"",
+			l.options.TrafficLimiter,
+			conn.RemoteAddr().String(),
 			limiter.ScopeOption(limiter.ScopeConn),
 			limiter.ServiceOption(l.options.Service),
 			limiter.NetworkOption(conn.LocalAddr().Network()),

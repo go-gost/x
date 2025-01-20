@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	GlobalLimitKey = "$"
-	ConnLimitKey   = "$$"
+	ServiceLimitKey = "$"
+	ConnLimitKey    = "$$"
 )
 
 const (
@@ -130,7 +130,7 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 
 	switch options.Scope {
 	case limiter.ScopeService:
-		if lim, ok := l.inLimits.Get(GlobalLimitKey); ok && lim != nil {
+		if lim, ok := l.inLimits.Get(ServiceLimitKey); ok && lim != nil {
 			return lim.(traffic.Limiter)
 		}
 		return nil
@@ -209,7 +209,7 @@ func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Op
 
 	switch options.Scope {
 	case limiter.ScopeService:
-		if lim, ok := l.outLimits.Get(GlobalLimitKey); ok && lim != nil {
+		if lim, ok := l.outLimits.Get(ServiceLimitKey); ok && lim != nil {
 			return lim.(traffic.Limiter)
 		}
 		return nil
@@ -307,33 +307,33 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 
 	// service level limiter, never expired
 	{
-		value := values[GlobalLimitKey]
-		if v, _ := l.inLimits.Get(GlobalLimitKey); v != nil {
+		value := values[ServiceLimitKey]
+		if v, _ := l.inLimits.Get(ServiceLimitKey); v != nil {
 			lim := v.(traffic.Limiter)
 			if value.in <= 0 {
-				l.inLimits.Delete(GlobalLimitKey)
+				l.inLimits.Delete(ServiceLimitKey)
 			} else {
 				lim.Set(value.in)
 			}
 		} else {
 			if value.in > 0 {
-				l.inLimits.Set(GlobalLimitKey, NewLimiter(value.in), cache.NoExpiration)
+				l.inLimits.Set(ServiceLimitKey, NewLimiter(value.in), cache.NoExpiration)
 			}
 		}
 
-		if v, _ := l.outLimits.Get(GlobalLimitKey); v != nil {
+		if v, _ := l.outLimits.Get(ServiceLimitKey); v != nil {
 			lim := v.(traffic.Limiter)
 			if value.out <= 0 {
-				l.outLimits.Delete(GlobalLimitKey)
+				l.outLimits.Delete(ServiceLimitKey)
 			} else {
 				lim.Set(value.out)
 			}
 		} else {
 			if value.out > 0 {
-				l.outLimits.Set(GlobalLimitKey, NewLimiter(value.out), cache.NoExpiration)
+				l.outLimits.Set(ServiceLimitKey, NewLimiter(value.out), cache.NoExpiration)
 			}
 		}
-		delete(values, GlobalLimitKey)
+		delete(values, ServiceLimitKey)
 	}
 
 	// connection level limiters
@@ -379,8 +379,8 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 		inLimits := l.inLimits.Items()
 		outLimits := l.outLimits.Items()
 
-		delete(inLimits, GlobalLimitKey)
-		delete(outLimits, GlobalLimitKey)
+		delete(inLimits, ServiceLimitKey)
+		delete(outLimits, ServiceLimitKey)
 
 		for key, value := range values {
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {

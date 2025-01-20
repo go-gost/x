@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
@@ -71,8 +72,12 @@ func (h *relayHandler) Init(md md.Metadata) (err error) {
 		go h.observeStats(ctx)
 	}
 
-	if limiter := h.options.Limiter; limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(limiter, h.md.limiterRefreshInterval, 60*time.Second)
+	if h.options.Limiter != nil {
+		h.limiter = limiter_util.NewCachedTrafficLimiter(h.options.Limiter,
+			limiter_util.RefreshIntervalOption(h.md.limiterRefreshInterval),
+			limiter_util.CleanupIntervalOption(h.md.limiterCleanupInterval),
+			limiter_util.ScopeOption(limiter.ScopeClient),
+		)
 	}
 
 	for _, ro := range h.options.Recorders {

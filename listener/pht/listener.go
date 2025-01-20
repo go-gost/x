@@ -4,7 +4,6 @@ package pht
 
 import (
 	"net"
-	"time"
 
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
@@ -12,7 +11,6 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	pht_util "github.com/go-gost/x/internal/util/pht"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -100,7 +98,7 @@ func (l *phtListener) Accept() (conn net.Conn, err error) {
 	conn = admission.WrapConn(l.options.Admission, conn)
 	conn = limiter_wrapper.WrapConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
+		l.options.TrafficLimiter,
 		conn.RemoteAddr().String(),
 		limiter.ScopeOption(limiter.ScopeConn),
 		limiter.ServiceOption(l.options.Service),

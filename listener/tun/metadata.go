@@ -3,7 +3,6 @@ package tun
 import (
 	"net"
 	"strings"
-	"time"
 
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
@@ -20,9 +19,8 @@ const (
 )
 
 type metadata struct {
-	config                 *tun_util.Config
-	readBufferSize         int
-	limiterRefreshInterval time.Duration
+	config         *tun_util.Config
+	readBufferSize int
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -112,14 +110,6 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.config = config
-
-	l.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
-	if l.md.limiterRefreshInterval == 0 {
-		l.md.limiterRefreshInterval = 30 * time.Second
-	}
-	if l.md.limiterRefreshInterval < time.Second {
-		l.md.limiterRefreshInterval = time.Second
-	}
 
 	return
 }

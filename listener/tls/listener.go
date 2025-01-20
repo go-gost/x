@@ -13,7 +13,6 @@ import (
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -66,11 +65,7 @@ func (l *tlsListener) Init(md md.Metadata) (err error) {
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = stats.WrapListener(ln, l.options.Stats)
 	ln = admission.WrapListener(l.options.Admission, ln)
-	ln = limiter_wrapper.WrapListener(
-		l.options.Service,
-		ln,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
-	)
+	ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
 	l.ln = tls.NewListener(ln, l.options.TLSConfig)
@@ -86,7 +81,7 @@ func (l *tlsListener) Accept() (conn net.Conn, err error) {
 
 	conn = limiter_wrapper.WrapConn(
 		conn,
-		limiter_util.NewCachedTrafficLimiter(l.options.TrafficLimiter, l.md.limiterRefreshInterval, 60*time.Second),
+		l.options.TrafficLimiter,
 		conn.RemoteAddr().String(),
 		limiter.ScopeOption(limiter.ScopeConn),
 		limiter.ServiceOption(l.options.Service),

@@ -17,4 +17,16 @@ const (
 	MDKeyRecorderHexdump         = "hexdump"
 	MDKeyRecorderHTTPBody        = "http.body"
 	MDKeyRecorderHTTPMaxBodySize = "http.maxBodySize"
+
+	MDKeyLimiterRefreshInterval = "limiter.refreshInterval"
+	MDKeyLimiterCleanupInterval = "limiter.cleanupInterval"
+	MDKeyLimiterScope           = "limiter.scope"
+
+	MDKeyObserverResetTraffic = "observer.resetTraffic"
+	MDKeyObserverPeriod       = "observer.period"
+
+	MDKeyNetns    = "netns"
+	MDKeyNetnsOut = "netns.out"
+
+	MDKeyDialTimeout = "dialTimeout"
 )

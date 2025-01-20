@@ -28,6 +28,7 @@ import (
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
+	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
@@ -106,6 +107,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var observerPeriod time.Duration
 	var netnsIn, netnsOut string
 	var dialTimeout time.Duration
+
+	var limiterRefreshInterval time.Duration
+	var limiterCleanupInterval time.Duration
+	var limiterScope string
+
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
@@ -124,13 +130,18 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		ignoreChain = mdutil.GetBool(md, parsing.MDKeyIgnoreChain)
 
 		if mdutil.GetBool(md, parsing.MDKeyEnableStats) {
-			pStats = xstats.NewStats(mdutil.GetBool(md, "observer.resetTraffic"))
+			pStats = xstats.NewStats(mdutil.GetBool(md, parsing.MDKeyObserverResetTraffic))
 		}
-		observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period")
+		observerPeriod = mdutil.GetDuration(md, parsing.MDKeyObserverPeriod, "observePeriod")
 
-		netnsIn = mdutil.GetString(md, "netns")
-		netnsOut = mdutil.GetString(md, "netns.out")
-		dialTimeout = mdutil.GetDuration(md, "dialTimeout")
+		netnsIn = mdutil.GetString(md, parsing.MDKeyNetns)
+		netnsOut = mdutil.GetString(md, parsing.MDKeyNetnsOut)
+
+		dialTimeout = mdutil.GetDuration(md, parsing.MDKeyDialTimeout)
+
+		limiterRefreshInterval = mdutil.GetDuration(md, parsing.MDKeyLimiterRefreshInterval)
+		limiterCleanupInterval = mdutil.GetDuration(md, parsing.MDKeyLimiterCleanupInterval)
+		limiterScope = mdutil.GetString(md, parsing.MDKeyLimiterScope)
 	}
 
 	listenerLogger := serviceLogger.WithFields(map[string]any{
@@ -159,7 +170,14 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.AuthOption(auth_parser.Info(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
 		listener.AdmissionOption(xadmission.AdmissionGroup(admissions...)),
-		listener.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Limiter)),
+		listener.TrafficLimiterOption(
+			limiter_util.NewCachedTrafficLimiter(
+				registry.TrafficLimiterRegistry().Get(cfg.Limiter),
+				limiter_util.RefreshIntervalOption(limiterRefreshInterval),
+				limiter_util.CleanupIntervalOption(limiterCleanupInterval),
+				limiter_util.ScopeOption(limiterScope),
+			),
+		),
 		listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),
 		listener.ServiceOption(cfg.Name),
 		listener.ProxyProtocolOption(ppv),
