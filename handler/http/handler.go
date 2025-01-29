@@ -254,9 +254,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if resp.Header == nil {
 		resp.Header = http.Header{}
 	}
-	if resp.Header.Get("Proxy-Agent") == "" {
-		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
-	}
 
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
 		Host:   req.Host,
@@ -290,6 +287,14 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if !ok {
 		return errors.New("authentication failed")
 	}
+
+	if resp.Header == nil {
+		resp.Header = http.Header{}
+	}
+	if resp.Header.Get("Proxy-Agent") == "" {
+		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
+	}
+
 	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
 	if h.options.Bypass != nil &&
