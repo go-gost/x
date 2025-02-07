@@ -25,7 +25,7 @@ type conn struct {
 }
 
 func WrapConn(c net.Conn, pStats stats.Stats) net.Conn {
-	if pStats == nil {
+	if c == nil || pStats == nil {
 		return c
 	}
 

@@ -3,12 +3,15 @@ package tun
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
+	xip "github.com/go-gost/x/internal/net/ip"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/songgao/water/waterutil"
 	"golang.org/x/net/ipv4"
@@ -24,7 +27,7 @@ var (
 	magicHeader = []byte("GOST")
 )
 
-func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr string, config *tun_util.Config, log logger.Logger) error {
+func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network string, raddr string, config *tun_util.Config, log logger.Logger) error {
 	var ips []net.IP
 	for _, net := range config.Net {
 		ips = append(ips, net.IP)
@@ -35,20 +38,22 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, raddr stri
 
 	for {
 		err := func() error {
-			cc, err := h.options.Router.Dial(ctx, "udp", raddr)
+			cc, err := h.options.Router.Dial(ctx, network, raddr)
 			if err != nil {
 				return err
 			}
 			defer cc.Close()
 
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
+			if network == "udp" {
+				ctx, cancel := context.WithCancel(ctx)
+				defer cancel()
 
-			go h.keepalive(ctx, cc, ips)
+				go h.keepalive(ctx, cc, ips)
+			}
 
-			return h.transportClient(conn, cc, log)
+			return h.transportClient(ctx, conn, cc, log)
 		}()
-		if err == ErrTun {
+		if errors.Is(err, ErrTun) {
 			return err
 		}
 
@@ -94,8 +99,8 @@ func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP)
 	}
 }
 
-func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logger.Logger) error {
-	errc := make(chan error, 1)
+func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, conn net.Conn, log logger.Logger) error {
+	errc := make(chan error, 2)
 
 	go func() {
 		for {
@@ -105,7 +110,7 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 
 				n, err := tun.Read(b)
 				if err != nil {
-					return ErrTun
+					return fmt.Errorf("%w: %s", ErrTun, err.Error())
 				}
 
 				if waterutil.IsIPv4(b[:n]) {
@@ -115,9 +120,11 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 						return nil
 					}
 
-					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
-						header.Len, header.TotalLen, header.ID, header.Flags)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
+							header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
+							header.Len, header.TotalLen, header.ID, header.Flags)
+					}
 				} else if waterutil.IsIPv6(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
@@ -125,10 +132,12 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 						return nil
 					}
 
-					log.Tracef("%s >> %s %s %d %d",
-						header.Src, header.Dst,
-						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
-						header.PayloadLen, header.TrafficClass)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %s %d %d",
+							header.Src, header.Dst,
+							xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
+							header.PayloadLen, header.TrafficClass)
+					}
 				} else {
 					log.Warnf("unknown packet, discarded(%d)", n)
 					return nil
@@ -166,16 +175,18 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 					return nil
 				}
 
-				if waterutil.IsIPv4(b[:n]) {
+				if waterutil.IsIPv4(b) {
 					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
 						return nil
 					}
 
-					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						header.Src, header.Dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
-						header.Len, header.TotalLen, header.ID, header.Flags)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
+							header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
+							header.Len, header.TotalLen, header.ID, header.Flags)
+					}
 				} else if waterutil.IsIPv6(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
@@ -183,17 +194,19 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 						return nil
 					}
 
-					log.Tracef("%s > %s %s %d %d",
-						header.Src, header.Dst,
-						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
-						header.PayloadLen, header.TrafficClass)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s > %s %s %d %d",
+							header.Src, header.Dst,
+							xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
+							header.PayloadLen, header.TrafficClass)
+					}
 				} else {
 					log.Warn("unknown packet, discarded")
 					return nil
 				}
 
 				if _, err = tun.Write(b[:n]); err != nil {
-					return ErrTun
+					return fmt.Errorf("%w: %s", ErrTun, err.Error())
 				}
 				return nil
 			}()
@@ -205,9 +218,14 @@ func (h *tunHandler) transportClient(tun io.ReadWriter, conn net.Conn, log logge
 		}
 	}()
 
-	err := <-errc
-	if err != nil && err == io.EOF {
-		err = nil
+	select {
+	case err := <-errc:
+		if err != nil && err == io.EOF {
+			err = nil
+		}
+		return err
+
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return err
 }

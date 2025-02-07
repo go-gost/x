@@ -93,6 +93,7 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 			quic.Version2,
 		},
 		MaxIncomingStreams: int64(l.md.maxStreams),
+		EnableDatagrams:    l.md.enableDatagram,
 	}
 
 	tlsCfg := l.options.TLSConfig

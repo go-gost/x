@@ -250,10 +250,11 @@ func (p *localRouter) Close() error {
 }
 
 func ParseRoute(dst string, gateway string) *router.Route {
-	_, ipNet, _ := net.ParseCIDR(dst)
-	if ipNet == nil {
+	if dst == "" {
 		return nil
 	}
+	_, ipNet, _ := net.ParseCIDR(dst)
+
 	gw := net.ParseIP(gateway)
 	if gw == nil {
 		return nil
@@ -261,6 +262,7 @@ func ParseRoute(dst string, gateway string) *router.Route {
 
 	return &router.Route{
 		Net:     ipNet,
-		Gateway: gw,
+		Dst:     dst,
+		Gateway: gateway,
 	}
 }
