@@ -113,5 +113,6 @@ func (c *routerConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		return nil, err
 	}
 
+	log.Debugf("connect to router %s@%s OK", address, c.md.routerID)
 	return conn, nil
 }

@@ -52,14 +52,10 @@ func (l *tunListener) addRoutes(ifce *net.Interface) error {
 		if route.Net == nil {
 			continue
 		}
-		gw := net.ParseIP(route.Gateway)
-		if gw == nil {
-			continue
-		}
 
 		r := netlink.Route{
 			Dst: route.Net,
-			Gw:  gw,
+			Gw:  net.ParseIP(route.Gateway),
 		}
 		if r.Gw == nil {
 			r.LinkIndex = ifce.Index

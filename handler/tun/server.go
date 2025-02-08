@@ -272,7 +272,7 @@ func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router
 		return nil
 	}
 
-	if route := router.GetRoute(ctx, dst); route != nil {
+	if route := router.GetRoute(ctx, dst.String()); route != nil {
 		if gw := net.ParseIP(route.Gateway); gw != nil {
 			if v, ok := h.routes.Load(ipToTunRouteKey(gw)); ok {
 				return v.(net.Addr)

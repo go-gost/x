@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -97,7 +98,7 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 			ID:      connectorID.String(),
 			Name:    clientID,
 			Node:    h.id,
-			Network: network,
+			Network: "udp",
 			Address: h.md.entryPoint,
 		})
 		if err != nil {
@@ -113,89 +114,125 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 
 	log.Debugf("%s/%s: router=%s, connector=%s, weight=%d established", host, network, routerID, connectorID, connectorID.Weight())
 
-	return h.routing(ctx, conn, routerID, log)
-}
-
-func (h *routerHandler) routing(ctx context.Context, conn net.Conn, routerID relay.TunnelID, log logger.Logger) error {
-	b := bufpool.Get(h.md.bufferSize)
-	defer bufpool.Put(b)
-
-	rid := routerID.String()
-
 	for {
-		err := func() error {
-			n, err := conn.Read(b)
-			if err != nil {
-				return err
-			}
+		b := bufpool.Get(h.md.bufferSize)
 
-			var dstIP net.IP
-
-			if waterutil.IsIPv4(b[:n]) {
-				header, err := ipv4.ParseHeader(b[:n])
-				if err != nil {
-					log.Warn(err)
-					return nil
-				}
-
-				dstIP = header.Dst
-
-				if log.IsLevelEnabled(logger.TraceLevel) {
-					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
-						header.Len, header.TotalLen, header.ID, header.Flags)
-				}
-			} else if waterutil.IsIPv6(b[:n]) {
-				header, err := ipv6.ParseHeader(b[:n])
-				if err != nil {
-					log.Warn(err)
-					return nil
-				}
-
-				dstIP = header.Dst
-
-				if log.IsLevelEnabled(logger.TraceLevel) {
-					log.Tracef("%s >> %s %s %d %d",
-						header.Src, header.Dst,
-						xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
-						header.PayloadLen, header.TrafficClass)
-				}
-			} else {
-				log.Warnf("unknown packet, discarded(%d)", n)
-				return nil
-			}
-
-			var route *router.Route
-			if r := registry.RouterRegistry().Get(rid); r != nil {
-				route = r.GetRoute(ctx, dstIP, router.IDOption(rid))
-			}
-			if route == nil && h.md.router != nil {
-				route = h.md.router.GetRoute(ctx, dstIP, router.IDOption(rid))
-			}
-			if route == nil || route.Gateway == "" {
-				// no route to host, discard
-				return nil
-			}
-
-			if log.IsLevelEnabled(logger.TraceLevel) {
-				log.Tracef("route for %s: %s -> %s", dstIP, route.Dst, route.Gateway)
-			}
-
-			if c := h.pool.Get(routerID, route.Gateway); c != nil {
-				if w := c.Writer(); w != nil {
-					w.Write(b[:n])
-				}
-			}
-
-			return nil
-		}()
+		n, err := conn.Read(b)
 		if err != nil {
 			if err == io.EOF {
-				err = nil
+				return nil
 			}
 			return err
 		}
+
+		h.handlePacket(ctx, b[:n], routerID, log)
 	}
+}
+
+func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID relay.TunnelID, log logger.Logger) error {
+	defer bufpool.Put(data)
+
+	var dstIP net.IP
+	if waterutil.IsIPv4(data) {
+		header, err := ipv4.ParseHeader(data)
+		if err != nil {
+			return err
+		}
+
+		dstIP = header.Dst
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
+				header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(data)),
+				header.Len, header.TotalLen, header.ID, header.Flags)
+		}
+	} else if waterutil.IsIPv6(data) {
+		header, err := ipv6.ParseHeader(data)
+		if err != nil {
+			return err
+		}
+
+		dstIP = header.Dst
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			log.Tracef("%s >> %s %s %d %d",
+				header.Src, header.Dst,
+				xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
+				header.PayloadLen, header.TrafficClass)
+		}
+	} else {
+		return fmt.Errorf("unknown packet, discarded(%d)", len(data))
+	}
+
+	rid := routerID.String()
+
+	var route *router.Route
+	if r := registry.RouterRegistry().Get(rid); r != nil {
+		route = r.GetRoute(ctx, dstIP.String(), router.IDOption(rid))
+	}
+	if route == nil && h.md.router != nil {
+		route = h.md.router.GetRoute(ctx, dstIP.String(), router.IDOption(rid))
+	}
+	if route == nil || route.Gateway == "" {
+		// no route to host, discard
+		return fmt.Errorf("route to host %s", dstIP)
+	}
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
+		log.Tracef("route for %s: %s -> %s", dstIP, route.Dst, route.Gateway)
+	}
+
+	if c := h.pool.Get(routerID, route.Gateway); c != nil {
+		if w := c.Writer(); w != nil {
+			w.Write(data)
+		}
+		return nil
+	}
+
+	if h.md.sd == nil {
+		return nil
+	}
+
+	clientID := fmt.Sprintf("%s@%s", route.Gateway, routerID)
+	ss, _ := h.md.sd.Get(ctx, clientID)
+
+	var service *sd.Service
+	for _, s := range ss {
+		if s.Node != h.id {
+			service = s
+			break
+		}
+	}
+	if service == nil {
+		return nil
+	}
+
+	raddr, _ := net.ResolveUDPAddr("udp", service.Address)
+	if raddr == nil {
+		return nil
+	}
+
+	req := &relay.Request{
+		Version: relay.Version1,
+		Cmd:     relay.CmdAssociate,
+		Features: []relay.Feature{
+			&relay.TunnelFeature{
+				ID: routerID,
+			},
+			&relay.AddrFeature{
+				AType: relay.AddrDomain,
+				Host:  route.Gateway,
+			},
+		},
+	}
+
+	buf := bytes.Buffer{}
+	req.WriteTo(&buf)
+	buf.Write(data)
+
+	h.epConn.WriteTo(buf.Bytes(), raddr)
+
+	return nil
 }
 
 type packetConn struct {

@@ -202,17 +202,19 @@ func (p *localRouter) parseRoutes(r io.Reader) (routes []*router.Route, err erro
 	return
 }
 
-func (p *localRouter) GetRoute(ctx context.Context, dst net.IP, opts ...router.Option) *router.Route {
-	if dst == nil || p == nil {
+func (p *localRouter) GetRoute(ctx context.Context, dst string, opts ...router.Option) *router.Route {
+	if dst == "" || p == nil {
 		return nil
 	}
+
+	dstIP := net.ParseIP(dst)
 
 	p.mu.RLock()
 	routes := p.routes
 	p.mu.RUnlock()
 
 	for _, route := range routes {
-		if route.Net != nil && route.Net.Contains(dst) {
+		if route.Dst == dst || route.Net != nil && route.Net.Contains(dstIP) {
 			return route
 		}
 	}
@@ -254,11 +256,6 @@ func ParseRoute(dst string, gateway string) *router.Route {
 		return nil
 	}
 	_, ipNet, _ := net.ParseCIDR(dst)
-
-	gw := net.ParseIP(gateway)
-	if gw == nil {
-		return nil
-	}
 
 	return &router.Route{
 		Net:     ipNet,

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -13,9 +14,9 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
-	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -24,12 +25,10 @@ import (
 )
 
 var (
-	ErrBadVersion         = errors.New("bad version")
-	ErrUnknownCmd         = errors.New("unknown command")
-	ErrRouterID           = errors.New("invalid router ID")
-	ErrRouterNotAvailable = errors.New("router not available")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrTunnelRoute        = errors.New("no route to host")
+	ErrBadVersion   = errors.New("bad version")
+	ErrUnknownCmd   = errors.New("unknown command")
+	ErrRouterID     = errors.New("invalid router ID")
+	ErrUnauthorized = errors.New("unauthorized")
 )
 
 func init() {
@@ -40,7 +39,7 @@ type routerHandler struct {
 	id      string
 	options handler.Options
 	pool    *ConnectorPool
-	epSvc   service.Service
+	epConn  net.PacketConn
 	md      metadata
 	log     logger.Logger
 	stats   *stats_util.HandlerStats
@@ -75,14 +74,9 @@ func (h *routerHandler) Init(md md.Metadata) (err error) {
 	})
 	h.pool = NewConnectorPool(h.id)
 
-	/*
-		for _, ro := range h.options.Recorders {
-			if ro.Record == xrecorder.RecorderServiceHandler {
-				h.ep.recorder = ro
-				break
-			}
-		}
-	*/
+	if err = h.initEntrypoint(); err != nil {
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	h.cancel = cancel
@@ -101,6 +95,35 @@ func (h *routerHandler) Init(md md.Metadata) (err error) {
 	}
 
 	return nil
+}
+
+func (h *routerHandler) initEntrypoint() (err error) {
+	if h.md.entryPoint == "" {
+		return
+	}
+
+	network := "udp"
+	if xnet.IsIPv4(h.md.entryPoint) {
+		network = "udp4"
+	}
+
+	pc, err := net.ListenPacket(network, h.md.entryPoint)
+	if err != nil {
+		h.log.Error(err)
+		return
+	}
+	h.epConn = pc
+
+	log := h.log.WithFields(map[string]any{
+		"service":  fmt.Sprintf("%s-ep-%s", h.options.Service, pc.LocalAddr()),
+		"listener": "udp",
+		"handler":  "entrypoint",
+		"kind":     "service",
+	})
+	go h.handleEntrypoint(log)
+	h.log.Infof("entrypoint: %s", pc.LocalAddr())
+
+	return
 }
 
 func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
@@ -212,8 +235,8 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 // Close implements io.Closer interface.
 func (h *routerHandler) Close() error {
-	if h.epSvc != nil {
-		h.epSvc.Close()
+	if h.epConn != nil {
+		h.epConn.Close()
 	}
 	h.pool.Close()
 
