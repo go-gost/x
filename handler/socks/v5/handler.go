@@ -15,11 +15,11 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -78,10 +78,10 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	}
 
 	if h.options.Limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(h.options.Limiter,
-			limiter_util.RefreshIntervalOption(h.md.limiterRefreshInterval),
-			limiter_util.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			limiter_util.ScopeOption(limiter.ScopeClient),
+		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
+			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
+			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
+			cache_limiter.ScopeOption(limiter.ScopeClient),
 		)
 	}
 

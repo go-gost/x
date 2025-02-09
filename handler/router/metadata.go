@@ -12,18 +12,20 @@ import (
 )
 
 const (
-	defaultTTL        = 15 * time.Second
-	defaultBufferSize = 4096
+	defaultTTL             = 15 * time.Second
+	defaultBufferSize      = 4096
+	defaultCacheExpiration = time.Second
 )
 
 type metadata struct {
 	readTimeout time.Duration
 	bufferSize  int
 
-	entryPoint string
-	ingress    ingress.Ingress
-	sd         sd.SD
-	router     router.Router
+	entryPoint        string
+	ingress           ingress.Ingress
+	sd                sd.SD
+	sdCacheExpiration time.Duration
+	router            router.Router
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -41,7 +43,13 @@ func (h *routerHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
+
 	h.md.sd = registry.SDRegistry().Get(mdutil.GetString(md, "sd"))
+	h.md.sdCacheExpiration = mdutil.GetDuration(md, "sd.cacheExpiration")
+	if h.md.sdCacheExpiration <= 0 {
+		h.md.sdCacheExpiration = defaultCacheExpiration
+	}
+
 	h.md.router = registry.RouterRegistry().Get(mdutil.GetString(md, "router"))
 
 	h.md.observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period", "observer.observePeriod")

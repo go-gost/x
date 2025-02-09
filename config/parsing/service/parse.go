@@ -28,8 +28,8 @@ import (
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 	xstats "github.com/go-gost/x/observer/stats"
@@ -171,11 +171,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		listener.TLSConfigOption(tlsConfig),
 		listener.AdmissionOption(xadmission.AdmissionGroup(admissions...)),
 		listener.TrafficLimiterOption(
-			limiter_util.NewCachedTrafficLimiter(
+			cache_limiter.NewCachedTrafficLimiter(
 				registry.TrafficLimiterRegistry().Get(cfg.Limiter),
-				limiter_util.RefreshIntervalOption(limiterRefreshInterval),
-				limiter_util.CleanupIntervalOption(limiterCleanupInterval),
-				limiter_util.ScopeOption(limiterScope),
+				cache_limiter.RefreshIntervalOption(limiterRefreshInterval),
+				cache_limiter.CleanupIntervalOption(limiterCleanupInterval),
+				cache_limiter.ScopeOption(limiterScope),
 			),
 		),
 		listener.ConnLimiterOption(registry.ConnLimiterRegistry().Get(cfg.CLimiter)),

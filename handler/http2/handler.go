@@ -31,9 +31,9 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -78,10 +78,10 @@ func (h *http2Handler) Init(md md.Metadata) error {
 	}
 
 	if h.options.Limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(h.options.Limiter,
-			limiter_util.RefreshIntervalOption(h.md.limiterRefreshInterval),
-			limiter_util.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			limiter_util.ScopeOption(limiter.ScopeClient),
+		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
+			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
+			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
+			cache_limiter.ScopeOption(limiter.ScopeClient),
 		)
 	}
 

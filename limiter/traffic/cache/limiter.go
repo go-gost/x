@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/x/internal/util/cache"
 )
 
 const (
@@ -40,8 +41,8 @@ func ScopeOption(scope string) Option {
 }
 
 type cachedTrafficLimiter struct {
-	inLimits  *Cache
-	outLimits *Cache
+	inLimits  *cache.Cache
+	outLimits *cache.Cache
 	limiter   traffic.TrafficLimiter
 	options   options
 }
@@ -71,8 +72,8 @@ func NewCachedTrafficLimiter(limiter traffic.TrafficLimiter, opts ...Option) tra
 	}
 
 	lim := &cachedTrafficLimiter{
-		inLimits:  NewCache(options.cleanupInterval),
-		outLimits: NewCache(options.cleanupInterval),
+		inLimits:  cache.NewCache(options.cleanupInterval),
+		outLimits: cache.NewCache(options.cleanupInterval),
 		limiter:   limiter,
 		options:   options,
 	}
@@ -104,11 +105,11 @@ func (p *cachedTrafficLimiter) In(ctx context.Context, key string, opts ...limit
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {
-		p.inLimits.Set(key, NewItem(limNew, p.options.refreshInterval))
+		p.inLimits.Set(key, cache.NewItem(limNew, p.options.refreshInterval))
 		return limNew
 	}
 
-	p.inLimits.Set(key, NewItem(lim, p.options.refreshInterval))
+	p.inLimits.Set(key, cache.NewItem(lim, p.options.refreshInterval))
 
 	return lim
 }
@@ -138,11 +139,11 @@ func (p *cachedTrafficLimiter) Out(ctx context.Context, key string, opts ...limi
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {
-		p.outLimits.Set(key, NewItem(limNew, p.options.refreshInterval))
+		p.outLimits.Set(key, cache.NewItem(limNew, p.options.refreshInterval))
 		return limNew
 	}
 
-	p.outLimits.Set(key, NewItem(lim, p.options.refreshInterval))
+	p.outLimits.Set(key, cache.NewItem(lim, p.options.refreshInterval))
 
 	return lim
 }

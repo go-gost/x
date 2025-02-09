@@ -19,6 +19,7 @@ import (
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
 	xip "github.com/go-gost/x/internal/net/ip"
+	"github.com/go-gost/x/internal/util/cache"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -189,25 +190,7 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 		return nil
 	}
 
-	if h.md.sd == nil {
-		return nil
-	}
-
-	clientID := fmt.Sprintf("%s@%s", route.Gateway, routerID)
-	ss, _ := h.md.sd.Get(ctx, clientID)
-
-	var service *sd.Service
-	for _, s := range ss {
-		if s.Node != h.id {
-			service = s
-			break
-		}
-	}
-	if service == nil {
-		return nil
-	}
-
-	raddr, _ := net.ResolveUDPAddr("udp", service.Address)
+	raddr := h.getAddrforRoute(ctx, rid, route.Gateway)
 	if raddr == nil {
 		return nil
 	}
@@ -233,6 +216,32 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 	h.epConn.WriteTo(buf.Bytes(), raddr)
 
 	return nil
+}
+
+func (h *routerHandler) getAddrforRoute(ctx context.Context, routerID, gateway string) net.Addr {
+	if h.md.sd == nil {
+		return nil
+	}
+	clientID := fmt.Sprintf("%s@%s", gateway, routerID)
+
+	if item := h.sdCache.Get(clientID); item != nil && !item.Expired() {
+		addr, _ := item.Value().(net.Addr)
+		return addr
+	}
+
+	ss, _ := h.md.sd.Get(ctx, clientID)
+
+	service := &sd.Service{}
+	for _, s := range ss {
+		if s.Node != h.id {
+			service = s
+			break
+		}
+	}
+	raddr, _ := net.ResolveUDPAddr("udp", service.Address)
+	h.sdCache.Set(clientID, cache.NewItem(raddr, h.md.sdCacheExpiration))
+
+	return raddr
 }
 
 type packetConn struct {

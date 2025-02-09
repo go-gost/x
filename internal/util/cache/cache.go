@@ -1,4 +1,4 @@
-package limiter
+package cache
 
 import (
 	"sync"

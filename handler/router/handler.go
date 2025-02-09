@@ -17,9 +17,10 @@ import (
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
-	limiter_util "github.com/go-gost/x/internal/util/limiter"
+	"github.com/go-gost/x/internal/util/cache"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	"github.com/go-gost/x/registry"
 	"github.com/google/uuid"
 )
@@ -45,6 +46,7 @@ type routerHandler struct {
 	stats   *stats_util.HandlerStats
 	limiter traffic.TrafficLimiter
 	cancel  context.CancelFunc
+	sdCache *cache.Cache
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -55,6 +57,7 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 
 	return &routerHandler{
 		options: options,
+		sdCache: cache.NewCache(time.Minute),
 	}
 }
 
@@ -87,10 +90,10 @@ func (h *routerHandler) Init(md md.Metadata) (err error) {
 	}
 
 	if h.options.Limiter != nil {
-		h.limiter = limiter_util.NewCachedTrafficLimiter(h.options.Limiter,
-			limiter_util.RefreshIntervalOption(h.md.limiterRefreshInterval),
-			limiter_util.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			limiter_util.ScopeOption(limiter.ScopeClient),
+		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
+			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
+			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
+			cache_limiter.ScopeOption(limiter.ScopeClient),
 		)
 	}
 
