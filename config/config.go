@@ -252,7 +252,9 @@ type SDConfig struct {
 }
 
 type RouterRouteConfig struct {
-	Net     string `json:"net"`
+	// Deprecated: use dst instead
+	Net     string `yaml:",omitempty" json:"net,omitempty"`
+	Dst     string `yaml:",omitempty" json:"dst,omitempty"`
 	Gateway string `json:"gateway"`
 }
 

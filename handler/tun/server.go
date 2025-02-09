@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/router"
+	xip "github.com/go-gost/x/internal/net/ip"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/songgao/water/waterutil"
 	"golang.org/x/net/ipv4"
@@ -63,9 +64,11 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					}
 					src, dst = header.Src, header.Dst
 
-					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						src, dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
-						header.Len, header.TotalLen, header.ID, header.Flags)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
+							src, dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
+							header.Len, header.TotalLen, header.ID, header.Flags)
+					}
 				} else if waterutil.IsIPv6(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
@@ -74,10 +77,12 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					}
 					src, dst = header.Src, header.Dst
 
-					log.Tracef("%s >> %s %s %d %d",
-						src, dst,
-						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
-						header.PayloadLen, header.TrafficClass)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %s %d %d",
+							src, dst,
+							xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
+							header.PayloadLen, header.TrafficClass)
+					}
 				} else {
 					log.Warnf("unknown packet, discarded(%d)", n)
 					return nil
@@ -184,9 +189,11 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					}
 					src, dst = header.Src, header.Dst
 
-					log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
-						src, dst, ipProtocol(waterutil.IPv4Protocol(b[:n])),
-						header.Len, header.TotalLen, header.ID, header.Flags)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s >> %s %-4s %d/%-4d %-4x %d",
+							src, dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
+							header.Len, header.TotalLen, header.ID, header.Flags)
+					}
 				} else if waterutil.IsIPv6(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
@@ -195,10 +202,12 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					}
 					src, dst = header.Src, header.Dst
 
-					log.Tracef("%s > %s %s %d %d",
-						src, dst,
-						ipProtocol(waterutil.IPProtocol(header.NextHeader)),
-						header.PayloadLen, header.TrafficClass)
+					if log.IsLevelEnabled(logger.TraceLevel) {
+						log.Tracef("%s > %s %s %d %d",
+							src, dst,
+							xip.Protocol(waterutil.IPProtocol(header.NextHeader)),
+							header.PayloadLen, header.TrafficClass)
+					}
 				} else {
 					log.Warnf("unknown packet, discarded(%d): % x", n, b[:n])
 					return nil
@@ -263,9 +272,11 @@ func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router
 		return nil
 	}
 
-	if route := router.GetRoute(ctx, dst); route != nil && route.Gateway != nil {
-		if v, ok := h.routes.Load(ipToTunRouteKey(route.Gateway)); ok {
-			return v.(net.Addr)
+	if route := router.GetRoute(ctx, dst.String()); route != nil {
+		if gw := net.ParseIP(route.Gateway); gw != nil {
+			if v, ok := h.routes.Load(ipToTunRouteKey(gw)); ok {
+				return v.(net.Addr)
+			}
 		}
 	}
 	return nil

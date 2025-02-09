@@ -13,7 +13,7 @@ type readWriter struct {
 }
 
 func WrapReadWriter(rw io.ReadWriter, stats stats.Stats) io.ReadWriter {
-	if stats == nil {
+	if rw == nil || stats == nil {
 		return rw
 	}
 

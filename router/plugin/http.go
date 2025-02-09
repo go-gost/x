@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"net/http"
 
 	"github.com/go-gost/core/logger"
@@ -14,10 +13,12 @@ import (
 
 type httpPluginGetRouteRequest struct {
 	Dst string `json:"dst"`
+	ID  string `json:"id"`
 }
 
 type httpPluginGetRouteResponse struct {
 	Net     string `json:"net"`
+	Dst     string `json:"dst"`
 	Gateway string `json:"gateway"`
 }
 
@@ -46,9 +47,14 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) router.Router
 	}
 }
 
-func (p *httpPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Option) *router.Route {
+func (p *httpPlugin) GetRoute(ctx context.Context, dst string, opts ...router.Option) *router.Route {
 	if p.client == nil {
 		return nil
+	}
+
+	var options router.Options
+	for _, opt := range opts {
+		opt(&options)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
@@ -61,7 +67,10 @@ func (p *httpPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Op
 	req.Header.Set("Content-Type", "application/json")
 
 	q := req.URL.Query()
-	q.Set("dst", dst.String())
+	q.Set("dst", dst)
+	if options.ID != "" {
+		q.Set("id", options.ID)
+	}
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.client.Do(req)
@@ -79,5 +88,9 @@ func (p *httpPlugin) GetRoute(ctx context.Context, dst net.IP, opts ...router.Op
 		return nil
 	}
 
-	return xrouter.ParseRoute(res.Net, res.Gateway)
+	dstNet := res.Dst
+	if dstNet == "" {
+		dstNet = res.Net
+	}
+	return xrouter.ParseRoute(dstNet, res.Gateway)
 }

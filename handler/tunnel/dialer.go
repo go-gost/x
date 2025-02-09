@@ -57,7 +57,7 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 	var service *sd.Service
 	for _, s := range ss {
 		d.log.Debugf("%+v", s)
-		if s.Name != d.node && s.Network == network {
+		if s.Node != d.node && s.Network == network {
 			service = s
 			break
 		}

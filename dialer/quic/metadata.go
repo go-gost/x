@@ -12,6 +12,7 @@ type metadata struct {
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
 	maxStreams       int
+	enableDatagram   bool
 
 	cipherKey []byte
 }
@@ -40,6 +41,7 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
 	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
+	d.md.enableDatagram = mdutil.GetBool(md, "quic.enableDatagram", "enableDatagram")
 
 	return
 }

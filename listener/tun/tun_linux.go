@@ -49,9 +49,13 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 
 func (l *tunListener) addRoutes(ifce *net.Interface) error {
 	for _, route := range l.routes {
+		if route.Net == nil {
+			continue
+		}
+
 		r := netlink.Route{
 			Dst: route.Net,
-			Gw:  route.Gateway,
+			Gw:  net.ParseIP(route.Gateway),
 		}
 		if r.Gw == nil {
 			r.LinkIndex = ifce.Index

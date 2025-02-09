@@ -12,10 +12,9 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/go-gost/x/registry"
-	"github.com/songgao/water/waterutil"
-	ctxvalue "github.com/go-gost/x/ctx"
 )
 
 var (
@@ -90,37 +89,23 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		target = h.hop.Select(ctx)
 	}
 	if target != nil {
+		network := "udp"
+		if _, _, err := net.SplitHostPort(target.Addr); err != nil {
+			network = "ip"
+		}
+
 		log = log.WithFields(map[string]any{
-			"dst": fmt.Sprintf("%s/%s", target.Addr, "udp"),
+			"dst": fmt.Sprintf("%s/%s", target.Addr, network),
 		})
 		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
-		if err := h.handleClient(ctx, conn, target.Addr, config, log); err != nil {
+		if err := h.handleClient(ctx, conn, network, target.Addr, config, log); err != nil {
 			log.Error(err)
 		}
 		return nil
 	}
 
 	return h.handleServer(ctx, conn, config, log)
-}
-
-var mIPProts = map[waterutil.IPProtocol]string{
-	waterutil.HOPOPT:     "HOPOPT",
-	waterutil.ICMP:       "ICMP",
-	waterutil.IGMP:       "IGMP",
-	waterutil.GGP:        "GGP",
-	waterutil.TCP:        "TCP",
-	waterutil.UDP:        "UDP",
-	waterutil.IPv6_Route: "IPv6-Route",
-	waterutil.IPv6_Frag:  "IPv6-Frag",
-	waterutil.IPv6_ICMP:  "IPv6-ICMP",
-}
-
-func ipProtocol(p waterutil.IPProtocol) string {
-	if v, ok := mIPProts[p]; ok {
-		return v
-	}
-	return fmt.Sprintf("unknown(%d)", p)
 }
 
 type tunRouteKey [16]byte

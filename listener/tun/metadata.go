@@ -67,34 +67,36 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
-		_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(s))
-		if ipNet == nil {
-			continue
+		gw := ""
+		if config.Gateway != nil {
+			gw = config.Gateway.String()
 		}
-
-		l.routes = append(l.routes, &router.Route{
-			Net:     ipNet,
-			Gateway: config.Gateway,
-		})
+		if route := xrouter.ParseRoute(strings.TrimSpace(s), gw); route != nil {
+			l.routes = append(l.routes, route)
+		}
 	}
 
 	for _, s := range mdutil.GetStrings(md, routes) {
 		ss := strings.SplitN(s, " ", 2)
 		if len(ss) == 2 {
-			var route router.Route
 			_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(ss[0]))
 			if ipNet == nil {
 				continue
 			}
-			route.Net = ipNet
 			gw := net.ParseIP(ss[1])
 			if gw == nil {
 				gw = config.Gateway
 			}
 
+			gateway := ""
+			if gw != nil {
+				gateway = gw.String()
+			}
+
 			l.routes = append(l.routes, &router.Route{
 				Net:     ipNet,
-				Gateway: gw,
+				Dst:     ipNet.String(),
+				Gateway: gateway,
 			})
 		}
 	}

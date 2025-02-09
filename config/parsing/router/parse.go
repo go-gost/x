@@ -46,17 +46,23 @@ func ParseRouter(cfg *config.RouterConfig) router.Router {
 	var routes []*router.Route
 	for _, route := range cfg.Routes {
 		_, ipNet, _ := net.ParseCIDR(route.Net)
-		if ipNet == nil {
-			continue
+		dst := route.Dst
+		if dst != "" {
+			_, ipNet, _ = net.ParseCIDR(dst)
+		} else {
+			if ipNet != nil {
+				dst = ipNet.String()
+			}
 		}
-		gw := net.ParseIP(route.Gateway)
-		if gw == nil {
+
+		if dst == "" || route.Gateway == "" {
 			continue
 		}
 
 		routes = append(routes, &router.Route{
 			Net:     ipNet,
-			Gateway: gw,
+			Dst:     dst,
+			Gateway: route.Gateway,
 		})
 	}
 	opts := []xrouter.Option{
