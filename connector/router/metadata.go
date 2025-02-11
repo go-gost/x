@@ -30,13 +30,5 @@ func (c *routerConnector) parseMetadata(md mdata.Metadata) (err error) {
 		c.md.routerID = relay.NewTunnelID(uuid[:])
 	}
 
-	if c.md.routerID.IsZero() {
-		uuid, err := uuid.NewUUID()
-		if err != nil {
-			return err
-		}
-		c.md.routerID = relay.NewTunnelID(uuid[:])
-	}
-
 	return
 }

@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/limiter"
@@ -48,7 +49,7 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 			rid = parseRouterID(rule.Endpoint)
 		}
 
-		if rid.IsZero() || !rid.Equal(routerID) {
+		if !rid.Equal(routerID) {
 			resp.Status = relay.StatusHostUnreachable
 			resp.WriteTo(conn)
 			err := fmt.Errorf("no route to host %s", host)
@@ -111,13 +112,19 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 			Name: clientID,
 			Node: h.id,
 		})
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		go h.sdRenew(ctx, clientID, connectorID.String())
 	}
 
 	log.Debugf("%s/%s: router=%s, connector=%s, weight=%d established", host, network, routerID, connectorID, connectorID.Weight())
 
-	for {
-		b := bufpool.Get(h.md.bufferSize)
+	b := bufpool.Get(h.md.bufferSize)
+	defer bufpool.Put(b)
 
+	for {
 		n, err := conn.Read(b)
 		if err != nil {
 			if err == io.EOF {
@@ -130,9 +137,25 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 	}
 }
 
-func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID relay.TunnelID, log logger.Logger) error {
-	defer bufpool.Put(data)
+func (h *routerHandler) sdRenew(ctx context.Context, clientID string, connectorID string) {
+	tc := time.NewTicker(h.md.sdRenewInterval)
+	defer tc.Stop()
 
+	for {
+		select {
+		case <-tc.C:
+			h.md.sd.Renew(ctx, &sd.Service{
+				ID:   connectorID,
+				Name: clientID,
+				Node: h.id,
+			})
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID relay.TunnelID, log logger.Logger) error {
 	var dstIP net.IP
 	if waterutil.IsIPv4(data) {
 		header, err := ipv4.ParseHeader(data)
@@ -167,16 +190,10 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 
 	rid := routerID.String()
 
-	var route *router.Route
-	if r := registry.RouterRegistry().Get(rid); r != nil {
-		route = r.GetRoute(ctx, dstIP.String(), router.IDOption(rid))
-	}
-	if route == nil && h.md.router != nil {
-		route = h.md.router.GetRoute(ctx, dstIP.String(), router.IDOption(rid))
-	}
+	route := h.getRoute(ctx, rid, dstIP.String())
 	if route == nil || route.Gateway == "" {
 		// no route to host, discard
-		return fmt.Errorf("route to host %s", dstIP)
+		return fmt.Errorf("no route to host %s", dstIP)
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
@@ -216,6 +233,28 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 	h.epConn.WriteTo(buf.Bytes(), raddr)
 
 	return nil
+}
+
+func (h *routerHandler) getRoute(ctx context.Context, rid string, dst string) *router.Route {
+	if h.md.routerCacheEnabled {
+		if item := h.routeCache.Get(dst); item != nil && !item.Expired() {
+			v, _ := item.Value().(*router.Route)
+			return v
+		}
+	}
+
+	var route *router.Route
+	if r := registry.RouterRegistry().Get(rid); r != nil {
+		route = r.GetRoute(ctx, dst, router.IDOption(rid))
+	}
+	if route == nil && h.md.router != nil {
+		route = h.md.router.GetRoute(ctx, dst, router.IDOption(rid))
+	}
+
+	if h.md.routerCacheEnabled {
+		h.routeCache.Set(dst, cache.NewItem(route, h.md.routerCacheExpiration))
+	}
+	return route
 }
 
 func (h *routerHandler) getAddrforRoute(ctx context.Context, routerID, gateway string) net.Addr {

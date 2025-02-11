@@ -25,7 +25,11 @@ type metadata struct {
 	ingress           ingress.Ingress
 	sd                sd.SD
 	sdCacheExpiration time.Duration
-	router            router.Router
+	sdRenewInterval   time.Duration
+
+	router                router.Router
+	routerCacheEnabled    bool
+	routerCacheExpiration time.Duration
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -45,12 +49,21 @@ func (h *routerHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))
 
 	h.md.sd = registry.SDRegistry().Get(mdutil.GetString(md, "sd"))
-	h.md.sdCacheExpiration = mdutil.GetDuration(md, "sd.cacheExpiration")
+	h.md.sdCacheExpiration = mdutil.GetDuration(md, "sd.cache.expiration")
 	if h.md.sdCacheExpiration <= 0 {
 		h.md.sdCacheExpiration = defaultCacheExpiration
 	}
+	h.md.sdRenewInterval = mdutil.GetDuration(md, "sd.renewInterval")
+	if h.md.sdRenewInterval < time.Second {
+		h.md.sdRenewInterval = defaultTTL
+	}
 
 	h.md.router = registry.RouterRegistry().Get(mdutil.GetString(md, "router"))
+	h.md.routerCacheEnabled = mdutil.GetBool(md, "router.cache")
+	h.md.routerCacheExpiration = mdutil.GetDuration(md, "router.cache.expiration")
+	if h.md.routerCacheExpiration <= 0 {
+		h.md.routerCacheExpiration = defaultCacheExpiration
+	}
 
 	h.md.observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period", "observer.observePeriod")
 	if h.md.observerPeriod == 0 {

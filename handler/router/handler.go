@@ -37,16 +37,17 @@ func init() {
 }
 
 type routerHandler struct {
-	id      string
-	options handler.Options
-	pool    *ConnectorPool
-	epConn  net.PacketConn
-	md      metadata
-	log     logger.Logger
-	stats   *stats_util.HandlerStats
-	limiter traffic.TrafficLimiter
-	cancel  context.CancelFunc
-	sdCache *cache.Cache
+	id         string
+	options    handler.Options
+	pool       *ConnectorPool
+	epConn     net.PacketConn
+	md         metadata
+	log        logger.Logger
+	stats      *stats_util.HandlerStats
+	limiter    traffic.TrafficLimiter
+	cancel     context.CancelFunc
+	sdCache    *cache.Cache
+	routeCache *cache.Cache
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -56,8 +57,9 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 
 	return &routerHandler{
-		options: options,
-		sdCache: cache.NewCache(time.Minute),
+		options:    options,
+		sdCache:    cache.NewCache(time.Minute),
+		routeCache: cache.NewCache(time.Minute),
 	}
 }
 
@@ -201,12 +203,6 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 				network = feature.Network.String()
 			}
 		}
-	}
-
-	if routerID.IsZero() {
-		resp.Status = relay.StatusBadRequest
-		resp.WriteTo(conn)
-		return ErrRouterID
 	}
 
 	if user != "" {

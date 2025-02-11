@@ -90,9 +90,11 @@ func (c *routerConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	af.ParseFrom(address)
 	req.Features = append(req.Features, af) // dst address
 
-	req.Features = append(req.Features, &relay.TunnelFeature{
-		ID: c.md.routerID,
-	})
+	if !c.md.routerID.IsZero() {
+		req.Features = append(req.Features, &relay.TunnelFeature{
+			ID: c.md.routerID,
+		})
+	}
 
 	if _, err := req.WriteTo(conn); err != nil {
 		return nil, err
