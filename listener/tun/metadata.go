@@ -14,13 +14,11 @@ import (
 )
 
 const (
-	defaultMTU            = 1350
-	defaultReadBufferSize = 4096
+	defaultMTU = 1420
 )
 
 type metadata struct {
-	config         *tun_util.Config
-	readBufferSize int
+	config *tun_util.Config
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -33,11 +31,6 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		routes  = "routes"
 		gateway = "gw"
 	)
-
-	l.md.readBufferSize = mdutil.GetInt(md, "tun.rbuf", "rbuf", "readBufferSize")
-	if l.md.readBufferSize <= 0 {
-		l.md.readBufferSize = defaultReadBufferSize
-	}
 
 	config := &tun_util.Config{
 		Name:   mdutil.GetString(md, name),
