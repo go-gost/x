@@ -110,7 +110,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 
 				n, err := tun.Read(b)
 				if err != nil {
-					return fmt.Errorf("%w: %s", ErrTun, err.Error())
+					return fmt.Errorf("%w: read: %s", ErrTun, err.Error())
 				}
 
 				if waterutil.IsIPv4(b[:n]) {
@@ -206,7 +206,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 				}
 
 				if _, err = tun.Write(b[:n]); err != nil {
-					return fmt.Errorf("%w: %s", ErrTun, err.Error())
+					return fmt.Errorf("%w: write: %s", ErrTun, err.Error())
 				}
 				return nil
 			}()

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	tunOffsetBytes = 4
+	tunOffsetBytes = 16
 )
 
 type tunDevice struct {
@@ -17,23 +17,9 @@ type tunDevice struct {
 }
 
 func (d *tunDevice) Read(p []byte) (n int, err error) {
-	rbuf := d.readBufferSize
-	if rbuf <= tunOffsetBytes {
-		rbuf = defaultReadBufferSize
-	}
-	b := bufpool.Get(rbuf)
-	defer bufpool.Put(b)
-
-	n, err = d.dev.Read(b, tunOffsetBytes)
-	if n <= tunOffsetBytes || err != nil {
-		d.dev.Flush()
-		if n <= tunOffsetBytes {
-			err = io.EOF
-		}
-		return
-	}
-
-	n = copy(p, b[tunOffsetBytes:tunOffsetBytes+n])
+	sizes := [1]int{}
+	_, err = d.dev.Read([][]byte{p}, sizes[:], 0)
+	n = sizes[0]
 	return
 }
 
@@ -42,7 +28,9 @@ func (d *tunDevice) Write(p []byte) (n int, err error) {
 	defer bufpool.Put(b)
 
 	copy(b[tunOffsetBytes:], p)
-	return d.dev.Write(b, tunOffsetBytes)
+	_, err = d.dev.Write([][]byte{b}, tunOffsetBytes)
+	n = len(p)
+	return
 }
 
 func (d *tunDevice) Close() error {
