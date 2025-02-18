@@ -1,6 +1,7 @@
 package router
 
 import (
+	"math"
 	"time"
 
 	"github.com/go-gost/core/ingress"
@@ -12,14 +13,13 @@ import (
 )
 
 const (
+	MaxMessageSize         = math.MaxUint16
 	defaultTTL             = 15 * time.Second
-	defaultBufferSize      = 4096
 	defaultCacheExpiration = time.Second
 )
 
 type metadata struct {
 	readTimeout time.Duration
-	bufferSize  int
 
 	entryPoint        string
 	ingress           ingress.Ingress
@@ -40,10 +40,6 @@ type metadata struct {
 
 func (h *routerHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
-	h.md.bufferSize = mdutil.GetInt(md, "router.bufferSize", "bufferSize")
-	if h.md.bufferSize <= 0 {
-		h.md.bufferSize = defaultBufferSize
-	}
 
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
 	h.md.ingress = registry.IngressRegistry().Get(mdutil.GetString(md, "ingress"))

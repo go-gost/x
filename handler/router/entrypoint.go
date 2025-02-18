@@ -3,18 +3,16 @@ package router
 import (
 	"bytes"
 
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 )
 
 func (h *routerHandler) handleEntrypoint(log logger.Logger) error {
-	buf := bufpool.Get(h.md.bufferSize)
-	defer bufpool.Put(buf)
+	var buf [MaxMessageSize]byte
 
 	for {
 		err := func() error {
-			n, addr, err := h.epConn.ReadFrom(buf)
+			n, addr, err := h.epConn.ReadFrom(buf[:])
 			if err != nil {
 				return err
 			}
