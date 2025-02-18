@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
-	"math"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -19,7 +18,6 @@ type metadata struct {
 	noTLS             bool
 	enableBind        bool
 	enableUDP         bool
-	udpBufferSize     int
 	compatibilityMode bool
 	hash              string
 	muxCfg            *mux.Config
@@ -50,12 +48,6 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.noTLS = mdutil.GetBool(md, "notls")
 	h.md.enableBind = mdutil.GetBool(md, "bind")
 	h.md.enableUDP = mdutil.GetBool(md, "udp")
-
-	if bs := mdutil.GetInt(md, "udpBufferSize"); bs > 0 {
-		h.md.udpBufferSize = int(math.Min(math.Max(float64(bs), 512), 64*1024))
-	} else {
-		h.md.udpBufferSize = 4096
-	}
 
 	h.md.compatibilityMode = mdutil.GetBool(md, "comp")
 	h.md.hash = mdutil.GetString(md, "hash")

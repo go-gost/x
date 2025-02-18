@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
@@ -14,6 +15,7 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
+	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 )
@@ -22,6 +24,30 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	log = log.WithFields(map[string]any{
 		"cmd": "udp-tun",
 	})
+
+	{
+		clientID := ctxvalue.ClientIDFromContext(ctx)
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			string(clientID),
+			limiter.ServiceOption(h.options.Service),
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(address),
+			limiter.ClientOption(string(clientID)),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(string(clientID))
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
+	}
 
 	bindAddr, _ := net.ResolveUDPAddr(network, address)
 	if bindAddr == nil {
@@ -101,7 +127,6 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	r := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).
 		WithLogger(log)
-	r.SetBufferSize(h.md.udpBufferSize)
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), pc.LocalAddr())

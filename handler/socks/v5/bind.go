@@ -6,9 +6,14 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 )
 
 func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
@@ -24,6 +29,30 @@ func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, 
 		log.Trace(reply)
 		log.Error("socks5: BIND is disabled")
 		return reply.Write(conn)
+	}
+
+	{
+		clientID := ctxvalue.ClientIDFromContext(ctx)
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			string(clientID),
+			limiter.ServiceOption(h.options.Service),
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(address),
+			limiter.ClientOption(string(clientID)),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(string(clientID))
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
 	// BIND does not support chain.

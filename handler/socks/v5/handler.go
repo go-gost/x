@@ -136,8 +136,8 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		if err != nil {
 			ro.Err = err.Error()
 		}
-		ro.InputBytes = pStats.Get(stats.KindInputBytes)
-		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		ro.InputBytes += pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes += pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
 		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
 			log.Errorf("record: %v", err)

@@ -29,6 +29,30 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	})
 	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
+	{
+		clientID := ctxvalue.ClientIDFromContext(ctx)
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			string(clientID),
+			limiter.ServiceOption(h.options.Service),
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(address),
+			limiter.ClientOption(string(clientID)),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(string(clientID))
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
+	}
+
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
 		resp := gosocks5.NewReply(gosocks5.NotAllowed, nil)
 		log.Trace(resp)
@@ -57,30 +81,6 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)
 		return err
-	}
-
-	{
-		clientID := ctxvalue.ClientIDFromContext(ctx)
-		rw := traffic_wrapper.WrapReadWriter(
-			h.limiter,
-			conn,
-			string(clientID),
-			limiter.ServiceOption(h.options.Service),
-			limiter.ScopeOption(limiter.ScopeClient),
-			limiter.NetworkOption(network),
-			limiter.AddrOption(address),
-			limiter.ClientOption(string(clientID)),
-			limiter.SrcOption(conn.RemoteAddr().String()),
-		)
-		if h.options.Observer != nil {
-			pstats := h.stats.Stats(string(clientID))
-			pstats.Add(stats.KindTotalConns, 1)
-			pstats.Add(stats.KindCurrentConns, 1)
-			defer pstats.Add(stats.KindCurrentConns, -1)
-			rw = stats_wrapper.WrapReadWriter(rw, pstats)
-		}
-
-		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
 	if h.md.sniffing {
