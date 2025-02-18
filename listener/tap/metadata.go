@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	DefaultMTU = 1350
+	DefaultMTU = 1420
 )
 
 type metadata struct {

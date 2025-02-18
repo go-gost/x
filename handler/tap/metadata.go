@@ -1,25 +1,25 @@
 package tap
 
 import (
+	"math"
+
 	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
+const (
+	MaxMessageSize = math.MaxUint16
+)
+
 type metadata struct {
-	key        string
-	bufferSize int
+	key string
 }
 
 func (h *tapHandler) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		key        = "key"
-		bufferSize = "bufferSize"
+		key = "key"
 	)
 
 	h.md.key = mdutil.GetString(md, key)
-	h.md.bufferSize = mdutil.GetInt(md, bufferSize)
-	if h.md.bufferSize <= 0 {
-		h.md.bufferSize = 4096
-	}
 	return
 }

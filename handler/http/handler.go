@@ -288,9 +288,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return errors.New("authentication failed")
 	}
 
-	if resp.Header == nil {
-		resp.Header = http.Header{}
-	}
 	if resp.Header.Get("Proxy-Agent") == "" {
 		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
 	}

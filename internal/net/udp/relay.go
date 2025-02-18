@@ -2,20 +2,23 @@ package udp
 
 import (
 	"context"
+	"math"
 	"net"
 
 	"github.com/go-gost/core/bypass"
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
+)
+
+const (
+	MaxMessageSize = math.MaxUint16
 )
 
 type Relay struct {
 	pc1 net.PacketConn
 	pc2 net.PacketConn
 
-	bypass     bypass.Bypass
-	bufferSize int
-	logger     logger.Logger
+	bypass bypass.Bypass
+	logger logger.Logger
 }
 
 func NewRelay(pc1, pc2 net.PacketConn) *Relay {
@@ -35,25 +38,14 @@ func (r *Relay) WithLogger(logger logger.Logger) *Relay {
 	return r
 }
 
-func (r *Relay) SetBufferSize(n int) {
-	r.bufferSize = n
-}
-
 func (r *Relay) Run(ctx context.Context) (err error) {
-	bufSize := r.bufferSize
-	if bufSize <= 0 {
-		bufSize = 4096
-	}
-
 	errc := make(chan error, 2)
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(bufSize)
-				defer bufpool.Put(b)
-
-				n, raddr, err := r.pc1.ReadFrom(b)
+				n, raddr, err := r.pc1.ReadFrom(b[:])
 				if err != nil {
 					return err
 				}
@@ -86,12 +78,10 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 	}()
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(bufSize)
-				defer bufpool.Put(b)
-
-				n, raddr, err := r.pc2.ReadFrom(b)
+				n, raddr, err := r.pc2.ReadFrom(b[:])
 				if err != nil {
 					return err
 				}

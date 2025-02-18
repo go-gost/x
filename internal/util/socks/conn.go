@@ -2,9 +2,9 @@ package socks
 
 import (
 	"bytes"
+	"math"
 	"net"
 
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
 )
 
@@ -85,21 +85,19 @@ func (c *udpTunConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.taddr)
 }
 
-var (
-	DefaultBufferSize = 4096
+const (
+	MaxMessageSize = math.MaxUint16
 )
 
 type udpConn struct {
 	net.PacketConn
-	raddr      net.Addr
-	taddr      net.Addr
-	bufferSize int
+	raddr net.Addr
+	taddr net.Addr
 }
 
-func UDPConn(c net.PacketConn, bufferSize int) net.PacketConn {
+func UDPConn(c net.PacketConn) net.PacketConn {
 	return &udpConn{
 		PacketConn: c,
-		bufferSize: bufferSize,
 	}
 }
 
@@ -107,10 +105,9 @@ func UDPConn(c net.PacketConn, bufferSize int) net.PacketConn {
 // NOTE: for server side,
 // the returned addr is the target address the client want to relay to.
 func (c *udpConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
-	rbuf := bufpool.Get(c.bufferSize)
-	defer bufpool.Put(rbuf)
+	var rbuf [MaxMessageSize]byte
 
-	n, c.raddr, err = c.PacketConn.ReadFrom(rbuf)
+	n, c.raddr, err = c.PacketConn.ReadFrom(rbuf[:])
 	if err != nil {
 		return
 	}
@@ -135,8 +132,6 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *udpConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
-	wbuf := bufpool.Get(c.bufferSize)
-	defer bufpool.Put(wbuf)
 
 	socksAddr := gosocks5.Addr{}
 	if err = socksAddr.ParseFrom(addr.String()); err != nil {
@@ -151,7 +146,8 @@ func (c *udpConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		Data:   b,
 	}
 
-	buf := bytes.NewBuffer(wbuf[:0])
+	var wbuf [MaxMessageSize]byte
+	buf := bytes.NewBuffer(wbuf[:][:0])
 	_, err = dgram.WriteTo(buf)
 	if err != nil {
 		return

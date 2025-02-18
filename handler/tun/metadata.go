@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"math"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -9,22 +10,16 @@ import (
 
 const (
 	defaultKeepAlivePeriod = 10 * time.Second
-	defaultBufferSize      = 4096
+	MaxMessageSize         = math.MaxUint16
 )
 
 type metadata struct {
-	bufferSize      int
 	keepAlivePeriod time.Duration
 	passphrase      string
 	p2p             bool
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
-	h.md.bufferSize = mdutil.GetInt(md, "tun.bufsize", "bufsize", "buffersize")
-	if h.md.bufferSize <= 0 {
-		h.md.bufferSize = defaultBufferSize
-	}
-
 	if mdutil.GetBool(md, "tun.keepalive", "keepalive") {
 		h.md.keepAlivePeriod = mdutil.GetDuration(md, "tun.ttl", "ttl")
 		if h.md.keepAlivePeriod <= 0 {

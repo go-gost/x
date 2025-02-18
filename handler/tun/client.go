@@ -103,12 +103,10 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 	errc := make(chan error, 2)
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, err := tun.Read(b)
+				n, err := tun.Read(b[:])
 				if err != nil {
 					return fmt.Errorf("%w: read: %s", ErrTun, err.Error())
 				}
@@ -155,12 +153,10 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 	}()
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, err := conn.Read(b)
+				n, err := conn.Read(b[:])
 				if err != nil {
 					return err
 				}
@@ -175,7 +171,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				if waterutil.IsIPv4(b) {
+				if waterutil.IsIPv4(b[:n]) {
 					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)

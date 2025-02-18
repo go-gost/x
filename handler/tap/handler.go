@@ -11,17 +11,16 @@ import (
 	"time"
 
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/ss"
 	tap_util "github.com/go-gost/x/internal/util/tap"
 	"github.com/go-gost/x/registry"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 	"github.com/shadowsocks/go-shadowsocks2/shadowaead"
-	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/songgao/water/waterutil"
 )
 
@@ -187,12 +186,10 @@ func (h *tapHandler) transport(tap net.Conn, conn net.PacketConn, raddr net.Addr
 	errc := make(chan error, 1)
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, err := tap.Read(b)
+				n, err := tap.Read(b[:])
 				if err != nil {
 					select {
 					case h.exit <- struct{}{}:
@@ -249,12 +246,10 @@ func (h *tapHandler) transport(tap net.Conn, conn net.PacketConn, raddr net.Addr
 	}()
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, addr, err := conn.ReadFrom(b)
+				n, addr, err := conn.ReadFrom(b[:])
 				if err != nil &&
 					err != shadowaead.ErrShortPacket {
 					return err

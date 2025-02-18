@@ -2,14 +2,14 @@ package ss
 
 import (
 	"bytes"
+	"math"
 	"net"
 
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
 )
 
-var (
-	DefaultBufferSize = 4096
+const (
+	MaxMessageSize = math.MaxUint16
 )
 
 var (
@@ -19,33 +19,29 @@ var (
 
 type UDPConn struct {
 	net.PacketConn
-	raddr      net.Addr
-	taddr      net.Addr
-	bufferSize int
+	raddr net.Addr
+	taddr net.Addr
 }
 
-func UDPClientConn(c net.PacketConn, remoteAddr, targetAddr net.Addr, bufferSize int) *UDPConn {
+func UDPClientConn(c net.PacketConn, remoteAddr, targetAddr net.Addr) *UDPConn {
 	return &UDPConn{
 		PacketConn: c,
 		raddr:      remoteAddr,
 		taddr:      targetAddr,
-		bufferSize: bufferSize,
 	}
 }
 
-func UDPServerConn(c net.PacketConn, remoteAddr net.Addr, bufferSize int) *UDPConn {
+func UDPServerConn(c net.PacketConn, remoteAddr net.Addr) *UDPConn {
 	return &UDPConn{
 		PacketConn: c,
 		raddr:      remoteAddr,
-		bufferSize: bufferSize,
 	}
 }
 
 func (c *UDPConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
-	rbuf := bufpool.Get(c.bufferSize)
-	defer bufpool.Put(rbuf)
+	var rbuf [MaxMessageSize]byte
 
-	n, _, err = c.PacketConn.ReadFrom(rbuf)
+	n, _, err = c.PacketConn.ReadFrom(rbuf[:])
 	if err != nil {
 		return
 	}
@@ -68,15 +64,14 @@ func (c *UDPConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *UDPConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
-	wbuf := bufpool.Get(c.bufferSize)
-	defer bufpool.Put(wbuf)
+	var wbuf [MaxMessageSize]byte
 
 	socksAddr := gosocks5.Addr{}
 	if err = socksAddr.ParseFrom(addr.String()); err != nil {
 		return
 	}
 
-	addrLen, err := socksAddr.Encode(wbuf)
+	addrLen, err := socksAddr.Encode(wbuf[:])
 	if err != nil {
 		return
 	}

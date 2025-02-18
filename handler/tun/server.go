@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/router"
 	xip "github.com/go-gost/x/internal/net/ip"
@@ -42,12 +41,10 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 	errc := make(chan error, 1)
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, err := tun.Read(b)
+				n, err := tun.Read(b[:])
 				if err != nil {
 					return ErrTun
 				}
@@ -110,12 +107,10 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 	}()
 
 	go func() {
+		var b [MaxMessageSize]byte
 		for {
 			err := func() error {
-				b := bufpool.Get(h.md.bufferSize)
-				defer bufpool.Put(b)
-
-				n, addr, err := conn.ReadFrom(b)
+				n, addr, err := conn.ReadFrom(b[:])
 				if err != nil {
 					return err
 				}
