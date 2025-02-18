@@ -38,6 +38,29 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
+	{
+		clientID := ctxvalue.ClientIDFromContext(ctx)
+		rw := wrapper.WrapReadWriter(
+			h.limiter,
+			conn,
+			string(clientID),
+			limiter.ServiceOption(h.options.Service),
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.NetworkOption(network),
+			limiter.AddrOption(target.Addr),
+			limiter.ClientOption(string(clientID)),
+			limiter.SrcOption(conn.RemoteAddr().String()),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(string(clientID))
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+		conn = xnet.NewReadWriteConn(rw, rw, conn)
+	}
+
 	cc, err := h.options.Router.Dial(ctx, network, target.Addr)
 	if err != nil {
 		// TODO: the router itself may be failed due to the failed node in the router,
@@ -89,29 +112,9 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		conn = rc
 	}
 
-	clientID := ctxvalue.ClientIDFromContext(ctx)
-	rw := wrapper.WrapReadWriter(
-		h.limiter,
-		conn,
-		string(clientID),
-		limiter.ServiceOption(h.options.Service),
-		limiter.ScopeOption(limiter.ScopeClient),
-		limiter.NetworkOption(network),
-		limiter.AddrOption(target.Addr),
-		limiter.ClientOption(string(clientID)),
-		limiter.SrcOption(conn.RemoteAddr().String()),
-	)
-	if h.options.Observer != nil {
-		pstats := h.stats.Stats(string(clientID))
-		pstats.Add(stats.KindTotalConns, 1)
-		pstats.Add(stats.KindCurrentConns, 1)
-		defer pstats.Add(stats.KindCurrentConns, -1)
-		rw = stats_wrapper.WrapReadWriter(rw, pstats)
-	}
-
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	xnet.Transport(rw, cc)
+	xnet.Transport(conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), target.Addr)
