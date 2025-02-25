@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 )
@@ -42,6 +44,21 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 
 	if err = l.addRoutes(ifce); err != nil {
 		return
+	}
+
+	var dnsServers []string
+	for _, dns := range l.md.config.DNS {
+		dnsServers = append(dnsServers, dns.String())
+	}
+	if len(dnsServers) > 0 {
+		cmd := fmt.Sprintf("resolvectl dns %s %s", name, strings.Join(dnsServers, " "))
+		l.logger.Debug(cmd)
+
+		args := strings.Split(cmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+			err = fmt.Errorf("%s: %v", cmd, er)
+			return
+		}
 	}
 
 	return

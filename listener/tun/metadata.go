@@ -22,30 +22,20 @@ type metadata struct {
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
-	const (
-		name    = "name"
-		netKey  = "net"
-		peer    = "peer"
-		mtu     = "mtu"
-		route   = "route"
-		routes  = "routes"
-		gateway = "gw"
-	)
-
 	config := &tun_util.Config{
-		Name:   mdutil.GetString(md, name),
-		Peer:   mdutil.GetString(md, peer),
-		MTU:    mdutil.GetInt(md, mtu),
-		Router: registry.RouterRegistry().Get(mdutil.GetString(md, "router")),
+		Name:   mdutil.GetString(md, "name", "tun.name"),
+		Peer:   mdutil.GetString(md, "peer", "tun.peer"),
+		MTU:    mdutil.GetInt(md, "mtu", "tun.mtu"),
+		Router: registry.RouterRegistry().Get(mdutil.GetString(md, "router", "tun.router")),
 	}
 	if config.MTU <= 0 {
 		config.MTU = defaultMTU
 	}
-	if gw := mdutil.GetString(md, gateway); gw != "" {
+	if gw := mdutil.GetString(md, "gw", "tun.gw"); gw != "" {
 		config.Gateway = net.ParseIP(gw)
 	}
 
-	for _, s := range strings.Split(mdutil.GetString(md, netKey), ",") {
+	for _, s := range strings.Split(mdutil.GetString(md, "net", "tun.net"), ",") {
 		if s = strings.TrimSpace(s); s == "" {
 			continue
 		}
@@ -59,7 +49,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		})
 	}
 
-	for _, s := range strings.Split(mdutil.GetString(md, route), ",") {
+	for _, s := range strings.Split(mdutil.GetString(md, "route", "tun.route"), ",") {
 		gw := ""
 		if config.Gateway != nil {
 			gw = config.Gateway.String()
@@ -69,7 +59,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 	}
 
-	for _, s := range mdutil.GetStrings(md, routes) {
+	for _, s := range mdutil.GetStrings(md, "routes", "tun.routes") {
 		ss := strings.SplitN(s, " ", 2)
 		if len(ss) == 2 {
 			_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(ss[0]))
@@ -91,6 +81,12 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 				Dst:     ipNet.String(),
 				Gateway: gateway,
 			})
+		}
+	}
+
+	for _, v := range strings.Split(mdutil.GetString(md, "dns", "tun.dns"), ",") {
+		if ip := net.ParseIP(strings.TrimSpace(v)); ip != nil {
+			config.DNS = append(config.DNS, ip)
 		}
 	}
 

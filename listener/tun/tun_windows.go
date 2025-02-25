@@ -40,6 +40,17 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		return
 	}
 
+	for _, dns := range l.md.config.DNS {
+		cmd := fmt.Sprintf("netsh interface ip add dnsservers name=%s address=%s validate=no", name, dns.String())
+		l.logger.Debug(cmd)
+
+		args := strings.Split(cmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+			err = fmt.Errorf("%s: %v", cmd, er)
+			return
+		}
+	}
+
 	return
 }
 
