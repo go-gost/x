@@ -8,15 +8,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/recorder"
+	xmetrics "github.com/go-gost/x/metrics"
 )
 
 type httpRecorderOptions struct {
-	timeout time.Duration
-	header  http.Header
+	recorder string
+	timeout  time.Duration
+	header   http.Header
 }
 
 type HTTPRecorderOption func(opts *httpRecorderOptions)
+
+func RecorderHTTPRecorderOption(recorder string) HTTPRecorderOption {
+	return func(opts *httpRecorderOptions) {
+		opts.recorder = recorder
+	}
+}
 
 func TimeoutHTTPRecorderOption(timeout time.Duration) HTTPRecorderOption {
 	return func(opts *httpRecorderOptions) {
@@ -31,6 +40,7 @@ func HeaderHTTPRecorderOption(header http.Header) HTTPRecorderOption {
 }
 
 type httpRecorder struct {
+	recorder   string
 	url        string
 	httpClient *http.Client
 	header     http.Header
@@ -60,6 +70,8 @@ func HTTPRecorder(url string, opts ...HTTPRecorderOption) recorder.Recorder {
 }
 
 func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
 	req, err := http.NewRequest(http.MethodPost, r.url, bytes.NewReader(b))
 	if err != nil {
 		return err
