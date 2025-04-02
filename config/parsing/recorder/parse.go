@@ -73,11 +73,17 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 			}
 		}
 
-		return xrecorder.FileRecorder(out, xrecorder.SepRecorderOption(cfg.File.Sep))
+		return xrecorder.FileRecorder(out,
+			xrecorder.RecorderFileRecorderOption(cfg.Name),
+			xrecorder.SepFileRecorderOption(cfg.File.Sep),
+		)
 	}
 
 	if cfg.TCP != nil && cfg.TCP.Addr != "" {
-		return xrecorder.TCPRecorder(cfg.TCP.Addr, xrecorder.TimeoutTCPRecorderOption(cfg.TCP.Timeout))
+		return xrecorder.TCPRecorder(cfg.TCP.Addr,
+			xrecorder.RecorderTCPRecorderOption(cfg.Name),
+			xrecorder.TimeoutTCPRecorderOption(cfg.TCP.Timeout),
+		)
 	}
 
 	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
@@ -86,6 +92,7 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 			h.Add(k, v)
 		}
 		return xrecorder.HTTPRecorder(cfg.HTTP.URL,
+			xrecorder.RecorderHTTPRecorderOption(cfg.Name),
 			xrecorder.TimeoutHTTPRecorderOption(cfg.HTTP.Timeout),
 			xrecorder.HeaderHTTPRecorderOption(h),
 		)
@@ -97,6 +104,7 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 		switch cfg.Redis.Type {
 		case "list": // redis list
 			return xrecorder.RedisListRecorder(cfg.Redis.Addr,
+				xrecorder.RecorderRedisRecorderOption(cfg.Name),
 				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
 				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
 				xrecorder.UsernameRedisRecorderOption(cfg.Redis.Username),
@@ -104,6 +112,7 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 			)
 		case "sset": // sorted set
 			return xrecorder.RedisSortedSetRecorder(cfg.Redis.Addr,
+				xrecorder.RecorderRedisRecorderOption(cfg.Name),
 				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
 				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
 				xrecorder.UsernameRedisRecorderOption(cfg.Redis.Username),
@@ -111,6 +120,7 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 			)
 		default: // redis set
 			return xrecorder.RedisSetRecorder(cfg.Redis.Addr,
+				xrecorder.RecorderRedisRecorderOption(cfg.Name),
 				xrecorder.DBRedisRecorderOption(cfg.Redis.DB),
 				xrecorder.KeyRedisRecorderOption(cfg.Redis.Key),
 				xrecorder.UsernameRedisRecorderOption(cfg.Redis.Username),
