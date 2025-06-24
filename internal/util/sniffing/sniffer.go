@@ -337,11 +337,22 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *
 		return
 	}
 
-	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
-	resp, err := http.ReadResponse(bufio.NewReader(cc), req)
-	if err != nil {
-		err = fmt.Errorf("read response: %w", err)
-		return
+	br := bufio.NewReader(cc)
+	var resp *http.Response
+	for {
+		xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
+		resp, err = http.ReadResponse(br, req)
+		if err != nil {
+			err = fmt.Errorf("read response: %v", err)
+			return
+		}
+		if resp.StatusCode >= http.StatusContinue && resp.StatusCode < http.StatusOK {
+			resp.Write(rw)
+			resp.Body.Close()
+			continue
+		}
+
+		break
 	}
 	defer resp.Body.Close()
 	xio.SetReadDeadline(cc, time.Time{})
