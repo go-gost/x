@@ -143,8 +143,9 @@ type AutherConfig struct {
 }
 
 type AuthConfig struct {
-	Username string `json:"username"`
+	Username string `yaml:",omitempty" json:"username,omitempty"`
 	Password string `yaml:",omitempty" json:"password,omitempty"`
+	File string `yaml:",omitempty" json:"file,omitempty"`
 }
 
 type SelectorConfig struct {

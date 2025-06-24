@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"bufio"
 	"crypto/tls"
+	"io"
 	"net/url"
+	"os"
+	"strings"
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
@@ -98,7 +102,20 @@ func ParseAutherFromAuth(au *config.AuthConfig) auth.Authenticator {
 }
 
 func Info(cfg *config.AuthConfig) *url.Userinfo {
-	if cfg == nil || cfg.Username == "" {
+	if cfg == nil {
+		return nil
+	}
+
+	if cfg.File != "" {
+		if f, _ := os.Open(cfg.File); f != nil {
+			defer f.Close()
+			if infos, _ := parseInfo(f, 1); len(infos) > 0 {
+				return infos[0]
+			}
+		}
+	}
+
+	if cfg.Username == "" {
 		return nil
 	}
 
@@ -106,6 +123,39 @@ func Info(cfg *config.AuthConfig) *url.Userinfo {
 		return url.User(cfg.Username)
 	}
 	return url.UserPassword(cfg.Username, cfg.Password)
+}
+
+func parseInfo(r io.Reader, max int) (infos []*url.Userinfo, err error) {
+	if r == nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		// line := strings.Replace(scanner.Text(), "\t", " ", -1)
+		line := strings.TrimSpace(scanner.Text())
+		if n := strings.IndexByte(line, '#'); n == 0 {
+			continue
+		}
+		sp := strings.SplitN(line, " ", 2)
+		if len(sp) == 1 {
+			if k := strings.TrimSpace(sp[0]); k != "" {
+				infos = append(infos, url.User(k))
+			}
+		}
+		if len(sp) == 2 {
+			if k := strings.TrimSpace(sp[0]); k != "" {
+				infos = append(infos, url.UserPassword(k, strings.TrimSpace(sp[1])))
+			}
+		}
+
+		if max > 0 && len(infos) >= max {
+			break
+		}
+	}
+
+	err = scanner.Err()
+	return
 }
 
 func List(name string, names ...string) []auth.Authenticator {
