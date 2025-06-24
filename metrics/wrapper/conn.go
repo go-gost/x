@@ -86,7 +86,7 @@ type packetConn struct {
 }
 
 func WrapPacketConn(service string, pc net.PacketConn) net.PacketConn {
-	if !xmetrics.IsEnabled() {
+	if !xmetrics.IsEnabled() || pc == nil {
 		return pc
 	}
 	return &packetConn{
