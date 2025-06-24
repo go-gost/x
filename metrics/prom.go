@@ -63,6 +63,12 @@ func NewMetrics() metrics.Metrics {
 					Help: "Total chain errors",
 				},
 				[]string{"host", "chain", "node"}),
+			MetricRecorderRecordsCounter: prometheus.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: string(MetricRecorderRecordsCounter),
+					Help: "Total records written by recorder",
+				},
+				[]string{"host", "recorder"}),
 		},
 		histograms: map[metrics.MetricName]*prometheus.HistogramVec{
 			MetricServiceRequestsDurationObserver: prometheus.NewHistogramVec(

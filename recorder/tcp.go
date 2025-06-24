@@ -6,15 +6,24 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/recorder"
+	xmetrics "github.com/go-gost/x/metrics"
 )
 
 type tcpRecorderOptions struct {
-	timeout time.Duration
-	log     logger.Logger
+	recorder string
+	timeout  time.Duration
+	log      logger.Logger
 }
 
 type TCPRecorderOption func(opts *tcpRecorderOptions)
+
+func RecorderTCPRecorderOption(recorder string) TCPRecorderOption {
+	return func(opts *tcpRecorderOptions) {
+		opts.recorder = recorder
+	}
+}
 
 func TimeoutTCPRecorderOption(timeout time.Duration) TCPRecorderOption {
 	return func(opts *tcpRecorderOptions) {
@@ -29,9 +38,10 @@ func LogTCPRecorderOption(log logger.Logger) TCPRecorderOption {
 }
 
 type tcpRecorder struct {
-	addr   string
-	dialer *net.Dialer
-	log    logger.Logger
+	recorder string
+	addr     string
+	dialer   *net.Dialer
+	log      logger.Logger
 }
 
 // TCPRecorder records data to TCP service.
@@ -42,7 +52,8 @@ func TCPRecorder(addr string, opts ...TCPRecorderOption) recorder.Recorder {
 	}
 
 	return &tcpRecorder{
-		addr: addr,
+		recorder: options.recorder,
+		addr:     addr,
 		dialer: &net.Dialer{
 			Timeout: options.timeout,
 		},
@@ -51,6 +62,8 @@ func TCPRecorder(addr string, opts ...TCPRecorderOption) recorder.Recorder {
 }
 
 func (r *tcpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
 	c, err := r.dialer.DialContext(ctx, "tcp", r.addr)
 	if err != nil {
 		return err

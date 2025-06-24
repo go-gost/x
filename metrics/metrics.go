@@ -9,27 +9,29 @@ import (
 const (
 	// Number of services. Labels: host.
 	MetricServicesGauge metrics.MetricName = "gost_services"
-	// Total service requests. Labels: host, service.
+	// Total service requests. Labels: host, service, client.
 	MetricServiceRequestsCounter metrics.MetricName = "gost_service_requests_total"
-	// Number of in-flight requests. Labels: host, service.
+	// Number of in-flight requests. Labels: host, service, client.
 	MetricServiceRequestsInFlightGauge metrics.MetricName = "gost_service_requests_in_flight"
-	// Request duration historgram. Labels: host, service.
+	// Request duration histogram. Labels: host, service.
 	MetricServiceRequestsDurationObserver metrics.MetricName = "gost_service_request_duration_seconds"
-	// Total service input data transfer size in bytes. Labels: host, service.
+	// Total service input data transfer size in bytes. Labels: host, service, client.
 	MetricServiceTransferInputBytesCounter metrics.MetricName = "gost_service_transfer_input_bytes_total"
-	// Total service output data transfer size in bytes. Labels: host, service.
+	// Total service output data transfer size in bytes. Labels: host, service, client.
 	MetricServiceTransferOutputBytesCounter metrics.MetricName = "gost_service_transfer_output_bytes_total"
 	// Chain node connect duration histogram. Labels: host, chain, node.
 	MetricNodeConnectDurationObserver metrics.MetricName = "gost_chain_node_connect_duration_seconds"
-	// Total service handler errors. Labels: host, service.
+	// Total service handler errors. Labels: host, service, client.
 	MetricServiceHandlerErrorsCounter metrics.MetricName = "gost_service_handler_errors_total"
 	// Total chain connect errors. Labels: host, chain, node.
 	MetricChainErrorsCounter metrics.MetricName = "gost_chain_errors_total"
+	// Total recorder records. Labels: host, recorder.
+	MetricRecorderRecordsCounter metrics.MetricName = "gost_recorder_records_total"
 )
 
 var (
 	defaultMetrics metrics.Metrics = NewMetrics()
-	enabled atomic.Bool
+	enabled        atomic.Bool
 )
 
 func Enable(b bool) {

@@ -3,17 +3,26 @@ package recorder
 import (
 	"context"
 
+	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/recorder"
+	xmetrics "github.com/go-gost/x/metrics"
 	"github.com/go-redis/redis/v8"
 )
 
 type redisRecorderOptions struct {
+	recorder string
 	db       int
 	username string
 	password string
 	key      string
 }
 type RedisRecorderOption func(opts *redisRecorderOptions)
+
+func RecorderRedisRecorderOption(recorder string) RedisRecorderOption {
+	return func(opts *redisRecorderOptions) {
+		opts.recorder = recorder
+	}
+}
 
 func DBRedisRecorderOption(db int) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
@@ -39,8 +48,9 @@ func KeyRedisRecorderOption(key string) RedisRecorderOption {
 }
 
 type redisSetRecorder struct {
-	client *redis.Client
-	key    string
+	recorder string
+	client   *redis.Client
+	key      string
 }
 
 // RedisSetRecorder records data to a redis set.
@@ -51,6 +61,7 @@ func RedisSetRecorder(addr string, opts ...RedisRecorderOption) recorder.Recorde
 	}
 
 	return &redisSetRecorder{
+		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: options.password,
@@ -61,6 +72,8 @@ func RedisSetRecorder(addr string, opts ...RedisRecorderOption) recorder.Recorde
 }
 
 func (r *redisSetRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
 	if r.key == "" {
 		return nil
 	}
@@ -73,8 +86,9 @@ func (r *redisSetRecorder) Close() error {
 }
 
 type redisListRecorder struct {
-	client *redis.Client
-	key    string
+	recorder string
+	client   *redis.Client
+	key      string
 }
 
 // RedisListRecorder records data to a redis list.
@@ -85,6 +99,7 @@ func RedisListRecorder(addr string, opts ...RedisRecorderOption) recorder.Record
 	}
 
 	return &redisListRecorder{
+		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: options.password,
@@ -95,6 +110,8 @@ func RedisListRecorder(addr string, opts ...RedisRecorderOption) recorder.Record
 }
 
 func (r *redisListRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
 	if r.key == "" {
 		return nil
 	}
@@ -107,8 +124,9 @@ func (r *redisListRecorder) Close() error {
 }
 
 type redisSortedSetRecorder struct {
-	client *redis.Client
-	key    string
+	recorder string
+	client   *redis.Client
+	key      string
 }
 
 // RedisSortedSetRecorder records data to a redis sorted set.
@@ -119,6 +137,7 @@ func RedisSortedSetRecorder(addr string, opts ...RedisRecorderOption) recorder.R
 	}
 
 	return &redisSortedSetRecorder{
+		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: options.password,
@@ -129,6 +148,8 @@ func RedisSortedSetRecorder(addr string, opts ...RedisRecorderOption) recorder.R
 }
 
 func (r *redisSortedSetRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
 	if r.key == "" {
 		return nil
 	}
