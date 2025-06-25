@@ -182,7 +182,7 @@ func (l *wtListener) mux(s *wt.Session, log logger.Logger) (err error) {
 	}()
 
 	for {
-		var stream wt.Stream
+		var stream *wt.Stream
 		stream, err = s.AcceptStream(s.Context())
 		if err != nil {
 			log.Errorf("accept stream: %v", err)
