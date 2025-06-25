@@ -5,31 +5,12 @@ import (
 	"net"
 
 	"github.com/shadowsocks/go-shadowsocks2/core"
-	ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
-
-type shadowCipher struct {
-	cipher *ss.Cipher
-}
-
-func (c *shadowCipher) StreamConn(conn net.Conn) net.Conn {
-	return ss.NewConn(conn, c.cipher.Copy())
-}
-
-func (c *shadowCipher) PacketConn(conn net.PacketConn) net.PacketConn {
-	return ss.NewSecurePacketConn(conn, c.cipher.Copy())
-}
 
 func ShadowCipher(method, password string, key string) (core.Cipher, error) {
 	if method == "" || password == "" {
 		return nil, nil
 	}
-
-	c, _ := ss.NewCipher(method, password)
-	if c != nil {
-		return &shadowCipher{cipher: c}, nil
-	}
-
 	return core.PickCipher(method, []byte(key), password)
 }
 
