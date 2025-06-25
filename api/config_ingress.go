@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getIngressListRequest
+type getIngressListRequest struct {
+}
+
+// successful operation.
+// swagger:response getIngressListResponse
+type getIngressListResponse struct {
+	// in: body
+	Data ingressList
+}
+
+type ingressList struct {
+	Count int                       `json:"count"`
+	List  []*config.IngressConfig `json:"list"`
+}
+
+func getIngressList(ctx *gin.Context) {
+	// swagger:route GET /config/ingresses Ingress getIngressListRequest
+	//
+	// Get ingress list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getIngressListResponse
+
+	var req getIngressListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Ingresses
+
+	var resp getIngressListResponse
+	resp.Data = ingressList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getIngressRequest
+type getIngressRequest struct {
+	// in: path
+	// required: true
+	Ingress string `uri:"ingress" json:"ingress"`
+}
+
+// successful operation.
+// swagger:response getIngressResponse
+type getIngressResponse struct {
+	// in: body
+	Data *config.IngressConfig
+}
+
+func getIngress(ctx *gin.Context) {
+	// swagger:route GET /config/ingresses/{ingress} Ingress getIngressRequest
+	//
+	// Get ingress.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getIngressResponse
+
+	var req getIngressRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getIngressResponse
+
+	for _, ingress := range config.Global().Ingresses {
+		if ingress == nil {
+			continue
+		}
+		if ingress.Name == req.Ingress {
+			resp.Data = ingress
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createIngressRequest
 type createIngressRequest struct {
 	// in: body

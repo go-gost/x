@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getSDListRequest
+type getSDListRequest struct {
+}
+
+// successful operation.
+// swagger:response getSDListResponse
+type getSDListResponse struct {
+	// in: body
+	Data sdList
+}
+
+type sdList struct {
+	Count int                       `json:"count"`
+	List  []*config.SDConfig `json:"list"`
+}
+
+func getSDList(ctx *gin.Context) {
+	// swagger:route GET /config/sds SD getSDListRequest
+	//
+	// Get sd list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getSDListResponse
+
+	var req getSDListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().SDs
+
+	var resp getSDListResponse
+	resp.Data = sdList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getSDRequest
+type getSDRequest struct {
+	// in: path
+	// required: true
+	SD string `uri:"sd" json:"sd"`
+}
+
+// successful operation.
+// swagger:response getSDResponse
+type getSDResponse struct {
+	// in: body
+	Data *config.SDConfig
+}
+
+func getSD(ctx *gin.Context) {
+	// swagger:route GET /config/sds/{sd} SD getSDRequest
+	//
+	// Get sd.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getSDResponse
+
+	var req getSDRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getSDResponse
+
+	for _, sd := range config.Global().SDs {
+		if sd == nil {
+			continue
+		}
+		if sd.Name == req.SD {
+			resp.Data = sd
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createSDRequest
 type createSDRequest struct {
 	// in: body

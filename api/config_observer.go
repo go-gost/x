@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getObserverListRequest
+type getObserverListRequest struct {
+}
+
+// successful operation.
+// swagger:response getObserverListResponse
+type getObserverListResponse struct {
+	// in: body
+	Data observerList
+}
+
+type observerList struct {
+	Count int                       `json:"count"`
+	List  []*config.ObserverConfig `json:"list"`
+}
+
+func getObserverList(ctx *gin.Context) {
+	// swagger:route GET /config/observers Observer getObserverListRequest
+	//
+	// Get observer list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getObserverListResponse
+
+	var req getObserverListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Observers
+
+	var resp getObserverListResponse
+	resp.Data = observerList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getObserverRequest
+type getObserverRequest struct {
+	// in: path
+	// required: true
+	Observer string `uri:"observer" json:"observer"`
+}
+
+// successful operation.
+// swagger:response getObserverResponse
+type getObserverResponse struct {
+	// in: body
+	Data *config.ObserverConfig
+}
+
+func getObserver(ctx *gin.Context) {
+	// swagger:route GET /config/observers/{observer} Observer getObserverRequest
+	//
+	// Get observer.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getObserverResponse
+
+	var req getObserverRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getObserverResponse
+
+	for _, observer := range config.Global().Observers {
+		if observer == nil {
+			continue
+		}
+		if observer.Name == req.Observer {
+			resp.Data = observer
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createObserverRequest
 type createObserverRequest struct {
 	// in: body

@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getBypassListRequest
+type getBypassListRequest struct {
+}
+
+// successful operation.
+// swagger:response getBypassListResponse
+type getBypassListResponse struct {
+	// in: body
+	Data bypassList
+}
+
+type bypassList struct {
+	Count int                       `json:"count"`
+	List  []*config.BypassConfig `json:"list"`
+}
+
+func getBypassList(ctx *gin.Context) {
+	// swagger:route GET /config/bypasses Bypass getBypassListRequest
+	//
+	// Get bypass list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getBypassListResponse
+
+	var req getBypassListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Bypasses
+
+	var resp getBypassListResponse
+	resp.Data = bypassList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getBypassRequest
+type getBypassRequest struct {
+	// in: path
+	// required: true
+	Bypass string `uri:"bypass" json:"bypass"`
+}
+
+// successful operation.
+// swagger:response getBypassResponse
+type getBypassResponse struct {
+	// in: body
+	Data *config.BypassConfig
+}
+
+func getBypass(ctx *gin.Context) {
+	// swagger:route GET /config/bypasses/{bypass} Bypass getBypassRequest
+	//
+	// Get bypass.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getBypassResponse
+
+	var req getBypassRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getBypassResponse
+
+	for _, bypass := range config.Global().Bypasses {
+		if bypass == nil {
+			continue
+		}
+		if bypass.Name == req.Bypass {
+			resp.Data = bypass
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createBypassRequest
 type createBypassRequest struct {
 	// in: body

@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getHostsListRequest
+type getHostsListRequest struct {
+}
+
+// successful operation.
+// swagger:response getHostsListResponse
+type getHostsListResponse struct {
+	// in: body
+	Data hostsList
+}
+
+type hostsList struct {
+	Count int                   `json:"count"`
+	List  []*config.HostsConfig `json:"list"`
+}
+
+func getHostsList(ctx *gin.Context) {
+	// swagger:route GET /config/hosts Hosts getHostsListRequest
+	//
+	// Get hosts list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getHostsListResponse
+
+	var req getHostsListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Hosts
+
+	var resp getHostsListResponse
+	resp.Data = hostsList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getHostsRequest
+type getHostsRequest struct {
+	// in: path
+	// required: true
+	Hosts string `uri:"hosts" json:"hosts"`
+}
+
+// successful operation.
+// swagger:response getHostsResponse
+type getHostsResponse struct {
+	// in: body
+	Data *config.HostsConfig
+}
+
+func getHosts(ctx *gin.Context) {
+	// swagger:route GET /config/hosts/{hosts} Hosts getHostsRequest
+	//
+	// Get hosts.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getHostsResponse
+
+	var req getHostsRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getHostsResponse
+
+	for _, hosts := range config.Global().Hosts {
+		if hosts == nil {
+			continue
+		}
+		if hosts.Name == req.Hosts {
+			resp.Data = hosts
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createHostsRequest
 type createHostsRequest struct {
 	// in: body

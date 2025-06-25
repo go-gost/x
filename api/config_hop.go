@@ -12,6 +12,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getHopListRequest
+type getHopListRequest struct {
+}
+
+// successful operation.
+// swagger:response getHopListResponse
+type getHopListResponse struct {
+	// in: body
+	Data hopList
+}
+
+type hopList struct {
+	Count int                       `json:"count"`
+	List  []*config.HopConfig `json:"list"`
+}
+
+func getHopList(ctx *gin.Context) {
+	// swagger:route GET /config/hops Hop getHopListRequest
+	//
+	// Get hop list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getHopListResponse
+
+	var req getHopListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Hops
+
+	var resp getHopListResponse
+	resp.Data = hopList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getHopRequest
+type getHopRequest struct {
+	// in: path
+	// required: true
+	Hop string `uri:"hop" json:"hop"`
+}
+
+// successful operation.
+// swagger:response getHopResponse
+type getHopResponse struct {
+	// in: body
+	Data *config.HopConfig
+}
+
+func getHop(ctx *gin.Context) {
+	// swagger:route GET /config/hops/{hop} Hop getHopRequest
+	//
+	// Get hop.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getHopResponse
+
+	var req getHopRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getHopResponse
+
+	for _, hop := range config.Global().Hops {
+		if hop == nil {
+			continue
+		}
+		if hop.Name == req.Hop {
+			resp.Data = hop
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createHopRequest
 type createHopRequest struct {
 	// in: body

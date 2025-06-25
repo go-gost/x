@@ -12,6 +12,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getChainListRequest
+type getChainListRequest struct {
+}
+
+// successful operation.
+// swagger:response getChainListResponse
+type getChainListResponse struct {
+	// in: body
+	Data chainList
+}
+
+type chainList struct {
+	Count int                       `json:"count"`
+	List  []*config.ChainConfig `json:"list"`
+}
+
+func getChainList(ctx *gin.Context) {
+	// swagger:route GET /config/chains Chain getChainListRequest
+	//
+	// Get chain list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getChainListResponse
+
+	var req getChainListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Chains
+
+	var resp getChainListResponse
+	resp.Data = chainList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getChainRequest
+type getChainRequest struct {
+	// in: path
+	// required: true
+	Chain string `uri:"chain" json:"chain"`
+}
+
+// successful operation.
+// swagger:response getChainResponse
+type getChainResponse struct {
+	// in: body
+	Data *config.ChainConfig
+}
+
+func getChain(ctx *gin.Context) {
+	// swagger:route GET /config/chains/{chain} Chain getChainRequest
+	//
+	// Get chain.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getChainResponse
+
+	var req getChainRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getChainResponse
+
+	for _, chain := range config.Global().Chains {
+		if chain == nil {
+			continue
+		}
+		if chain.Name == req.Chain {
+			resp.Data = chain
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createChainRequest
 type createChainRequest struct {
 	// in: body

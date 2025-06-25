@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getRecorderListRequest
+type getRecorderListRequest struct {
+}
+
+// successful operation.
+// swagger:response getRecorderListResponse
+type getRecorderListResponse struct {
+	// in: body
+	Data recorderList
+}
+
+type recorderList struct {
+	Count int                       `json:"count"`
+	List  []*config.RecorderConfig `json:"list"`
+}
+
+func getRecorderList(ctx *gin.Context) {
+	// swagger:route GET /config/recorders Recorder getRecorderListRequest
+	//
+	// Get recorder list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRecorderListResponse
+
+	var req getRecorderListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Recorders
+
+	var resp getRecorderListResponse
+	resp.Data = recorderList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getRecorderRequest
+type getRecorderRequest struct {
+	// in: path
+	// required: true
+	Recorder string `uri:"recorder" json:"recorder"`
+}
+
+// successful operation.
+// swagger:response getRecorderResponse
+type getRecorderResponse struct {
+	// in: body
+	Data *config.RecorderConfig
+}
+
+func getRecorder(ctx *gin.Context) {
+	// swagger:route GET /config/recorders/{recorder} Recorder getRecorderRequest
+	//
+	// Get recorder.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRecorderResponse
+
+	var req getRecorderRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getRecorderResponse
+
+	for _, recorder := range config.Global().Recorders {
+		if recorder == nil {
+			continue
+		}
+		if recorder.Name == req.Recorder {
+			resp.Data = recorder
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createRecorderRequest
 type createRecorderRequest struct {
 	// in: body

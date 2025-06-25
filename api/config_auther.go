@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getAutherListRequest
+type getAutherListRequest struct {
+}
+
+// successful operation.
+// swagger:response getAutherListResponse
+type getAutherListResponse struct {
+	// in: body
+	Data autherList
+}
+
+type autherList struct {
+	Count int                    `json:"count"`
+	List  []*config.AutherConfig `json:"list"`
+}
+
+func getAutherList(ctx *gin.Context) {
+	// swagger:route GET /config/authers Auther getAutherListRequest
+	//
+	// Get auther list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getAutherListResponse
+
+	var req getAutherListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Authers
+
+	var resp getAutherListResponse
+	resp.Data = autherList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getAutherRequest
+type getAutherRequest struct {
+	// in: path
+	// required: true
+	Auther string `uri:"auther" json:"auther"`
+}
+
+// successful operation.
+// swagger:response getAutherResponse
+type getAutherResponse struct {
+	// in: body
+	Data *config.AutherConfig
+}
+
+func getAuther(ctx *gin.Context) {
+	// swagger:route GET /config/authers/{auther} Auther getAutherRequest
+	//
+	// Get auther.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getAutherResponse
+
+	var req getAutherRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getAutherResponse
+
+	for _, auther := range config.Global().Authers {
+		if auther == nil {
+			continue
+		}
+		if auther.Name == req.Auther {
+			resp.Data = auther
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createAutherRequest
 type createAutherRequest struct {
 	// in: body

@@ -51,6 +51,9 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     AuthConfig:
         properties:
+            file:
+                type: string
+                x-go-name: File
             password:
                 type: string
                 x-go-name: Password
@@ -286,6 +289,8 @@ definitions:
             path:
                 type: string
                 x-go-name: Path
+            rotation:
+                $ref: '#/definitions/LogRotationConfig'
             sep:
                 type: string
                 x-go-name: Sep
@@ -964,6 +969,8 @@ definitions:
                 format: int64
                 type: integer
                 x-go-name: Code
+            data:
+                x-go-name: Data
             msg:
                 type: string
                 x-go-name: Msg
@@ -993,10 +1000,14 @@ definitions:
         x-go-package: github.com/go-gost/x/config
     RouterRouteConfig:
         properties:
+            dst:
+                type: string
+                x-go-name: Dst
             gateway:
                 type: string
                 x-go-name: Gateway
             net:
+                description: 'Deprecated: use dst instead'
                 type: string
                 x-go-name: Net
         type: object
@@ -1229,6 +1240,214 @@ definitions:
                 x-go-name: MinVersion
         type: object
         x-go-package: github.com/go-gost/x/config
+    admissionList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/AdmissionConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    autherList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/AutherConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    bypassList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/BypassConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    chainList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/ChainConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    connLimiterList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    hopList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/HopConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    hostsList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/HostsConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    ingressList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/IngressConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    limiterList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    observerList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/ObserverConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    rateLimiterList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/LimiterConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    recorderList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/RecorderConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    resolverList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/ResolverConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    routerList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/RouterConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    sdList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/SDConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    serviceList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/ServiceConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
 info:
     title: Documentation of Web API.
     version: 1.0.0
@@ -1274,6 +1493,17 @@ paths:
             tags:
                 - Config
     /config/admissions:
+        get:
+            operationId: getAdmissionListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getAdmissionListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get admission list.
+            tags:
+                - Admission
         post:
             operationId: createAdmissionRequest
             parameters:
@@ -1309,6 +1539,23 @@ paths:
             summary: Delete admission by name.
             tags:
                 - Admission
+        get:
+            operationId: getAdmissionRequest
+            parameters:
+                - in: path
+                  name: admission
+                  required: true
+                  type: string
+                  x-go-name: Admission
+            responses:
+                "200":
+                    $ref: '#/responses/getAdmissionResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get admission.
+            tags:
+                - Admission
         put:
             operationId: updateAdmissionRequest
             parameters:
@@ -1332,6 +1579,17 @@ paths:
             tags:
                 - Admission
     /config/authers:
+        get:
+            operationId: getAutherListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getAutherListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get auther list.
+            tags:
+                - Auther
         post:
             operationId: createAutherRequest
             parameters:
@@ -1367,6 +1625,23 @@ paths:
             summary: Delete auther by name.
             tags:
                 - Auther
+        get:
+            operationId: getAutherRequest
+            parameters:
+                - in: path
+                  name: auther
+                  required: true
+                  type: string
+                  x-go-name: Auther
+            responses:
+                "200":
+                    $ref: '#/responses/getAutherResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get auther.
+            tags:
+                - Auther
         put:
             operationId: updateAutherRequest
             parameters:
@@ -1390,6 +1665,17 @@ paths:
             tags:
                 - Auther
     /config/bypasses:
+        get:
+            operationId: getBypassListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getBypassListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get bypass list.
+            tags:
+                - Bypass
         post:
             operationId: createBypassRequest
             parameters:
@@ -1425,6 +1711,23 @@ paths:
             summary: Delete bypass by name.
             tags:
                 - Bypass
+        get:
+            operationId: getBypassRequest
+            parameters:
+                - in: path
+                  name: bypass
+                  required: true
+                  type: string
+                  x-go-name: Bypass
+            responses:
+                "200":
+                    $ref: '#/responses/getBypassResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get bypass.
+            tags:
+                - Bypass
         put:
             operationId: updateBypassRequest
             parameters:
@@ -1448,6 +1751,17 @@ paths:
             tags:
                 - Bypass
     /config/chains:
+        get:
+            operationId: getChainListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getChainListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get chain list.
+            tags:
+                - Chain
         post:
             operationId: createChainRequest
             parameters:
@@ -1483,6 +1797,23 @@ paths:
             summary: Delete chain by name.
             tags:
                 - Chain
+        get:
+            operationId: getChainRequest
+            parameters:
+                - in: path
+                  name: chain
+                  required: true
+                  type: string
+                  x-go-name: Chain
+            responses:
+                "200":
+                    $ref: '#/responses/getChainResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get chain.
+            tags:
+                - Chain
         put:
             operationId: updateChainRequest
             parameters:
@@ -1506,6 +1837,17 @@ paths:
             tags:
                 - Chain
     /config/climiters:
+        get:
+            operationId: getConnLimiterListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getConnLimiterListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get conn limiter list.
+            tags:
+                - Limiter
         post:
             operationId: createConnLimiterRequest
             parameters:
@@ -1541,6 +1883,23 @@ paths:
             summary: Delete conn limiter by name.
             tags:
                 - Limiter
+        get:
+            operationId: getConnLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+            responses:
+                "200":
+                    $ref: '#/responses/getConnLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get conn limiter.
+            tags:
+                - Limiter
         put:
             operationId: updateConnLimiterRequest
             parameters:
@@ -1564,6 +1923,17 @@ paths:
             tags:
                 - Limiter
     /config/hops:
+        get:
+            operationId: getHopListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getHopListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get hop list.
+            tags:
+                - Hop
         post:
             operationId: createHopRequest
             parameters:
@@ -1599,6 +1969,23 @@ paths:
             summary: Delete hop by name.
             tags:
                 - Hop
+        get:
+            operationId: getHopRequest
+            parameters:
+                - in: path
+                  name: hop
+                  required: true
+                  type: string
+                  x-go-name: Hop
+            responses:
+                "200":
+                    $ref: '#/responses/getHopResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get hop.
+            tags:
+                - Hop
         put:
             operationId: updateHopRequest
             parameters:
@@ -1622,6 +2009,17 @@ paths:
             tags:
                 - Hop
     /config/hosts:
+        get:
+            operationId: getHostsListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getHostsListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get hosts list.
+            tags:
+                - Hosts
         post:
             operationId: createHostsRequest
             parameters:
@@ -1657,6 +2055,23 @@ paths:
             summary: Delete hosts by name.
             tags:
                 - Hosts
+        get:
+            operationId: getHostsRequest
+            parameters:
+                - in: path
+                  name: hosts
+                  required: true
+                  type: string
+                  x-go-name: Hosts
+            responses:
+                "200":
+                    $ref: '#/responses/getHostsResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get hosts.
+            tags:
+                - Hosts
         put:
             operationId: updateHostsRequest
             parameters:
@@ -1680,6 +2095,17 @@ paths:
             tags:
                 - Hosts
     /config/ingresses:
+        get:
+            operationId: getIngressListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getIngressListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get ingress list.
+            tags:
+                - Ingress
         post:
             operationId: createIngressRequest
             parameters:
@@ -1715,6 +2141,23 @@ paths:
             summary: Delete ingress by name.
             tags:
                 - Ingress
+        get:
+            operationId: getIngressRequest
+            parameters:
+                - in: path
+                  name: ingress
+                  required: true
+                  type: string
+                  x-go-name: Ingress
+            responses:
+                "200":
+                    $ref: '#/responses/getIngressResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get ingress.
+            tags:
+                - Ingress
         put:
             operationId: updateIngressRequest
             parameters:
@@ -1738,6 +2181,17 @@ paths:
             tags:
                 - Ingress
     /config/limiters:
+        get:
+            operationId: getLimiterListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getLimiterListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get limiter list.
+            tags:
+                - Limiter
         post:
             operationId: createLimiterRequest
             parameters:
@@ -1773,6 +2227,23 @@ paths:
             summary: Delete limiter by name.
             tags:
                 - Limiter
+        get:
+            operationId: getLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+            responses:
+                "200":
+                    $ref: '#/responses/getLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get limiter.
+            tags:
+                - Limiter
         put:
             operationId: updateLimiterRequest
             parameters:
@@ -1796,6 +2267,17 @@ paths:
             tags:
                 - Limiter
     /config/observers:
+        get:
+            operationId: getObserverListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getObserverListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get observer list.
+            tags:
+                - Observer
         post:
             operationId: createObserverRequest
             parameters:
@@ -1831,6 +2313,23 @@ paths:
             summary: Delete observer by name.
             tags:
                 - Observer
+        get:
+            operationId: getObserverRequest
+            parameters:
+                - in: path
+                  name: observer
+                  required: true
+                  type: string
+                  x-go-name: Observer
+            responses:
+                "200":
+                    $ref: '#/responses/getObserverResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get observer.
+            tags:
+                - Observer
         put:
             operationId: updateObserverRequest
             parameters:
@@ -1854,6 +2353,17 @@ paths:
             tags:
                 - Observer
     /config/recorders:
+        get:
+            operationId: getRecorderListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getRecorderListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get recorder list.
+            tags:
+                - Recorder
         post:
             operationId: createRecorderRequest
             parameters:
@@ -1887,6 +2397,23 @@ paths:
                 - basicAuth:
                     - '[]'
             summary: Delete recorder by name.
+            tags:
+                - Recorder
+        get:
+            operationId: getRecorderRequest
+            parameters:
+                - in: path
+                  name: recorder
+                  required: true
+                  type: string
+                  x-go-name: Recorder
+            responses:
+                "200":
+                    $ref: '#/responses/getRecorderResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get recorder.
             tags:
                 - Recorder
         put:
@@ -1924,6 +2451,17 @@ paths:
             tags:
                 - Reload
     /config/resolvers:
+        get:
+            operationId: getResolverListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getResolverListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get resolver list.
+            tags:
+                - Resolver
         post:
             operationId: createResolverRequest
             parameters:
@@ -1959,6 +2497,23 @@ paths:
             summary: Delete resolver by name.
             tags:
                 - Resolver
+        get:
+            operationId: getResolverRequest
+            parameters:
+                - in: path
+                  name: resolver
+                  required: true
+                  type: string
+                  x-go-name: Resolver
+            responses:
+                "200":
+                    $ref: '#/responses/getResolverResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get resolver.
+            tags:
+                - Resolver
         put:
             operationId: updateResolverRequest
             parameters:
@@ -1982,6 +2537,17 @@ paths:
             tags:
                 - Resolver
     /config/rlimiters:
+        get:
+            operationId: getRateLimiterListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getRateLimiterListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get rate limiter list.
+            tags:
+                - Limiter
         post:
             operationId: createRateLimiterRequest
             parameters:
@@ -2017,6 +2583,23 @@ paths:
             summary: Delete rate limiter by name.
             tags:
                 - Limiter
+        get:
+            operationId: getRateLimiterRequest
+            parameters:
+                - in: path
+                  name: limiter
+                  required: true
+                  type: string
+                  x-go-name: Limiter
+            responses:
+                "200":
+                    $ref: '#/responses/getRateLimiterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get conn limiter.
+            tags:
+                - Limiter
         put:
             operationId: updateRateLimiterRequest
             parameters:
@@ -2040,6 +2623,17 @@ paths:
             tags:
                 - Limiter
     /config/routers:
+        get:
+            operationId: getRouterListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getRouterListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get router list.
+            tags:
+                - Router
         post:
             operationId: createRouterRequest
             parameters:
@@ -2075,6 +2669,23 @@ paths:
             summary: Delete router by name.
             tags:
                 - Router
+        get:
+            operationId: getRouterRequest
+            parameters:
+                - in: path
+                  name: router
+                  required: true
+                  type: string
+                  x-go-name: Router
+            responses:
+                "200":
+                    $ref: '#/responses/getRouterResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get router.
+            tags:
+                - Router
         put:
             operationId: updateRouterRequest
             parameters:
@@ -2098,6 +2709,17 @@ paths:
             tags:
                 - Router
     /config/sds:
+        get:
+            operationId: getSDListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getSDListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get sd list.
+            tags:
+                - SD
         post:
             operationId: createSDRequest
             parameters:
@@ -2133,6 +2755,23 @@ paths:
             summary: Delete SD by name.
             tags:
                 - SD
+        get:
+            operationId: getSDRequest
+            parameters:
+                - in: path
+                  name: sd
+                  required: true
+                  type: string
+                  x-go-name: SD
+            responses:
+                "200":
+                    $ref: '#/responses/getSDResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get sd.
+            tags:
+                - SD
         put:
             operationId: updateSDRequest
             parameters:
@@ -2156,6 +2795,17 @@ paths:
             tags:
                 - SD
     /config/services:
+        get:
+            operationId: getServiceListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getServiceListResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get service list.
+            tags:
+                - Service
         post:
             operationId: createServiceRequest
             parameters:
@@ -2189,6 +2839,23 @@ paths:
                 - basicAuth:
                     - '[]'
             summary: Delete service by name.
+            tags:
+                - Service
+        get:
+            operationId: getServiceRequest
+            parameters:
+                - in: path
+                  name: service
+                  required: true
+                  type: string
+                  x-go-name: Service
+            responses:
+                "200":
+                    $ref: '#/responses/getServiceResponse'
+            security:
+                - basicAuth:
+                    - '[]'
+            summary: Get service.
             tags:
                 - Service
         put:
@@ -2408,12 +3075,140 @@ responses:
             Data: {}
         schema:
             $ref: '#/definitions/Response'
+    getAdmissionListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/admissionList'
+    getAdmissionResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/AdmissionConfig'
+    getAutherListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/autherList'
+    getAutherResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/AutherConfig'
+    getBypassListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/bypassList'
+    getBypassResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/BypassConfig'
+    getChainListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/chainList'
+    getChainResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/ChainConfig'
     getConfigResponse:
         description: successful operation.
         headers:
             Config: {}
         schema:
             $ref: '#/definitions/Config'
+    getConnLimiterListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/connLimiterList'
+    getConnLimiterResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/LimiterConfig'
+    getHopListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/hopList'
+    getHopResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/HopConfig'
+    getHostsListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/hostsList'
+    getHostsResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/HostsConfig'
+    getIngressListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/ingressList'
+    getIngressResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/IngressConfig'
+    getLimiterListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/limiterList'
+    getLimiterResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/LimiterConfig'
+    getObserverListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/observerList'
+    getObserverResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/ObserverConfig'
+    getRateLimiterListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/rateLimiterList'
+    getRateLimiterResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/LimiterConfig'
+    getRecorderListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/recorderList'
+    getRecorderResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/RecorderConfig'
+    getResolverListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/resolverList'
+    getResolverResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/ResolverConfig'
+    getRouterListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/routerList'
+    getRouterResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/RouterConfig'
+    getSDListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/sdList'
+    getSDResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/SDConfig'
+    getServiceListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/serviceList'
+    getServiceResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/ServiceConfig'
     reloadConfigResponse:
         description: successful operation.
         headers:

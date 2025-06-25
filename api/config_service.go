@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getServiceListRequest
+type getServiceListRequest struct {
+}
+
+// successful operation.
+// swagger:response getServiceListResponse
+type getServiceListResponse struct {
+	// in: body
+	Data serviceList
+}
+
+type serviceList struct {
+	Count int                       `json:"count"`
+	List  []*config.ServiceConfig `json:"list"`
+}
+
+func getServiceList(ctx *gin.Context) {
+	// swagger:route GET /config/services Service getServiceListRequest
+	//
+	// Get service list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getServiceListResponse
+
+	var req getServiceListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Services
+
+	var resp getServiceListResponse
+	resp.Data = serviceList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getServiceRequest
+type getServiceRequest struct {
+	// in: path
+	// required: true
+	Service string `uri:"service" json:"service"`
+}
+
+// successful operation.
+// swagger:response getServiceResponse
+type getServiceResponse struct {
+	// in: body
+	Data *config.ServiceConfig
+}
+
+func getService(ctx *gin.Context) {
+	// swagger:route GET /config/services/{service} Service getServiceRequest
+	//
+	// Get service.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getServiceResponse
+
+	var req getServiceRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getServiceResponse
+
+	for _, service := range config.Global().Services {
+		if service == nil {
+			continue
+		}
+		if service.Name == req.Service {
+			resp.Data = service
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createServiceRequest
 type createServiceRequest struct {
 	// in: body

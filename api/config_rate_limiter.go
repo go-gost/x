@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getRateLimiterListRequest
+type getRateLimiterListRequest struct {
+}
+
+// successful operation.
+// swagger:response getRateLimiterListResponse
+type getRateLimiterListResponse struct {
+	// in: body
+	Data rateLimiterList
+}
+
+type rateLimiterList struct {
+	Count int                       `json:"count"`
+	List  []*config.LimiterConfig `json:"list"`
+}
+
+func getRateLimiterList(ctx *gin.Context) {
+	// swagger:route GET /config/rlimiters Limiter getRateLimiterListRequest
+	//
+	// Get rate limiter list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRateLimiterListResponse
+
+	var req getRateLimiterListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().CLimiters
+
+	var resp getRateLimiterListResponse
+	resp.Data = rateLimiterList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getRateLimiterRequest
+type getRateLimiterRequest struct {
+	// in: path
+	// required: true
+	Limiter string `uri:"limiter" json:"limiter"`
+}
+
+// successful operation.
+// swagger:response getRateLimiterResponse
+type getRateLimiterResponse struct {
+	// in: body
+	Data *config.LimiterConfig
+}
+
+func getRateLimiter(ctx *gin.Context) {
+	// swagger:route GET /config/rlimiters/{limiter} Limiter getRateLimiterRequest
+	//
+	// Get conn limiter.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRateLimiterResponse
+
+	var req getRateLimiterRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getRateLimiterResponse
+
+	for _, limiter := range config.Global().CLimiters{
+		if limiter == nil {
+			continue
+		}
+		if limiter.Name == req.Limiter {
+			resp.Data = limiter
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createRateLimiterRequest
 type createRateLimiterRequest struct {
 	// in: body

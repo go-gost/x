@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getAdmissionListRequest
+type getAdmissionListRequest struct {
+}
+
+// successful operation.
+// swagger:response getAdmissionListResponse
+type getAdmissionListResponse struct {
+	// in: body
+	Data admissionList
+}
+
+type admissionList struct {
+	Count int                       `json:"count"`
+	List  []*config.AdmissionConfig `json:"list"`
+}
+
+func getAdmissionList(ctx *gin.Context) {
+	// swagger:route GET /config/admissions Admission getAdmissionListRequest
+	//
+	// Get admission list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getAdmissionListResponse
+
+	var req getAdmissionListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Admissions
+
+	var resp getAdmissionListResponse
+	resp.Data = admissionList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getAdmissionRequest
+type getAdmissionRequest struct {
+	// in: path
+	// required: true
+	Admission string `uri:"admission" json:"admission"`
+}
+
+// successful operation.
+// swagger:response getAdmissionResponse
+type getAdmissionResponse struct {
+	// in: body
+	Data *config.AdmissionConfig
+}
+
+func getAdmission(ctx *gin.Context) {
+	// swagger:route GET /config/admissions/{admission} Admission getAdmissionRequest
+	//
+	// Get admission.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getAdmissionResponse
+
+	var req getAdmissionRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getAdmissionResponse
+
+	for _, admission := range config.Global().Admissions {
+		if admission == nil {
+			continue
+		}
+		if admission.Name == req.Admission {
+			resp.Data = admission
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createAdmissionRequest
 type createAdmissionRequest struct {
 	// in: body

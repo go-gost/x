@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getResolverListRequest
+type getResolverListRequest struct {
+}
+
+// successful operation.
+// swagger:response getResolverListResponse
+type getResolverListResponse struct {
+	// in: body
+	Data resolverList
+}
+
+type resolverList struct {
+	Count int                       `json:"count"`
+	List  []*config.ResolverConfig `json:"list"`
+}
+
+func getResolverList(ctx *gin.Context) {
+	// swagger:route GET /config/resolvers Resolver getResolverListRequest
+	//
+	// Get resolver list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getResolverListResponse
+
+	var req getResolverListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Resolvers
+
+	var resp getResolverListResponse
+	resp.Data = resolverList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getResolverRequest
+type getResolverRequest struct {
+	// in: path
+	// required: true
+	Resolver string `uri:"resolver" json:"resolver"`
+}
+
+// successful operation.
+// swagger:response getResolverResponse
+type getResolverResponse struct {
+	// in: body
+	Data *config.ResolverConfig
+}
+
+func getResolver(ctx *gin.Context) {
+	// swagger:route GET /config/resolvers/{resolver} Resolver getResolverRequest
+	//
+	// Get resolver.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getResolverResponse
+
+	var req getResolverRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getResolverResponse
+
+	for _, resolver := range config.Global().Resolvers {
+		if resolver == nil {
+			continue
+		}
+		if resolver.Name == req.Resolver {
+			resp.Data = resolver
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createResolverRequest
 type createResolverRequest struct {
 	// in: body

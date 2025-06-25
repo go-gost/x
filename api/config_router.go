@@ -11,6 +11,93 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// swagger:parameters getRouterListRequest
+type getRouterListRequest struct {
+}
+
+// successful operation.
+// swagger:response getRouterListResponse
+type getRouterListResponse struct {
+	// in: body
+	Data routerList
+}
+
+type routerList struct {
+	Count int                       `json:"count"`
+	List  []*config.RouterConfig `json:"list"`
+}
+
+func getRouterList(ctx *gin.Context) {
+	// swagger:route GET /config/routers Router getRouterListRequest
+	//
+	// Get router list.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRouterListResponse
+
+	var req getRouterListRequest
+	ctx.ShouldBindQuery(&req)
+
+	list := config.Global().Routers
+
+	var resp getRouterListResponse
+	resp.Data = routerList{
+		Count: len(list),
+		List:  list,
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
+// swagger:parameters getRouterRequest
+type getRouterRequest struct {
+	// in: path
+	// required: true
+	Router string `uri:"router" json:"router"`
+}
+
+// successful operation.
+// swagger:response getRouterResponse
+type getRouterResponse struct {
+	// in: body
+	Data *config.RouterConfig
+}
+
+func getRouter(ctx *gin.Context) {
+	// swagger:route GET /config/routers/{router} Router getRouterRequest
+	//
+	// Get router.
+	//
+	//     Security:
+	//       basicAuth: []
+	//
+	//     Responses:
+	//       200: getRouterResponse
+
+	var req getRouterRequest
+	ctx.ShouldBindUri(&req)
+
+	var resp getRouterResponse
+
+	for _, router := range config.Global().Routers {
+		if router == nil {
+			continue
+		}
+		if router.Name == req.Router {
+			resp.Data = router
+		}
+	}
+
+	ctx.JSON(http.StatusOK, Response{
+		Data: resp.Data,
+	})
+}
+
 // swagger:parameters createRouterRequest
 type createRouterRequest struct {
 	// in: body
