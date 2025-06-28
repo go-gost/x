@@ -158,10 +158,16 @@ func (l *wsListener) Addr() net.Addr {
 }
 
 func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
+	clientIP := xhttp.GetClientIP(r)
 	if l.logger.IsLevelEnabled(logger.TraceLevel) {
+		sip := ""
+		if clientIP != nil {
+			sip = clientIP.String()
+		}
 		log := l.logger.WithFields(map[string]any{
-			"local":  l.addr.String(),
-			"remote": r.RemoteAddr,
+			"local":    l.addr.String(),
+			"remote":   r.RemoteAddr,
+			"clientIP": sip,
 		})
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
@@ -175,7 +181,7 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var clientAddr net.Addr
-	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+	if clientIP != nil {
 		clientAddr = &net.IPAddr{IP: clientIP}
 	}
 
