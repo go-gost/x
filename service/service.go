@@ -166,6 +166,10 @@ func (s *defaultService) Serve() error {
 	for {
 		conn, e := s.listener.Accept()
 		if e != nil {
+			if _, ok := e.(*listener.AcceptError); ok {
+				tempDelay = 0
+			}
+
 			// TODO: remove Temporary checking
 			if ne, ok := e.(net.Error); ok && ne.Temporary() {
 				if tempDelay == 0 {

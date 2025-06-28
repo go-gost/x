@@ -78,7 +78,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 			chain.MuxBindOption(true),
 		)
 		if err != nil {
-			return nil, listener.NewAcceptError(err)
+			return nil, listener.NewBindError(err)
 		}
 		ln = metrics.WrapListener(l.options.Service, ln)
 		ln = stats.WrapListener(ln, l.options.Stats)

@@ -1,3 +1,5 @@
+// swagger generate spec -o swagger.yaml
+
 package api
 
 import (

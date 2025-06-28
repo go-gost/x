@@ -81,7 +81,7 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 			chain.UDPDataQueueSizeBindOption(l.md.readQueueSize),
 		)
 		if err != nil {
-			return nil, listener.NewAcceptError(err)
+			return nil, listener.NewBindError(err)
 		}
 
 		ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
