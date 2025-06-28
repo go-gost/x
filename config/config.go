@@ -145,7 +145,7 @@ type AutherConfig struct {
 type AuthConfig struct {
 	Username string `yaml:",omitempty" json:"username,omitempty"`
 	Password string `yaml:",omitempty" json:"password,omitempty"`
-	File string `yaml:",omitempty" json:"file,omitempty"`
+	File     string `yaml:",omitempty" json:"file,omitempty"`
 }
 
 type SelectorConfig struct {
@@ -578,7 +578,8 @@ func (c *Config) Load() error {
 	return v.Unmarshal(c)
 }
 
-func (c *Config) Read(r io.Reader) error {
+func (c *Config) Read(r io.Reader, configType string) error {
+	v.SetConfigType(configType)
 	if err := v.ReadConfig(r); err != nil {
 		return err
 	}

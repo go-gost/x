@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"strings"
@@ -43,15 +44,28 @@ type parser struct {
 func (p *parser) Parse() (*config.Config, error) {
 	cfg := &config.Config{}
 
-	cfgFile := p.args.CfgFile
-	if cfgFile != "" {
-		cfgFile = strings.TrimSpace(cfgFile)
-		if strings.HasPrefix(cfgFile, "{") && strings.HasSuffix(cfgFile, "}") {
+	if cfgFile := strings.TrimSpace(p.args.CfgFile); cfgFile != "" {
+		if cfgFile == "-" { // stdin
+			br := bufio.NewReader(os.Stdin)
+			b, err := br.Peek(1)
+			if err != nil {
+				return nil, err
+			}
+			if b[0] == '{' {
+				if err := cfg.Read(br, "json"); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := cfg.Read(br, "yaml"); err != nil {
+					return nil, err
+				}
+			}
+		} else if strings.HasPrefix(cfgFile, "{") && strings.HasSuffix(cfgFile, "}") { // inline
 			if err := json.Unmarshal([]byte(cfgFile), cfg); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := cfg.ReadFile(cfgFile); err != nil {
+			if err := cfg.ReadFile(cfgFile); err != nil { // file
 				return nil, err
 			}
 		}
