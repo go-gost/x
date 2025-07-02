@@ -90,9 +90,11 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 

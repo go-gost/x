@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -17,10 +16,10 @@ import (
 	xbypass "github.com/go-gost/x/bypass"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
-	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -85,9 +84,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -132,7 +132,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.Dst = dstAddr.String()
 
 	log = log.WithFields(map[string]any{
-		"dst":  fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"dst":  dstAddr.String(),
 		"host": dstAddr.String(),
 	})
 
@@ -235,6 +235,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)

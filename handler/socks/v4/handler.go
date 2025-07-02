@@ -121,10 +121,11 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -163,6 +164,11 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return err
 	}
 
+	if userid := string(req.Userid); userid != "" {
+		log = log.WithFields(map[string]any{"user": userid})
+		ro.ClientID = userid
+	}
+
 	ro.Host = req.Addr.String()
 	log.Trace(req)
 
@@ -177,6 +183,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		}
 		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 		ro.ClientID = clientID
+		log = log.WithFields(map[string]any{"clientID": clientID})
 	}
 
 	switch req.Cmd {
@@ -253,6 +260,10 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	resp := gosocks4.NewReply(gosocks4.Granted, nil)
 	log.Trace(resp)

@@ -2,7 +2,6 @@ package v5
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 
@@ -14,11 +13,12 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", address, network),
+		"dst": address,
 		"cmd": "bind",
 	})
 
@@ -56,10 +56,10 @@ func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, 
 	}
 
 	// BIND does not support chain.
-	return h.bindLocal(ctx, conn, network, address, log)
+	return h.bindLocal(ctx, conn, network, address, ro, log)
 }
 
-func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
@@ -73,6 +73,12 @@ func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, a
 		log.Debug(reply)
 		return err
 	}
+
+	log = log.WithFields(map[string]any{
+		"src":  ln.Addr().String(),
+		"bind": ln.Addr().String(),
+	})
+	ro.Src = ln.Addr().String()
 
 	socksAddr := gosocks5.Addr{}
 	if err := socksAddr.ParseFrom(ln.Addr().String()); err != nil {
@@ -89,10 +95,6 @@ func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, a
 		ln.Close()
 		return err
 	}
-
-	log = log.WithFields(map[string]any{
-		"bind": fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
-	})
 
 	log.Debugf("bind on %s OK", ln.Addr())
 

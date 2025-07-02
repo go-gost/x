@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -233,8 +232,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	ro.Host = target.Addr
 
 	log = log.WithFields(map[string]any{
-		"node": target.Name,
-		"dst":  fmt.Sprintf("%s/%s", target.Addr, network),
+		"node":    target.Name,
+		"dst":     target.Addr,
+		"network": network,
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
@@ -255,6 +255,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	if marker := target.Marker(); marker != nil {
 		marker.Reset()
 	}
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	cc = proxyproto.WrapClientConn(h.md.proxyProtocol, conn.RemoteAddr(), convertAddr(conn.LocalAddr()), cc)
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -49,6 +48,12 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 	}
 	defer cc.Close()
 
+	log = log.WithFields(map[string]any{
+		"src":  cc.LocalAddr().String(),
+		"bind": cc.LocalAddr().String(),
+	})
+	ro.Src = cc.LocalAddr().String()
+
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(cc.LocalAddr().String())
 	reply := gosocks5.NewReply(gosocks5.Succeeded, &saddr)
@@ -58,9 +63,6 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 		return err
 	}
 
-	log = log.WithFields(map[string]any{
-		"bind": fmt.Sprintf("%s/%s", cc.LocalAddr(), cc.LocalAddr().Network()),
-	})
 	log.Debugf("bind on %s OK", cc.LocalAddr())
 
 	// obtain a udp connection

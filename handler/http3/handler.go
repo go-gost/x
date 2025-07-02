@@ -3,7 +3,6 @@ package http3
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -58,9 +57,10 @@ func (h *http3Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	start := time.Now()
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"network": "udp",
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
@@ -124,7 +124,7 @@ func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst":  fmt.Sprintf("%s/%s", target.Addr, "tcp"),
+		"dst":  target.Addr,
 		"host": target.Addr,
 	})
 

@@ -122,10 +122,11 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -166,7 +167,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	if clientID := sc.ID(); clientID != "" {
 		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
-		log = log.WithFields(map[string]any{"user": clientID})
+		log = log.WithFields(map[string]any{"user": clientID, "clientID": clientID})
 		ro.ClientID = clientID
 	}
 
@@ -180,9 +181,9 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	case gosocks5.CmdConnect:
 		return h.handleConnect(ctx, conn, "tcp", address, ro, log)
 	case gosocks5.CmdBind:
-		return h.handleBind(ctx, conn, "tcp", address, log)
+		return h.handleBind(ctx, conn, "tcp", address, ro, log)
 	case socks.CmdMuxBind:
-		return h.handleMuxBind(ctx, conn, "tcp", address, log)
+		return h.handleMuxBind(ctx, conn, "tcp", address, ro, log)
 	case gosocks5.CmdUdp:
 		ro.Network = "udp"
 		return h.handleUDP(ctx, conn, ro, log)

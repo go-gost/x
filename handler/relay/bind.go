@@ -20,12 +20,13 @@ import (
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
 	xservice "github.com/go-gost/x/service"
 )
 
-func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", address, network),
+		"dst": address,
 		"cmd": "bind",
 	})
 
@@ -68,13 +69,13 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 	}
 
 	if network == "tcp" {
-		return h.bindTCP(ctx, conn, network, address, log)
+		return h.bindTCP(ctx, conn, network, address, ro, log)
 	} else {
-		return h.bindUDP(ctx, conn, network, address, log)
+		return h.bindUDP(ctx, conn, network, address, ro, log)
 	}
 }
 
-func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
@@ -98,7 +99,9 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 		"listener": "tcp",
 		"handler":  "ep-tcp",
 		"bind":     fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
+		"src":      ln.Addr().String(),
 	})
+	ro.Src = ln.Addr().String()
 
 	af := &relay.AddrFeature{}
 	if err := af.ParseFrom(ln.Addr().String()); err != nil {
@@ -157,7 +160,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	return srv.Serve()
 }
 
-func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, address string, log logger.Logger) error {
+func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
@@ -177,8 +180,11 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		"service":  serviceName,
 		"listener": "udp",
 		"handler":  "ep-udp",
-		"bind":     fmt.Sprintf("%s/%s", pc.LocalAddr(), pc.LocalAddr().Network()),
+		"bind":     pc.LocalAddr().String(),
+		"src":      pc.LocalAddr().String(),
 	})
+	ro.Src = pc.LocalAddr().String()
+
 	pc = metrics.WrapPacketConn(serviceName, pc)
 	// pc = admission.WrapPacketConn(l.options.Admission, pc)
 	// pc = limiter.WrapPacketConn(l.options.TrafficLimiter, pc)
@@ -195,9 +201,6 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		return err
 	}
 
-	log = log.WithFields(map[string]any{
-		"bind": pc.LocalAddr().String(),
-	})
 	log.Debugf("bind on %s OK", pc.LocalAddr())
 
 	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).

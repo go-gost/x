@@ -63,6 +63,9 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorde
 	}
 	defer c.Close()
 
+	log.WithFields(map[string]any{"src": c.LocalAddr().String()})
+	ro.Src = c.LocalAddr().String()
+
 	pc, ok := c.(net.PacketConn)
 	if !ok {
 		err = errors.New("wrong connection type")

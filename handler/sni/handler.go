@@ -94,6 +94,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		"local":  conn.LocalAddr().String(),
 		"sid":    ctxvalue.SidFromContext(ctx),
 		"client": ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 

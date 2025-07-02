@@ -208,6 +208,8 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 			resp.WriteTo(conn)
 			return ErrUnauthorized
 		}
+		log = log.WithFields(map[string]any{"clientID": clientID})
+		ro.ClientID = clientID
 		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 	}
 
@@ -217,17 +219,18 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 	ro.Network = network
 	ro.Host = address
+	log = log.WithFields(map[string]any{"network": network})
 
 	if h.hop != nil {
 		// forward mode
-		return h.handleForward(ctx, conn, network, log)
+		return h.handleForward(ctx, conn, network, ro, log)
 	}
 
 	switch req.Cmd & relay.CmdMask {
 	case 0, relay.CmdConnect:
 		return h.handleConnect(ctx, conn, network, address, ro, log)
 	case relay.CmdBind:
-		return h.handleBind(ctx, conn, network, address, log)
+		return h.handleBind(ctx, conn, network, address, ro, log)
 	default:
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn)

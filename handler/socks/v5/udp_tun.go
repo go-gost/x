@@ -102,8 +102,15 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 			reply.Write(conn)
 			return err
 		}
+
 	}
 	defer pc.Close()
+
+	log = log.WithFields(map[string]any{
+		"src":  pc.LocalAddr().String(),
+		"bind": pc.LocalAddr().String(),
+	})
+	ro.Src = pc.LocalAddr().String()
 
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(pc.LocalAddr().String())

@@ -93,9 +93,11 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -160,6 +162,10 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
@@ -235,7 +241,7 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 	ro.Host = addr
 
 	log = log.WithFields(map[string]any{
-		"dst": fmt.Sprintf("%s/%s", addr, network),
+		"dst": addr,
 		"cmd": "bind",
 	})
 
@@ -251,8 +257,11 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 	defer ln.Close()
 
 	log = log.WithFields(map[string]any{
-		"bind": fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
+		"src":  ln.Addr().String(),
+		"bind": ln.Addr().String(),
 	})
+	ro.Src = ln.Addr().String()
+
 	log.Debugf("bind on %s OK", ln.Addr())
 
 	err = func() error {

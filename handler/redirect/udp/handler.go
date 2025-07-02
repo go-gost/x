@@ -3,7 +3,6 @@ package redirect
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net"
 	"time"
 
@@ -66,15 +65,17 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
+		Network:    "udp",
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"network": ro.Network,
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -109,7 +110,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.Host = dstAddr.String()
 
 	log = log.WithFields(map[string]any{
-		"dst":  fmt.Sprintf("%s/%s", dstAddr, dstAddr.Network()),
+		"dst":  dstAddr,
 		"host": dstAddr.String(),
 	})
 
@@ -129,6 +130,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)

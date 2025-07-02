@@ -111,10 +111,11 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
@@ -230,6 +231,10 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	if !ok {
 		return errors.New("authentication failed")
 	}
+
+	log = log.WithFields(map[string]any{"clientID": clientID})
+	ro.ClientID = clientID
+
 	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
@@ -260,6 +265,10 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	if req.Method == http.MethodConnect {
 		resp.StatusCode = http.StatusOK

@@ -76,6 +76,10 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	}
 	defer cc.Close()
 
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
+
 	resp := gosocks5.NewReply(gosocks5.Succeeded, nil)
 	log.Trace(resp)
 	if err := resp.Write(conn); err != nil {

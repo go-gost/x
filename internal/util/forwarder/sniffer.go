@@ -175,9 +175,12 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 	defer cc.Close()
 
+	ho.Log = ho.Log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log := ho.Log
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 	ro.Time = time.Time{}
 
 	shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), cc, node, req, &pStats, &ho)
@@ -330,7 +333,11 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 			if err != nil {
 				return nil, err
 			}
-			ho.Log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
+
+			log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+			ro.Src = cc.LocalAddr().String()
+			ro.Dst = cc.RemoteAddr().String()
+			log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 			return cc, nil
 		},
 	}
@@ -798,8 +805,11 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	defer cc.Close()
 	ho.Node = node
 
-	log := ho.Log
+	log := ho.Log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
+
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	if h.Certificate != nil && h.PrivateKey != nil &&
 		len(clientHello.SupportedProtos) > 0 && (clientHello.SupportedProtos[0] == "h2" || clientHello.SupportedProtos[0] == "http/1.1") {

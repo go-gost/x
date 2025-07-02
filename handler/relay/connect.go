@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -33,7 +32,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 	}
 
 	log = log.WithFields(map[string]any{
-		"dst":  fmt.Sprintf("%s/%s", address, network),
+		"dst":  address,
 		"cmd":  "connect",
 		"host": address,
 	})
@@ -113,6 +112,10 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	if h.md.noDelay {
 		if _, err := resp.WriteTo(conn); err != nil {

@@ -78,6 +78,7 @@ type HandlerRecorderObject struct {
 	RemoteAddr  string                   `json:"remote"`
 	LocalAddr   string                   `json:"local"`
 	Host        string                   `json:"host"`
+	Src         string                   `json:"src"`
 	Dst         string                   `json:"dst"`
 	Proto       string                   `json:"proto,omitempty"`
 	ClientIP    string                   `json:"clientIP"`

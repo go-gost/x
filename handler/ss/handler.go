@@ -104,6 +104,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		"local":  conn.LocalAddr().String(),
 		"sid":    ctxvalue.SidFromContext(ctx),
 		"client": ro.ClientIP,
+		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -172,6 +173,10 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {

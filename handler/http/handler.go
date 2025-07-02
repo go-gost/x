@@ -229,8 +229,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	ro.Host = addr
 
 	fields := map[string]any{
-		"dst":  addr,
-		"host": addr,
+		"dst":     addr,
+		"host":    addr,
+		"network": network,
 	}
 
 	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
@@ -287,6 +288,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	if !ok {
 		return errors.New("authentication failed")
 	}
+
+	log = log.WithFields(map[string]any{"clientID": clientID})
+	ro.ClientID = clientID
 
 	if resp.Header.Get("Proxy-Agent") == "" {
 		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
@@ -353,6 +357,10 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return err
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	resp.StatusCode = http.StatusOK
 	resp.Status = "200 Connection established"

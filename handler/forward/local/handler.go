@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
@@ -223,8 +222,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	ro.Host = addr
 
 	log = log.WithFields(map[string]any{
-		"node": target.Name,
-		"dst":  fmt.Sprintf("%s/%s", addr, network),
+		"node":    target.Name,
+		"dst":     addr,
+		"network": network,
 	})
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
@@ -245,6 +245,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		marker.Reset()
 	}
 	defer cc.Close()
+
+	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ro.Src = cc.LocalAddr().String()
+	ro.Dst = cc.RemoteAddr().String()
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
