@@ -21,10 +21,11 @@ type metadata struct {
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
 
-	certificate *x509.Certificate
-	privateKey  crypto.PrivateKey
-	alpn        string
-	mitmBypass  bypass.Bypass
+	certificate   *x509.Certificate
+	privateKey    crypto.PrivateKey
+	alpn          string
+	mitmBypass    bypass.Bypass
+	blockProtocol []string
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -39,7 +40,7 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
 	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
-
+	h.md.blockProtocol = mdutil.GetStrings(md, "block.protocol")
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")
 	if certFile != "" && keyFile != "" {

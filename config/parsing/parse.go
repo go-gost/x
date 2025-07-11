@@ -29,4 +29,6 @@ const (
 	MDKeyNetnsOut = "netns.out"
 
 	MDKeyDialTimeout = "dialTimeout"
+
+	MDKeyBlockProtocol = "block.protocol"
 )

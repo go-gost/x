@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	ProtoHTTP = "http"
-	ProtoTLS  = "tls"
-	ProtoSSH  = "ssh"
+	ProtoHTTP  = "http"
+	ProtoTLS   = "tls"
+	ProtoSSH   = "ssh"
+	ProtoSocks = "socks"
 )
 
 func Sniff(ctx context.Context, r *bufio.Reader) (proto string, err error) {
@@ -33,6 +34,11 @@ func Sniff(ctx context.Context, r *bufio.Reader) (proto string, err error) {
 	// try to sniff HTTP traffic
 	if isHTTP(string(hdr[:])) {
 		return ProtoHTTP, nil
+	}
+
+	// try to sniff socks traffic
+	if isSocks(string(hdr[:])) {
+		return ProtoSocks, nil
 	}
 
 	if string(hdr) == "SSH-2" {
@@ -55,4 +61,11 @@ func isHTTP(s string) bool {
 		// HTTP/2 connection preface
 		// PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n
 		strings.HasPrefix(s, "PRI *")
+}
+
+func isSocks(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	return s[0] == 0x04 || s[0] == 0x05
 }
