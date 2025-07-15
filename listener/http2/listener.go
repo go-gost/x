@@ -13,6 +13,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -148,6 +149,11 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 			"w": w,
 		}),
 	}
+
+	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+		conn.clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
 	select {
 	case l.cqueue <- conn:
 	default:

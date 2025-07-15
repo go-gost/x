@@ -49,8 +49,11 @@ type metadata struct {
 
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
-	if h.md.readTimeout <= 0 {
+	if h.md.readTimeout == 0 {
 		h.md.readTimeout = 15 * time.Second
+	}
+	if h.md.readTimeout < 0 {
+		h.md.readTimeout = 0
 	}
 
 	if m := mdutil.GetStringMapString(md, "http.header", "header"); len(m) > 0 {

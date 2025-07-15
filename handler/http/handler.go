@@ -665,6 +665,11 @@ func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.
 	conn, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
 	if ro := ctx_internal.RecorderObjectFromContext(ctx); ro != nil {
 		ro.Route = buf.String()
+
+		if conn != nil {
+			ro.Src = conn.LocalAddr().String()
+			ro.Dst = conn.RemoteAddr().String()
+		}
 	}
 
 	return

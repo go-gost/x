@@ -14,6 +14,7 @@ import (
 )
 
 type metadata struct {
+	publicAddr        string
 	readTimeout       time.Duration
 	noTLS             bool
 	enableBind        bool
@@ -40,6 +41,7 @@ type metadata struct {
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
+	h.md.publicAddr = mdutil.GetString(md, "socks.publicAddr", "publicAddr")
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {
 		h.md.readTimeout = 15 * time.Second

@@ -186,10 +186,20 @@ func (h *tunnelHandler) initEntrypoint() (err error) {
 
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
+
+	clientIP := conn.RemoteAddr().String()
+	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
+		clientIP = string(clientAddr)
+	}
+	if h, _, _ := net.SplitHostPort(clientIP); h != "" {
+		clientIP = h
+	}
+
 	log := h.log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 		"sid":    ctxvalue.SidFromContext(ctx),
+		"client": clientIP,
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())

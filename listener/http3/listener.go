@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 	"github.com/quic-go/quic-go"
@@ -134,6 +135,11 @@ func (l *http3Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 			"w": w,
 		}),
 	}
+
+	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+		conn.clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
 	select {
 	case l.cqueue <- conn:
 	default:

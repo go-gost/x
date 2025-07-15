@@ -15,6 +15,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -198,11 +199,18 @@ func (l *h2Listener) upgrade(w http.ResponseWriter, r *http.Request) (*conn, err
 			Port: 0,
 		}
 	}
+
+	var clientAddr net.Addr
+	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+		clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
 	return &conn{
 		r:          r.Body,
 		w:          flushWriter{w},
 		localAddr:  l.addr,
 		remoteAddr: remoteAddr,
+		clientAddr: clientAddr,
 		closed:     make(chan struct{}),
 	}, nil
 }

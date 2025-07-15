@@ -4,10 +4,12 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/logger"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
+	mdata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 )
 
@@ -28,6 +30,11 @@ func (s *server) Tunnel(srv pb.GostTunel_TunnelServer) error {
 	if p, ok := peer.FromContext(srv.Context()); ok {
 		c.remoteAddr = p.Addr
 	}
+	if md, ok := mdata.FromIncomingContext(srv.Context()); ok {
+		if cip := getClientIP(md); cip != nil {
+			c.clientAddr = &net.IPAddr{IP: cip}
+		}
+	}
 
 	select {
 	case s.cqueue <- c:
@@ -41,11 +48,39 @@ func (s *server) Tunnel(srv pb.GostTunel_TunnelServer) error {
 	return nil
 }
 
+func getClientIP(md mdata.MD) net.IP {
+	if md == nil {
+		return nil
+	}
+	var cip string
+	// cloudflare CDN
+	if v := md.Get("CF-Connecting-IP"); len(v) > 0 {
+		cip = v[0]
+	}
+	if cip == "" {
+		if v := md.Get("X-Forwarded-For"); len(v) > 0 {
+			ss := strings.Split(v[0], ",")
+			if len(ss) > 0 && ss[0] != "" {
+				cip = ss[0]
+			}
+
+		}
+	}
+	if cip == "" {
+		if v := md.Get("X-Real-Ip"); len(v) > 0 {
+			cip = v[0]
+		}
+	}
+
+	return net.ParseIP(cip)
+}
+
 type conn struct {
 	s          pb.GostTunel_TunnelServer
 	rb         []byte
 	localAddr  net.Addr
 	remoteAddr net.Addr
+	clientAddr net.Addr
 	closed     chan struct{}
 }
 
@@ -109,6 +144,10 @@ func (c *conn) LocalAddr() net.Addr {
 
 func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
+}
+
+func (c *conn) ClientAddr() net.Addr {
+	return c.clientAddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {

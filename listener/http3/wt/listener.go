@@ -11,6 +11,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	wt_util "github.com/go-gost/x/internal/util/wt"
 	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -153,9 +154,15 @@ func (l *wtListener) Close() (err error) {
 }
 
 func (l *wtListener) upgrade(w http.ResponseWriter, r *http.Request) {
+	clientIP := xhttp.GetClientIP(r)
+	cip := ""
+	if clientIP != nil {
+		cip = clientIP.String()
+	}
 	log := l.logger.WithFields(map[string]any{
 		"local":  l.addr.String(),
 		"remote": r.RemoteAddr,
+		"client": cip,
 	})
 	if l.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
@@ -169,10 +176,15 @@ func (l *wtListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l.mux(s, log)
+	var clientAddr net.Addr
+	if clientIP != nil {
+		clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
+	l.mux(s, clientAddr, log)
 }
 
-func (l *wtListener) mux(s *wt.Session, log logger.Logger) (err error) {
+func (l *wtListener) mux(s *wt.Session, clientAddr net.Addr, log logger.Logger) (err error) {
 	defer func() {
 		if err != nil {
 			s.CloseWithError(1, err.Error())
@@ -190,7 +202,7 @@ func (l *wtListener) mux(s *wt.Session, log logger.Logger) (err error) {
 		}
 
 		select {
-		case l.cqueue <- wt_util.Conn(s, stream):
+		case l.cqueue <- wt_util.ConnWithClientAddr(s, stream, clientAddr):
 		default:
 			stream.Close()
 			l.logger.Warnf("connection queue is full, stream %v discarded", stream.StreamID())

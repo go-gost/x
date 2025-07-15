@@ -14,6 +14,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	admission "github.com/go-gost/x/admission/wrapper"
 	xnet "github.com/go-gost/x/internal/net"
+	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/mux"
 	ws_util "github.com/go-gost/x/internal/util/ws"
@@ -162,26 +163,36 @@ func (l *mwsListener) Addr() net.Addr {
 }
 
 func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
+	clientIP := xhttp.GetClientIP(r)
+	cip := ""
+	if clientIP != nil {
+		cip = clientIP.String()
+	}
 	log := l.logger.WithFields(map[string]any{
 		"local":  l.addr.String(),
 		"remote": r.RemoteAddr,
+		"client": cip,
 	})
-	if l.logger.IsLevelEnabled(logger.TraceLevel) {
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
 	}
 
 	conn, err := l.upgrader.Upgrade(w, r, l.md.header)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		log.Error(err)
 		return
 	}
 
-	l.mux(ws_util.Conn(conn), log)
+	var clientAddr net.Addr
+	if clientIP != nil {
+		clientAddr = &net.IPAddr{IP: clientIP}
+	}
+
+	l.mux(ws_util.Conn(conn), clientAddr, log)
 }
 
-func (l *mwsListener) mux(conn net.Conn, log logger.Logger) {
+func (l *mwsListener) mux(conn net.Conn, clientAddr net.Addr, log logger.Logger) {
 	defer conn.Close()
 
 	session, err := mux.ServerSession(conn, l.md.muxCfg)
@@ -199,10 +210,19 @@ func (l *mwsListener) mux(conn net.Conn, log logger.Logger) {
 		}
 
 		select {
-		case l.cqueue <- stream:
+		case l.cqueue <- &connWithClientAddr{Conn: stream, clientAddr: clientAddr}:
 		default:
 			stream.Close()
 			log.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())
 		}
 	}
+}
+
+type connWithClientAddr struct {
+	net.Conn
+	clientAddr net.Addr
+}
+
+func (c *connWithClientAddr) ClientAddr() net.Addr {
+	return c.clientAddr
 }

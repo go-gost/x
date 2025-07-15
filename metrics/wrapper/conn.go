@@ -80,6 +80,13 @@ func (c *serverConn) Metadata() metadata.Metadata {
 	return nil
 }
 
+func (c *serverConn) ClientAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.ClientAddr); ok {
+		return sc.ClientAddr()
+	}
+	return nil
+}
+
 type packetConn struct {
 	net.PacketConn
 	service string
