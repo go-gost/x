@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/router"
 	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
+	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
@@ -95,6 +96,9 @@ func (l *tunListener) listenLoop() {
 				limiter.ServiceOption(l.options.Service),
 				limiter.NetworkOption(c.LocalAddr().Network()),
 			)
+			c = withMetadata(mdx.NewMetadata(map[string]any{
+				"config": l.md.config,
+			}), c)
 			l.cqueue <- c
 
 			return nil

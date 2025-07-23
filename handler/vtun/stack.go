@@ -2,11 +2,19 @@ package tun
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"sync"
 	"time"
 
-	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/observer/stats"
+	ctxvalue "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
+	xstats "github.com/go-gost/x/observer/stats"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
+	xrecorder "github.com/go-gost/x/recorder"
+	"github.com/rs/xid"
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
 	"go.uber.org/atomic"
 )
@@ -33,34 +41,35 @@ type transportHandler struct {
 	procOnce   sync.Once
 	procCancel context.CancelFunc
 
-	log logger.Logger
+	opts *handler.Options
 }
 
-func newTransportHandler(log logger.Logger) *transportHandler {
+func newTransportHandler(opts *handler.Options) *transportHandler {
 	return &transportHandler{
 		tcpQueue:   make(chan adapter.TCPConn),
 		udpQueue:   make(chan adapter.UDPConn),
 		udpTimeout: atomic.NewDuration(udpSessionTimeout),
 		procCancel: func() { /* nop */ },
-		log:        log,
+
+		opts: opts,
 	}
 }
 
-func (t *transportHandler) HandleTCP(conn adapter.TCPConn) {
-	t.tcpQueue <- conn
+func (h *transportHandler) HandleTCP(conn adapter.TCPConn) {
+	h.tcpQueue <- conn
 }
 
-func (t *transportHandler) HandleUDP(conn adapter.UDPConn) {
-	t.udpQueue <- conn
+func (h *transportHandler) HandleUDP(conn adapter.UDPConn) {
+	h.udpQueue <- conn
 }
 
-func (t *transportHandler) process(ctx context.Context) {
+func (h *transportHandler) process(ctx context.Context) {
 	for {
 		select {
-		case conn := <-t.tcpQueue:
-			go t.handleTCPConn(conn)
-		case conn := <-t.udpQueue:
-			go t.handleUDPConn(conn)
+		case conn := <-h.tcpQueue:
+			go h.handleTCPConn(conn)
+		case conn := <-h.udpQueue:
+			go h.handleUDPConn(conn)
 		case <-ctx.Done():
 			return
 		}
@@ -68,35 +77,87 @@ func (t *transportHandler) process(ctx context.Context) {
 }
 
 // ProcessAsync can be safely called multiple times, but will only be effective once.
-func (t *transportHandler) ProcessAsync() {
-	t.procOnce.Do(func() {
+func (h *transportHandler) ProcessAsync() {
+	h.procOnce.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		t.procCancel = cancel
-		go t.process(ctx)
+		h.procCancel = cancel
+		go h.process(ctx)
 	})
 }
 
 // Close closes the Tunnel and releases its resources.
-func (t *transportHandler) Close() {
-	t.procCancel()
+func (h *transportHandler) Close() {
+	h.procCancel()
 }
 
-func (t *transportHandler) SetUDPTimeout(timeout time.Duration) {
-	t.udpTimeout.Store(timeout)
+func (h *transportHandler) SetUDPTimeout(timeout time.Duration) {
+	h.udpTimeout.Store(timeout)
 }
 
-func (t *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
+func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	defer originConn.Close()
 
 	id := originConn.ID()
 
-	srcIP, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
+	remoteIP, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
 	dstIP, _ := netip.AddrFromSlice(id.LocalAddress.AsSlice())
 
-	raddr := netip.AddrPortFrom(srcIP, id.RemotePort)
-	laddr := netip.AddrPortFrom(dstIP, id.LocalPort)
+	remoteAddr := netip.AddrPortFrom(remoteIP, id.RemotePort)
+	dstAddr := netip.AddrPortFrom(dstIP, id.LocalPort)
 
-	t.log.Debugf("[TCP] %s <-> %s", raddr.String(), laddr.String())
+	start := time.Now()
+
+	sid := xid.New().String()
+	ctx := ctxvalue.ContextWithSid(context.Background(), ctxvalue.Sid(sid))
+
+	ro := &xrecorder.HandlerRecorderObject{
+		Service:    h.opts.Service,
+		Network:    "tcp",
+		RemoteAddr: remoteAddr.String(),
+		Dst:        dstAddr.String(),
+		Time:       start,
+		SID:        sid,
+	}
+	log := h.opts.Logger.WithFields(map[string]any{"network": "tcp", "sid": ro.SID})
+
+	log.Debugf("%s <> %s", remoteAddr.String(), dstAddr.String())
+
+	var err error
+	var conn net.Conn = originConn
+
+	pStats := xstats.Stats{}
+	conn = stats_wrapper.WrapConn(conn, &pStats)
+
+	defer func() {
+		if err != nil {
+			ro.Err = err.Error()
+		}
+		ro.InputBytes = pStats.Get(stats.KindInputBytes)
+		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+		ro.Duration = time.Since(start)
+
+		log.WithFields(map[string]any{
+			"duration":    time.Since(start),
+			"inputBytes":  ro.InputBytes,
+			"outputBytes": ro.OutputBytes,
+		}).Infof("%s >< %s", remoteAddr.String(), dstAddr.String())
+	}()
+
+	cc, err := h.opts.Router.Dial(ctx, "tcp", dstAddr.String())
+	if err != nil {
+		log.Errorf("dial %s: %v", dstAddr.String(), err)
+		return
+	}
+	defer cc.Close()
+
+	ro.Src = cc.LocalAddr().String()
+
+	t := time.Now()
+	log.Infof("%s <-> %s", remoteAddr, dstAddr)
+	xnet.Transport(conn, cc)
+	log.WithFields(map[string]any{
+		"duration": time.Since(t),
+	}).Infof("%s >-< %s", remoteAddr, dstAddr)
 }
 
 // TODO: Port Restricted NAT support.

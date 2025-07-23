@@ -4,7 +4,6 @@ package tun
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 
@@ -23,7 +22,7 @@ const (
 )
 
 // Endpoint implements the interface of stack.LinkEndpoint from io.ReadWriter.
-type Endpoint struct {
+type endpoint struct {
 	*channel.Endpoint
 
 	// rw is the io.ReadWriter for reading and writing packets.
@@ -45,31 +44,18 @@ type Endpoint struct {
 }
 
 // New returns stack.LinkEndpoint(.*Endpoint) and error.
-func newEndpoint(rw io.ReadWriter, mtu uint32, offset int, log logger.Logger) (*Endpoint, error) {
-	if mtu == 0 {
-		return nil, errors.New("MTU size is zero")
-	}
-
-	if rw == nil {
-		return nil, errors.New("RW interface is nil")
-	}
-
-	if offset < 0 {
-		return nil, errors.New("offset must be non-negative")
-	}
-
-	return &Endpoint{
-		Endpoint: channel.New(defaultOutQueueLen, mtu, ""),
+func newEndpoint(rw io.ReadWriter, mtu int, log logger.Logger) *endpoint {
+	return &endpoint{
+		Endpoint: channel.New(defaultOutQueueLen, uint32(mtu), ""),
 		rw:       rw,
-		mtu:      mtu,
-		offset:   offset,
+		mtu:      uint32(mtu),
 		log:      log,
-	}, nil
+	}
 }
 
 // Attach launches the goroutine that reads packets from io.Reader and
 // dispatches them via the provided dispatcher.
-func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
+func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	e.Endpoint.Attach(dispatcher)
 	e.once.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -85,12 +71,12 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 	})
 }
 
-func (e *Endpoint) Wait() {
+func (e *endpoint) Wait() {
 	e.wg.Wait()
 }
 
 // dispatchLoop dispatches packets to upper layer.
-func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
+func (e *endpoint) dispatchLoop(cancel context.CancelFunc) {
 	// Call cancel() to ensure (*Endpoint).outboundLoop(context.Context) exits
 	// gracefully after (*Endpoint).dispatchLoop(context.CancelFunc) returns.
 	defer cancel()
@@ -106,7 +92,9 @@ func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
 			break
 		}
 
-		e.log.Debugf("read tun: (%d) % x", n, data[:n])
+		if e.log.IsLevelEnabled(logger.TraceLevel) {
+			e.log.Tracef("read: (%d) % x", n, data[:n])
+		}
 
 		if n == 0 || n > mtu {
 			continue
@@ -132,7 +120,7 @@ func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
 
 // outboundLoop reads outbound packets from channel, and then it calls
 // writePacket to send those packets back to lower layer.
-func (e *Endpoint) outboundLoop(ctx context.Context) {
+func (e *endpoint) outboundLoop(ctx context.Context) {
 	for {
 		pkt := e.ReadContext(ctx)
 		if pkt == nil {
@@ -143,7 +131,7 @@ func (e *Endpoint) outboundLoop(ctx context.Context) {
 }
 
 // writePacket writes outbound packets to the io.Writer.
-func (e *Endpoint) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
+func (e *endpoint) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
 	defer pkt.DecRef()
 
 	buf := pkt.ToBuffer()

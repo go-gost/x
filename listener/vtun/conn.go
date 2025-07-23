@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	mdata "github.com/go-gost/core/metadata"
 )
 
 type conn struct {
@@ -48,4 +50,21 @@ func (c *conn) Close() (err error) {
 		c.cancel()
 	}
 	return c.ifce.Close()
+}
+
+type metadataConn struct {
+	net.Conn
+	md mdata.Metadata
+}
+
+// Metadata implements metadata.Metadatable interface.
+func (c *metadataConn) Metadata() mdata.Metadata {
+	return c.md
+}
+
+func withMetadata(md mdata.Metadata, c net.Conn) net.Conn {
+	return &metadataConn{
+		Conn: c,
+		md:   md,
+	}
 }

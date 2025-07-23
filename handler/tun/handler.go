@@ -62,13 +62,15 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	log := h.options.Logger
 
-	v, _ := conn.(md.Metadatable)
-	if v == nil {
+	var config *tun_util.Config
+	if v, _ := conn.(md.Metadatable); v != nil {
+		config = v.Metadata().Get("config").(*tun_util.Config)
+	}
+	if config == nil {
 		err := errors.New("tun: wrong connection type")
 		log.Error(err)
 		return err
 	}
-	config := v.Metadata().Get("config").(*tun_util.Config)
 
 	start := time.Now()
 	log = log.WithFields(map[string]any{
