@@ -4,16 +4,20 @@ import (
 	"io"
 	"math"
 
+	"github.com/go-gost/core/logger"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
 type tunDevice struct {
-	dev     tun.Device
+	dev tun.Device
+
 	packets int
 	sizes   []int
 	rbufs   [][]byte
 	wbufs   [][]byte
 	wbuf    []byte
+
+	log logger.Logger
 }
 
 func (d *tunDevice) Read(p []byte) (n int, err error) {
@@ -39,6 +43,7 @@ func (d *tunDevice) Read(p []byte) (n int, err error) {
 	d.sizes[0] = 0
 	d.packets = packets - 1
 
+	// d.log.Debugf("read tun: (%d), % x", n, p[:n])
 	return
 }
 
@@ -78,6 +83,7 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		rbufs: rbufs,
 		wbufs: make([][]byte, 1),
 		wbuf:  make([]byte, math.MaxUint16+writeOffset),
+		log:   l.log,
 	}
 	name, err = ifce.Name()
 

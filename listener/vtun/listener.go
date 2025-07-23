@@ -10,17 +10,15 @@ import (
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/router"
-	xnet "github.com/go-gost/x/internal/net"
 	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
-	mdx "github.com/go-gost/x/metadata"
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
 )
 
 func init() {
-	registry.ListenerRegistry().Register("tun", NewListener)
+	registry.ListenerRegistry().Register("vtun", NewListener)
 }
 
 type tunListener struct {
@@ -49,14 +47,8 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 		return
 	}
 
-	network := "udp"
-	if xnet.IsIPv4(l.options.Addr) {
-		network = "udp4"
-	}
-	l.addr, err = net.ResolveUDPAddr(network, l.options.Addr)
-	if err != nil {
-		return
-	}
+	l.addr = &Addr{Name: l.options.Addr}
+
 	l.cqueue = make(chan net.Conn)
 	l.closed = make(chan struct{})
 
@@ -103,10 +95,6 @@ func (l *tunListener) listenLoop() {
 				limiter.ServiceOption(l.options.Service),
 				limiter.NetworkOption(c.LocalAddr().Network()),
 			)
-			c = withMetadata(mdx.NewMetadata(map[string]any{
-				"config": l.md.config,
-			}), c)
-
 			l.cqueue <- c
 
 			return nil
@@ -148,4 +136,16 @@ func (l *tunListener) Close() error {
 		close(l.closed)
 	}
 	return nil
+}
+
+type Addr struct {
+	Name string
+}
+
+func (a *Addr) Network() string {
+	return "tun"
+}
+
+func (a *Addr) String() string {
+	return a.Name
 }
