@@ -42,6 +42,10 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	DefaultReadTimeout = 30 * time.Second
+)
+
 var (
 	DefaultCertPool = tls_util.NewMemoryCertPool()
 )
@@ -122,6 +126,10 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
+	}
+
+	if h.ReadTimeout <= 0 {
+		h.ReadTimeout = DefaultReadTimeout
 	}
 
 	pStats := xstats.Stats{}
@@ -767,6 +775,10 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
+	}
+
+	if h.ReadTimeout <= 0 {
+		h.ReadTimeout = DefaultReadTimeout
 	}
 
 	buf := new(bytes.Buffer)

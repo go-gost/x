@@ -57,15 +57,21 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 	if err != nil {
 		return
 	}
-	l.cqueue = make(chan net.Conn)
+	l.cqueue = make(chan net.Conn, 1)
 	l.closed = make(chan struct{})
 
-	go l.listenLoop()
+	ctx, done := context.WithCancelCause(context.Background())
+	go l.listenLoop(done)
+
+	<-ctx.Done()
+	if err := context.Cause(ctx); err != ctx.Err() {
+		return err
+	}
 
 	return
 }
 
-func (l *tunListener) listenLoop() {
+func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
 		err := func() error {
@@ -115,6 +121,8 @@ func (l *tunListener) listenLoop() {
 			l.log.Error(err)
 			cancel()
 		}
+
+		ready(err)
 
 		select {
 		case <-ctx.Done():

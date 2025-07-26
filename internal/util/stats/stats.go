@@ -24,6 +24,10 @@ func NewHandlerStats(service string, resetTraffic bool) *HandlerStats {
 }
 
 func (p *HandlerStats) Stats(client string) stats.Stats {
+	if p == nil {
+		return nil
+	}
+
 	p.mu.RLock()
 	pstats := p.stats[client]
 	p.mu.RUnlock()
@@ -43,6 +47,10 @@ func (p *HandlerStats) Stats(client string) stats.Stats {
 }
 
 func (p *HandlerStats) Events() (events []observer.Event) {
+	if p == nil {
+		return
+	}
+
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 

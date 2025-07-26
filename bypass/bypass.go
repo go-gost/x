@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
+	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
 	xnet "github.com/go-gost/x/internal/net"
@@ -252,10 +253,15 @@ func (bp *localBypass) Contains(ctx context.Context, network, addr string, opts 
 
 	b := !bp.options.whitelist && matched ||
 		bp.options.whitelist && !matched
+
+	log := bp.options.logger.WithFields(map[string]any{
+		"sid": ctxvalue.SidFromContext(ctx),
+	})
+
 	if b {
-		bp.options.logger.Debugf("bypass: %s, whitelist: %t", addr, bp.options.whitelist)
+		log.Debugf("bypass: %s, whitelist: %t", addr, bp.options.whitelist)
 	} else {
-		bp.options.logger.Debugf("pass: %s, whitelist: %t", addr, bp.options.whitelist)
+		log.Debugf("pass: %s, whitelist: %t", addr, bp.options.whitelist)
 	}
 	return b
 }

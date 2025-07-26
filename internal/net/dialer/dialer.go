@@ -98,7 +98,7 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 				return
 			}
 
-			log.Debugf("dial %s %v@%s failed: %s", network, ifAddr, ifceName, err)
+			log.Debugf("dial %s/%s via interface %s@%v failed: %s", addr, network, ifceName, ifAddr, err)
 
 			if strict &&
 				!strings.Contains(err.Error(), "no suitable address found") &&
@@ -113,7 +113,7 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 
 func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, ifAddr net.Addr, log logger.Logger) (net.Conn, error) {
 	if ifceName != "" {
-		log.Debugf("interface: %s %v/%s", ifceName, ifAddr, network)
+		log.Debugf("dial %s/%s via interface %s@%s", addr, network, ifceName, ifAddr)
 	}
 
 	switch network {
@@ -135,7 +135,7 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 			}
 			err = sc.Control(func(fd uintptr) {
 				if ifceName != "" {
-					if err := bindDevice(fd, ifceName); err != nil {
+					if err := bindDevice(network, fd, ifceName); err != nil {
 						log.Warnf("bind device: %v", err)
 					}
 				}
@@ -159,7 +159,7 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
 				if ifceName != "" {
-					if err := bindDevice(fd, ifceName); err != nil {
+					if err := bindDevice(network, fd, ifceName); err != nil {
 						log.Warnf("bind device: %v", err)
 					}
 				}

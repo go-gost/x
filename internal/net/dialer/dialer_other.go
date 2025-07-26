@@ -1,8 +1,8 @@
-//go:build !linux
+//go:build !linux && !windows && !darwin
 
 package dialer
 
-func bindDevice(fd uintptr, ifceName string) error {
+func bindDevice(network string, fd uintptr, ifceName string) error {
 	return nil
 }
 

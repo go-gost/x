@@ -1,4 +1,4 @@
-package tun
+package tungo
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	registry.ListenerRegistry().Register("vtun", NewListener)
+	registry.ListenerRegistry().Register("tungo", NewListener)
 }
 
 type tunListener struct {
@@ -50,15 +50,21 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 
 	l.addr = &Addr{Name: l.options.Addr}
 
-	l.cqueue = make(chan net.Conn)
+	l.cqueue = make(chan net.Conn, 1)
 	l.closed = make(chan struct{})
 
-	go l.listenLoop()
+	ctx, done := context.WithCancelCause(context.Background())
+	go l.listenLoop(done)
+
+	<-ctx.Done()
+	if err := context.Cause(ctx); err != ctx.Err() {
+		return err
+	}
 
 	return
 }
 
-func (l *tunListener) listenLoop() {
+func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
 		err := func() error {
@@ -107,6 +113,8 @@ func (l *tunListener) listenLoop() {
 			l.log.Error(err)
 			cancel()
 		}
+
+		ready(err)
 
 		select {
 		case <-ctx.Done():

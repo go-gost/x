@@ -1,11 +1,14 @@
-package tun
+package tungo
 
 import (
 	"io"
-	"math"
 
 	"github.com/go-gost/core/logger"
 	"golang.zx2c4.com/wireguard/tun"
+)
+
+const (
+	maxBufSize = 16 * 1024
 )
 
 type tunDevice struct {
@@ -70,11 +73,11 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		return
 	}
 
-	batchSize := 16
+	batchSize := ifce.BatchSize()
 
 	rbufs := make([][]byte, batchSize)
 	for i := 1; i < len(rbufs); i++ {
-		rbufs[i] = make([]byte, math.MaxUint16)
+		rbufs[i] = make([]byte, maxBufSize)
 	}
 
 	dev = &tunDevice{
@@ -82,7 +85,7 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		sizes: make([]int, batchSize),
 		rbufs: rbufs,
 		wbufs: make([][]byte, 1),
-		wbuf:  make([]byte, math.MaxUint16+writeOffset),
+		wbuf:  make([]byte, maxBufSize+writeOffset),
 		log:   l.log,
 	}
 	name, err = ifce.Name()

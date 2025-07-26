@@ -1,6 +1,4 @@
-// Package iobased provides the implementation of io.ReadWriter
-// based data-link layer endpoints.
-package tun
+package tungo
 
 import (
 	"context"

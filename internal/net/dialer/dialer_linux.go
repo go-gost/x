@@ -4,7 +4,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func bindDevice(fd uintptr, ifceName string) error {
+func bindDevice(network string, fd uintptr, ifceName string) error {
 	if ifceName == "" {
 		return nil
 	}

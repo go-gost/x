@@ -39,6 +39,8 @@ import (
 )
 
 const (
+	DefaultReadTimeout = 30 * time.Second
+
 	// DefaultBodySize is the default HTTP body or websocket frame size to record.
 	DefaultBodySize = 64 * 1024 // 64KB
 	// MaxBodySize is the maximum HTTP body or websocket frame size to record.
@@ -113,6 +115,10 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
+	}
+
+	if h.ReadTimeout <= 0 {
+		h.ReadTimeout = DefaultReadTimeout
 	}
 
 	pStats := xstats.Stats{}
@@ -568,6 +574,10 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
+	}
+
+	if h.ReadTimeout <= 0 {
+		h.ReadTimeout = DefaultReadTimeout
 	}
 
 	buf := new(bytes.Buffer)

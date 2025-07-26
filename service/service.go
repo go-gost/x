@@ -24,6 +24,7 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
+	"github.com/google/shlex"
 	"github.com/rs/xid"
 )
 
@@ -296,10 +297,24 @@ func (s *defaultService) execCmds(phase string, cmds []string) {
 		}
 		s.options.logger.Info(cmd)
 
-		if err := exec.Command("/bin/sh", "-c", cmd).Run(); err != nil {
+		if err := s.execCmd(cmd); err != nil {
 			s.options.logger.Warnf("[%s] %s: %v", phase, cmd, err)
 		}
 	}
+}
+
+func (s *defaultService) execCmd(cmd string) error {
+	ss, err := shlex.Split(cmd)
+	if err != nil {
+		return err
+	}
+	if len(ss) == 0 {
+		return errors.New("invalid command")
+	}
+	c := exec.Command(ss[0], ss[1:]...)
+	// c.Stdout = os.Stdout
+	// c.Stderr = os.Stderr
+	return c.Run()
 }
 
 func (s *defaultService) setState(state State) {
