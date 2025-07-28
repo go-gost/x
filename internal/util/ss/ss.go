@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 
+	xio "github.com/go-gost/x/internal/io"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 )
 
@@ -39,4 +40,18 @@ func (c *shadowConn) Write(b []byte) (n int, err error) {
 	}
 	_, err = c.Conn.Write(b)
 	return
+}
+
+func (c *shadowConn) CloseRead() error {
+	if sc, ok := c.Conn.(xio.CloseRead); ok {
+		return sc.CloseRead()
+	}
+	return nil
+}
+
+func (c *shadowConn) CloseWrite() error {
+	if sc, ok := c.Conn.(xio.CloseWrite); ok {
+		return sc.CloseWrite()
+	}
+	return nil
 }

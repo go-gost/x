@@ -135,7 +135,7 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 			}
 			err = sc.Control(func(fd uintptr) {
 				if ifceName != "" {
-					if err := bindDevice(network, fd, ifceName); err != nil {
+					if err := bindDevice(network, addr, fd, ifceName); err != nil {
 						log.Warnf("bind device: %v", err)
 					}
 				}
@@ -159,13 +159,13 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
 				if ifceName != "" {
-					if err := bindDevice(network, fd, ifceName); err != nil {
-						log.Warnf("bind device: %v", err)
+					if err := bindDevice(network, address, fd, ifceName); err != nil {
+						log.Warnf("%s/%s bind device: %v", address, network, err)
 					}
 				}
 				if d.Mark != 0 {
 					if err := setMark(fd, d.Mark); err != nil {
-						log.Warnf("set mark: %v", err)
+						log.Warnf("%s/%s set mark: %v", address, network, err)
 					}
 				}
 			})

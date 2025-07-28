@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/metadata"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
+	xio "github.com/go-gost/x/internal/io"
 )
 
 var (
@@ -109,6 +110,20 @@ func (c *limitConn) Metadata() metadata.Metadata {
 func (c *limitConn) ClientAddr() net.Addr {
 	if sc, ok := c.Conn.(xnet.ClientAddr); ok {
 		return sc.ClientAddr()
+	}
+	return nil
+}
+
+func (c *limitConn) CloseRead() error {
+	if sc, ok := c.Conn.(xio.CloseRead); ok {
+		return sc.CloseRead()
+	}
+	return nil
+}
+
+func (c *limitConn) CloseWrite() error {
+	if sc, ok := c.Conn.(xio.CloseWrite); ok {
+		return sc.CloseWrite()
 	}
 	return nil
 }

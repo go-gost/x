@@ -90,10 +90,10 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     ctxvalue.SidFromContext(ctx),
+		"client":  ro.ClientIP,
 		"network": ro.Network,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -134,9 +134,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return cc, err
 	}
 	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-		var buf bytes.Buffer
-		cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
-		ro.Route = buf.String()
+		cc, err := dial(ctx, network, address)
 		if err != nil {
 			return nil, err
 		}

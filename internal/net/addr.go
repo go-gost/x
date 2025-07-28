@@ -193,7 +193,3 @@ func (r *IPRange) Parse(s string) error {
 func (r *IPRange) Contains(addr netip.Addr) bool {
 	return !(addr.Less(r.Min) || r.Max.Less(addr))
 }
-
-type ClientAddr interface {
-	ClientAddr() net.Addr
-}

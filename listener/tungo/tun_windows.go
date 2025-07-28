@@ -26,7 +26,7 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 	if len(l.md.config.Net) > 0 {
 		ipNet := l.md.config.Net[0]
 		cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
-			"source=static addr=%s mask=%s gateway=none",
+			"source=static addr=%s mask=%s",
 			name, ipNet.IP.String(), ipMask(ipNet.Mask))
 		l.log.Debug(cmd)
 

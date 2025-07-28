@@ -132,7 +132,8 @@ func (h *socks5Handler) serveBind(ctx context.Context, conn net.Conn, ln net.Lis
 			defer close(errc)
 			defer pc1.Close()
 
-			errc <- xnet.Transport(conn, pc1)
+			// errc <- xnet.Transport(conn, pc1)
+			errc <- xnet.Pipe(ctx, conn, pc1)
 		}()
 
 		return errc
@@ -172,7 +173,8 @@ func (h *socks5Handler) serveBind(ctx context.Context, conn net.Conn, ln net.Lis
 
 		start := time.Now()
 		log.Debugf("%s <-> %s", rc.LocalAddr(), rc.RemoteAddr())
-		xnet.Transport(pc2, rc)
+		// xnet.Transport(pc2, rc)
+		xnet.Pipe(ctx, pc2, rc)
 		log.WithFields(map[string]any{"duration": time.Since(start)}).
 			Debugf("%s >-< %s", rc.LocalAddr(), rc.RemoteAddr())
 

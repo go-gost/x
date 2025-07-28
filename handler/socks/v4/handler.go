@@ -325,7 +325,8 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), ro.Host)
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), ro.Host)

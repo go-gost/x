@@ -13,21 +13,33 @@ const (
 	IPV6_UNICAST_IF = 31
 )
 
-func bindDevice(network string, fd uintptr, ifceName string) error {
+func bindDevice(network, address string, fd uintptr, ifceName string) error {
 	if ifceName == "" {
 		return nil
 	}
 
+	host, _, _ := net.SplitHostPort(address)
+	ip := net.ParseIP(host)
+	if ip != nil && !ip.IsGlobalUnicast() {
+		return nil
+	}
+
 	ifce, err := net.InterfaceByName(ifceName)
-	if err == nil {
+	if err != nil {
 		return err
 	}
 
 	switch network {
-	case "tcp", "tcp4", "udp4":
+	case "tcp", "tcp4", "udp", "udp4":
 		return bindSocketToInterface4(windows.Handle(fd), uint32(ifce.Index))
 	case "tcp6", "udp6":
-		return bindSocketToInterface6(windows.Handle(fd), uint32(ifce.Index))
+		err = bindSocketToInterface6(windows.Handle(fd), uint32(ifce.Index))
+		if network == "udp6" && ip == nil {
+			// The underlying IP net maybe IPv4 even if the `network` param is `udp6`,
+			// so we should bind socket to interface4 at the same time.
+			err = bindSocketToInterface4(windows.Handle(fd), uint32(ifce.Index))
+		}
+		return err
 	}
 
 	return nil

@@ -449,7 +449,8 @@ func (h *Sniffer) handleUpgradeResponse(ctx context.Context, rw io.ReadWriter, c
 		return h.sniffingWebsocketFrame(ctx, rw, cc, ro, log)
 	}
 
-	return xnet.Transport(rw, cc)
+	// return xnet.Transport(rw, cc)
+	return xnet.Pipe(ctx, rw, cc)
 }
 
 func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
@@ -663,7 +664,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	}
 
 	log.Infof("%s <-> %s", ro.RemoteAddr, ro.Host)
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(ro.Time),
 	}).Infof("%s >-< %s", ro.RemoteAddr, ro.Host)

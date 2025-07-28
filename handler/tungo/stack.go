@@ -23,6 +23,7 @@ import (
 	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
+	"github.com/miekg/dns"
 	"github.com/rs/xid"
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
 )
@@ -39,13 +40,14 @@ type transportHandler struct {
 	tcpQueue chan adapter.TCPConn
 	udpQueue chan adapter.UDPConn
 
-	// UDP session timeout.
-	udpTimeout time.Duration
-
 	procOnce   sync.Once
 	procCancel context.CancelFunc
 
+	// UDP session timeout.
+	udpTimeout time.Duration
+
 	sniffing                bool
+	sniffingUDP             bool
 	sniffingTimeout         time.Duration
 	sniffingResponseTimeout time.Duration
 	sniffingFallback        bool
@@ -112,6 +114,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		Network:    "tcp",
 		RemoteAddr: remoteAddr.String(),
 		Dst:        dstAddr.String(),
+		Host:       dstAddr.String(),
 		ClientIP:   remoteAddr.String(),
 		Time:       start,
 		SID:        sid,
@@ -143,6 +146,9 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
+		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+			log.Errorf("record: %v", err)
+		}
 
 		log.WithFields(map[string]any{
 			"src":         ro.Src,
@@ -174,7 +180,6 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		}
 
 		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			log.Debugf("dial %s/%s", address, network)
 			var cc net.Conn
 			var err error
 			if address != "" {
@@ -257,7 +262,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 
 	t := time.Now()
 	log.Infof("%s <-> %s", remoteAddr, dstAddr)
-	xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", remoteAddr, dstAddr)
@@ -284,9 +289,15 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		Network:    "udp",
 		RemoteAddr: remoteAddr.String(),
 		Dst:        dstAddr.String(),
+		Host:       dstAddr.String(),
+		ClientIP:   remoteAddr.String(),
 		Time:       start,
 		SID:        sid,
 	}
+	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
+		ro.ClientIP = h
+	}
+
 	log := h.opts.Logger.WithFields(map[string]any{
 		"network": ro.Network,
 		"remote":  ro.RemoteAddr,
@@ -309,6 +320,9 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
+		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+			log.Errorf("record: %v", err)
+		}
 
 		log.WithFields(map[string]any{
 			"src":         ro.Src,
@@ -330,13 +344,13 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 
 	t := time.Now()
 	log.Infof("%s <-> %s", remoteAddr, dstAddr)
-	pipeData(conn, cc, h.udpTimeout)
+	pipePacketData(conn, cc, h.sniffingUDP, ro, h.udpTimeout)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", remoteAddr, dstAddr)
 }
 
-func pipeData(conn1, conn2 net.Conn, timeout time.Duration) {
+func pipePacketData(conn1, conn2 net.Conn, sniffing bool, ro *xrecorder.HandlerRecorderObject, timeout time.Duration) {
 	if timeout <= 0 {
 		timeout = udpSessionTimeout
 	}
@@ -346,17 +360,18 @@ func pipeData(conn1, conn2 net.Conn, timeout time.Duration) {
 
 	go func() {
 		defer wg.Done()
-		copyData(conn1, conn2, timeout)
+		copyPacketData(conn1, conn2, sniffing, false, ro, timeout)
 	}()
 	go func() {
 		defer wg.Done()
-		copyData(conn2, conn1, timeout)
+		copyPacketData(conn2, conn1, sniffing, true, ro, timeout)
 	}()
 	wg.Wait()
 }
 
-func copyData(dst, src net.Conn, timeout time.Duration) error {
-	buf := make([]byte, math.MaxUint16)
+func copyPacketData(dst, src net.Conn, sniffing bool, c2s bool, ro *xrecorder.HandlerRecorderObject, timeout time.Duration) error {
+	buf := make([]byte, math.MaxUint16/2)
+	isDNS := false
 
 	for {
 		src.SetReadDeadline(time.Now().Add(timeout))
@@ -369,9 +384,41 @@ func copyData(dst, src net.Conn, timeout time.Duration) error {
 			return err
 		}
 
+		if n == 0 {
+			return nil
+		}
+
+		if sniffing {
+			// try to sniff DNS msg.
+			{
+				msg := &dns.Msg{}
+				if msg.Unpack(buf[:n]) == nil && len(msg.Question) > 0 {
+					if c2s {
+						ro.Proto = "dns"
+						ro.DNS = &xrecorder.DNSRecorderObject{
+							ID:       int(msg.Id),
+							Name:     msg.Question[0].Name,
+							Class:    dns.Class(msg.Question[0].Qclass).String(),
+							Type:     dns.Type(msg.Question[0].Qtype).String(),
+							Question: msg.String(),
+						}
+					} else {
+						if ro.DNS != nil {
+							ro.DNS.Answer = msg.String()
+						}
+					}
+					isDNS = true
+				}
+			}
+		}
+
 		if _, err = dst.Write(buf[:n]); err != nil {
 			return err
 		}
 		dst.SetReadDeadline(time.Now().Add(timeout))
+
+		if isDNS {
+			return nil
+		}
 	}
 }

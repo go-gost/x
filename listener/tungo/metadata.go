@@ -30,7 +30,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		config.MTU = defaultMTU
 	}
 	if config.Name == "" {
-		config.Name = "tungo"
+		config.Name = defaultName
 	}
 	if gw := mdutil.GetString(md, "gw", "tun.gw"); gw != "" {
 		config.Gateway = net.ParseIP(gw)

@@ -219,7 +219,8 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 
 	t := time.Now()
 	log.Infof("%s <-> %s", cc.LocalAddr(), targetAddr)
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", cc.LocalAddr(), targetAddr)
@@ -321,7 +322,8 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 
 				t := time.Now()
 				log.Debugf("%s <-> %s", conn.LocalAddr(), conn.RemoteAddr())
-				xnet.Transport(ch, conn)
+				// xnet.Transport(ch, conn)
+				xnet.Pipe(ctx, ch, conn)
 				log.WithFields(map[string]any{
 					"duration": time.Since(t),
 				}).Debugf("%s >-< %s", conn.LocalAddr(), conn.RemoteAddr())

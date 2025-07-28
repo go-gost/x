@@ -435,7 +435,8 @@ func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWrite
 		return ep.sniffingWebsocketFrame(ctx, rw, backConn, ro, log)
 	}
 
-	return xnet.Transport(rw, backConn)
+	// return xnet.Transport(rw, backConn)
+	return xnet.Pipe(ctx, rw, backConn)
 }
 
 func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
@@ -616,7 +617,8 @@ func (ep *entrypoint) HandleTLS(ctx context.Context, conn net.Conn, ro *xrecorde
 		return err
 	}
 
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	return err
 }
 
@@ -698,7 +700,8 @@ func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())

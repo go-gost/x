@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/metrics"
+	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	xmetrics "github.com/go-gost/x/metrics"
@@ -83,6 +84,20 @@ func (c *serverConn) Metadata() metadata.Metadata {
 func (c *serverConn) ClientAddr() net.Addr {
 	if sc, ok := c.Conn.(xnet.ClientAddr); ok {
 		return sc.ClientAddr()
+	}
+	return nil
+}
+
+func (c *serverConn) CloseRead() error {
+	if sc, ok := c.Conn.(xio.CloseRead); ok {
+		return sc.CloseRead()
+	}
+	return nil
+}
+
+func (c *serverConn) CloseWrite() error {
+	if sc, ok := c.Conn.(xio.CloseWrite); ok {
+		return sc.CloseWrite()
 	}
 	return nil
 }

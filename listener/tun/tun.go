@@ -16,6 +16,7 @@ type tunDevice struct {
 	sizes   []int
 	rbufs   [][]byte
 	wbufs   [][]byte
+	rbuf    []byte
 	wbuf    []byte
 }
 
@@ -32,12 +33,21 @@ func (d *tunDevice) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	d.rbufs[0] = p
+	if readOffset > 0 {
+		d.rbufs[0] = d.rbuf
+	} else {
+		d.rbufs[0] = p
+	}
+
 	packets, err := d.dev.Read(d.rbufs, d.sizes, readOffset)
 	if err != nil && err != tun.ErrTooManySegments {
 		return
 	}
 	n = d.sizes[0]
+
+	if readOffset > 0 {
+		copy(p, d.rbuf[readOffset:n+readOffset])
+	}
 
 	d.sizes[0] = 0
 	d.packets = packets - 1
@@ -80,6 +90,7 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		sizes: make([]int, batchSize),
 		rbufs: rbufs,
 		wbufs: make([][]byte, 1),
+		rbuf:  make([]byte, maxBufSize+readOffset),
 		wbuf:  make([]byte, maxBufSize+writeOffset),
 	}
 	name, err = ifce.Name()

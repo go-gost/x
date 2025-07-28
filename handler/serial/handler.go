@@ -101,7 +101,8 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), "@")
-	xnet.Transport(conn, cc)
+	// xnet.Transport(conn, cc)
+	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), "@")
@@ -130,7 +131,8 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), target.Addr)
-	xnet.Transport(conn, port)
+	// xnet.Transport(conn, port)
+	xnet.Pipe(ctx, conn, port)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)

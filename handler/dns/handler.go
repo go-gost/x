@@ -142,6 +142,7 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		Network:    conn.LocalAddr().Network(),
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
+		Host:       conn.LocalAddr().String(),
 		Proto:      "dns",
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),

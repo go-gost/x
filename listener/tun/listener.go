@@ -90,7 +90,7 @@ func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 
 			addrs, _ := itf.Addrs()
 			l.log.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
-				itf.Name, ip, itf.MTU, addrs)
+				itf.Name, ip, l.md.config.MTU, addrs)
 
 			var c net.Conn
 			c = &conn{

@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+type CloseRead interface {
+	CloseRead() error
+}
+
+type CloseWrite interface {
+	CloseWrite() error
+}
+
 type readWriter struct {
 	io.Reader
 	io.Writer
@@ -15,6 +23,20 @@ func NewReadWriter(r io.Reader, w io.Writer) io.ReadWriter {
 		Reader: r,
 		Writer: w,
 	}
+}
+
+func (rw *readWriter) CloseRead() error {
+	if sc, ok := rw.Writer.(CloseRead); ok {
+		return sc.CloseRead()
+	}
+	return nil
+}
+
+func (rw *readWriter) CloseWrite() error {
+	if sc, ok := rw.Writer.(CloseWrite); ok {
+		return sc.CloseWrite()
+	}
+	return nil
 }
 
 type readWriteCloser struct {

@@ -11,6 +11,7 @@ type metadata struct {
 	udpTimeout time.Duration
 
 	sniffing                bool
+	sniffingUDP                bool
 	sniffingTimeout         time.Duration
 	sniffingResponseTimeout time.Duration
 	sniffingFallback        bool
@@ -26,6 +27,7 @@ func (h *tungoHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.udpTimeout = mdutil.GetDuration(md, "udpTimeout")
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
+	h.md.sniffingUDP = mdutil.GetBool(md, "sniffing.udp")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingResponseTimeout = mdutil.GetDuration(md, "sniffing.responseTimeout")
 	h.md.sniffingFallback = mdutil.GetBool(md, "sniffing.fallback")

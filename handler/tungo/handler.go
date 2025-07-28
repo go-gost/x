@@ -20,6 +20,7 @@ import (
 	"github.com/go-gost/x/registry"
 	"github.com/xjasonlyu/tun2socks/v2/core"
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 func init() {
@@ -33,6 +34,7 @@ type tungoHandler struct {
 	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 	recorder recorder.RecorderObject
+	stack    *stack.Stack
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -110,12 +112,13 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		tcpQueue:   make(chan adapter.TCPConn),
 		udpQueue:   make(chan adapter.UDPConn),
 		udpTimeout: h.md.udpTimeout,
-		procCancel: func() { /* nop */ },
+		procCancel: func() {},
 
-		sniffing:         h.md.sniffing,
-		sniffingTimeout:  h.md.sniffingTimeout,
+		sniffing:                h.md.sniffing,
+		sniffingUDP:             h.md.sniffingUDP,
+		sniffingTimeout:         h.md.sniffingTimeout,
 		sniffingResponseTimeout: h.md.sniffingResponseTimeout,
-		sniffingFallback: h.md.sniffingFallback,
+		sniffingFallback:        h.md.sniffingFallback,
 
 		recorder: h.recorder,
 		stats:    h.stats,
@@ -133,9 +136,10 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	if err != nil {
 		return err
 	}
-	defer stack.Close()
 
-	<-ctx.Done()
+	h.stack = stack
+
+	stack.Wait()
 
 	return nil
 }
@@ -144,6 +148,9 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 func (h *tungoHandler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
+	}
+	if h.stack != nil {
+		h.stack.Close()
 	}
 	return nil
 }
