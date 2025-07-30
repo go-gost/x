@@ -323,9 +323,15 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		return nil
 	}
 
-	// TODO: forward request
-	resp.StatusCode = http.StatusBadRequest
-	w.WriteHeader(resp.StatusCode)
+	start := time.Now()
+	log.Infof("%s <-> %s", req.RemoteAddr, host)
+	if err := h.forwardRequest(w, req, cc); err != nil {
+		log.Info("%s - %s: %s", req.RemoteAddr, host, err)
+	}
+	log.WithFields(map[string]any{
+		"duration": time.Since(start),
+	}).Infof("%s >-< %s", req.RemoteAddr, host)
+
 	return nil
 }
 
@@ -456,6 +462,7 @@ func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, 
 
 	return
 }
+
 func (h *http2Handler) forwardRequest(w http.ResponseWriter, r *http.Request, rw io.ReadWriter) (err error) {
 	if err = r.Write(rw); err != nil {
 		return
