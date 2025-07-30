@@ -362,14 +362,13 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	ro.Src = cc.LocalAddr().String()
 	ro.Dst = cc.RemoteAddr().String()
 
-	resp.StatusCode = http.StatusOK
-	resp.Status = "200 Connection established"
+	b := []byte("HTTP/1.1 200 Connection established\r\n" +
+		"Proxy-Agent: " + h.md.proxyAgent + "\r\n\r\n")
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
-		dump, _ := httputil.DumpResponse(resp, false)
-		log.Trace(string(dump))
+		log.Trace(string(b))
 	}
-	if err = resp.Write(conn); err != nil {
+	if _, err = conn.Write(b); err != nil {
 		log.Error(err)
 		return err
 	}
