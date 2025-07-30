@@ -22,7 +22,8 @@ import (
 
 func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
-		"cmd": "udp-tun",
+		"network": network,
+		"cmd":     "udp-tun",
 	})
 
 	{
@@ -66,7 +67,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 
 		// obtain a udp connection
 		var buf bytes.Buffer
-		c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+		c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, "") // UDP association
 		ro.Route = buf.String()
 		if err != nil {
 			log.Error(err)
@@ -94,7 +95,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 			Netns: h.options.Netns,
 		}
 		var err error
-		pc, err = lc.ListenPacket(ctx, "udp", bindAddr.String())
+		pc, err = lc.ListenPacket(ctx, network, bindAddr.String())
 		if err != nil {
 			log.Error(err)
 			reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -133,6 +134,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 
 	r := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).
+		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)
 
 	t := time.Now()

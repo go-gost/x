@@ -121,9 +121,11 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 
 	log.Debugf("%s/%s: router=%s, connector=%s, weight=%d established", host, network, routerID, connectorID, connectorID.Weight())
 
-	var b [MaxMessageSize]byte
+	b := bufpool.Get(h.md.bufferSize)
+	defer bufpool.Put(b)
+
 	for {
-		n, err := conn.Read(b[:])
+		n, err := conn.Read(b)
 		if err != nil {
 			if err == io.EOF {
 				return nil

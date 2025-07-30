@@ -23,9 +23,10 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
-func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
-		"cmd": "udp",
+		"network": network,
+		"cmd":     network,
 	})
 
 	if !h.md.enableUDP {
@@ -39,7 +40,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 		Netns: h.options.Netns,
 	}
 
-	cc, err := lc.ListenPacket(ctx, "udp", "")
+	cc, err := lc.ListenPacket(ctx, network, "")
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -74,7 +75,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 
 	// obtain a udp connection
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, "") // UDP association
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -106,7 +107,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 			string(clientID),
 			limiter.ServiceOption(h.options.Service),
 			limiter.ScopeOption(limiter.ScopeClient),
-			limiter.NetworkOption("udp"),
+			limiter.NetworkOption(network),
 			limiter.ClientOption(string(clientID)),
 			limiter.SrcOption(conn.RemoteAddr().String()),
 		)
@@ -119,8 +120,9 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecor
 		}
 	}
 
-	r := udp.NewRelay(socks.UDPConn(cc), pc).
+	r := udp.NewRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
 		WithBypass(h.options.Bypass).
+		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)
 
 	go r.Run(ctx)

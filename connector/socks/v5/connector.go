@@ -225,9 +225,10 @@ func (c *socks5Connector) relayUDP(ctx context.Context, conn net.Conn, addr net.
 	}
 
 	return &udpRelayConn{
-		udpConn: cc.(*net.UDPConn),
-		tcpConn: conn,
-		taddr:   addr,
-		logger:  log,
+		udpConn:    cc.(*net.UDPConn),
+		tcpConn:    conn,
+		taddr:      addr,
+		bufferSize: c.md.udpBufferSize,
+		logger:     log,
 	}, nil
 }

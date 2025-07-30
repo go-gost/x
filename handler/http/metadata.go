@@ -25,6 +25,7 @@ type metadata struct {
 	compression     bool
 	probeResistance *probeResistance
 	enableUDP       bool
+	udpBufferSize   int
 	header          http.Header
 	hash            string
 	authBasicRealm  string
@@ -77,6 +78,7 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 		}
 	}
 	h.md.enableUDP = mdutil.GetBool(md, "udp")
+	h.md.udpBufferSize = mdutil.GetInt(md, "udp.bufferSize", "udpBufferSize")
 	h.md.hash = mdutil.GetString(md, "hash")
 	h.md.authBasicRealm = mdutil.GetString(md, "authBasicRealm")
 

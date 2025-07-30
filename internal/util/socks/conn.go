@@ -2,9 +2,9 @@ package socks
 
 import (
 	"bytes"
-	"math"
 	"net"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
 )
 
@@ -86,18 +86,23 @@ func (c *udpTunConn) Write(b []byte) (n int, err error) {
 }
 
 const (
-	MaxMessageSize = math.MaxUint16
+	defaultBufferSize = 4096
 )
 
 type udpConn struct {
 	net.PacketConn
-	raddr net.Addr
-	taddr net.Addr
+	raddr      net.Addr
+	taddr      net.Addr
+	bufferSize int
 }
 
-func UDPConn(c net.PacketConn) net.PacketConn {
+func UDPConn(c net.PacketConn, bufferSize int) net.PacketConn {
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
+	}
 	return &udpConn{
 		PacketConn: c,
+		bufferSize: bufferSize,
 	}
 }
 
@@ -105,9 +110,10 @@ func UDPConn(c net.PacketConn) net.PacketConn {
 // NOTE: for server side,
 // the returned addr is the target address the client want to relay to.
 func (c *udpConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
-	var rbuf [MaxMessageSize]byte
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
 
-	n, c.raddr, err = c.PacketConn.ReadFrom(rbuf[:])
+	n, c.raddr, err = c.PacketConn.ReadFrom(buf)
 	if err != nil {
 		return
 	}
@@ -116,11 +122,11 @@ func (c *udpConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	header := gosocks5.UDPHeader{
 		Addr: &socksAddr,
 	}
-	hlen, err := header.ReadFrom(bytes.NewReader(rbuf[:n]))
+	hlen, err := header.ReadFrom(bytes.NewReader(buf[:n]))
 	if err != nil {
 		return
 	}
-	n = copy(b, rbuf[hlen:n])
+	n = copy(b, buf[hlen:n])
 
 	addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
 	return
@@ -132,7 +138,6 @@ func (c *udpConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *udpConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
-
 	socksAddr := gosocks5.Addr{}
 	if err = socksAddr.ParseFrom(addr.String()); err != nil {
 		return
@@ -146,14 +151,16 @@ func (c *udpConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		Data:   b,
 	}
 
-	var wbuf [MaxMessageSize]byte
-	buf := bytes.NewBuffer(wbuf[:][:0])
-	_, err = dgram.WriteTo(buf)
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
+
+	bw := bytes.NewBuffer(buf[:0])
+	_, err = dgram.WriteTo(bw)
 	if err != nil {
 		return
 	}
 
-	_, err = c.PacketConn.WriteTo(buf.Bytes(), c.raddr)
+	_, err = c.PacketConn.WriteTo(bw.Bytes(), c.raddr)
 	n = len(b)
 
 	return

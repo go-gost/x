@@ -2,14 +2,14 @@ package ss
 
 import (
 	"bytes"
-	"math"
 	"net"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
 )
 
 const (
-	MaxMessageSize = math.MaxUint16
+	defaultBufferSize = 4096
 )
 
 var (
@@ -19,40 +19,52 @@ var (
 
 type UDPConn struct {
 	net.PacketConn
-	raddr net.Addr
-	taddr net.Addr
+	raddr      net.Addr
+	taddr      net.Addr
+	bufferSize int
 }
 
-func UDPClientConn(c net.PacketConn, remoteAddr, targetAddr net.Addr) *UDPConn {
+func UDPClientConn(c net.PacketConn, remoteAddr, targetAddr net.Addr, bufferSize int) *UDPConn {
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
+	}
+
 	return &UDPConn{
 		PacketConn: c,
 		raddr:      remoteAddr,
 		taddr:      targetAddr,
+		bufferSize: bufferSize,
 	}
 }
 
-func UDPServerConn(c net.PacketConn, remoteAddr net.Addr) *UDPConn {
+func UDPServerConn(c net.PacketConn, remoteAddr net.Addr, bufferSize int) *UDPConn {
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
+	}
+
 	return &UDPConn{
 		PacketConn: c,
 		raddr:      remoteAddr,
+		bufferSize: bufferSize,
 	}
 }
 
 func (c *UDPConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
-	var rbuf [MaxMessageSize]byte
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
 
-	n, _, err = c.PacketConn.ReadFrom(rbuf[:])
+	n, _, err = c.PacketConn.ReadFrom(buf)
 	if err != nil {
 		return
 	}
 
 	saddr := gosocks5.Addr{}
-	addrLen, err := saddr.ReadFrom(bytes.NewReader(rbuf[:n]))
+	addrLen, err := saddr.ReadFrom(bytes.NewReader(buf[:n]))
 	if err != nil {
 		return
 	}
 
-	n = copy(b, rbuf[addrLen:n])
+	n = copy(b, buf[addrLen:n])
 	addr, err = net.ResolveUDPAddr("udp", saddr.String())
 
 	return
@@ -64,20 +76,21 @@ func (c *UDPConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *UDPConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
-	var wbuf [MaxMessageSize]byte
-
 	socksAddr := gosocks5.Addr{}
 	if err = socksAddr.ParseFrom(addr.String()); err != nil {
 		return
 	}
 
-	addrLen, err := socksAddr.Encode(wbuf[:])
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
+
+	addrLen, err := socksAddr.Encode(buf)
 	if err != nil {
 		return
 	}
 
-	n = copy(wbuf[addrLen:], b)
-	_, err = c.PacketConn.WriteTo(wbuf[:addrLen+n], c.raddr)
+	n = copy(buf[addrLen:], b)
+	_, err = c.PacketConn.WriteTo(buf[:addrLen+n], c.raddr)
 
 	return
 }

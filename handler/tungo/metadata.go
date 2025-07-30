@@ -10,8 +10,13 @@ import (
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
+const (
+	defaultBufferSize = 4096
+)
+
 type metadata struct {
-	udpTimeout time.Duration
+	udpTimeout    time.Duration
+	udpBufferSize int
 
 	sniffing                bool
 	sniffingUDP             bool
@@ -34,6 +39,7 @@ type metadata struct {
 
 func (h *tungoHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.udpTimeout = mdutil.GetDuration(md, "udpTimeout", "tungo.udpTimeout")
+	h.md.udpBufferSize = mdutil.GetInt(md, "udp.bufferSize", "udpBufferSize")
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingUDP = mdutil.GetBool(md, "sniffing.udp")

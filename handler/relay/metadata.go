@@ -14,11 +14,12 @@ import (
 )
 
 type metadata struct {
-	readTimeout time.Duration
-	enableBind  bool
-	noDelay     bool
-	hash        string
-	muxCfg      *mux.Config
+	readTimeout   time.Duration
+	udpBufferSize int
+	enableBind    bool
+	noDelay       bool
+	hash          string
+	muxCfg        *mux.Config
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -43,6 +44,7 @@ func (h *relayHandler) parseMetadata(md mdata.Metadata) (err error) {
 		h.md.readTimeout = 15 * time.Second
 	}
 
+	h.md.udpBufferSize = mdutil.GetInt(md, "udp.bufferSize", "udpBufferSize")
 	h.md.enableBind = mdutil.GetBool(md, "bind")
 	h.md.noDelay = mdutil.GetBool(md, "nodelay")
 	h.md.hash = mdutil.GetString(md, "hash")

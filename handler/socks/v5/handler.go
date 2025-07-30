@@ -145,6 +145,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		}
 
 		log.WithFields(map[string]any{
+			"network":     ro.Network,
 			"duration":    time.Since(start),
 			"inputBytes":  ro.InputBytes,
 			"outputBytes": ro.OutputBytes,
@@ -186,7 +187,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return h.handleMuxBind(ctx, conn, "tcp", address, ro, log)
 	case gosocks5.CmdUdp:
 		ro.Network = "udp"
-		return h.handleUDP(ctx, conn, ro, log)
+		return h.handleUDP(ctx, conn, "udp", ro, log)
 	case socks.CmdUDPTun:
 		ro.Network = "udp"
 		return h.handleUDPTun(ctx, conn, "udp", address, ro, log)

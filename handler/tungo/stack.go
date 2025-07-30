@@ -6,13 +6,13 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
-	"math"
 	"net"
 	"net/netip"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
@@ -44,7 +44,8 @@ type transportHandler struct {
 	procCancel context.CancelFunc
 
 	// UDP session timeout.
-	udpTimeout time.Duration
+	udpTimeout    time.Duration
+	udpBufferSize int
 
 	sniffing                bool
 	sniffingUDP             bool
@@ -344,15 +345,21 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 
 	t := time.Now()
 	log.Infof("%s <-> %s", remoteAddr, dstAddr)
-	pipePacketData(conn, cc, h.sniffingUDP, ro, h.udpTimeout)
+	h.pipePacketData(conn, cc, ro)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", remoteAddr, dstAddr)
 }
 
-func pipePacketData(conn1, conn2 net.Conn, sniffing bool, ro *xrecorder.HandlerRecorderObject, timeout time.Duration) {
+func (h *transportHandler) pipePacketData(conn1, conn2 net.Conn, ro *xrecorder.HandlerRecorderObject) {
+	timeout := h.udpTimeout
 	if timeout <= 0 {
 		timeout = udpSessionTimeout
+	}
+
+	bufferSize := h.udpBufferSize
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
 	}
 
 	wg := sync.WaitGroup{}
@@ -360,17 +367,24 @@ func pipePacketData(conn1, conn2 net.Conn, sniffing bool, ro *xrecorder.HandlerR
 
 	go func() {
 		defer wg.Done()
-		copyPacketData(conn1, conn2, sniffing, false, ro, timeout)
+
+		buf := bufpool.Get(bufferSize)
+		defer bufpool.Put(buf)
+
+		copyPacketData(conn1, conn2, buf, h.sniffing, false, ro, timeout)
 	}()
 	go func() {
 		defer wg.Done()
-		copyPacketData(conn2, conn1, sniffing, true, ro, timeout)
+
+		buf := bufpool.Get(bufferSize)
+		defer bufpool.Put(buf)
+
+		copyPacketData(conn2, conn1, buf, h.sniffing, true, ro, timeout)
 	}()
 	wg.Wait()
 }
 
-func copyPacketData(dst, src net.Conn, sniffing bool, c2s bool, ro *xrecorder.HandlerRecorderObject, timeout time.Duration) error {
-	buf := make([]byte, math.MaxUint16/2)
+func copyPacketData(dst, src net.Conn, buf []byte, sniffing bool, c2s bool, ro *xrecorder.HandlerRecorderObject, timeout time.Duration) error {
 	isDNS := false
 
 	for {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -112,7 +113,7 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 			pc = h.cipher.PacketConn(pc)
 		}
 		// standard UDP relay.
-		pc = ss.UDPServerConn(pc, conn.RemoteAddr())
+		pc = ss.UDPServerConn(pc, conn.RemoteAddr(), h.md.udpBufferSize)
 	} else {
 		if h.cipher != nil {
 			conn = ss.ShadowConn(h.cipher.StreamConn(conn), nil)
@@ -150,11 +151,18 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 func (h *ssuHandler) relayPacket(ctx context.Context, pc1, pc2 net.PacketConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	errc := make(chan error, 2)
 
+	bufferSize := h.md.udpBufferSize
+	if bufferSize <= 0 {
+		bufferSize = defaultBufferSize
+	}
+
 	go func() {
-		var b [MaxMessageSize]byte
+		b := bufpool.Get(bufferSize)
+		defer bufpool.Put(b)
+
 		for {
 			err := func() error {
-				n, addr, err := pc1.ReadFrom(b[:])
+				n, addr, err := pc1.ReadFrom(b)
 				if err != nil {
 					return err
 				}
@@ -185,10 +193,12 @@ func (h *ssuHandler) relayPacket(ctx context.Context, pc1, pc2 net.PacketConn, r
 	}()
 
 	go func() {
-		var b [MaxMessageSize]byte
+		b := bufpool.Get(bufferSize)
+		defer bufpool.Put(b)
+
 		for {
 			err := func() error {
-				n, raddr, err := pc2.ReadFrom(b[:])
+				n, raddr, err := pc2.ReadFrom(b)
 				if err != nil {
 					return err
 				}

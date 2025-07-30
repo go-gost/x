@@ -2,10 +2,10 @@ package v5
 
 import (
 	"bytes"
-	"math"
 	"net"
 	"time"
 
+	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gosocks5"
 )
@@ -25,17 +25,18 @@ func (c *bindConn) RemoteAddr() net.Addr {
 }
 
 type udpRelayConn struct {
-	udpConn *net.UDPConn
-	tcpConn net.Conn
-	taddr   net.Addr
-	rbuf    [math.MaxUint16]byte
-	wbuf    [math.MaxInt16]byte
-	logger  logger.Logger
+	udpConn    *net.UDPConn
+	tcpConn    net.Conn
+	taddr      net.Addr
+	bufferSize int
+	logger     logger.Logger
 }
 
 func (c *udpRelayConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
-	buf := c.rbuf[:]
-	nn, err := c.udpConn.Read(buf[:])
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
+
+	nn, err := c.udpConn.Read(buf)
 	if err != nil {
 		return
 	}
@@ -81,7 +82,8 @@ func (c *udpRelayConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 		Data:   b,
 	}
 
-	buf := c.wbuf[:]
+	buf := bufpool.Get(c.bufferSize)
+	defer bufpool.Put(buf)
 
 	nn, err := dgram.WriteTo(bytes.NewBuffer(buf[:0]))
 	if err != nil {

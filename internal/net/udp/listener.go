@@ -176,6 +176,8 @@ func (c *conn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	if !c.keepalive {
 		defer c.Close()
 	}
+	c.SetIdle(false)
+
 	return c.PacketConn.WriteTo(b, addr)
 }
 
@@ -210,6 +212,10 @@ func (c *conn) LocalAddr() net.Addr {
 
 func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
+}
+
+func (c *conn) SetReadDeadline(t time.Time) error {
+	return nil
 }
 
 func (c *conn) IsIdle() bool {

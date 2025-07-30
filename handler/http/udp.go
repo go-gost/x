@@ -75,6 +75,7 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorde
 
 	relay := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).
+		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)
 
 	t := time.Now()
