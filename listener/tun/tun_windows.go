@@ -6,6 +6,9 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/sys/windows"
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
@@ -14,13 +17,38 @@ const (
 	writeOffset    = 0
 )
 
+func init() {
+	tun.WintunTunnelType = "GOST"
+}
+
 func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.IP, err error) {
 	if l.md.config.Name == "" {
 		l.md.config.Name = defaultTunName
 	}
+
+	if l.md.guid != "" {
+		var guid windows.GUID
+		guid, err = windows.GUIDFromString(l.md.guid)
+		if err != nil {
+			return
+		}
+		tun.WintunStaticRequestedGUID = &guid
+	}
+
 	ifce, name, err = l.createTunDevice()
 	if err != nil {
 		return
+	}
+
+	if l.md.config.MTU > 0 {
+		cmd := fmt.Sprintf("netsh interface ip set subinterface %s mtu=%d", name, l.md.config.MTU)
+		l.log.Debug(cmd)
+
+		args := strings.Split(cmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+			err = fmt.Errorf("%s: %v", cmd, er)
+			return
+		}
 	}
 
 	if len(l.md.config.Net) > 0 {

@@ -19,6 +19,7 @@ const (
 
 type metadata struct {
 	config *tun_util.Config
+	guid   string
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -101,6 +102,8 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.config = config
+
+	l.md.guid = mdutil.GetString(md, "guid", "tun.guid")
 
 	return
 }

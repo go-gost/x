@@ -11,11 +11,15 @@ import (
 )
 
 const (
-	readOffset  = 0
-	writeOffset = 16
+	defaultTunName = "tungo"
+	readOffset     = 0
+	writeOffset    = 16
 )
 
 func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
+	if l.md.config.Name == "" {
+		l.md.config.Name = defaultTunName
+	}
 	dev, name, err = l.createTunDevice()
 	if err != nil {
 		return

@@ -12,7 +12,7 @@ import (
 
 const (
 	// tcpWaitTimeout implements a TCP half-close timeout.
-	tcpWaitTimeout = 30 * time.Second
+	tcpWaitTimeout = 10 * time.Second
 )
 
 func Pipe(ctx context.Context, rw1, rw2 io.ReadWriter) error {

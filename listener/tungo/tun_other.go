@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultTunName = "tun0"
+	defaultTunName = "tungo"
 	readOffset     = 4
 	writeOffset    = 4
 )

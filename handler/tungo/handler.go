@@ -20,6 +20,7 @@ import (
 	"github.com/go-gost/x/registry"
 	"github.com/xjasonlyu/tun2socks/v2/core"
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
+	"github.com/xjasonlyu/tun2socks/v2/core/option"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
@@ -129,9 +130,22 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	th.ProcessAsync()
 	defer th.Close()
 
+	var cOpts []option.Option
+	if h.md.tcpModerateReceiveBuffer {
+		cOpts = append(cOpts, option.WithTCPModerateReceiveBuffer(h.md.tcpModerateReceiveBuffer))
+	}
+	if h.md.tcpSendBufferSize > 0 {
+		cOpts = append(cOpts, option.WithTCPSendBufferSize(h.md.tcpSendBufferSize))
+	}
+	if h.md.tcpReceiveBufferSize > 0 {
+		cOpts = append(cOpts, option.WithTCPReceiveBufferSize(h.md.tcpReceiveBufferSize))
+	}
+
 	stack, err := core.CreateStack(&core.Config{
 		LinkEndpoint:     newEndpoint(conn, config.MTU, log),
 		TransportHandler: th,
+		MulticastGroups:  h.md.multicastGroups,
+		Options:          cOpts,
 	})
 	if err != nil {
 		return err

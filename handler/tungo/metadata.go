@@ -1,6 +1,9 @@
 package tungo
 
 import (
+	"fmt"
+	"net/netip"
+	"strings"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -11,7 +14,7 @@ type metadata struct {
 	udpTimeout time.Duration
 
 	sniffing                bool
-	sniffingUDP                bool
+	sniffingUDP             bool
 	sniffingTimeout         time.Duration
 	sniffingResponseTimeout time.Duration
 	sniffingFallback        bool
@@ -21,10 +24,16 @@ type metadata struct {
 
 	limiterRefreshInterval time.Duration
 	limiterCleanupInterval time.Duration
+
+	multicastGroups []netip.Addr
+
+	tcpSendBufferSize        int
+	tcpReceiveBufferSize     int
+	tcpModerateReceiveBuffer bool
 }
 
 func (h *tungoHandler) parseMetadata(md mdata.Metadata) (err error) {
-	h.md.udpTimeout = mdutil.GetDuration(md, "udpTimeout")
+	h.md.udpTimeout = mdutil.GetDuration(md, "udpTimeout", "tungo.udpTimeout")
 
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingUDP = mdutil.GetBool(md, "sniffing.udp")
@@ -43,6 +52,24 @@ func (h *tungoHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
 	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
+
+	for _, v := range strings.Split(mdutil.GetString(md, "multicastGroups", "tungo.multicastGroups"), ",") {
+		if v = strings.TrimSpace(v); v == "" {
+			continue
+		}
+		addr, err := netip.ParseAddr(v)
+		if err != nil {
+			return err
+		}
+		if !addr.IsMulticast() {
+			return fmt.Errorf("invalid multicast IP: %s", addr)
+		}
+		h.md.multicastGroups = append(h.md.multicastGroups, addr)
+	}
+
+	h.md.tcpSendBufferSize = mdutil.GetInt(md, "tcpSendBufferSize", "tungo.tcpSendBufferSize")
+	h.md.tcpReceiveBufferSize = mdutil.GetInt(md, "tcpReceiveBufferSize", "tungo.tcpReceiveBufferSize")
+	h.md.tcpModerateReceiveBuffer = mdutil.GetBool(md, "tcpModerateReceiveBuffer", "tungo.tcpModerateReceiveBuffer")
 
 	return
 }

@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	defaultMTU  = 1420
-	defaultName = "tungo"
+	defaultMTU = 1420
 )
 
 type metadata struct {
 	config *tun_util.Config
+	guid   string
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -28,9 +28,6 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	if config.MTU <= 0 {
 		config.MTU = defaultMTU
-	}
-	if config.Name == "" {
-		config.Name = defaultName
 	}
 	if gw := mdutil.GetString(md, "gw", "tun.gw"); gw != "" {
 		config.Gateway = net.ParseIP(gw)
@@ -92,6 +89,8 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.config = config
+
+	l.md.guid = mdutil.GetString(md, "guid", "tun.guid")
 
 	return
 }
