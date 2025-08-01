@@ -28,7 +28,7 @@ const (
 	defaultBodySize = 1024 * 1024 // 1MB
 )
 
-func (h *unixHandler) handleHTTP(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *unixHandler) handleHTTP(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	br := bufio.NewReader(rw)
 	req, err := http.ReadRequest(br)
 	if err != nil {
@@ -81,7 +81,7 @@ func (h *unixHandler) handleHTTP(ctx context.Context, rw, cc io.ReadWriter, ro *
 	}
 }
 
-func (h *unixHandler) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (close bool, err error) {
+func (h *unixHandler) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (close bool, err error) {
 	close = true
 
 	if req == nil {
@@ -206,7 +206,7 @@ func (h *unixHandler) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriter, r
 	return resp.Close, nil
 }
 
-func (h *unixHandler) handleTLS(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *unixHandler) handleTLS(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 
 	clientHello, err := dissector.ParseClientHello(io.TeeReader(rw, buf))

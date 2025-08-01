@@ -224,7 +224,7 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 
 	ro.Time = time.Time{}
 
-	if err := ep.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil {
+	if err := ep.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), req, ro, &pStats, log); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -245,13 +245,13 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 			log.Trace(string(dump))
 		}
 
-		if err := ep.httpRoundTrip(ctx, xio.NewReadWriter(br, conn), req, ro, &pStats, log); err != nil {
+		if err := ep.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), req, ro, &pStats, log); err != nil {
 			return err
 		}
 	}
 }
 
-func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (err error) {
+func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (err error) {
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
@@ -413,7 +413,7 @@ func upgradeType(h http.Header) string {
 	return h.Get("Upgrade")
 }
 
-func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWriter, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	reqUpType := upgradeType(req.Header)
 	resUpType := upgradeType(res.Header)
 	if !strings.EqualFold(reqUpType, resUpType) {

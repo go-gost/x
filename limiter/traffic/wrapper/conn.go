@@ -11,9 +11,9 @@ import (
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/metadata"
+	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
-	xio "github.com/go-gost/x/internal/io"
 )
 
 var (
@@ -118,14 +118,14 @@ func (c *limitConn) CloseRead() error {
 	if sc, ok := c.Conn.(xio.CloseRead); ok {
 		return sc.CloseRead()
 	}
-	return nil
+	return xio.ErrUnsupported
 }
 
 func (c *limitConn) CloseWrite() error {
 	if sc, ok := c.Conn.(xio.CloseWrite); ok {
 		return sc.CloseWrite()
 	}
-	return nil
+	return xio.ErrUnsupported
 }
 
 type packetConn struct {

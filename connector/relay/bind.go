@@ -44,7 +44,7 @@ func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, ad
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("bind on %s/%s OK", laddr, laddr.Network())
+	log.Infof("bind on %s/%s OK", laddr, laddr.Network())
 
 	session, err := mux.ServerSession(conn, c.md.muxCfg)
 	if err != nil {
@@ -63,7 +63,7 @@ func (c *relayConnector) bindUDP(ctx context.Context, conn net.Conn, network, ad
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("bind on %s/%s OK", laddr, laddr.Network())
+	log.Infof("bind on %s/%s OK", laddr, laddr.Network())
 
 	ln := udp.NewListener(
 		relay_util.UDPTunClientPacketConn(conn),

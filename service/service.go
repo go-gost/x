@@ -160,6 +160,8 @@ func (s *defaultService) Serve() error {
 		defer v.Dec()
 	}
 
+	log := s.options.logger
+
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -184,15 +186,17 @@ func (s *defaultService) Serve() error {
 
 				s.setState(StateFailed)
 
-				s.options.logger.Warnf("accept: %v, retrying in %v", e, tempDelay)
+				log.Warnf("accept: %v, retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
 				continue
 			}
 			s.setState(StateClosed)
 
 			if !errors.Is(e, net.ErrClosed) {
-				s.options.logger.Errorf("accept: %v", e)
+				log.Errorf("accept: %v", e)
 			}
+
+			log.Debugf("service %s exited!", s.name)
 
 			return e
 		}

@@ -316,7 +316,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		start := time.Now()
 		log.Infof("%s <-> %s", req.RemoteAddr, host)
 		// xnet.Transport(rw, cc)
-		xnet.Pipe(ctx, rw, cc)
+		xnet.Pipe(ctx, xio.NewReadWriteCloser(rw, rw, req.Body), cc)
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >-< %s", req.RemoteAddr, host)

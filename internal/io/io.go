@@ -1,8 +1,13 @@
 package io
 
 import (
+	"errors"
 	"io"
 	"time"
+)
+
+var (
+	ErrUnsupported = errors.New("unsupported")
 )
 
 type CloseRead interface {
@@ -29,14 +34,14 @@ func (rw *readWriter) CloseRead() error {
 	if sc, ok := rw.Writer.(CloseRead); ok {
 		return sc.CloseRead()
 	}
-	return nil
+	return ErrUnsupported
 }
 
 func (rw *readWriter) CloseWrite() error {
 	if sc, ok := rw.Writer.(CloseWrite); ok {
 		return sc.CloseWrite()
 	}
-	return nil
+	return ErrUnsupported
 }
 
 type readWriteCloser struct {
@@ -51,6 +56,20 @@ func NewReadWriteCloser(r io.Reader, w io.Writer, c io.Closer) io.ReadWriteClose
 		Writer: w,
 		Closer: c,
 	}
+}
+
+func (rwc *readWriteCloser) CloseRead() error {
+	if sc, ok := rwc.Writer.(CloseRead); ok {
+		return sc.CloseRead()
+	}
+	return ErrUnsupported
+}
+
+func (rwc *readWriteCloser) CloseWrite() error {
+	if sc, ok := rwc.Writer.(CloseWrite); ok {
+		return sc.CloseWrite()
+	}
+	return ErrUnsupported
 }
 
 type setReadDeadline interface {

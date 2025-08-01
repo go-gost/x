@@ -78,7 +78,7 @@ func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Re
 	}
 
 	if r.header != nil {
-		req.Header = r.header
+		req.Header = r.header.Clone()
 	}
 
 	if req.Header.Get("Content-Type") == "" {

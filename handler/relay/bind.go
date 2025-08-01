@@ -143,7 +143,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	)
 
 	log = log.WithFields(map[string]any{})
-	log.Debugf("bind on %s/%s OK", ln.Addr(), ln.Addr().Network())
+	log.Infof("bind on %s/%s OK", ln.Addr(), ln.Addr().Network())
 
 	go func() {
 		defer srv.Close()
@@ -201,7 +201,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		return err
 	}
 
-	log.Debugf("bind on %s OK", pc.LocalAddr())
+	log.Infof("bind on %s OK", pc.LocalAddr())
 
 	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).
 		WithBypass(h.options.Bypass).

@@ -94,14 +94,14 @@ func (c *conn) CloseRead() error {
 	if sc, ok := c.Conn.(xio.CloseRead); ok {
 		return sc.CloseRead()
 	}
-	return nil
+	return xio.ErrUnsupported
 }
 
 func (c *conn) CloseWrite() error {
 	if sc, ok := c.Conn.(xio.CloseWrite); ok {
 		return sc.CloseWrite()
 	}
-	return nil
+	return xio.ErrUnsupported
 }
 
 type packetConn struct {

@@ -55,12 +55,12 @@ func (c *serverConn) CloseRead() error {
 	if sc, ok := c.Conn.(xio.CloseRead); ok {
 		return sc.CloseRead()
 	}
-	return nil
+	return xio.ErrUnsupported
 }
 
 func (c *serverConn) CloseWrite() error {
 	if sc, ok := c.Conn.(xio.CloseWrite); ok {
 		return sc.CloseWrite()
 	}
-	return nil
+	return xio.ErrUnsupported
 }

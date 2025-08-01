@@ -15,7 +15,7 @@ const (
 	tcpWaitTimeout = 10 * time.Second
 )
 
-func Pipe(ctx context.Context, rw1, rw2 io.ReadWriter) error {
+func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser) error {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
@@ -55,7 +55,7 @@ func Pipe(ctx context.Context, rw1, rw2 io.ReadWriter) error {
 	return nil
 }
 
-func pipeBuffer(dst io.ReadWriter, src io.ReadWriter, bufferSize int) error {
+func pipeBuffer(dst io.ReadWriteCloser, src io.ReadWriteCloser, bufferSize int) error {
 	buf := bufpool.Get(bufferSize)
 	defer bufpool.Put(buf)
 
@@ -65,8 +65,13 @@ func pipeBuffer(dst io.ReadWriter, src io.ReadWriter, bufferSize int) error {
 	if cr, ok := src.(xio.CloseRead); ok {
 		cr.CloseRead()
 	}
+
 	if cw, ok := dst.(xio.CloseWrite); ok {
-		cw.CloseWrite()
+		if e := cw.CloseWrite(); e == xio.ErrUnsupported {
+			dst.Close()
+		}
+	} else {
+		dst.Close()
 	}
 
 	// Set TCP half-close timeout.

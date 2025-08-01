@@ -218,7 +218,7 @@ func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *ch
 	}
 	defer cc.Close()
 
-	var rw io.ReadWriter = conn
+	var rw io.ReadWriteCloser = conn
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
@@ -232,7 +232,7 @@ func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *ch
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		rw = xio.NewReadWriter(br, conn)
+		rw = xio.NewReadWriteCloser(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
 			ro2 := &xrecorder.HandlerRecorderObject{}
