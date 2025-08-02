@@ -42,24 +42,6 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 			return nil, err
 		}
 
-		nodeConfig, err := buildNodeConfig(url)
-		if err != nil {
-			return nil, err
-		}
-		nodeConfig.Name = fmt.Sprintf("%snode-0", namePrefix)
-
-		var nodes []*config.NodeConfig
-		for _, host := range strings.Split(nodeConfig.Addr, ",") {
-			if host == "" {
-				continue
-			}
-			nodeCfg := &config.NodeConfig{}
-			*nodeCfg = *nodeConfig
-			nodeCfg.Name = fmt.Sprintf("%snode-%d", namePrefix, len(nodes))
-			nodeCfg.Addr = host
-			nodes = append(nodes, nodeCfg)
-		}
-
 		m := map[string]any{}
 		for k, v := range url.Query() {
 			if len(v) > 0 {
@@ -71,8 +53,6 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 		hopConfig := &config.HopConfig{
 			Name:     fmt.Sprintf("%shop-%d", namePrefix, i),
 			Selector: parseSelector(m),
-			Nodes:    nodes,
-			Metadata: m,
 		}
 
 		if v := mdutil.GetString(md, "bypass"); v != "" {
@@ -144,6 +124,41 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 			}
 			delete(m, "so_mark")
 		}
+
+		nodeConfig, err := buildNodeConfig(url, m)
+		if err != nil {
+			return nil, err
+		}
+		nodeConfig.Name = fmt.Sprintf("%snode-0", namePrefix)
+
+		var nodes []*config.NodeConfig
+		for _, host := range strings.Split(nodeConfig.Addr, ",") {
+			if host == "" {
+				continue
+			}
+			nodeCfg := &config.NodeConfig{}
+			*nodeCfg = *nodeConfig
+			nodeCfg.Name = fmt.Sprintf("%snode-%d", namePrefix, len(nodes))
+			nodeCfg.Addr = host
+			nodes = append(nodes, nodeCfg)
+		}
+		hopConfig.Nodes = nodes
+
+		hopMd := map[string]any{}
+		for k, v := range m {
+			if strings.HasPrefix(k, "node.") ||
+				strings.HasPrefix(k, "connector.") ||
+				strings.HasPrefix(k, "dialer.") {
+				continue
+			}
+			if s, found := strings.CutPrefix(k, "hop."); found {
+				hopMd[s] = v
+				continue
+			}
+
+			hopMd[k] = v
+		}
+		hopConfig.Metadata = hopMd
 
 		chain.Hops = append(chain.Hops, hopConfig)
 	}
@@ -479,19 +494,46 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 	}
 
 	if v := mdutil.GetString(md, "dns"); v != "" {
-		md.Set("dns", strings.Split(v, ","))
+		m["dns"] = strings.Split(v, ",")
 	}
 
+	if v := mdutil.GetString(md, "interface"); v != "" {
+		m["service.interface"] = v
+		delete(m, "interface")
+	}
 	selector := parseSelector(m)
+
+	serviceMd := map[string]any{}
+	handleMd := map[string]any{}
+	listenerMd := map[string]any{}
+	for k, v := range m {
+		if s, found := strings.CutPrefix(k, "service."); found {
+			serviceMd[s] = v
+			continue
+		}
+		if s, found := strings.CutPrefix(k, "handler."); found {
+			handleMd[s] = v
+			continue
+		}
+		if s, found := strings.CutPrefix(k, "listener."); found {
+			listenerMd[s] = v
+			continue
+		}
+
+		handleMd[k] = v
+		listenerMd[k] = v
+		serviceMd[k] = v
+	}
+
 	handlerCfg := &config.HandlerConfig{
 		Type:     handler,
 		Auth:     auth,
-		Metadata: m,
+		Metadata: handleMd,
 	}
 	listenerCfg := &config.ListenerConfig{
 		Type:     listener,
 		TLS:      tlsConfig,
-		Metadata: m,
+		Metadata: listenerMd,
 	}
 	if listenerCfg.Type == "ssh" || listenerCfg.Type == "sshd" {
 		handlerCfg.Auth = nil
@@ -504,13 +546,13 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		}
 		svc.Handler = handlerCfg
 		svc.Listener = listenerCfg
-		svc.Metadata = m
+		svc.Metadata = serviceMd
 	}
 
 	return services, nil
 }
 
-func buildNodeConfig(url *url.URL) (*config.NodeConfig, error) {
+func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error) {
 	var connector, dialer string
 	schemes := strings.Split(url.Scheme, "+")
 	if len(schemes) == 1 {
@@ -522,18 +564,7 @@ func buildNodeConfig(url *url.URL) (*config.NodeConfig, error) {
 		dialer = schemes[1]
 	}
 
-	m := map[string]any{}
-	for k, v := range url.Query() {
-		if len(v) > 0 {
-			m[k] = v[0]
-		}
-	}
 	md := mdx.NewMetadata(m)
-
-	node := &config.NodeConfig{
-		Addr:     url.Host,
-		Metadata: m,
-	}
 
 	if c := registry.ConnectorRegistry().Get(connector); c == nil {
 		connector = "http"
@@ -591,15 +622,41 @@ func buildNodeConfig(url *url.URL) (*config.NodeConfig, error) {
 		tlsConfig = nil
 	}
 
+	nodeMd := map[string]any{}
+	connectorMd := map[string]any{}
+	dialerMd := map[string]any{}
+	for k, v := range m {
+		if s, found := strings.CutPrefix(k, "node."); found {
+			nodeMd[s] = v
+			continue
+		}
+		if s, found := strings.CutPrefix(k, "connector."); found {
+			connectorMd[s] = v
+			continue
+		}
+		if s, found := strings.CutPrefix(k, "dialer."); found {
+			dialerMd[s] = v
+			continue
+		}
+
+		connectorMd[k] = v
+		dialerMd[k] = v
+		nodeMd[k] = v
+	}
+
+	node := &config.NodeConfig{
+		Addr:     url.Host,
+		Metadata: nodeMd,
+	}
 	node.Connector = &config.ConnectorConfig{
 		Type:     connector,
 		Auth:     auth,
-		Metadata: m,
+		Metadata: connectorMd,
 	}
 	node.Dialer = &config.DialerConfig{
 		Type:     dialer,
 		TLS:      tlsConfig,
-		Metadata: m,
+		Metadata: dialerMd,
 	}
 
 	if node.Dialer.Type == "ssh" || node.Dialer.Type == "sshd" {
