@@ -14,7 +14,7 @@ type conn struct {
 	w          io.Writer
 	remoteAddr net.Addr
 	localAddr  net.Addr
-	clientAddr net.Addr
+	srcAddr net.Addr
 	closed     chan struct{}
 }
 
@@ -50,8 +50,8 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *conn) ClientAddr() net.Addr {
-	return c.clientAddr
+func (c *conn) SrcAddr() net.Addr {
+	return c.srcAddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {

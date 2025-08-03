@@ -81,13 +81,17 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
+	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientIP = srcAddr.String()
+	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
 		"sid":     ctxvalue.SidFromContext(ctx),
-		"network": ro.Network,
+		"client":  ro.ClientIP,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 

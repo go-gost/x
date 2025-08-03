@@ -58,6 +58,20 @@ func (c *serverConn) Metadata() metadata.Metadata {
 	return nil
 }
 
+func (c *serverConn) SrcAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.SrcAddr); ok {
+		return sc.SrcAddr()
+	}
+	return nil
+}
+
+func (c *serverConn) DstAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.DstAddr); ok {
+		return sc.DstAddr()
+	}
+	return nil
+}
+
 func (c *serverConn) CloseRead() error {
 	if sc, ok := c.Conn.(xio.CloseRead); ok {
 		return sc.CloseRead()

@@ -81,12 +81,8 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 
-	ro.ClientIP = conn.RemoteAddr().String()
-	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
-		ro.ClientIP = string(clientAddr)
-	}
-	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
-		ro.ClientIP = h
+	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientIP = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
@@ -131,6 +127,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		var buf bytes.Buffer
 		cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
 		ro.Route = buf.String()
+
 		return cc, err
 	}
 	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {

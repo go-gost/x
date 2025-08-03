@@ -51,11 +51,15 @@ func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, op
 		return "", false
 	}
 
+	var clientAddr string
+	if v := ctxvalue.SrcAddrFromContext(ctx); v != nil {
+		clientAddr = v.String()
+	}
 	r, err := p.client.Authenticate(ctx,
 		&proto.AuthenticateRequest{
 			Username: user,
 			Password: password,
-			Client:   string(ctxvalue.ClientAddrFromContext(ctx)),
+			Client:   clientAddr,
 		})
 	if err != nil {
 		p.log.Error(err)

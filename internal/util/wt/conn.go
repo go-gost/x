@@ -8,9 +8,9 @@ import (
 )
 
 type conn struct {
-	session    *wt.Session
-	stream     *wt.Stream
-	clientAddr net.Addr
+	session *wt.Session
+	stream  *wt.Stream
+	srcAddr net.Addr
 }
 
 func Conn(session *wt.Session, stream *wt.Stream) net.Conn {
@@ -20,11 +20,11 @@ func Conn(session *wt.Session, stream *wt.Stream) net.Conn {
 	}
 }
 
-func ConnWithClientAddr(session *wt.Session, stream *wt.Stream, clientAddr net.Addr) net.Conn {
+func ConnWithSrcAddr(session *wt.Session, stream *wt.Stream, srcAddr net.Addr) net.Conn {
 	return &conn{
-		session:    session,
-		stream:     stream,
-		clientAddr: clientAddr,
+		session: session,
+		stream:  stream,
+		srcAddr: srcAddr,
 	}
 }
 
@@ -48,8 +48,8 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.session.RemoteAddr()
 }
 
-func (c *conn) ClientAddr() net.Addr {
-	return c.clientAddr
+func (c *conn) SrcAddr() net.Addr {
+	return c.srcAddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {

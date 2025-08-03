@@ -9,7 +9,7 @@ import (
 type mapMetadata map[string]any
 
 func NewMetadata(m map[string]any) metadata.Metadata {
-	if len(m) == 0 {
+	if m == nil {
 		return nil
 	}
 	md := make(map[string]any)

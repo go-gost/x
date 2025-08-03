@@ -3,18 +3,21 @@ package ctx
 import (
 	"bytes"
 	"context"
+	"net"
 
 	"github.com/go-gost/core/logger"
 )
 
+type ClientAddr string
+
+func (a ClientAddr) String() string {
+	return string(a)
+}
+
 // clientAddrKey saves the client address.
 type clientAddrKey struct{}
 
-type ClientAddr string
-
-var (
-	keyClientAddr clientAddrKey
-)
+var keyClientAddr clientAddrKey
 
 func ContextWithClientAddr(ctx context.Context, addr ClientAddr) context.Context {
 	return context.WithValue(ctx, keyClientAddr, addr)
@@ -25,9 +28,43 @@ func ClientAddrFromContext(ctx context.Context) ClientAddr {
 	return v
 }
 
-// sidKey saves the session ID.
-type sidKey struct{}
-type Sid string
+type (
+	srcAddrKey struct{}
+	dstAddrKey struct{}
+)
+
+var (
+	keySrcAddr srcAddrKey
+	keyDstAddr dstAddrKey
+)
+
+func ContextWithSrcAddr(ctx context.Context, addr net.Addr) context.Context {
+	return context.WithValue(ctx, keySrcAddr, addr)
+}
+
+func SrcAddrFromContext(ctx context.Context) net.Addr {
+	v, _ := ctx.Value(keySrcAddr).(net.Addr)
+	return v
+}
+
+func ContextWithDstAddr(ctx context.Context, addr net.Addr) context.Context {
+	return context.WithValue(ctx, keyDstAddr, addr)
+}
+
+func DstAddrFromContext(ctx context.Context) net.Addr {
+	v, _ := ctx.Value(keyDstAddr).(net.Addr)
+	return v
+}
+
+type (
+	Sid string
+	// sidKey saves the session ID.
+	sidKey struct{}
+)
+
+func (s Sid) String() string {
+	return string(s)
+}
 
 var (
 	keySid sidKey
@@ -42,12 +79,13 @@ func SidFromContext(ctx context.Context) Sid {
 	return v
 }
 
-// hashKey saves the hash source for Selector.
-type hashKey struct{}
-
-type Hash struct {
-	Source string
-}
+type (
+	// hashKey saves the hash source for Selector.
+	hashKey struct{}
+	Hash    struct {
+		Source string
+	}
+)
 
 var (
 	clientHashKey = &hashKey{}
@@ -64,8 +102,14 @@ func HashFromContext(ctx context.Context) *Hash {
 	return nil
 }
 
-type clientIDKey struct{}
-type ClientID string
+type (
+	ClientID    string
+	clientIDKey struct{}
+)
+
+func (s ClientID) String() string {
+	return string(s)
+}
 
 var (
 	keyClientID = &clientIDKey{}

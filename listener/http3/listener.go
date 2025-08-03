@@ -125,10 +125,15 @@ func (l *http3Listener) Close() (err error) {
 }
 
 func (l *http3Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
-	raddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+	remoteAddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+	if remoteAddr == nil {
+		remoteAddr = &net.TCPAddr{
+			IP: net.IPv4zero,
+		}
+	}
 	conn := &conn{
 		laddr:  l.addr,
-		raddr:  raddr,
+		raddr:  remoteAddr,
 		closed: make(chan struct{}),
 		md: mdx.NewMetadata(map[string]any{
 			"r": r,
@@ -137,7 +142,7 @@ func (l *http3Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
-		conn.clientAddr = &net.IPAddr{IP: clientIP}
+		conn.srcAddr = &net.UDPAddr{IP: clientIP}
 	}
 
 	select {

@@ -3,7 +3,6 @@ package http2
 import (
 	"errors"
 	"net"
-	"net/http"
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -11,13 +10,11 @@ import (
 
 // a dummy HTTP2 server conn used by HTTP2 handler
 type conn struct {
-	md         mdata.Metadata
-	r          *http.Request
-	w          http.ResponseWriter
-	laddr      net.Addr
-	raddr      net.Addr
-	clientAddr net.Addr
-	closed     chan struct{}
+	md      mdata.Metadata
+	laddr   net.Addr
+	raddr   net.Addr
+	srcAddr net.Addr
+	closed  chan struct{}
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -45,8 +42,8 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.raddr
 }
 
-func (c *conn) ClientAddr() net.Addr {
-	return c.clientAddr
+func (c *conn) SrcAddr() net.Addr {
+	return c.srcAddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {

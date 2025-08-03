@@ -176,15 +176,15 @@ func (l *wtListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var clientAddr net.Addr
+	var srcAddr net.Addr
 	if clientIP != nil {
-		clientAddr = &net.IPAddr{IP: clientIP}
+		srcAddr = &net.UDPAddr{IP: clientIP}
 	}
 
-	l.mux(s, clientAddr, log)
+	l.mux(s, srcAddr, log)
 }
 
-func (l *wtListener) mux(s *wt.Session, clientAddr net.Addr, log logger.Logger) (err error) {
+func (l *wtListener) mux(s *wt.Session, srcAddr net.Addr, log logger.Logger) (err error) {
 	defer func() {
 		if err != nil {
 			s.CloseWithError(1, err.Error())
@@ -202,7 +202,7 @@ func (l *wtListener) mux(s *wt.Session, clientAddr net.Addr, log logger.Logger) 
 		}
 
 		select {
-		case l.cqueue <- wt_util.ConnWithClientAddr(s, stream, clientAddr):
+		case l.cqueue <- wt_util.ConnWithSrcAddr(s, stream, srcAddr):
 		default:
 			stream.Close()
 			l.logger.Warnf("connection queue is full, stream %v discarded", stream.StreamID())

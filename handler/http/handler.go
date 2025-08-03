@@ -133,12 +133,8 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 
-	ro.ClientIP = conn.RemoteAddr().String()
-	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
-		ro.ClientIP = string(clientAddr)
-	}
-	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
-		ro.ClientIP = h
+	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientIP = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
@@ -516,16 +512,6 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 			Header:        req.Header.Clone(),
 		},
 	}
-	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
-		ro.ClientIP = clientIP.String()
-	}
-
-	clientAddr := ro.RemoteAddr
-	if ro.ClientIP != "" {
-		if _, port, _ := net.SplitHostPort(ro.RemoteAddr); port != "" {
-			clientAddr = net.JoinHostPort(ro.ClientIP, port)
-		}
-	}
 
 	// HTTP/1.0
 	http10 := req.ProtoMajor == 1 && req.ProtoMinor == 0
@@ -579,7 +565,6 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 		}
 	}
 
-	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
 	ctx = ctx_internal.ContextWithRecorderObject(ctx, ro)
 	ctx = ctxvalue.ContextWithLogger(ctx, log)
 

@@ -507,21 +507,23 @@ type ChainGroupConfig struct {
 }
 
 type HopConfig struct {
-	Name      string          `json:"name"`
-	Interface string          `yaml:",omitempty" json:"interface,omitempty"`
-	SockOpts  *SockOptsConfig `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
-	Selector  *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
-	Bypass    string          `yaml:",omitempty" json:"bypass,omitempty"`
-	Bypasses  []string        `yaml:",omitempty" json:"bypasses,omitempty"`
-	Resolver  string          `yaml:",omitempty" json:"resolver,omitempty"`
-	Hosts     string          `yaml:",omitempty" json:"hosts,omitempty"`
-	Nodes     []*NodeConfig   `yaml:",omitempty" json:"nodes,omitempty"`
-	Reload    time.Duration   `yaml:",omitempty" json:"reload,omitempty"`
-	File      *FileLoader     `yaml:",omitempty" json:"file,omitempty"`
-	Redis     *RedisLoader    `yaml:",omitempty" json:"redis,omitempty"`
-	HTTP      *HTTPLoader     `yaml:"http,omitempty" json:"http,omitempty"`
-	Plugin    *PluginConfig   `yaml:",omitempty" json:"plugin,omitempty"`
-	Metadata  map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
+	Name string `json:"name"`
+	// Deprecated: use metadata.interface instead
+	Interface string `yaml:",omitempty" json:"interface,omitempty"`
+	// Deprecated: use metadata.so_mark instead
+	SockOpts *SockOptsConfig `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
+	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
+	Bypass   string          `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses []string        `yaml:",omitempty" json:"bypasses,omitempty"`
+	Resolver string          `yaml:",omitempty" json:"resolver,omitempty"`
+	Hosts    string          `yaml:",omitempty" json:"hosts,omitempty"`
+	Nodes    []*NodeConfig   `yaml:",omitempty" json:"nodes,omitempty"`
+	Reload   time.Duration   `yaml:",omitempty" json:"reload,omitempty"`
+	File     *FileLoader     `yaml:",omitempty" json:"file,omitempty"`
+	Redis    *RedisLoader    `yaml:",omitempty" json:"redis,omitempty"`
+	HTTP     *HTTPLoader     `yaml:"http,omitempty" json:"http,omitempty"`
+	Plugin   *PluginConfig   `yaml:",omitempty" json:"plugin,omitempty"`
+	Metadata map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
 type NodeConfig struct {
@@ -534,9 +536,12 @@ type NodeConfig struct {
 	Hosts     string           `yaml:",omitempty" json:"hosts,omitempty"`
 	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
 	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
-	Interface string           `yaml:",omitempty" json:"interface,omitempty"`
-	Netns     string           `yaml:",omitempty" json:"netns,omitempty"`
-	SockOpts  *SockOptsConfig  `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
+	// Deprecated: use metadata.interface instead
+	Interface string `yaml:",omitempty" json:"interface,omitempty"`
+	// Deprecated: use metadata.netns instead
+	Netns string `yaml:",omitempty" json:"netns,omitempty"`
+	// Deprecated: use metadata.so_mark instead
+	SockOpts *SockOptsConfig `yaml:"sockopts,omitempty" json:"sockopts,omitempty"`
 	// Deprecated: use matcher instead
 	Filter   *NodeFilterConfig  `yaml:",omitempty" json:"filter,omitempty"`
 	Matcher  *NodeMatcherConfig `yaml:",omitempty" json:"matcher,omitempty"`

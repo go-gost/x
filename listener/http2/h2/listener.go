@@ -157,7 +157,17 @@ func (l *h2Listener) Close() (err error) {
 }
 
 func (l *h2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
-	if l.logger.IsLevelEnabled(logger.TraceLevel) {
+	clientIP := xhttp.GetClientIP(r)
+	cip := ""
+	if clientIP != nil {
+		cip = clientIP.String()
+	}
+	log := l.logger.WithFields(map[string]any{
+		"local":  l.addr.String(),
+		"remote": r.RemoteAddr,
+		"client": cip,
+	})
+	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
 		l.logger.Trace(string(dump))
 	}
@@ -195,14 +205,13 @@ func (l *h2Listener) upgrade(w http.ResponseWriter, r *http.Request) (*conn, err
 	remoteAddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
 	if remoteAddr == nil {
 		remoteAddr = &net.TCPAddr{
-			IP:   net.IPv4zero,
-			Port: 0,
+			IP: net.IPv4zero,
 		}
 	}
 
-	var clientAddr net.Addr
+	var srcAddr net.Addr
 	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
-		clientAddr = &net.IPAddr{IP: clientIP}
+		srcAddr = &net.TCPAddr{IP: clientIP}
 	}
 
 	return &conn{
@@ -210,7 +219,7 @@ func (l *h2Listener) upgrade(w http.ResponseWriter, r *http.Request) (*conn, err
 		w:          flushWriter{w},
 		localAddr:  l.addr,
 		remoteAddr: remoteAddr,
-		clientAddr: clientAddr,
+		srcAddr:    srcAddr,
 		closed:     make(chan struct{}),
 	}, nil
 }

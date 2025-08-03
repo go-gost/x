@@ -108,7 +108,9 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		Time:       start,
 		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientIP = srcAddr.String()
+	}
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote":  conn.RemoteAddr().String(),

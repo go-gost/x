@@ -77,9 +77,9 @@ func (c *routerConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		})
 	}
 
-	srcAddr := conn.LocalAddr().String()
-	if v := ctxvalue.ClientAddrFromContext(ctx); v != "" {
-		srcAddr = string(v)
+	srcAddr := conn.RemoteAddr().String()
+	if v := ctxvalue.SrcAddrFromContext(ctx); v != nil {
+		srcAddr = v.String()
 	}
 
 	af := &relay.AddrFeature{}

@@ -10,7 +10,6 @@ import (
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/metadata"
 	xauth "github.com/go-gost/x/auth"
 	xbypass "github.com/go-gost/x/bypass"
 	xchain "github.com/go-gost/x/chain"
@@ -65,11 +64,6 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		return nil, err
 	}
 
-	var nm metadata.Metadata
-	if cfg.Metadata != nil {
-		nm = mdx.NewMetadata(cfg.Metadata)
-	}
-
 	connectorLogger := nodeLogger.WithFields(map[string]any{
 		"kind": "connector",
 	})
@@ -105,10 +99,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		return nil, err
 	}
 
-	var ppv int
-	if nm != nil {
-		ppv = mdutil.GetInt(nm, parsing.MDKeyProxyProtocol)
-	}
+	md := mdx.NewMetadata(cfg.Metadata)
 
 	dialerLogger := nodeLogger.WithFields(map[string]any{
 		"kind": "dialer",
@@ -120,7 +111,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			dialer.AuthOption(auth_parser.Info(cfg.Dialer.Auth)),
 			dialer.TLSConfigOption(tlsConfig),
 			dialer.LoggerOption(dialerLogger),
-			dialer.ProxyProtocolOption(ppv),
+			dialer.ProxyProtocolOption(mdutil.GetInt(md, parsing.MDKeyProxyProtocol)),
 		)
 	} else {
 		return nil, fmt.Errorf("unregistered dialer: %s", cfg.Dialer.Type)
@@ -135,16 +126,16 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 	}
 
 	var sockOpts *chain.SockOpts
-	if cfg.SockOpts != nil {
+	if v := mdutil.GetInt(md, parsing.MDKeySoMark); v != 0 {
 		sockOpts = &chain.SockOpts{
-			Mark: cfg.SockOpts.Mark,
+			Mark: v,
 		}
 	}
 
 	tr := xchain.NewTransport(d, cr,
 		chain.AddrTransportOption(cfg.Addr),
-		chain.InterfaceTransportOption(cfg.Interface),
-		chain.NetnsTransportOption(cfg.Netns),
+		chain.InterfaceTransportOption(mdutil.GetString(md, parsing.MDKeyInterface)),
+		chain.NetnsTransportOption(mdutil.GetString(md, parsing.MDKeyNetns)),
 		chain.SockOptsTransportOption(sockOpts),
 	)
 
@@ -153,7 +144,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		chain.BypassNodeOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		chain.ResoloverNodeOption(registry.ResolverRegistry().Get(cfg.Resolver)),
 		chain.HostMapperNodeOption(registry.HostsRegistry().Get(cfg.Hosts)),
-		chain.MetadataNodeOption(nm),
+		chain.MetadataNodeOption(md),
 		chain.NetworkNodeOption(cfg.Network),
 	}
 
@@ -219,7 +210,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		rewriteURL := cfg.HTTP.RewriteURL
 		if rewriteURL == nil {
 			rewriteURL = cfg.HTTP.Rewrite
-		} 
+		}
 		for _, v := range rewriteURL {
 			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
 				settings.RewriteURL = append(settings.RewriteURL, chain.HTTPURLRewriteSetting{

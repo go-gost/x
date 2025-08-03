@@ -69,13 +69,13 @@ func pipeBuffer(dst io.ReadWriteCloser, src io.ReadWriteCloser, bufferSize int) 
 	if cw, ok := dst.(xio.CloseWrite); ok {
 		if e := cw.CloseWrite(); e == xio.ErrUnsupported {
 			dst.Close()
+		} else {
+			// Set TCP half-close timeout.
+			xio.SetReadDeadline(dst, time.Now().Add(tcpWaitTimeout))
 		}
 	} else {
 		dst.Close()
 	}
-
-	// Set TCP half-close timeout.
-	xio.SetReadDeadline(dst, time.Now().Add(tcpWaitTimeout))
 
 	return err
 }

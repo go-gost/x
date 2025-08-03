@@ -1,6 +1,6 @@
 module github.com/go-gost/x
 
-go 1.23.1
+go 1.24
 
 toolchain go1.24.5
 
@@ -25,7 +25,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pion/dtls/v2 v2.2.6
-	github.com/pires/go-proxyproto v0.7.0
+	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/quic-go/quic-go v0.53.0
 	github.com/quic-go/webtransport-go v0.9.0

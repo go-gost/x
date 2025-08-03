@@ -179,13 +179,13 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var clientAddr net.Addr
+	var srcAddr net.Addr
 	if clientIP != nil {
-		clientAddr = &net.IPAddr{IP: clientIP}
+		srcAddr = &net.TCPAddr{IP: clientIP}
 	}
 
 	select {
-	case l.cqueue <- ws_util.ConnWithClientAddr(conn, clientAddr):
+	case l.cqueue <- ws_util.ConnWithSrcAddr(conn, srcAddr):
 	default:
 		conn.Close()
 		log.Warnf("connection queue is full, client %s discarded", conn.RemoteAddr())

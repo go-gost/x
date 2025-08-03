@@ -184,15 +184,15 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var clientAddr net.Addr
+	var srcAddr net.Addr
 	if clientIP != nil {
-		clientAddr = &net.IPAddr{IP: clientIP}
+		srcAddr = &net.TCPAddr{IP: clientIP}
 	}
 
-	l.mux(ws_util.Conn(conn), clientAddr, log)
+	l.mux(ws_util.Conn(conn), srcAddr, log)
 }
 
-func (l *mwsListener) mux(conn net.Conn, clientAddr net.Addr, log logger.Logger) {
+func (l *mwsListener) mux(conn net.Conn, srcAddr net.Addr, log logger.Logger) {
 	defer conn.Close()
 
 	session, err := mux.ServerSession(conn, l.md.muxCfg)
@@ -210,7 +210,7 @@ func (l *mwsListener) mux(conn net.Conn, clientAddr net.Addr, log logger.Logger)
 		}
 
 		select {
-		case l.cqueue <- &connWithClientAddr{Conn: stream, clientAddr: clientAddr}:
+		case l.cqueue <- &connWithSrcAddr{Conn: stream, srcAddr: srcAddr}:
 		default:
 			stream.Close()
 			log.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())
@@ -218,11 +218,11 @@ func (l *mwsListener) mux(conn net.Conn, clientAddr net.Addr, log logger.Logger)
 	}
 }
 
-type connWithClientAddr struct {
+type connWithSrcAddr struct {
 	net.Conn
-	clientAddr net.Addr
+	srcAddr net.Addr
 }
 
-func (c *connWithClientAddr) ClientAddr() net.Addr {
-	return c.clientAddr
+func (c *connWithSrcAddr) SrcAddr() net.Addr {
+	return c.srcAddr
 }

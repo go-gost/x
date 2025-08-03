@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
+	ctxvalue "github.com/go-gost/x/ctx"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
@@ -65,7 +66,13 @@ func (h *fileHandler) Init(md md.Metadata) (err error) {
 }
 
 func (h *fileHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
+	var clientAddr string
+	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+		clientAddr = srcAddr.String()
+	}
+
 	h.options.Logger.WithFields(map[string]any{
+		"client": clientAddr,
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
 	}).Infof("%s - %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -101,7 +108,6 @@ func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 		},
 		Time: start,
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(r.RemoteAddr)
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": r.RemoteAddr,

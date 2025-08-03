@@ -53,10 +53,15 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 		return
 	}
 
+	var clientAddr string
+	if v := ctxvalue.SrcAddrFromContext(ctx); v != nil {
+		clientAddr = v.String()
+	}
+
 	rb := httpPluginRequest{
 		Username: user,
 		Password: password,
-		Client:   string(ctxvalue.ClientAddrFromContext(ctx)),
+		Client:   clientAddr,
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

@@ -81,9 +81,16 @@ func (c *serverConn) Metadata() metadata.Metadata {
 	return nil
 }
 
-func (c *serverConn) ClientAddr() net.Addr {
-	if sc, ok := c.Conn.(xnet.ClientAddr); ok {
-		return sc.ClientAddr()
+func (c *serverConn) SrcAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.SrcAddr); ok {
+		return sc.SrcAddr()
+	}
+	return nil
+}
+
+func (c *serverConn) DstAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.DstAddr); ok {
+		return sc.DstAddr()
 	}
 	return nil
 }

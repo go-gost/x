@@ -26,8 +26,12 @@ type RemoteAddr interface {
 	RemoteAddr() net.Addr
 }
 
-type ClientAddr interface {
-	ClientAddr() net.Addr
+type SrcAddr interface {
+	SrcAddr() net.Addr
+}
+
+type DstAddr interface {
+	DstAddr() net.Addr
 }
 
 // tcpraw.TCPConn

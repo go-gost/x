@@ -50,6 +50,8 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 	}
 
+	var ppv int
+	var soMark int
 	ifce := cfg.Interface
 	var netns string
 	if cfg.Metadata != nil {
@@ -57,7 +59,16 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "" {
 			ifce = v
 		}
-		netns = mdutil.GetString(md, "netns")
+
+		if cfg.SockOpts != nil {
+			soMark = cfg.SockOpts.Mark
+		}
+		if v := mdutil.GetInt(md, parsing.MDKeySoMark); v > 0 {
+			soMark = v
+		}
+		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
+		netns = mdutil.GetString(md, parsing.MDKeyNetns)
+
 	}
 
 	var nodes []*chain.Node
@@ -66,21 +77,53 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			continue
 		}
 
+		m := v.Metadata
+		if m == nil {
+			m = map[string]any{}
+			v.Metadata = m
+		}
+		md := metadata.NewMetadata(m)
+
 		if v.Resolver == "" {
 			v.Resolver = cfg.Resolver
 		}
 		if v.Hosts == "" {
 			v.Hosts = cfg.Hosts
 		}
-		if v.Interface == "" {
-			v.Interface = ifce
-		}
-		if v.Netns == "" {
-			v.Netns = netns
-		}
 
-		if v.SockOpts == nil {
-			v.SockOpts = cfg.SockOpts
+		if !md.IsExists(parsing.MDKeyInterface) {
+			// inherit from hop
+			if ifce != "" {
+				m[parsing.MDKeyInterface] = ifce
+			}
+			// node level
+			if v.Interface != "" {
+				m[parsing.MDKeyInterface] = v.Interface
+			}
+		}
+		if !md.IsExists(parsing.MDKeySoMark) {
+			// inherit from hop
+			if soMark != 0 {
+				m[parsing.MDKeySoMark] = soMark
+			}
+			// node level
+			if v.SockOpts != nil && v.SockOpts.Mark != 0 {
+				m[parsing.MDKeySoMark] = v.SockOpts.Mark
+			}
+		}
+		if !md.IsExists(parsing.MDKeyProxyProtocol) && ppv > 0 {
+			// inherit from hop
+			m[parsing.MDKeyProxyProtocol] = ppv
+		}
+		if !md.IsExists(parsing.MDKeyNetns) {
+			// inherit from hop
+			if netns != "" {
+				m[parsing.MDKeyNetns] = netns
+			}
+			// node level
+			if v.Netns != "" {
+				m[parsing.MDKeyNetns] = v.Name
+			}
 		}
 
 		if v.Connector == nil {

@@ -115,15 +115,34 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 		}
 
 		if v := mdutil.GetString(md, "interface"); v != "" {
-			hopConfig.Interface = v
+			m["hop.interface"] = v
 			delete(m, "interface")
 		}
 		if v := mdutil.GetInt(md, "so_mark"); v > 0 {
-			hopConfig.SockOpts = &config.SockOptsConfig{
-				Mark: v,
-			}
+			m["hop.so_mark"] = v
 			delete(m, "so_mark")
 		}
+		if v := mdutil.GetInt(md, "proxyProtocol"); v > 0 {
+			m["hop.proxyProtocol"] = v
+			delete(m, "proxyProtocol")
+		}
+
+		hopMd := map[string]any{}
+		for k, v := range m {
+			if strings.HasPrefix(k, "node.") ||
+				strings.HasPrefix(k, "connector.") ||
+				strings.HasPrefix(k, "dialer.") {
+				continue
+			}
+			if s, found := strings.CutPrefix(k, "hop."); found {
+				hopMd[s] = v
+				delete(m, k)
+				continue
+			}
+
+			hopMd[k] = v
+		}
+		hopConfig.Metadata = hopMd
 
 		nodeConfig, err := buildNodeConfig(url, m)
 		if err != nil {
@@ -143,22 +162,6 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 			nodes = append(nodes, nodeCfg)
 		}
 		hopConfig.Nodes = nodes
-
-		hopMd := map[string]any{}
-		for k, v := range m {
-			if strings.HasPrefix(k, "node.") ||
-				strings.HasPrefix(k, "connector.") ||
-				strings.HasPrefix(k, "dialer.") {
-				continue
-			}
-			if s, found := strings.CutPrefix(k, "hop."); found {
-				hopMd[s] = v
-				continue
-			}
-
-			hopMd[k] = v
-		}
-		hopConfig.Metadata = hopMd
 
 		chain.Hops = append(chain.Hops, hopConfig)
 	}
@@ -501,6 +504,23 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		m["service.interface"] = v
 		delete(m, "interface")
 	}
+	if v := mdutil.GetInt(md, "so_mark"); v > 0 {
+		m["service.so_mark"] = v
+		delete(m, "so_mark")
+	}
+	if v := mdutil.GetInt(md, "proxyProtocol"); v > 0 {
+		m["service.proxyProtocol"] = v
+		delete(m, "proxyProtocol")
+	}
+	if v := mdutil.GetString(md, "netns"); v != "" {
+		m["service.netns"] = v
+		delete(m, "netns")
+	}
+	if v := mdutil.GetString(md, "netns.out"); v != "" {
+		m["service.netns.out"] = v
+		delete(m, "netns.out")
+	}
+
 	selector := parseSelector(m)
 
 	serviceMd := map[string]any{}
