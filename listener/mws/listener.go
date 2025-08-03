@@ -2,7 +2,6 @@ package mws
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -17,6 +16,7 @@ import (
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/mux"
+	xtls "github.com/go-gost/x/internal/util/tls"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -38,7 +38,7 @@ type mwsListener struct {
 	cqueue     chan net.Conn
 	errChan    chan error
 	tlsEnabled bool
-	logger     logger.Logger
+	log        logger.Logger
 	md         metadata
 	options    listener.Options
 }
@@ -49,7 +49,7 @@ func NewListener(opts ...listener.Option) listener.Listener {
 		opt(&options)
 	}
 	return &mwsListener{
-		logger:  options.Logger,
+		log:     options.Logger,
 		options: options,
 	}
 }
@@ -61,7 +61,7 @@ func NewTLSListener(opts ...listener.Option) listener.Listener {
 	}
 	return &mwsListener{
 		tlsEnabled: true,
-		logger:     options.Logger,
+		log:        options.Logger,
 		options:    options,
 	}
 }
@@ -102,7 +102,7 @@ func (l *mwsListener) Init(md md.Metadata) (err error) {
 	lc := net.ListenConfig{}
 	if l.md.mptcp {
 		lc.SetMultipathTCP(true)
-		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
+		l.log.Debugf("mptcp enabled: %v", lc.MultipathTCP())
 	}
 	ln, err := lc.Listen(context.Background(), network, l.options.Addr)
 	if err != nil {
@@ -116,7 +116,7 @@ func (l *mwsListener) Init(md md.Metadata) (err error) {
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
 	if l.tlsEnabled {
-		ln = tls.NewListener(ln, l.options.TLSConfig)
+		ln = xtls.NewListener(ln, l.options.TLSConfig)
 	}
 
 	l.addr = ln.Addr()
@@ -168,7 +168,7 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 	if clientIP != nil {
 		cip = clientIP.String()
 	}
-	log := l.logger.WithFields(map[string]any{
+	log := l.log.WithFields(map[string]any{
 		"local":  l.addr.String(),
 		"remote": r.RemoteAddr,
 		"client": cip,
@@ -189,10 +189,10 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		srcAddr = &net.TCPAddr{IP: clientIP}
 	}
 
-	l.mux(ws_util.Conn(conn), srcAddr, log)
+	l.mux(ws_util.ConnWithSrcAddr(conn, srcAddr), log)
 }
 
-func (l *mwsListener) mux(conn net.Conn, srcAddr net.Addr, log logger.Logger) {
+func (l *mwsListener) mux(conn net.Conn, log logger.Logger) {
 	defer conn.Close()
 
 	session, err := mux.ServerSession(conn, l.md.muxCfg)
@@ -210,19 +210,10 @@ func (l *mwsListener) mux(conn net.Conn, srcAddr net.Addr, log logger.Logger) {
 		}
 
 		select {
-		case l.cqueue <- &connWithSrcAddr{Conn: stream, srcAddr: srcAddr}:
+		case l.cqueue <- stream:
 		default:
 			stream.Close()
 			log.Warnf("connection queue is full, client %s discarded", stream.RemoteAddr())
 		}
 	}
-}
-
-type connWithSrcAddr struct {
-	net.Conn
-	srcAddr net.Addr
-}
-
-func (c *connWithSrcAddr) SrcAddr() net.Addr {
-	return c.srcAddr
 }

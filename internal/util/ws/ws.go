@@ -81,6 +81,9 @@ func (c *websocketConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *websocketConn) SrcAddr() net.Addr {
+	if sa, ok := c.Conn.NetConn().(xnet.SrcAddr); ok {
+		return sa.SrcAddr()
+	}
 	return c.srcAddr
 }
 

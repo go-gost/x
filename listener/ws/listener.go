@@ -2,7 +2,6 @@ package ws
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -16,6 +15,7 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/net/proxyproto"
+	xtls "github.com/go-gost/x/internal/util/tls"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -111,7 +111,7 @@ func (l *wsListener) Init(md md.Metadata) (err error) {
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
 	if l.tlsEnabled {
-		ln = tls.NewListener(ln, l.options.TLSConfig)
+		ln = xtls.NewListener(ln, l.options.TLSConfig)
 	}
 
 	l.addr = ln.Addr()

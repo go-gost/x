@@ -2,7 +2,6 @@ package mtls
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/mux"
+	xtls "github.com/go-gost/x/internal/util/tls"
 	climiter "github.com/go-gost/x/limiter/conn/wrapper"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	metrics "github.com/go-gost/x/metrics/wrapper"
@@ -71,7 +71,7 @@ func (l *mtlsListener) Init(md md.Metadata) (err error) {
 	ln = admission.WrapListener(l.options.Admission, ln)
 	ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
-	l.Listener = tls.NewListener(ln, l.options.TLSConfig)
+	l.Listener = xtls.NewListener(ln, l.options.TLSConfig)
 
 	l.cqueue = make(chan net.Conn, l.md.backlog)
 	l.errChan = make(chan error, 1)

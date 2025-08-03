@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
 	"github.com/go-gost/x/registry"
 	"google.golang.org/grpc"
@@ -71,7 +73,18 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		grpcOpts := []grpc.DialOption{
 			// grpc.WithBlock(),
 			grpc.WithContextDialer(func(c context.Context, s string) (net.Conn, error) {
-				return options.Dialer.Dial(c, "tcp", s)
+				conn, err := options.Dialer.Dial(c, "tcp", s)
+				if err != nil {
+					return nil, err
+				}
+
+				conn = proxyproto.WrapClientConn(
+					d.options.ProxyProtocol,
+					ctxvalue.SrcAddrFromContext(ctx),
+					ctxvalue.DstAddrFromContext(ctx),
+					conn)
+
+				return conn, nil
 			}),
 			grpc.WithAuthority(host),
 			grpc.WithConnectParams(grpc.ConnectParams{

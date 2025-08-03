@@ -214,10 +214,6 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *conn) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
 func (c *conn) IsIdle() bool {
 	return atomic.LoadInt32(&c.idle) > 0
 }

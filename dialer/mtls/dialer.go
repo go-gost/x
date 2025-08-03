@@ -11,6 +11,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/mux"
 	"github.com/go-gost/x/registry"
 )
@@ -72,6 +74,12 @@ func (d *mtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		if err != nil {
 			return
 		}
+
+		conn = proxyproto.WrapClientConn(
+			d.options.ProxyProtocol,
+			ctxvalue.SrcAddrFromContext(ctx),
+			ctxvalue.DstAddrFromContext(ctx),
+			conn)
 
 		session = &muxSession{conn: conn}
 		d.sessions[addr] = session

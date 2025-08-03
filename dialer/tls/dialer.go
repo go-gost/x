@@ -9,6 +9,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 )
 
@@ -18,7 +20,7 @@ func init() {
 
 type tlsDialer struct {
 	md      metadata
-	logger  logger.Logger
+	log     logger.Logger
 	options dialer.Options
 }
 
@@ -29,7 +31,7 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 	}
 
 	return &tlsDialer{
-		logger:  options.Logger,
+		log:     options.Logger,
 		options: options,
 	}
 }
@@ -46,8 +48,15 @@ func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 
 	conn, err := options.Dialer.Dial(ctx, "tcp", addr)
 	if err != nil {
-		d.logger.Error(err)
+		d.log.Error(err)
 	}
+
+	conn = proxyproto.WrapClientConn(
+		d.options.ProxyProtocol,
+		ctxvalue.SrcAddrFromContext(ctx),
+		ctxvalue.DstAddrFromContext(ctx),
+		conn)
+
 	return conn, err
 }
 

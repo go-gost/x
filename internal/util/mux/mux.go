@@ -4,6 +4,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/metadata"
+	xnet "github.com/go-gost/x/internal/net"
 	smux "github.com/xtaci/smux"
 )
 
@@ -141,6 +143,27 @@ func (c *streamConn) Read(b []byte) (n int, err error) {
 
 func (c *streamConn) Write(b []byte) (n int, err error) {
 	return c.stream.Write(b)
+}
+
+func (c *streamConn) Metadata() metadata.Metadata {
+	if md, ok := c.Conn.(metadata.Metadatable); ok {
+		return md.Metadata()
+	}
+	return nil
+}
+
+func (c *streamConn) SrcAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.SrcAddr); ok {
+		return sc.SrcAddr()
+	}
+	return nil
+}
+
+func (c *streamConn) DstAddr() net.Addr {
+	if sc, ok := c.Conn.(xnet.DstAddr); ok {
+		return sc.DstAddr()
+	}
+	return nil
 }
 
 func (c *streamConn) Close() error {

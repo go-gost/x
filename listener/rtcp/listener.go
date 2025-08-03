@@ -80,6 +80,7 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 		if err != nil {
 			return nil, listener.NewBindError(err)
 		}
+
 		ln = metrics.WrapListener(l.options.Service, ln)
 		ln = stats.WrapListener(ln, l.options.Stats)
 		ln = admission.WrapListener(l.options.Admission, ln)

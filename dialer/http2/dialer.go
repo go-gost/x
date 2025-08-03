@@ -10,7 +10,9 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
 	net_dialer "github.com/go-gost/x/internal/net/dialer"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
 )
@@ -91,7 +93,18 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 					if netd == nil {
 						netd = net_dialer.DefaultNetDialer
 					}
-					return netd.Dial(ctx, network, addr)
+					conn, err := netd.Dial(ctx, network, addr)
+					if err != nil {
+						return nil, err
+					}
+
+					conn = proxyproto.WrapClientConn(
+						d.options.ProxyProtocol,
+						ctxvalue.SrcAddrFromContext(ctx),
+						ctxvalue.DstAddrFromContext(ctx),
+						conn)
+
+					return conn, nil
 				},
 				ForceAttemptHTTP2:     true,
 				MaxIdleConns:          16,

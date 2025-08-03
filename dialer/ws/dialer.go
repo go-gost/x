@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	ws_util "github.com/go-gost/x/internal/util/ws"
 	"github.com/go-gost/x/registry"
 	"github.com/gorilla/websocket"
@@ -61,6 +63,13 @@ func (d *wsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 	if err != nil {
 		d.options.Logger.Error(err)
 	}
+
+	conn = proxyproto.WrapClientConn(
+		d.options.ProxyProtocol,
+		ctxvalue.SrcAddrFromContext(ctx),
+		ctxvalue.DstAddrFromContext(ctx),
+		conn)
+
 	return conn, err
 }
 

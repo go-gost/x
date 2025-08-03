@@ -3,12 +3,14 @@ package sshd
 import (
 	"context"
 	"net"
+	"os"
 	"sync"
 	"time"
-	"os"
 
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/crypto/ssh"
@@ -75,6 +77,12 @@ func (d *sshdDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			conn.SetDeadline(time.Now().Add(d.md.handshakeTimeout))
 			defer conn.SetDeadline(time.Time{})
 		}
+
+		conn = proxyproto.WrapClientConn(
+			d.options.ProxyProtocol,
+			ctxvalue.SrcAddrFromContext(ctx),
+			ctxvalue.DstAddrFromContext(ctx),
+			conn)
 
 		session, err = d.initSession(ctx, addr, conn)
 		if err != nil {

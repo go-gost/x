@@ -7,6 +7,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	ctxvalue "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 )
 
@@ -15,8 +17,9 @@ func init() {
 }
 
 type udpDialer struct {
-	md     metadata
-	logger logger.Logger
+	md      metadata
+	logger  logger.Logger
+	options dialer.Options
 }
 
 func NewDialer(opts ...dialer.Option) dialer.Dialer {
@@ -26,7 +29,8 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 	}
 
 	return &udpDialer{
-		logger: options.Logger,
+		logger:  options.Logger,
+		options: *options,
 	}
 }
 
@@ -44,7 +48,16 @@ func (d *udpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 	if err != nil {
 		return nil, err
 	}
-	return &conn{
+
+	c = &conn{
 		UDPConn: c.(*net.UDPConn),
-	}, nil
+	}
+
+	c = proxyproto.WrapClientConn(
+		d.options.ProxyProtocol,
+		ctxvalue.SrcAddrFromContext(ctx),
+		ctxvalue.DstAddrFromContext(ctx),
+		c)
+
+	return c, nil
 }
