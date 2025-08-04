@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/logger"
+	xctx "github.com/go-gost/x/ctx"
 )
 
 type listener struct {
@@ -30,8 +31,21 @@ func (ln *listener) Accept() (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		ctx := context.Background()
+		if cc, ok := c.(xctx.Context); ok {
+			if cv := cc.Context(); cv != nil {
+				ctx = cv
+			}
+		}
+
+		clientAddr := c.RemoteAddr()
+		if addr := xctx.SrcAddrFromContext(ctx); addr != nil {
+			clientAddr = addr
+		}
+
 		if ln.admission != nil &&
-			!ln.admission.Admit(context.Background(), c.RemoteAddr().String()) {
+			!ln.admission.Admit(ctx, clientAddr.String()) {
 			c.Close()
 			continue
 		}

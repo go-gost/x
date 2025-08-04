@@ -12,7 +12,8 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/relay"
 	"github.com/go-gost/x/internal/util/ss"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -73,21 +74,24 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
-		Service:    h.options.Service,
 		Network:    "udp",
+		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
+		SID:        xctx.SidFromContext(ctx).String(),
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
+	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
-		"sid":     ctxvalue.SidFromContext(ctx),
-		"client":  ro.ClientIP,
-		"network": ro.Network,
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -124,7 +128,7 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	// obtain a udp connection
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

@@ -12,7 +12,8 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
@@ -86,8 +87,8 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	log := h.options.Logger
 
 	var config *tun_util.Config
-	if v, _ := conn.(md.Metadatable); v != nil {
-		config = v.Metadata().Get("config").(*tun_util.Config)
+	if md := ictx.MetadataFromContext(ctx); md != nil {
+		config, _ = md.Get("config").(*tun_util.Config)
 	}
 	if config == nil {
 		err := errors.New("tun: wrong connection type")
@@ -99,7 +100,7 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	log = log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    string(ctxvalue.SidFromContext(ctx)),
+		"sid":    xctx.SidFromContext(ctx).String(),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())

@@ -13,7 +13,8 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -30,7 +31,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
 	{
-		clientID := ctxvalue.ClientIDFromContext(ctx)
+		clientID := xctx.ClientIDFromContext(ctx)
 		rw := traffic_wrapper.WrapReadWriter(
 			h.limiter,
 			conn,
@@ -62,11 +63,11 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 
 	switch h.md.hash {
 	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: address})
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: address})
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, address)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
 	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks5.NewReply(gosocks5.NetUnreachable, nil)
@@ -77,8 +78,8 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	resp := gosocks5.NewReply(gosocks5.Succeeded, nil)
 	log.Trace(resp)

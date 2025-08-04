@@ -26,14 +26,6 @@ type RemoteAddr interface {
 	RemoteAddr() net.Addr
 }
 
-type SrcAddr interface {
-	SrcAddr() net.Addr
-}
-
-type DstAddr interface {
-	DstAddr() net.Addr
-}
-
 // tcpraw.TCPConn
 type SetDSCP interface {
 	SetDSCP(int) error

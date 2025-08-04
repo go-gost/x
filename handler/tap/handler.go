@@ -15,7 +15,8 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/ss"
 	tap_util "github.com/go-gost/x/internal/util/tap"
 	"github.com/go-gost/x/registry"
@@ -76,8 +77,12 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	defer conn.Close()
 
 	log := h.options.Logger
-	v, _ := conn.(md.Metadatable)
-	if v == nil {
+
+	var config *tap_util.Config
+	if md := ictx.MetadataFromContext(ctx); md != nil {
+		config, _ = md.Get("config").(*tap_util.Config)
+	}
+	if config == nil {
 		err := errors.New("tap: wrong connection type")
 		log.Error(err)
 		return err
@@ -87,7 +92,7 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	log = log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"sid":    xctx.SidFromContext(ctx).String(),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -117,7 +122,6 @@ func (h *tapHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 	}
 
-	config := v.Metadata().Get("config").(*tap_util.Config)
 	h.handleLoop(ctx, conn, raddr, config, log)
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 )
 
@@ -61,13 +61,18 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		opt(&options)
 	}
 
+	var srcAddr string
+	if addr := xctx.SrcAddrFromContext(ctx); addr != nil {
+		srcAddr = addr.String()
+	}
+
 	rb := httpPluginRequest{
 		Network: options.Network,
 		Addr:    options.Addr,
 		Host:    options.Host,
 		Path:    options.Path,
-		Client:  string(ctxvalue.ClientIDFromContext(ctx)),
-		Src:     string(ctxvalue.ClientAddrFromContext(ctx)),
+		Client:  xctx.ClientIDFromContext(ctx).String(),
+		Src:     srcAddr,
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

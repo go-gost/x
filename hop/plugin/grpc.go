@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/plugin/hop/proto"
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
@@ -61,14 +61,18 @@ func (p *grpcPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		opt(&options)
 	}
 
+	var srcAddr string
+	if addr := xctx.SrcAddrFromContext(ctx); addr != nil {
+		srcAddr = addr.String()
+	}
 	r, err := p.client.Select(ctx,
 		&proto.SelectRequest{
 			Network: options.Network,
 			Addr:    options.Addr,
 			Host:    options.Host,
 			Path:    options.Path,
-			Client:  string(ctxvalue.ClientIDFromContext(ctx)),
-			Src:     string(ctxvalue.ClientAddrFromContext(ctx)),
+			Client:  xctx.ClientIDFromContext(ctx).String(),
+			Src:     srcAddr,
 		})
 	if err != nil {
 		p.log.Error(err)

@@ -1,20 +1,18 @@
 package http3
 
 import (
+	"context"
 	"errors"
 	"net"
 	"time"
-
-	mdata "github.com/go-gost/core/metadata"
 )
 
 // a dummy HTTP3 server conn used by HTTP3 handler
 type conn struct {
-	md      mdata.Metadata
-	laddr   net.Addr
-	raddr   net.Addr
-	srcAddr net.Addr
-	closed  chan struct{}
+	laddr  net.Addr
+	raddr  net.Addr
+	closed chan struct{}
+	ctx    context.Context
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -42,10 +40,6 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.raddr
 }
 
-func (c *conn) SrcAddr() net.Addr {
-	return c.srcAddr
-}
-
 func (c *conn) SetDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
@@ -62,7 +56,6 @@ func (c *conn) Done() <-chan struct{} {
 	return c.closed
 }
 
-// Metadata implements metadata.Metadatable interface.
-func (c *conn) Metadata() mdata.Metadata {
-	return c.md
+func (c *conn) Context() context.Context {
+	return c.ctx
 }

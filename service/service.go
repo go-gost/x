@@ -20,8 +20,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
-	ctxvalue "github.com/go-gost/x/ctx"
-	xnet "github.com/go-gost/x/internal/net"
+	xctx "github.com/go-gost/x/ctx"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/google/shlex"
@@ -146,11 +145,11 @@ func (s *defaultService) Serve() error {
 		Message: fmt.Sprintf("service %s is listening on %s", s.name, s.listener.Addr()),
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	gctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if s.status.Stats() != nil {
-		go s.observeStats(ctx)
+		go s.observeStats(gctx)
 	}
 
 	if v := xmetrics.GetGauge(
@@ -206,37 +205,39 @@ func (s *defaultService) Serve() error {
 			s.setState(StateReady)
 		}
 
+		ctx := gctx
+		if cv, ok := conn.(xctx.Context); ok {
+			if v := cv.Context(); v != nil {
+				ctx = v
+			}
+		}
+
 		sid := xid.New().String()
-		ctx := ctxvalue.ContextWithSid(ctx, ctxvalue.Sid(sid))
+		ctx = xctx.ContextWithSid(ctx, xctx.Sid(sid))
 
 		log := s.options.logger.WithFields(map[string]any{
 			"sid": sid,
 		})
 
-		srcAddr := conn.RemoteAddr()
-		if a, ok := conn.(xnet.SrcAddr); ok {
-			if addr := a.SrcAddr(); addr != nil {
-				srcAddr = addr
-			}
+		srcAddr := xctx.SrcAddrFromContext(ctx)
+		if srcAddr == nil {
+			srcAddr = conn.RemoteAddr()
+			ctx = xctx.ContextWithSrcAddr(ctx, srcAddr)
 		}
-		ctx = ctxvalue.ContextWithSrcAddr(ctx, srcAddr)
 
-		clientAddr := srcAddr.String()
-		ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
-
-		dstAddr := conn.LocalAddr()
-		if a, ok := conn.(xnet.DstAddr); ok {
-			if addr := a.DstAddr(); addr != nil {
-				dstAddr = addr
-			}
+		if dstAddr := xctx.DstAddrFromContext(ctx); dstAddr == nil {
+			dstAddr = conn.LocalAddr()
+			ctx = xctx.ContextWithDstAddr(ctx, dstAddr)
 		}
-		ctx = ctxvalue.ContextWithDstAddr(ctx, dstAddr)
 
-		clientIP := clientAddr
+		// clientAddr := srcAddr.String()
+		// ctx = xctx.ContextWithClientAddr(ctx, xctx.ClientAddr(clientAddr))
+
+		clientIP := srcAddr.String()
 		if h, _, _ := net.SplitHostPort(clientIP); h != "" {
 			clientIP = h
 		}
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: clientIP})
+		// ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: clientIP})
 
 		for _, rec := range s.options.recorders {
 			if rec.Record == recorder.RecorderServiceClientAddress {

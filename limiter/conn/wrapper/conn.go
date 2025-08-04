@@ -1,12 +1,13 @@
 package wrapper
 
 import (
+	"context"
 	"errors"
 	"net"
 	"syscall"
 
 	limiter "github.com/go-gost/core/limiter/conn"
-	"github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 )
 
@@ -44,13 +45,6 @@ func (c *serverConn) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *serverConn) Metadata() metadata.Metadata {
-	if md, ok := c.Conn.(metadata.Metadatable); ok {
-		return md.Metadata()
-	}
-	return nil
-}
-
 func (c *serverConn) CloseRead() error {
 	if sc, ok := c.Conn.(xio.CloseRead); ok {
 		return sc.CloseRead()
@@ -63,4 +57,11 @@ func (c *serverConn) CloseWrite() error {
 		return sc.CloseWrite()
 	}
 	return xio.ErrUnsupported
+}
+
+func (c *serverConn) Context() context.Context {
+	if innerCtx, ok := c.Conn.(ctx.Context); ok {
+		return innerCtx.Context()
+	}
+	return nil
 }

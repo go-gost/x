@@ -1,9 +1,11 @@
 package proxyproto
 
 import (
+	"context"
 	"net"
 	"time"
 
+	"github.com/go-gost/x/ctx"
 	proxyproto "github.com/pires/go-proxyproto"
 )
 
@@ -16,7 +18,18 @@ func (ln *listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &serverConn{Conn: conn}, nil
+
+	innerCtx := context.Background()
+	if c, ok := conn.(ctx.Context); ok {
+		if v := c.Context(); v != nil {
+			innerCtx = v
+		}
+	}
+
+	innerCtx = ctx.ContextWithSrcAddr(innerCtx, conn.RemoteAddr())
+	innerCtx = ctx.ContextWithDstAddr(innerCtx, conn.LocalAddr())
+
+	return &serverConn{Conn: conn, ctx: innerCtx}, nil
 }
 
 func WrapListener(ppv int, ln net.Listener, readHeaderTimeout time.Duration) net.Listener {

@@ -14,7 +14,8 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/forwarder"
@@ -87,27 +88,27 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		LocalAddr:  conn.LocalAddr().String(),
 		Network:    "tcp",
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
+		SID:        xctx.SidFromContext(ctx).String(),
 	}
 
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
-
-	log := h.options.Logger.WithFields(map[string]any{
-		"network": ro.Network,
-		"remote":  conn.RemoteAddr().String(),
-		"local":   conn.LocalAddr().String(),
-		"sid":     ro.SID,
-		"client":  ro.ClientIP,
-	})
-	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
 	network := "tcp"
 	if _, ok := conn.(net.PacketConn); ok {
 		network = "udp"
 	}
 	ro.Network = network
+
+	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
+	})
+	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
@@ -150,13 +151,13 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			var buf bytes.Buffer
-			cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
+			cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
 			ro.Route = buf.String()
 
 			cc = proxyproto.WrapClientConn(
 				h.md.proxyProtocol,
-				ctxvalue.SrcAddrFromContext(ctx),
-				ctxvalue.DstAddrFromContext(ctx),
+				xctx.SrcAddrFromContext(ctx),
+				xctx.DstAddrFromContext(ctx),
 				cc)
 
 			return cc, err
@@ -232,7 +233,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -250,13 +251,13 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	cc = proxyproto.WrapClientConn(
 		h.md.proxyProtocol,
-		ctxvalue.SrcAddrFromContext(ctx),
-		ctxvalue.DstAddrFromContext(ctx),
+		xctx.SrcAddrFromContext(ctx),
+		xctx.DstAddrFromContext(ctx),
 		cc)
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)

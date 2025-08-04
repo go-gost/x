@@ -18,7 +18,8 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	sshd_util "github.com/go-gost/x/internal/util/sshd"
@@ -83,21 +84,24 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
-		Service:    h.options.Service,
 		Network:    "tcp",
+		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
+		SID:        xctx.SidFromContext(ctx).String(),
 	}
-	ro.ClientIP, _, _ = net.SplitHostPort(conn.RemoteAddr().String())
+
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
+	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
-		"sid":     ctxvalue.SidFromContext(ctx),
-		"client":  ro.ClientIP,
-		"network": ro.Network,
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -156,7 +160,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
 	ro.Route = buf.String()
 	if err != nil {
 		return err
@@ -164,8 +168,8 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
@@ -261,7 +265,7 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 		"src":  ln.Addr().String(),
 		"bind": ln.Addr().String(),
 	})
-	ro.Src = ln.Addr().String()
+	ro.SrcAddr = ln.Addr().String()
 
 	log.Debugf("bind on %s OK", ln.Addr())
 

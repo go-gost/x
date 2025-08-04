@@ -16,7 +16,8 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	stats_util "github.com/go-gost/x/internal/util/stats"
@@ -108,27 +109,24 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	start := time.Now()
 
 	sid := xid.New().String()
-	ctx := ctxvalue.ContextWithSid(context.Background(), ctxvalue.Sid(sid))
+	ctx := xctx.ContextWithSid(context.Background(), xctx.Sid(sid))
 
 	ro := &xrecorder.HandlerRecorderObject{
 		Service:    h.opts.Service,
 		Network:    "tcp",
 		RemoteAddr: remoteAddr.String(),
-		Dst:        dstAddr.String(),
+		DstAddr:        dstAddr.String(),
 		Host:       dstAddr.String(),
-		ClientIP:   remoteAddr.String(),
+		ClientAddr:   remoteAddr.String(),
 		Time:       start,
 		SID:        sid,
-	}
-	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
-		ro.ClientIP = h
 	}
 
 	log := h.opts.Logger.WithFields(map[string]any{
 		"network": ro.Network,
 		"remote":  ro.RemoteAddr,
-		"dst":     ro.Dst,
-		"client":  ro.ClientIP,
+		"dst":     ro.DstAddr,
+		"client":  ro.ClientAddr,
 		"sid":     ro.SID,
 	})
 
@@ -152,7 +150,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		}
 
 		log.WithFields(map[string]any{
-			"src":         ro.Src,
+			"src":         ro.SrcAddr,
 			"duration":    time.Since(start),
 			"inputBytes":  ro.InputBytes,
 			"outputBytes": ro.OutputBytes,
@@ -193,7 +191,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 				ro.Host = address
 
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
 				ro.Route = buf.String()
 				if err != nil && !h.sniffingFallback {
 					return nil, err
@@ -202,7 +200,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 
 			if cc == nil {
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
 				ro.Route = buf.String()
 				ro.Host = dstAddr.String()
 			}
@@ -250,7 +248,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.opts.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+	cc, err := h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
 	ro.Route = buf.String()
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)
@@ -258,8 +256,8 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 	defer cc.Close()
 
-	ro.Src = cc.LocalAddr().String()
-	log = log.WithFields(map[string]any{"src": ro.Src})
+	ro.SrcAddr = cc.LocalAddr().String()
+	log = log.WithFields(map[string]any{"src": ro.SrcAddr})
 
 	t := time.Now()
 	log.Infof("%s <-> %s", remoteAddr, dstAddr)
@@ -283,26 +281,23 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 	start := time.Now()
 
 	sid := xid.New().String()
-	ctx := ctxvalue.ContextWithSid(context.Background(), ctxvalue.Sid(sid))
+	ctx := xctx.ContextWithSid(context.Background(), xctx.Sid(sid))
 
 	ro := &xrecorder.HandlerRecorderObject{
-		Service:    h.opts.Service,
 		Network:    "udp",
+		Service:    h.opts.Service,
 		RemoteAddr: remoteAddr.String(),
-		Dst:        dstAddr.String(),
+		DstAddr:        dstAddr.String(),
+		ClientAddr:   remoteAddr.String(),
 		Host:       dstAddr.String(),
-		ClientIP:   remoteAddr.String(),
-		Time:       start,
 		SID:        sid,
-	}
-	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
-		ro.ClientIP = h
+		Time:       start,
 	}
 
 	log := h.opts.Logger.WithFields(map[string]any{
 		"network": ro.Network,
 		"remote":  ro.RemoteAddr,
-		"dst":     ro.Dst,
+		"dst":     ro.DstAddr,
 		"sid":     ro.SID,
 	})
 
@@ -326,7 +321,7 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		}
 
 		log.WithFields(map[string]any{
-			"src":         ro.Src,
+			"src":         ro.SrcAddr,
 			"duration":    time.Since(start),
 			"inputBytes":  ro.InputBytes,
 			"outputBytes": ro.OutputBytes,
@@ -340,8 +335,8 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 	}
 	defer cc.Close()
 
-	ro.Src = cc.LocalAddr().String()
-	log = log.WithFields(map[string]any{"src": ro.Src})
+	ro.SrcAddr = cc.LocalAddr().String()
+	log = log.WithFields(map[string]any{"src": ro.SrcAddr})
 
 	t := time.Now()
 	log.Infof("%s <-> %s", remoteAddr, dstAddr)

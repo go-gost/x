@@ -15,7 +15,8 @@ import (
 	"github.com/go-gost/core/connector"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/registry"
 )
 
@@ -49,12 +50,17 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		"remote":  conn.RemoteAddr().String(),
 		"network": network,
 		"address": address,
-		"sid":     string(ctxvalue.SidFromContext(ctx)),
+		"sid":     string(xctx.SidFromContext(ctx)),
 	})
 	log.Debugf("connect %s/%s", address, network)
 
-	v, _ := conn.(md.Metadatable)
-	if v == nil {
+	var client *http.Client
+	if cc, ok := conn.(xctx.Context); ok {
+		if md := ictx.MetadataFromContext(cc.Context()); md != nil {
+			client, _ = md.Get("client").(*http.Client)
+		}
+	}
+	if client == nil {
 		err := errors.New("http2: wrong connection type")
 		log.Error(err)
 		return nil, err
@@ -69,7 +75,6 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		ProtoMinor: 0,
 		Header:     c.md.header,
 		Body:       pr,
-		// ContentLength: -1,
 	}
 	if req.Header == nil {
 		req.Header = make(http.Header)
@@ -92,8 +97,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	client := v.Metadata().Get("client").(*http.Client)
-	resp, err := client.Do(req)
+	resp, err := client.Do(req.WithContext(ictx.Copy(ctx)))
 	if err != nil {
 		log.Error(err)
 		conn.Close()

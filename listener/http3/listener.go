@@ -8,6 +8,8 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	mdx "github.com/go-gost/x/metadata"
@@ -131,18 +133,22 @@ func (l *http3Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 			IP: net.IPv4zero,
 		}
 	}
+
+	ctx := r.Context()
+	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
+		ctx = xctx.ContextWithSrcAddr(ctx, &net.UDPAddr{IP: clientIP})
+	}
+
+	ctx = ictx.ContextWithMetadata(ctx, mdx.NewMetadata(map[string]any{
+		"r": r,
+		"w": w,
+	}))
+
 	conn := &conn{
 		laddr:  l.addr,
 		raddr:  remoteAddr,
 		closed: make(chan struct{}),
-		md: mdx.NewMetadata(map[string]any{
-			"r": r,
-			"w": w,
-		}),
-	}
-
-	if clientIP := xhttp.GetClientIP(r); clientIP != nil {
-		conn.srcAddr = &net.UDPAddr{IP: clientIP}
+		ctx:    ctx,
 	}
 
 	select {

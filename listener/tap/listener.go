@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	mdata "github.com/go-gost/core/metadata"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	traffic_limiter "github.com/go-gost/x/limiter/traffic"
 	limiter_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -85,11 +86,16 @@ func (l *tapListener) listenLoop() {
 			l.logger.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
 				itf.Name, ip, itf.MTU, addrs)
 
+			ctx = ictx.ContextWithMetadata(ctx, mdx.NewMetadata(map[string]any{
+				"config": l.md.config,
+			}))
+
 			var c net.Conn
 			c = &conn{
 				ifce:   ifce,
 				laddr:  l.addr,
 				raddr:  &net.IPAddr{IP: ip},
+				ctx:    ctx,
 				cancel: cancel,
 			}
 			c = metrics.WrapConn(l.options.Service, c)
@@ -102,9 +108,6 @@ func (l *tapListener) listenLoop() {
 				limiter.ServiceOption(l.options.Service),
 				limiter.NetworkOption(c.LocalAddr().Network()),
 			)
-			c = withMetadata(mdx.NewMetadata(map[string]any{
-				"config": l.md.config,
-			}), c)
 
 			l.cqueue <- c
 

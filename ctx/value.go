@@ -1,58 +1,37 @@
 package ctx
 
 import (
-	"bytes"
 	"context"
 	"net"
-
-	"github.com/go-gost/core/logger"
 )
 
-type ClientAddr string
-
-func (a ClientAddr) String() string {
-	return string(a)
+type Context interface {
+	Context() context.Context
 }
 
-// clientAddrKey saves the client address.
-type clientAddrKey struct{}
-
-var keyClientAddr clientAddrKey
-
-func ContextWithClientAddr(ctx context.Context, addr ClientAddr) context.Context {
-	return context.WithValue(ctx, keyClientAddr, addr)
+type WithContext interface {
+	WithContext(ctx context.Context)
 }
 
-func ClientAddrFromContext(ctx context.Context) ClientAddr {
-	v, _ := ctx.Value(keyClientAddr).(ClientAddr)
-	return v
-}
-
-type (
-	srcAddrKey struct{}
-	dstAddrKey struct{}
-)
-
-var (
-	keySrcAddr srcAddrKey
-	keyDstAddr dstAddrKey
-)
+type srcAddrKey struct{}
 
 func ContextWithSrcAddr(ctx context.Context, addr net.Addr) context.Context {
-	return context.WithValue(ctx, keySrcAddr, addr)
+	return context.WithValue(ctx, srcAddrKey{}, addr)
 }
 
 func SrcAddrFromContext(ctx context.Context) net.Addr {
-	v, _ := ctx.Value(keySrcAddr).(net.Addr)
+	v, _ := ctx.Value(srcAddrKey{}).(net.Addr)
 	return v
 }
 
+type dstAddrKey struct{}
+
 func ContextWithDstAddr(ctx context.Context, addr net.Addr) context.Context {
-	return context.WithValue(ctx, keyDstAddr, addr)
+	return context.WithValue(ctx, dstAddrKey{}, addr)
 }
 
 func DstAddrFromContext(ctx context.Context) net.Addr {
-	v, _ := ctx.Value(keyDstAddr).(net.Addr)
+	v, _ := ctx.Value(dstAddrKey{}).(net.Addr)
 	return v
 }
 
@@ -66,16 +45,12 @@ func (s Sid) String() string {
 	return string(s)
 }
 
-var (
-	keySid sidKey
-)
-
 func ContextWithSid(ctx context.Context, sid Sid) context.Context {
-	return context.WithValue(ctx, keySid, sid)
+	return context.WithValue(ctx, sidKey{}, sid)
 }
 
 func SidFromContext(ctx context.Context) Sid {
-	v, _ := ctx.Value(keySid).(Sid)
+	v, _ := ctx.Value(sidKey{}).(Sid)
 	return v
 }
 
@@ -87,16 +62,12 @@ type (
 	}
 )
 
-var (
-	clientHashKey = &hashKey{}
-)
-
 func ContextWithHash(ctx context.Context, hash *Hash) context.Context {
-	return context.WithValue(ctx, clientHashKey, hash)
+	return context.WithValue(ctx, hashKey{}, hash)
 }
 
 func HashFromContext(ctx context.Context) *Hash {
-	if v, _ := ctx.Value(clientHashKey).(*Hash); v != nil {
+	if v, _ := ctx.Value(hashKey{}).(*Hash); v != nil {
 		return v
 	}
 	return nil
@@ -111,45 +82,11 @@ func (s ClientID) String() string {
 	return string(s)
 }
 
-var (
-	keyClientID = &clientIDKey{}
-)
-
 func ContextWithClientID(ctx context.Context, clientID ClientID) context.Context {
-	return context.WithValue(ctx, keyClientID, clientID)
+	return context.WithValue(ctx, clientIDKey{}, clientID)
 }
 
 func ClientIDFromContext(ctx context.Context) ClientID {
-	v, _ := ctx.Value(keyClientID).(ClientID)
-	return v
-}
-
-type bufferKey struct{}
-
-var (
-	keyBuffer = &bufferKey{}
-)
-
-func ContextWithBuffer(ctx context.Context, buffer *bytes.Buffer) context.Context {
-	return context.WithValue(ctx, keyBuffer, buffer)
-}
-
-func BufferFromContext(ctx context.Context) *bytes.Buffer {
-	v, _ := ctx.Value(keyBuffer).(*bytes.Buffer)
-	return v
-}
-
-type loggerKey struct{}
-
-var (
-	keyLogger = &loggerKey{}
-)
-
-func ContextWithLogger(ctx context.Context, log logger.Logger) context.Context {
-	return context.WithValue(ctx, keyLogger, log)
-}
-
-func LoggerFromContext(ctx context.Context) logger.Logger {
-	v, _ := ctx.Value(keyLogger).(logger.Logger)
+	v, _ := ctx.Value(clientIDKey{}).(ClientID)
 	return v
 }

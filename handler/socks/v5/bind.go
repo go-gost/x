@@ -9,7 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -32,7 +32,7 @@ func (h *socks5Handler) handleBind(ctx context.Context, conn net.Conn, network, 
 	}
 
 	{
-		clientID := ctxvalue.ClientIDFromContext(ctx)
+		clientID := xctx.ClientIDFromContext(ctx)
 		rw := traffic_wrapper.WrapReadWriter(
 			h.limiter,
 			conn,
@@ -78,7 +78,7 @@ func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, a
 		"src":  ln.Addr().String(),
 		"bind": ln.Addr().String(),
 	})
-	ro.Src = ln.Addr().String()
+	ro.SrcAddr = ln.Addr().String()
 
 	socksAddr := gosocks5.Addr{}
 	if err := socksAddr.ParseFrom(ln.Addr().String()); err != nil {

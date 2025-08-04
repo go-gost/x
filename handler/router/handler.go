@@ -15,7 +15,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/cache"
 	stats_util "github.com/go-gost/x/internal/util/stats"
@@ -136,9 +136,10 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	start := time.Now()
 	log := h.log.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"network": conn.LocalAddr().Network(),
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"sid":     xctx.SidFromContext(ctx).String(),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -216,7 +217,7 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			resp.WriteTo(conn)
 			return ErrUnauthorized
 		}
-		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 	}
 
 	switch req.Cmd & relay.CmdMask {

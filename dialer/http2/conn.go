@@ -1,11 +1,10 @@
 package http2
 
 import (
+	"context"
 	"errors"
 	"net"
 	"time"
-
-	mdata "github.com/go-gost/core/metadata"
 )
 
 // a dummy HTTP2 client conn used by HTTP2 client connector
@@ -13,7 +12,7 @@ type conn struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	onClose    func()
-	md         mdata.Metadata
+	ctx        context.Context
 }
 
 func (c *conn) Close() error {
@@ -51,7 +50,6 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "nop", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
-// Metadata implements metadata.Metadatable interface.
-func (c *conn) Metadata() mdata.Metadata {
-	return c.md
+func (c *conn) Context() context.Context {
+	return c.ctx
 }

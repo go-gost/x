@@ -1,6 +1,7 @@
 package proxyproto
 
 import (
+	"context"
 	"net"
 	"strconv"
 
@@ -10,6 +11,11 @@ import (
 
 type serverConn struct {
 	net.Conn
+	ctx context.Context
+}
+
+func (c *serverConn) Context() context.Context {
+	return c.ctx
 }
 
 func (c *serverConn) RemoteAddr() net.Addr {
@@ -23,14 +29,6 @@ func (c *serverConn) LocalAddr() net.Addr {
 	if conn, ok := c.Conn.(*proxyproto.Conn); ok {
 		return conn.Raw().LocalAddr()
 	}
-	return c.Conn.LocalAddr()
-}
-
-func (c *serverConn) SrcAddr() net.Addr {
-	return c.Conn.RemoteAddr()
-}
-
-func (c *serverConn) DstAddr() net.Addr {
 	return c.Conn.LocalAddr()
 }
 

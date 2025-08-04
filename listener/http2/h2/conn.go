@@ -1,6 +1,7 @@
 package h2
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -14,8 +15,8 @@ type conn struct {
 	w          io.Writer
 	remoteAddr net.Addr
 	localAddr  net.Addr
-	srcAddr net.Addr
 	closed     chan struct{}
+	ctx        context.Context
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -50,10 +51,6 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *conn) SrcAddr() net.Addr {
-	return c.srcAddr
-}
-
 func (c *conn) SetDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
@@ -64,6 +61,10 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (c *conn) Context() context.Context {
+	return c.ctx
 }
 
 type flushWriter struct {

@@ -7,7 +7,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/plugin/auth/proto"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/plugin"
 	"google.golang.org/grpc"
 )
@@ -52,7 +52,7 @@ func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, op
 	}
 
 	var clientAddr string
-	if v := ctxvalue.SrcAddrFromContext(ctx); v != nil {
+	if v := xctx.SrcAddrFromContext(ctx); v != nil {
 		clientAddr = v.String()
 	}
 	r, err := p.client.Authenticate(ctx,

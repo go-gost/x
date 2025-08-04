@@ -10,7 +10,8 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 )
 
@@ -50,7 +51,7 @@ func (r *Router) Dial(ctx context.Context, network, address string) (conn net.Co
 	r.record(ctx, recorder.RecorderServiceRouterDialAddress, []byte(host))
 
 	log := r.options.Logger.WithFields(map[string]any{
-		"sid": ctxvalue.SidFromContext(ctx),
+		"sid": xctx.SidFromContext(ctx),
 	})
 
 	conn, err = r.dial(ctx, network, address, log)
@@ -96,7 +97,7 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			defer cancel()
 		}
 
-		buf := ctxvalue.BufferFromContext(ctx)
+		buf := ictx.BufferFromContext(ctx)
 		if buf != nil {
 			buf.Reset()
 		}
@@ -151,7 +152,7 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 	}
 
 	log := r.options.Logger.WithFields(map[string]any{
-		"sid": ctxvalue.SidFromContext(ctx),
+		"sid": xctx.SidFromContext(ctx),
 	})
 
 	log.Debugf("bind on %s/%s", address, network)

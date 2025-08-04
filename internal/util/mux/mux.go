@@ -1,11 +1,11 @@
 package mux
 
 import (
+	"context"
 	"net"
 	"time"
 
-	"github.com/go-gost/core/metadata"
-	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/ctx"
 	smux "github.com/xtaci/smux"
 )
 
@@ -145,27 +145,13 @@ func (c *streamConn) Write(b []byte) (n int, err error) {
 	return c.stream.Write(b)
 }
 
-func (c *streamConn) Metadata() metadata.Metadata {
-	if md, ok := c.Conn.(metadata.Metadatable); ok {
-		return md.Metadata()
-	}
-	return nil
-}
-
-func (c *streamConn) SrcAddr() net.Addr {
-	if sc, ok := c.Conn.(xnet.SrcAddr); ok {
-		return sc.SrcAddr()
-	}
-	return nil
-}
-
-func (c *streamConn) DstAddr() net.Addr {
-	if sc, ok := c.Conn.(xnet.DstAddr); ok {
-		return sc.DstAddr()
-	}
-	return nil
-}
-
 func (c *streamConn) Close() error {
 	return c.stream.Close()
+}
+
+func (c *streamConn) Context() context.Context {
+	if sc, ok := c.Conn.(ctx.Context); ok {
+		return sc.Context()
+	}
+	return nil
 }

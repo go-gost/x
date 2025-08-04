@@ -13,7 +13,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	serial "github.com/go-gost/x/internal/util/serial"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -68,9 +68,10 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	log := h.options.Logger
 
 	log = log.WithFields(map[string]any{
+		"network": "serial",
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"sid":    xctx.SidFromContext(ctx).String(),
 	})
 
 	conn = &recorderConn{

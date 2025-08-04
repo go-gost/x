@@ -101,7 +101,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 		"bind":     fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
 		"src":      ln.Addr().String(),
 	})
-	ro.Src = ln.Addr().String()
+	ro.SrcAddr = ln.Addr().String()
 
 	af := &relay.AddrFeature{}
 	if err := af.ParseFrom(ln.Addr().String()); err != nil {
@@ -183,7 +183,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		"bind":     pc.LocalAddr().String(),
 		"src":      pc.LocalAddr().String(),
 	})
-	ro.Src = pc.LocalAddr().String()
+	ro.SrcAddr = pc.LocalAddr().String()
 
 	pc = metrics.WrapPacketConn(serviceName, pc)
 	// pc = admission.WrapPacketConn(l.options.Admission, pc)

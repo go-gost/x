@@ -1,11 +1,11 @@
 package tls
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 
-	"github.com/go-gost/core/metadata"
-	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/ctx"
 )
 
 type listener struct {
@@ -34,23 +34,9 @@ type tlsConn struct {
 	*tls.Conn
 }
 
-func (c *tlsConn) Metadata() metadata.Metadata {
-	if md, ok := c.NetConn().(metadata.Metadatable); ok {
-		return md.Metadata()
-	}
-	return nil
-}
-
-func (c *tlsConn) SrcAddr() net.Addr {
-	if sc, ok := c.NetConn().(xnet.SrcAddr); ok {
-		return sc.SrcAddr()
-	}
-	return nil
-}
-
-func (c *tlsConn) DstAddr() net.Addr {
-	if sc, ok := c.NetConn().(xnet.DstAddr); ok {
-		return sc.DstAddr()
+func (c *tlsConn) Context() context.Context {
+	if sc, ok := c.NetConn().(ctx.Context); ok {
+		return sc.Context()
 	}
 	return nil
 }

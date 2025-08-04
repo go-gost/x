@@ -27,7 +27,8 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
@@ -106,18 +107,18 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		LocalAddr:  conn.LocalAddr().String(),
 		Network:    "tcp",
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
+		SID:        xctx.SidFromContext(ctx).String(),
 	}
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
-		"sid":     ctxvalue.SidFromContext(ctx),
-		"client":  ro.ClientIP,
-		"network": ro.Network,
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 	defer func() {
@@ -136,20 +137,17 @@ func (h *http2Handler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		return rate_limiter.ErrRateLimit
 	}
 
-	v, ok := conn.(md.Metadatable)
-	if !ok || v == nil {
-		err = errors.New("wrong connection type")
+	md := ictx.MetadataFromContext(ctx)
+	if md == nil {
+		err = errors.New("http2: wrong connection type")
 		log.Error(err)
 		return err
 	}
 
-	md := v.Metadata()
-	return h.roundTrip(ctx,
-		md.Get("w").(http.ResponseWriter),
-		md.Get("r").(*http.Request),
-		ro,
-		log,
-	)
+	w, _ := md.Get("w").(http.ResponseWriter)
+	r, _ := md.Get("r").(*http.Request)
+
+	return h.roundTrip(ctx, w, r, ro, log)
 }
 
 func (h *http2Handler) Close() error {
@@ -163,6 +161,10 @@ func (h *http2Handler) Close() error {
 // when server returns an non-200 status code,
 // May be fixed in go1.18.
 func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	if w == nil || req == nil {
+		return nil
+	}
+
 	// Try to get the actual host.
 	// Compatible with GOST 2.x.
 	if v := req.Header.Get("Gost-Target"); v != "" {
@@ -237,7 +239,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	log = log.WithFields(map[string]any{"clientID": clientID})
 	ro.ClientID = clientID
 
-	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 
 	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
 		resp.StatusCode = http.StatusForbidden
@@ -254,11 +256,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	switch h.md.hash {
 	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: host})
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: host})
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", host)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", host)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -269,8 +271,8 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	if req.Method == http.MethodConnect {
 		resp.StatusCode = http.StatusOK

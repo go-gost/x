@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
@@ -54,7 +55,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		"src":  cc.LocalAddr().String(),
 		"bind": cc.LocalAddr().String(),
 	})
-	ro.Src = cc.LocalAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
 
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(cc.LocalAddr().String())
@@ -75,7 +76,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 
 	// obtain a udp connection
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, "") // UDP association
+	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, "") // UDP association
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

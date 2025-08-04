@@ -18,8 +18,9 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xhop "github.com/go-gost/x/hop"
+	ictx "github.com/go-gost/x/internal/ctx"
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xstats "github.com/go-gost/x/observer/stats"
@@ -145,18 +146,19 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		Host:       conn.LocalAddr().String(),
 		Proto:      "dns",
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
+		SID:        xctx.SidFromContext(ctx).String(),
 	}
 
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"network": ro.Network,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -310,7 +312,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 	log.Debugf("exchange message %d: %s", mq.Id, mq.Question[0].String())
 
 	var buf bytes.Buffer
-	mr, err := h.exchange(ctxvalue.ContextWithBuffer(ctx, &buf), ex, &mq)
+	mr, err := h.exchange(ictx.ContextWithBuffer(ctx, &buf), ex, &mq)
 	ro.Route = buf.String()
 	if err != nil {
 		return nil, err

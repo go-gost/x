@@ -16,7 +16,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -105,22 +105,24 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
+		Network:    "tcp",
 		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
+		SID:        xctx.SidFromContext(ctx).String(),
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"network": ro.Network,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -206,7 +208,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		}
 		log = log.WithFields(map[string]any{"clientID": clientID})
 		ro.ClientID = clientID
-		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 	}
 
 	network := networkID.String()

@@ -4,13 +4,15 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"sync"
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
@@ -67,7 +69,7 @@ func (h *fileHandler) Init(md md.Metadata) (err error) {
 
 func (h *fileHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
 	var clientAddr string
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
 		clientAddr = srcAddr.String()
 	}
 
@@ -112,6 +114,11 @@ func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 	log := h.options.Logger.WithFields(map[string]any{
 		"remote": r.RemoteAddr,
 	})
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
+		dump, _ := httputil.DumpRequest(r, false)
+		log.Trace(string(dump))
+	}
 
 	rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 

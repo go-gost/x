@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -63,7 +64,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, target.Addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, target.Addr)
 	ro.Route = buf.String()
 	if err != nil {
 		// TODO: the router itself may be failed due to the failed node in the router,
@@ -81,8 +82,8 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	if marker := target.Marker(); marker != nil {
 		marker.Reset()

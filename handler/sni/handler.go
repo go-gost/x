@@ -13,7 +13,8 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -73,24 +74,24 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
+		Network:    "tcp",
 		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
-		Network:    "tcp",
+		SID:        xctx.SidFromContext(ctx).String(),
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
-		"sid":     ctxvalue.SidFromContext(ctx),
-		"client":  ro.ClientIP,
-		"network": ro.Network,
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -125,9 +126,13 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		var buf bytes.Buffer
-		cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", address)
+		cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
 		ro.Route = buf.String()
 
+		if cc != nil {
+			ro.SrcAddr = cc.LocalAddr().String()
+			ro.DstAddr = cc.RemoteAddr().String()
+		}
 		return cc, err
 	}
 	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {

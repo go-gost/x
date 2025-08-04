@@ -30,8 +30,8 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
-	ctxvalue "github.com/go-gost/x/ctx"
-	ctx_internal "github.com/go-gost/x/internal/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
@@ -130,18 +130,19 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		LocalAddr:  conn.LocalAddr().String(),
 		Proto:      "http",
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
+		SID:        xctx.SidFromContext(ctx).String(),
 	}
 
-	if srcAddr := ctxvalue.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientIP = srcAddr.String()
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
-		"remote": conn.RemoteAddr().String(),
-		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": ro.ClientIP,
+		"network": ro.Network,
+		"remote":  conn.RemoteAddr().String(),
+		"local":   conn.LocalAddr().String(),
+		"client":  ro.ClientAddr,
+		"sid":     ro.SID,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -292,7 +293,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
 	}
 
-	ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 
 	if h.options.Bypass != nil &&
 		h.options.Bypass.Contains(ctx, network, addr) {
@@ -338,8 +339,8 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return h.handleProxy(ctx, conn, req, ro, log)
 	}
 
-	ctx = ctx_internal.ContextWithRecorderObject(ctx, ro)
-	ctx = ctxvalue.ContextWithLogger(ctx, log)
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
+	ctx = ictx.ContextWithLogger(ctx, log)
 	cc, err := h.dial(ctx, "tcp", addr)
 
 	if err != nil {
@@ -355,8 +356,8 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	b := []byte("HTTP/1.1 200 Connection established\r\n" +
 		"Proxy-Agent: " + h.md.proxyAgent + "\r\n\r\n")
@@ -565,8 +566,8 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 		}
 	}
 
-	ctx = ctx_internal.ContextWithRecorderObject(ctx, ro)
-	ctx = ctxvalue.ContextWithLogger(ctx, log)
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
+	ctx = ictx.ContextWithLogger(ctx, log)
 
 	resp, err := h.transport.RoundTrip(req.WithContext(ctx))
 
@@ -639,21 +640,21 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
 	switch h.md.hash {
 	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: addr})
 	}
 
-	if log := ctxvalue.LoggerFromContext(ctx); log != nil {
+	if log := ictx.LoggerFromContext(ctx); log != nil {
 		log.Debugf("dial: new connection to host %s", addr)
 	}
 
 	var buf bytes.Buffer
-	conn, err = h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), network, addr)
-	if ro := ctx_internal.RecorderObjectFromContext(ctx); ro != nil {
+	conn, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
+	if ro := ictx.RecorderObjectFromContext(ctx); ro != nil {
 		ro.Route = buf.String()
 
 		if conn != nil {
-			ro.Src = conn.LocalAddr().String()
-			ro.Dst = conn.RemoteAddr().String()
+			ro.SrcAddr = conn.LocalAddr().String()
+			ro.DstAddr = conn.RemoteAddr().String()
 		}
 	}
 

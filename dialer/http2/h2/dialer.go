@@ -15,7 +15,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
@@ -103,8 +104,8 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 
 					conn = proxyproto.WrapClientConn(
 						d.options.ProxyProtocol,
-						ctxvalue.SrcAddrFromContext(ctx),
-						ctxvalue.DstAddrFromContext(ctx),
+						xctx.SrcAddrFromContext(ctx),
+						xctx.DstAddrFromContext(ctx),
 						conn)
 
 					return conn, nil
@@ -121,8 +122,8 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 
 					conn = proxyproto.WrapClientConn(
 						d.options.ProxyProtocol,
-						ctxvalue.SrcAddrFromContext(ctx),
-						ctxvalue.DstAddrFromContext(ctx),
+						xctx.SrcAddrFromContext(ctx),
+						xctx.DstAddrFromContext(ctx),
 						conn)
 
 					return conn, nil
@@ -169,7 +170,7 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		d.logger.Trace(string(dump))
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req.WithContext(ictx.Copy(ctx)))
 	if err != nil {
 		return nil, err
 	}

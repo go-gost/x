@@ -72,15 +72,16 @@ type DNSRecorderObject struct {
 }
 
 type HandlerRecorderObject struct {
-	Node        string                   `json:"node,omitempty"`
-	Service     string                   `json:"service"`
-	Network     string                   `json:"network"`
-	RemoteAddr  string                   `json:"remote"`
-	LocalAddr   string                   `json:"local"`
-	Host        string                   `json:"host"`
-	Src         string                   `json:"src"`
-	Dst         string                   `json:"dst"`
-	Proto       string                   `json:"proto,omitempty"`
+	Node       string `json:"node,omitempty"`
+	Service    string `json:"service"`
+	Network    string `json:"network"`
+	RemoteAddr string `json:"remote"`
+	LocalAddr  string `json:"local"`
+	ClientAddr string `json:"client"`
+	SrcAddr    string `json:"src"`
+	DstAddr    string `json:"dst"`
+	Host       string `json:"host"`
+	Proto      string `json:"proto,omitempty"`
 	ClientIP    string                   `json:"clientIP"`
 	ClientID    string                   `json:"clientID,omitempty"`
 	HTTP        *HTTPRecorderObject      `json:"http,omitempty"`

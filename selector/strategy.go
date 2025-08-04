@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/core/selector"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 type roundRobinStrategy[T any] struct {
@@ -102,7 +102,7 @@ func (s *hashStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	if len(vs) == 0 {
 		return
 	}
-	if h := ctxvalue.HashFromContext(ctx); h != nil {
+	if h := xctx.HashFromContext(ctx); h != nil {
 		value := uint64(crc32.ChecksumIEEE([]byte(h.Source)))
 		logger.Default().Tracef("hash %s %d", h.Source, value)
 		return vs[value%uint64(len(vs))]

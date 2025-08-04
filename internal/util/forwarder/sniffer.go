@@ -27,7 +27,7 @@ import (
 	dissector "github.com/go-gost/tls-dissector"
 	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
@@ -161,15 +161,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
-	}
-	{
-		clientAddr := ro.RemoteAddr
-		if ro.ClientIP != "" {
-			if _, port, _ := net.SplitHostPort(ro.RemoteAddr); port != "" {
-				clientAddr = net.JoinHostPort(ro.ClientIP, port)
-			}
-		}
-		ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
+		ctx = xctx.ContextWithSrcAddr(ctx, &net.TCPAddr{IP: clientIP})
 	}
 
 	// http/2
@@ -187,8 +179,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	log := ho.Log
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 	ro.Time = time.Time{}
 
 	shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho)
@@ -343,8 +335,8 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 			}
 
 			log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-			ro.Src = cc.LocalAddr().String()
-			ro.Dst = cc.RemoteAddr().String()
+			ro.SrcAddr = cc.LocalAddr().String()
+			ro.DstAddr = cc.RemoteAddr().String()
 			log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 			return cc, nil
 		},
@@ -435,7 +427,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 				err = errors.New("unauthorized")
 				return
 			}
-			ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(id))
+			ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(id))
 		}
 
 		if httpSettings.Host != "" {
@@ -797,7 +789,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		ro.TLS.Proto = clientHello.SupportedProtos[0]
 	}
 
-	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(ro.RemoteAddr))
+	// ctx = xctx.ContextWithClientAddr(ctx, xctx.ClientAddr(ro.RemoteAddr))
 
 	host := clientHello.ServerName
 	if host != "" {
@@ -821,8 +813,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	log := ho.Log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	if h.Certificate != nil && h.PrivateKey != nil &&
 		len(clientHello.SupportedProtos) > 0 && (clientHello.SupportedProtos[0] == "h2" || clientHello.SupportedProtos[0] == "http/1.1") {

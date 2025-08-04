@@ -24,7 +24,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	dissector "github.com/go-gost/tls-dissector"
 	xbypass "github.com/go-gost/x/bypass"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
@@ -151,15 +151,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
+		ctx = xctx.ContextWithSrcAddr(ctx, &net.TCPAddr{IP: clientIP})
 	}
-
-	clientAddr := ro.RemoteAddr
-	if ro.ClientIP != "" {
-		if _, port, _ := net.SplitHostPort(ro.RemoteAddr); port != "" {
-			clientAddr = net.JoinHostPort(ro.ClientIP, port)
-		}
-	}
-	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(clientAddr))
 
 	// http/2
 	if req.Method == "PRI" && len(req.Header) == 0 && req.URL.Path == "*" && req.Proto == "HTTP/2.0" {
@@ -194,8 +187,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 	ro.Time = time.Time{}
 
 	shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, req, ro, &pStats, log)
@@ -254,8 +247,8 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 			}
 
 			log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-			ro.Src = cc.LocalAddr().String()
-			ro.Dst = cc.RemoteAddr().String()
+			ro.SrcAddr = cc.LocalAddr().String()
+			ro.DstAddr = cc.RemoteAddr().String()
 
 			cc = tls.Client(cc, cfg)
 			return cc, nil
@@ -598,7 +591,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		ro.TLS.Proto = clientHello.SupportedProtos[0]
 	}
 
-	ctx = ctxvalue.ContextWithClientAddr(ctx, ctxvalue.ClientAddr(ro.RemoteAddr))
+	// ctx = xctx.ContextWithClientAddr(ctx, xctx.ClientAddr(ro.RemoteAddr))
 
 	host := clientHello.ServerName
 	if host != "" {
@@ -623,8 +616,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	if h.Certificate != nil && h.PrivateKey != nil &&
 		len(clientHello.SupportedProtos) > 0 && (clientHello.SupportedProtos[0] == "h2" || clientHello.SupportedProtos[0] == "http/1.1") {

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	xctx "github.com/go-gost/x/ctx"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
 	mdata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -30,11 +32,15 @@ func (s *server) Tunnel(srv pb.GostTunel_TunnelServer) error {
 	if p, ok := peer.FromContext(srv.Context()); ok {
 		c.remoteAddr = p.Addr
 	}
+
+	ctx := srv.Context()
 	if md, ok := mdata.FromIncomingContext(srv.Context()); ok {
 		if cip := getClientIP(md); cip != nil {
-			c.clientAddr = &net.IPAddr{IP: cip}
+			ctx = xctx.ContextWithSrcAddr(ctx, &net.TCPAddr{IP: cip})
 		}
 	}
+
+	c.ctx = ctx
 
 	select {
 	case s.cqueue <- c:
@@ -80,8 +86,8 @@ type conn struct {
 	rb         []byte
 	localAddr  net.Addr
 	remoteAddr net.Addr
-	clientAddr net.Addr
 	closed     chan struct{}
+	ctx        context.Context
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -146,10 +152,6 @@ func (c *conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *conn) ClientAddr() net.Addr {
-	return c.clientAddr
-}
-
 func (c *conn) SetDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "grpc", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
@@ -160,4 +162,8 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "grpc", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (c *conn) Context() context.Context {
+	return c.ctx
 }

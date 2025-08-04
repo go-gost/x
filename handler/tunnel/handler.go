@@ -18,7 +18,7 @@ import (
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -187,19 +187,16 @@ func (h *tunnelHandler) initEntrypoint() (err error) {
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
 
-	clientIP := conn.RemoteAddr().String()
-	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
-		clientIP = string(clientAddr)
-	}
-	if h, _, _ := net.SplitHostPort(clientIP); h != "" {
-		clientIP = h
+	var clientAddr string
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		clientAddr = srcAddr.String()
 	}
 
 	log := h.log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
-		"client": clientIP,
+		"client": clientAddr,
+		"sid":    xctx.SidFromContext(ctx).String(),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -286,7 +283,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			resp.WriteTo(conn)
 			return ErrUnauthorized
 		}
-		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 	}
 
 	switch req.Cmd & relay.CmdMask {

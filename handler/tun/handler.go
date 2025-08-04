@@ -12,7 +12,8 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/go-gost/x/registry"
 )
@@ -63,8 +64,8 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	log := h.options.Logger
 
 	var config *tun_util.Config
-	if v, _ := conn.(md.Metadatable); v != nil {
-		config = v.Metadata().Get("config").(*tun_util.Config)
+	if md := ictx.MetadataFromContext(ctx); md != nil {
+		config, _ = md.Get("config").(*tun_util.Config)
 	}
 	if config == nil {
 		err := errors.New("tun: wrong connection type")
@@ -76,7 +77,7 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	log = log.WithFields(map[string]any{
 		"remote": conn.RemoteAddr().String(),
 		"local":  conn.LocalAddr().String(),
-		"sid":    ctxvalue.SidFromContext(ctx),
+		"sid":    xctx.SidFromContext(ctx).String(),
 	})
 
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())

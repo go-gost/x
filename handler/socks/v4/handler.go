@@ -18,7 +18,8 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks4"
-	ctxvalue "github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	stats_util "github.com/go-gost/x/internal/util/stats"
@@ -104,27 +105,23 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
-		Service:    h.options.Service,
 		Network:    "tcp",
+		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
+		SID:        xctx.SidFromContext(ctx).String(),
 		Time:       start,
-		SID:        string(ctxvalue.SidFromContext(ctx)),
 	}
 
-	ro.ClientIP = conn.RemoteAddr().String()
-	if clientAddr := ctxvalue.ClientAddrFromContext(ctx); clientAddr != "" {
-		ro.ClientIP = string(clientAddr)
-	}
-	if h, _, _ := net.SplitHostPort(ro.ClientIP); h != "" {
-		ro.ClientIP = h
+	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
+		ro.ClientAddr = srcAddr.String()
 	}
 
 	log := h.options.Logger.WithFields(map[string]any{
+		"network": ro.Network,
 		"remote":  conn.RemoteAddr().String(),
 		"local":   conn.LocalAddr().String(),
-		"client":  ro.ClientIP,
-		"network": ro.Network,
+		"client":  ro.ClientAddr,
 		"sid":     ro.SID,
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
@@ -181,7 +178,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 			log.Trace(resp)
 			return resp.Write(conn)
 		}
-		ctx = ctxvalue.ContextWithClientID(ctx, ctxvalue.ClientID(clientID))
+		ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 		ro.ClientID = clientID
 		log = log.WithFields(map[string]any{"clientID": clientID})
 	}
@@ -215,7 +212,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	{
-		clientID := ctxvalue.ClientIDFromContext(ctx)
+		clientID := xctx.ClientIDFromContext(ctx)
 		rw := traffic_wrapper.WrapReadWriter(
 			h.limiter,
 			conn,
@@ -247,11 +244,11 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 
 	switch h.md.hash {
 	case "host":
-		ctx = ctxvalue.ContextWithHash(ctx, &ctxvalue.Hash{Source: addr})
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: addr})
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ctxvalue.ContextWithBuffer(ctx, &buf), "tcp", addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", addr)
 	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks4.NewReply(gosocks4.Failed, nil)
@@ -262,8 +259,8 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	defer cc.Close()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.Src = cc.LocalAddr().String()
-	ro.Dst = cc.RemoteAddr().String()
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
 
 	resp := gosocks4.NewReply(gosocks4.Granted, nil)
 	log.Trace(resp)
