@@ -28,7 +28,7 @@ type Dialer struct {
 	Netns     string
 	Mark      int
 	DialFunc  func(ctx context.Context, network, addr string) (net.Conn, error)
-	Logger    logger.Logger
+	Log       logger.Logger
 }
 
 func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
@@ -36,7 +36,7 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 		d = DefaultNetDialer
 	}
 
-	log := d.Logger
+	log := d.Log
 	if log == nil {
 		log = logger.Default()
 	}

@@ -185,7 +185,7 @@ func (l *mwsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	ctx := context.Background()
 	if cc, ok := conn.NetConn().(xctx.Context); ok {
 		if cv := cc.Context(); cv != nil {
 			ctx = cv

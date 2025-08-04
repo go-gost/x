@@ -38,7 +38,7 @@ type wsListener struct {
 	tlsEnabled bool
 	cqueue     chan net.Conn
 	errChan    chan error
-	logger     logger.Logger
+	log        logger.Logger
 	md         metadata
 	options    listener.Options
 }
@@ -49,7 +49,7 @@ func NewListener(opts ...listener.Option) listener.Listener {
 		opt(&options)
 	}
 	return &wsListener{
-		logger:  options.Logger,
+		log:     options.Logger,
 		options: options,
 	}
 }
@@ -61,7 +61,7 @@ func NewTLSListener(opts ...listener.Option) listener.Listener {
 	}
 	return &wsListener{
 		tlsEnabled: true,
-		logger:     options.Logger,
+		log:        options.Logger,
 		options:    options,
 	}
 }
@@ -98,7 +98,7 @@ func (l *wsListener) Init(md md.Metadata) (err error) {
 	lc := net.ListenConfig{}
 	if l.md.mptcp {
 		lc.SetMultipathTCP(true)
-		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
+		l.log.Debugf("mptcp enabled: %v", lc.MultipathTCP())
 	}
 	ln, err := lc.Listen(context.Background(), network, l.options.Addr)
 	if err != nil {
@@ -164,7 +164,7 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 	if clientIP != nil {
 		cip = clientIP.String()
 	}
-	log := l.logger.WithFields(map[string]any{
+	log := l.log.WithFields(map[string]any{
 		"local":  l.addr.String(),
 		"remote": r.RemoteAddr,
 		"client": cip,
@@ -180,7 +180,7 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	ctx := context.Background()
 	if cc, ok := conn.NetConn().(xctx.Context); ok {
 		if cv := cc.Context(); cv != nil {
 			ctx = cv
