@@ -97,7 +97,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	resp, err := client.Do(req.WithContext(ictx.Copy(ctx)))
+	resp, err := client.Do(req.WithContext(context.WithoutCancel(ctx)))
 	if err != nil {
 		log.Error(err)
 		conn.Close()

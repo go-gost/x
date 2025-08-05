@@ -16,7 +16,6 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xctx "github.com/go-gost/x/ctx"
-	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
@@ -170,7 +169,7 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		d.logger.Trace(string(dump))
 	}
 
-	resp, err := client.Do(req.WithContext(ictx.Copy(ctx)))
+	resp, err := client.Do(req.WithContext(context.WithoutCancel(ctx)))
 	if err != nil {
 		return nil, err
 	}

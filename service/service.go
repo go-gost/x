@@ -230,14 +230,11 @@ func (s *defaultService) Serve() error {
 			ctx = xctx.ContextWithDstAddr(ctx, dstAddr)
 		}
 
-		// clientAddr := srcAddr.String()
-		// ctx = xctx.ContextWithClientAddr(ctx, xctx.ClientAddr(clientAddr))
-
 		clientIP := srcAddr.String()
 		if h, _, _ := net.SplitHostPort(clientIP); h != "" {
 			clientIP = h
 		}
-		// ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: clientIP})
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: clientIP})
 
 		for _, rec := range s.options.recorders {
 			if rec.Record == recorder.RecorderServiceClientAddress {

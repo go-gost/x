@@ -180,7 +180,7 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := context.WithoutCancel(r.Context())
 	if cc, ok := conn.NetConn().(xctx.Context); ok {
 		if cv := cc.Context(); cv != nil {
 			ctx = cv

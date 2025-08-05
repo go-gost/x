@@ -172,11 +172,12 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		"w": w,
 	}))
 
+	ctx, cancel := context.WithCancel(ctx)
 	conn := &conn{
 		laddr:  l.addr,
 		raddr:  remoteAddr,
-		closed: make(chan struct{}),
 		ctx:    ctx,
+		cancel: cancel,
 	}
 
 	select {
@@ -186,5 +187,5 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	<-conn.Done()
+	<-ctx.Done()
 }

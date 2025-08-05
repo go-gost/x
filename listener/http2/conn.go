@@ -11,8 +11,8 @@ import (
 type conn struct {
 	laddr  net.Addr
 	raddr  net.Addr
-	closed chan struct{}
 	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -24,10 +24,8 @@ func (c *conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *conn) Close() error {
-	select {
-	case <-c.closed:
-	default:
-		close(c.closed)
+	if c.cancel != nil {
+		c.cancel()
 	}
 	return nil
 }
@@ -50,10 +48,6 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
-}
-
-func (c *conn) Done() <-chan struct{} {
-	return c.closed
 }
 
 func (c *conn) Context() context.Context {
