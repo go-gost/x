@@ -25,7 +25,7 @@ func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 	var out io.Writer = os.Stderr
 	switch cfg.Log.Output {
 	case "none", "null":
-		return xlogger.Nop()
+		out = io.Discard
 	case "stdout":
 		out = os.Stdout
 	case "stderr", "":
