@@ -160,8 +160,9 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
-		ro.ClientIP = clientIP.String()
-		ctx = xctx.ContextWithSrcAddr(ctx, &net.TCPAddr{IP: clientIP})
+		clientAddr := &net.TCPAddr{IP: clientIP}
+		ro.ClientAddr = clientAddr.String()
+		ctx = xctx.ContextWithSrcAddr(ctx, clientAddr)
 	}
 
 	// http/2
@@ -250,12 +251,15 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 		}
 	}
 
-	node = &chain.Node{
-		Addr: host,
-	}
+	node = &chain.Node{}
 	if ho.Hop != nil {
+		var clientIP net.IP
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ro.ClientAddr); clientAddr != nil {
+			clientIP = clientAddr.IP
+		}
+
 		node = ho.Hop.Select(ctx,
-			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
+			hop.ClientIPSelectOption(clientIP),
 			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
 			hop.HostSelectOption(host),
 			hop.MethodSelectOption(req.Method),
@@ -270,6 +274,12 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 		ro.HTTP.StatusCode = res.StatusCode
 		res.Write(conn)
 		return nil, nil, errors.New("node not available")
+	}
+	if node.Addr == "" {
+		node = &chain.Node{
+			Name: node.Name,
+			Addr: host,
+		}
 	}
 
 	ro.Host = node.Addr
@@ -874,16 +884,17 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 		return
 	}
 
-	if host != "" {
-		node = &chain.Node{
-			Addr: host,
-		}
-	}
+	node = &chain.Node{}
 
 	ro := ho.RecorderObject
 	if ho.Hop != nil {
+		var clientIP net.IP
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ro.ClientAddr); clientAddr != nil {
+			clientIP = clientAddr.IP
+		}
+
 		node = ho.Hop.Select(ctx,
-			hop.ClientIPSelectOption(net.ParseIP(ro.ClientIP)),
+			hop.ClientIPSelectOption(clientIP),
 			hop.HostSelectOption(host),
 			hop.ProtocolSelectOption(sniffing.ProtoTLS),
 		)
@@ -891,6 +902,12 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 	if node == nil {
 		err = errors.New("node not available")
 		return
+	}
+	if node.Addr == "" {
+		node = &chain.Node{
+			Name: node.Name,
+			Addr: host,
+		}
 	}
 
 	addr := node.Addr
