@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 type options struct {
@@ -63,9 +64,10 @@ func LoggerOption(logger logger.Logger) Option {
 
 type localIngress struct {
 	rules      map[string]*ingress.Rule
-	cancelFunc context.CancelFunc
 	options    options
+	logger     logger.Logger
 	mu         sync.RWMutex
+	cancelFunc context.CancelFunc
 }
 
 // NewIngress creates and initializes a new Ingress.
@@ -80,23 +82,30 @@ func NewIngress(opts ...Option) ingress.Ingress {
 	ing := &localIngress{
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
+	}
+	if ing.logger == nil {
+		ing.logger = xlogger.Nop()
 	}
 
-	if err := ing.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if ing.options.period > 0 {
-		go ing.periodReload(ctx)
-	}
+	go ing.periodReload(ctx)
 
 	return ing
 }
 
 func (ing *localIngress) periodReload(ctx context.Context) error {
+	if err := ing.reload(ctx); err != nil {
+		ing.logger.Warnf("reload: %v", err)
+	}
+
 	period := ing.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
+
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -104,7 +113,7 @@ func (ing *localIngress) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := ing.reload(ctx); err != nil {
-				ing.options.logger.Warnf("reload: %v", err)
+				ing.logger.Warnf("reload: %v", err)
 				// return err
 			}
 		case <-ctx.Done():
@@ -139,7 +148,7 @@ func (ing *localIngress) reload(ctx context.Context) error {
 		fn(rule)
 	}
 
-	ing.options.logger.Debugf("load items %d", len(rules))
+	ing.logger.Debugf("load items %d", len(rules))
 
 	ing.mu.Lock()
 	defer ing.mu.Unlock()
@@ -154,7 +163,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 		if lister, ok := ing.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				ing.options.logger.Warnf("file loader: %v", er)
+				ing.logger.Warnf("file loader: %v", er)
 			}
 			for _, s := range list {
 				rules = append(rules, ing.parseLine(s))
@@ -162,7 +171,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 		} else {
 			r, er := ing.options.fileLoader.Load(ctx)
 			if er != nil {
-				ing.options.logger.Warnf("file loader: %v", er)
+				ing.logger.Warnf("file loader: %v", er)
 			}
 			if v, _ := ing.parseRules(r); v != nil {
 				rules = append(rules, v...)
@@ -173,7 +182,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 		if lister, ok := ing.options.redisLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				ing.options.logger.Warnf("redis loader: %v", er)
+				ing.logger.Warnf("redis loader: %v", er)
 			}
 			for _, v := range list {
 				rules = append(rules, ing.parseLine(v))
@@ -181,7 +190,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 		} else {
 			r, er := ing.options.redisLoader.Load(ctx)
 			if er != nil {
-				ing.options.logger.Warnf("redis loader: %v", er)
+				ing.logger.Warnf("redis loader: %v", er)
 			}
 			v, _ := ing.parseRules(r)
 			rules = append(rules, v...)
@@ -190,7 +199,7 @@ func (ing *localIngress) load(ctx context.Context) (rules []*ingress.Rule, err e
 	if ing.options.httpLoader != nil {
 		r, er := ing.options.httpLoader.Load(ctx)
 		if er != nil {
-			ing.options.logger.Warnf("http loader: %v", er)
+			ing.logger.Warnf("http loader: %v", er)
 		}
 		v, _ := ing.parseRules(r)
 		rules = append(rules, v...)
@@ -225,7 +234,7 @@ func (ing *localIngress) GetRule(ctx context.Context, host string, opts ...ingre
 		host = v
 	}
 
-	ing.options.logger.Debugf("ingress: lookup %s", host)
+	ing.logger.Debugf("ingress: lookup %s", host)
 	ep := ing.lookup(host)
 	if ep == nil {
 		ep = ing.lookup("." + host)
@@ -245,7 +254,7 @@ func (ing *localIngress) GetRule(ctx context.Context, host string, opts ...ingre
 	}
 
 	if ep != nil {
-		ing.options.logger.Debugf("ingress: %s -> %s:%s", host, ep.Hostname, ep.Endpoint)
+		ing.logger.Debugf("ingress: %s -> %s:%s", host, ep.Hostname, ep.Endpoint)
 	}
 
 	return ep

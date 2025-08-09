@@ -67,6 +67,7 @@ type authenticator struct {
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
 	options    options
+	logger     logger.Logger
 }
 
 // NewAuthenticator creates an Authenticator that authenticates client by pre-defined user mapping.
@@ -75,23 +76,19 @@ func NewAuthenticator(opts ...Option) auth.Authenticator {
 	for _, opt := range opts {
 		opt(&options)
 	}
-	if options.logger == nil {
-		options.logger = xlogger.Nop()
-	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	p := &authenticator{
 		kvs:        make(map[string]string),
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
+	}
+	if p.logger == nil {
+		p.logger = xlogger.Nop()
 	}
 
-	if err := p.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if p.options.period > 0 {
-		go p.periodReload(ctx)
-	}
+	go p.periodReload(ctx)
 
 	return p
 }
@@ -114,7 +111,14 @@ func (p *authenticator) Authenticate(ctx context.Context, user, password string,
 }
 
 func (p *authenticator) periodReload(ctx context.Context) error {
+	if err := p.reload(ctx); err != nil {
+		p.logger.Warnf("reload: %v", err)
+	}
+
 	period := p.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
@@ -125,7 +129,7 @@ func (p *authenticator) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
-				p.options.logger.Warnf("reload: %v", err)
+				p.logger.Warnf("reload: %v", err)
 				// return err
 			}
 		case <-ctx.Done():
@@ -145,7 +149,7 @@ func (p *authenticator) reload(ctx context.Context) (err error) {
 		kvs[k] = v
 	}
 
-	p.options.logger.Debugf("load items %d", len(m))
+	p.logger.Debugf("load items %d", len(m))
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -162,13 +166,13 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
 			auths, er := mapper.Map(ctx)
 			if er != nil {
-				p.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			m = auths
 		} else {
 			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
-				p.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			if auths, _ := p.parseAuths(r); auths != nil {
 				m = auths
@@ -179,7 +183,7 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
 			auths, er := mapper.Map(ctx)
 			if er != nil {
-				p.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			for k, v := range auths {
 				m[k] = v
@@ -187,7 +191,7 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		} else {
 			r, er := p.options.redisLoader.Load(ctx)
 			if er != nil {
-				p.options.logger.Warnf("redis loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
 			}
 			if auths, _ := p.parseAuths(r); auths != nil {
 				for k, v := range auths {
@@ -199,7 +203,7 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 	if p.options.httpLoader != nil {
 		r, er := p.options.httpLoader.Load(ctx)
 		if er != nil {
-			p.options.logger.Warnf("http loader: %v", er)
+			p.logger.Warnf("http loader: %v", er)
 		}
 		if auths, _ := p.parseAuths(r); auths != nil {
 			for k, v := range auths {

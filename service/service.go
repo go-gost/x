@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -326,8 +327,8 @@ func (s *defaultService) execCmd(cmd string) error {
 		return errors.New("invalid command")
 	}
 	c := exec.Command(ss[0], ss[1:]...)
-	// c.Stdout = os.Stdout
-	// c.Stderr = os.Stderr
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
 	return c.Run()
 }
 

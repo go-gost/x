@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 type Mapping struct {
@@ -73,9 +74,10 @@ func LoggerOption(logger logger.Logger) Option {
 // Text from a "#" character until the end of the line is a comment, and is ignored.
 type hostMapper struct {
 	mappings   map[string][]net.IP
+	options    options
+	logger     logger.Logger
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
-	options    options
 }
 
 func NewHostMapper(opts ...Option) hosts.HostMapper {
@@ -89,14 +91,13 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 		mappings:   make(map[string][]net.IP),
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
+	}
+	if p.logger == nil {
+		p.logger = xlogger.Nop()
 	}
 
-	if err := p.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if p.options.period > 0 {
-		go p.periodReload(ctx)
-	}
+	go p.periodReload(ctx)
 
 	return p
 }
@@ -167,10 +168,18 @@ func (h *hostMapper) lookup(host string) []net.IP {
 }
 
 func (h *hostMapper) periodReload(ctx context.Context) error {
+	if err := h.reload(ctx); err != nil {
+		h.logger.Warnf("reload: %v", err)
+	}
+
 	period := h.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
+
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -178,10 +187,10 @@ func (h *hostMapper) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := h.reload(ctx); err != nil {
-				h.options.logger.Warnf("reload: %v", err)
+				h.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			h.options.logger.Debug("hosts reload done")
+			h.logger.Debug("hosts reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -215,7 +224,7 @@ func (h *hostMapper) reload(ctx context.Context) (err error) {
 		mapf(m[i].Hostname, m[i].IP)
 	}
 
-	h.options.logger.Debugf("load items %d", len(mappings))
+	h.logger.Debugf("load items %d", len(mappings))
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -230,7 +239,7 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 		if lister, ok := h.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				h.options.logger.Warnf("file loader: %v", er)
+				h.logger.Warnf("file loader: %v", er)
 			}
 			for _, s := range list {
 				mappings = append(mappings, h.parseLine(s)...)
@@ -238,7 +247,7 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 		} else {
 			r, er := h.options.fileLoader.Load(ctx)
 			if er != nil {
-				h.options.logger.Warnf("file loader: %v", er)
+				h.logger.Warnf("file loader: %v", er)
 			}
 			mappings, _ = h.parseMapping(r)
 		}
@@ -248,7 +257,7 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 		if lister, ok := h.options.redisLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				h.options.logger.Warnf("redis loader: %v", er)
+				h.logger.Warnf("redis loader: %v", er)
 			}
 			for _, s := range list {
 				mappings = append(mappings, h.parseLine(s)...)
@@ -256,7 +265,7 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 		} else {
 			r, er := h.options.redisLoader.Load(ctx)
 			if er != nil {
-				h.options.logger.Warnf("redis loader: %v", er)
+				h.logger.Warnf("redis loader: %v", er)
 			}
 			if m, _ := h.parseMapping(r); m != nil {
 				mappings = append(mappings, m...)
@@ -266,7 +275,7 @@ func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 	if h.options.httpLoader != nil {
 		r, er := h.options.httpLoader.Load(ctx)
 		if er != nil {
-			h.options.logger.Warnf("http loader: %v", er)
+			h.logger.Warnf("http loader: %v", er)
 		}
 		if m, _ := h.parseMapping(r); m != nil {
 			mappings = append(mappings, m...)

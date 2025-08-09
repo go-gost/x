@@ -64,7 +64,11 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 		l.log.Debug(cmd)
 
 		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+		output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if len(output) > 0 {
+			l.log.Debugf("%s: %s", cmd, string(output))
+		}
+		if er != nil {
 			err = fmt.Errorf("%s: %v", cmd, er)
 			return
 		}

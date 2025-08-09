@@ -40,12 +40,16 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		return
 	}
 
-	if l.md.config.MTU > 0  {
+	if l.md.config.MTU > 0 {
 		cmd := fmt.Sprintf("netsh interface ip set subinterface %s mtu=%d", name, l.md.config.MTU)
 		l.log.Debug(cmd)
 
 		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+		output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if len(output) > 0 {
+			l.log.Debugf("%s: %s", cmd, windows.ByteSliceToString(output))
+		}
+		if er != nil {
 			err = fmt.Errorf("%s: %v", cmd, er)
 			return
 		}
@@ -59,7 +63,11 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		l.log.Debug(cmd)
 
 		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+		output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if len(output) > 0 {
+			l.log.Debugf("%s: %s", cmd, windows.ByteSliceToString(output))
+		}
+		if er != nil {
 			err = fmt.Errorf("%s: %v", cmd, er)
 			return
 		}
@@ -75,7 +83,11 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		l.log.Debug(cmd)
 
 		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+		output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if len(output) > 0 {
+			l.log.Debugf("%s: %s", cmd, windows.ByteSliceToString(output))
+		}
+		if er != nil {
 			err = fmt.Errorf("%s: %v", cmd, er)
 			return
 		}
@@ -95,7 +107,11 @@ func (l *tunListener) addRoutes(ifName string, gw net.IP) error {
 		}
 		l.log.Debug(cmd)
 		args := strings.Split(cmd, " ")
-		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
+		output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if len(output) > 0 {
+			l.log.Debugf("%s: %s", cmd, windows.ByteSliceToString(output))
+		}
+		if er != nil {
 			return fmt.Errorf("%s: %v", cmd, er)
 		}
 	}
@@ -107,7 +123,14 @@ func (l *tunListener) deleteRoute(ifName string, route string) error {
 		route, ifName)
 	l.log.Debug(cmd)
 	args := strings.Split(cmd, " ")
-	return exec.Command(args[0], args[1:]...).Run()
+	output, er := exec.Command(args[0], args[1:]...).CombinedOutput()
+	if len(output) > 0 {
+		l.log.Debugf("%s: %s", cmd, windows.ByteSliceToString(output))
+	}
+	if er != nil {
+		return fmt.Errorf("%s: %v", cmd, er)
+	}
+	return nil
 }
 
 func ipMask(mask net.IPMask) string {

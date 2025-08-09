@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	xlogger "github.com/go-gost/x/logger"
 	"github.com/patrickmn/go-cache"
 	"github.com/yl2chen/cidranger"
 )
@@ -89,9 +90,10 @@ type trafficLimiter struct {
 	// service level in/out limits
 	inLimits   *cache.Cache
 	outLimits  *cache.Cache
+	options    options
+	logger     logger.Logger
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
-	options    options
 }
 
 func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
@@ -109,14 +111,14 @@ func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
 		outLimits:      cache.New(defaultExpiration, cleanupInterval),
 		options:        options,
 		cancelFunc:     cancel,
+		logger:         options.logger,
+	}
+	if lim.logger == nil {
+		lim.logger = xlogger.Nop()
 	}
 
-	if err := lim.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if lim.options.period > 0 {
-		go lim.periodReload(ctx)
-	}
+	go lim.periodReload(ctx)
+
 	return lim
 }
 
@@ -192,8 +194,8 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 		lim = newLimiterGroup(lims...)
 	}
 
-	if lim != nil && l.options.logger != nil {
-		l.options.logger.Debugf("input limit for %s: %s", key, lim)
+	if lim != nil && l.logger != nil {
+		l.logger.Debugf("input limit for %s: %s", key, lim)
 	}
 
 	return lim
@@ -271,18 +273,26 @@ func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Op
 		lim = newLimiterGroup(lims...)
 	}
 
-	if lim != nil && l.options.logger != nil {
-		l.options.logger.Debugf("output limit for %s: %s", key, lim)
+	if lim != nil && l.logger != nil {
+		l.logger.Debugf("output limit for %s: %s", key, lim)
 	}
 
 	return lim
 }
 
 func (l *trafficLimiter) periodReload(ctx context.Context) error {
+	if err := l.reload(ctx); err != nil {
+		l.logger.Warnf("reload: %v", err)
+	}
+
 	period := l.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
+
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -290,7 +300,7 @@ func (l *trafficLimiter) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := l.reload(ctx); err != nil {
-				l.options.logger.Warnf("reload: %v", err)
+				l.logger.Warnf("reload: %v", err)
 				// return err
 			}
 		case <-ctx.Done():
@@ -481,7 +491,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 		if lister, ok := l.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				l.options.logger.Warnf("file loader: %v", er)
+				l.logger.Warnf("file loader: %v", er)
 			}
 			for _, s := range list {
 				key, in, out := l.parseLimit(l.parseLine(s))
@@ -493,7 +503,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 		} else {
 			r, er := l.options.fileLoader.Load(ctx)
 			if er != nil {
-				l.options.logger.Warnf("file loader: %v", er)
+				l.logger.Warnf("file loader: %v", er)
 			}
 			patterns, _ := l.parsePatterns(r)
 			for _, s := range patterns {
@@ -509,7 +519,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 		if lister, ok := l.options.redisLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				l.options.logger.Warnf("redis loader: %v", er)
+				l.logger.Warnf("redis loader: %v", er)
 			}
 			for _, s := range list {
 				key, in, out := l.parseLimit(l.parseLine(s))
@@ -521,7 +531,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 		} else {
 			r, er := l.options.redisLoader.Load(ctx)
 			if er != nil {
-				l.options.logger.Warnf("redis loader: %v", er)
+				l.logger.Warnf("redis loader: %v", er)
 			}
 			patterns, _ := l.parsePatterns(r)
 			for _, s := range patterns {
@@ -536,7 +546,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 	if l.options.httpLoader != nil {
 		r, er := l.options.httpLoader.Load(ctx)
 		if er != nil {
-			l.options.logger.Warnf("http loader: %v", er)
+			l.logger.Warnf("http loader: %v", er)
 		}
 		patterns, _ := l.parsePatterns(r)
 		for _, s := range patterns {
@@ -548,7 +558,7 @@ func (l *trafficLimiter) load(ctx context.Context) (values map[string]limitValue
 		}
 	}
 
-	l.options.logger.Debugf("load items %d", len(values))
+	l.logger.Debugf("load items %d", len(values))
 	return
 }
 

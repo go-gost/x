@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
 	xnet "github.com/go-gost/x/internal/net"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 var (
@@ -82,9 +83,10 @@ type localBypass struct {
 	addrMatcher     matcher.Matcher
 	wildcardMatcher matcher.Matcher
 	ipRangeMatcher  matcher.Matcher
-	cancelFunc      context.CancelFunc
 	options         options
+	logger          logger.Logger
 	mu              sync.RWMutex
+	cancelFunc      context.CancelFunc
 }
 
 // NewBypass creates and initializes a new Bypass.
@@ -95,36 +97,43 @@ func NewBypass(opts ...Option) bypass.Bypass {
 		opt(&options)
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 
-	bp := &localBypass{
+	p := &localBypass{
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
+	}
+	if p.logger == nil {
+		p.logger = xlogger.Nop()
 	}
 
-	if err := bp.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if bp.options.period > 0 {
-		go bp.periodReload(ctx)
-	}
+	go p.periodReload(ctx)
 
-	return bp
+	return p
 }
 
-func (bp *localBypass) periodReload(ctx context.Context) error {
-	period := bp.options.period
+func (p *localBypass) periodReload(ctx context.Context) error {
+	if err := p.reload(ctx); err != nil {
+		p.logger.Warnf("reload: %v", err)
+	}
+
+	period := p.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
+
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := bp.reload(ctx); err != nil {
-				bp.options.logger.Warnf("reload: %v", err)
+			if err := p.reload(ctx); err != nil {
+				p.logger.Warnf("reload: %v", err)
 				// return err
 			}
 		case <-ctx.Done():
@@ -133,13 +142,13 @@ func (bp *localBypass) periodReload(ctx context.Context) error {
 	}
 }
 
-func (bp *localBypass) reload(ctx context.Context) error {
-	v, err := bp.load(ctx)
+func (p *localBypass) reload(ctx context.Context) error {
+	v, err := p.load(ctx)
 	if err != nil {
 		return err
 	}
-	patterns := append(bp.options.matchers, v...)
-	bp.options.logger.Debugf("load items %d", len(patterns))
+	patterns := append(p.options.matchers, v...)
+	p.logger.Debugf("load items %d", len(patterns))
 
 	var addrs []string
 	var inets []*net.IPNet
@@ -165,62 +174,62 @@ func (bp *localBypass) reload(ctx context.Context) error {
 		addrs = append(addrs, pattern)
 	}
 
-	bp.mu.Lock()
-	defer bp.mu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	bp.cidrMatcher = matcher.CIDRMatcher(inets)
-	bp.addrMatcher = matcher.AddrMatcher(addrs)
-	bp.wildcardMatcher = matcher.WildcardMatcher(wildcards)
-	bp.ipRangeMatcher = matcher.IPRangeMatcher(ipRanges)
+	p.cidrMatcher = matcher.CIDRMatcher(inets)
+	p.addrMatcher = matcher.AddrMatcher(addrs)
+	p.wildcardMatcher = matcher.WildcardMatcher(wildcards)
+	p.ipRangeMatcher = matcher.IPRangeMatcher(ipRanges)
 
 	return nil
 }
 
-func (bp *localBypass) load(ctx context.Context) (patterns []string, err error) {
-	if bp.options.fileLoader != nil {
-		if lister, ok := bp.options.fileLoader.(loader.Lister); ok {
+func (p *localBypass) load(ctx context.Context) (patterns []string, err error) {
+	if p.options.fileLoader != nil {
+		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				bp.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			for _, s := range list {
-				if line := bp.parseLine(s); line != "" {
+				if line := p.parseLine(s); line != "" {
 					patterns = append(patterns, line)
 				}
 			}
 		} else {
-			r, er := bp.options.fileLoader.Load(ctx)
+			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
-				bp.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
-			if v, _ := bp.parsePatterns(r); v != nil {
+			if v, _ := p.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
 			}
 		}
 	}
-	if bp.options.redisLoader != nil {
-		if lister, ok := bp.options.redisLoader.(loader.Lister); ok {
+	if p.options.redisLoader != nil {
+		if lister, ok := p.options.redisLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				bp.options.logger.Warnf("redis loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
 			}
 			patterns = append(patterns, list...)
 		} else {
-			r, er := bp.options.redisLoader.Load(ctx)
+			r, er := p.options.redisLoader.Load(ctx)
 			if er != nil {
-				bp.options.logger.Warnf("redis loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
 			}
-			if v, _ := bp.parsePatterns(r); v != nil {
+			if v, _ := p.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
 			}
 		}
 	}
-	if bp.options.httpLoader != nil {
-		r, er := bp.options.httpLoader.Load(ctx)
+	if p.options.httpLoader != nil {
+		r, er := p.options.httpLoader.Load(ctx)
 		if er != nil {
-			bp.options.logger.Warnf("http loader: %v", er)
+			p.logger.Warnf("http loader: %v", er)
 		}
-		if v, _ := bp.parsePatterns(r); v != nil {
+		if v, _ := p.parsePatterns(r); v != nil {
 			patterns = append(patterns, v...)
 		}
 	}
@@ -228,14 +237,14 @@ func (bp *localBypass) load(ctx context.Context) (patterns []string, err error) 
 	return
 }
 
-func (bp *localBypass) parsePatterns(r io.Reader) (patterns []string, err error) {
+func (p *localBypass) parsePatterns(r io.Reader) (patterns []string, err error) {
 	if r == nil {
 		return
 	}
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		if line := bp.parseLine(scanner.Text()); line != "" {
+		if line := p.parseLine(scanner.Text()); line != "" {
 			patterns = append(patterns, line)
 		}
 	}
@@ -244,24 +253,24 @@ func (bp *localBypass) parsePatterns(r io.Reader) (patterns []string, err error)
 	return
 }
 
-func (bp *localBypass) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
-	if addr == "" || bp == nil {
+func (p *localBypass) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
+	if addr == "" || p == nil {
 		return false
 	}
 
-	matched := bp.matched(addr)
+	matched := p.matched(addr)
 
-	b := !bp.options.whitelist && matched ||
-		bp.options.whitelist && !matched
+	b := !p.options.whitelist && matched ||
+		p.options.whitelist && !matched
 
-	log := bp.options.logger.WithFields(map[string]any{
+	log := p.logger.WithFields(map[string]any{
 		"sid": ctxvalue.SidFromContext(ctx),
 	})
 
 	if b {
-		log.Debugf("bypass: %s, whitelist: %t", addr, bp.options.whitelist)
+		log.Debugf("bypass: %s, whitelist: %t", addr, p.options.whitelist)
 	} else {
-		log.Debugf("pass: %s, whitelist: %t", addr, bp.options.whitelist)
+		log.Debugf("pass: %s, whitelist: %t", addr, p.options.whitelist)
 	}
 	return b
 }
@@ -270,22 +279,22 @@ func (p *localBypass) IsWhitelist() bool {
 	return p.options.whitelist
 }
 
-func (bp *localBypass) parseLine(s string) string {
+func (p *localBypass) parseLine(s string) string {
 	if n := strings.IndexByte(s, '#'); n >= 0 {
 		s = s[:n]
 	}
 	return strings.TrimSpace(s)
 }
 
-func (bp *localBypass) matched(addr string) bool {
-	bp.mu.RLock()
-	defer bp.mu.RUnlock()
+func (p *localBypass) matched(addr string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-	if bp.ipRangeMatcher.Match(addr) {
+	if p.ipRangeMatcher.Match(addr) {
 		return true
 	}
 
-	if bp.addrMatcher.Match(addr) {
+	if p.addrMatcher.Match(addr) {
 		return true
 	}
 
@@ -294,20 +303,20 @@ func (bp *localBypass) matched(addr string) bool {
 		host = addr
 	}
 
-	if ip := net.ParseIP(host); ip != nil && bp.cidrMatcher.Match(host) {
+	if ip := net.ParseIP(host); ip != nil && p.cidrMatcher.Match(host) {
 		return true
 	}
 
-	return bp.wildcardMatcher.Match(addr)
+	return p.wildcardMatcher.Match(addr)
 }
 
-func (bp *localBypass) Close() error {
-	bp.cancelFunc()
-	if bp.options.fileLoader != nil {
-		bp.options.fileLoader.Close()
+func (p *localBypass) Close() error {
+	p.cancelFunc()
+	if p.options.fileLoader != nil {
+		p.options.fileLoader.Close()
 	}
-	if bp.options.redisLoader != nil {
-		bp.options.redisLoader.Close()
+	if p.options.redisLoader != nil {
+		p.options.redisLoader.Close()
 	}
 	return nil
 }

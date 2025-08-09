@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 type options struct {
@@ -75,6 +76,7 @@ type localAdmission struct {
 	mu          sync.RWMutex
 	cancelFunc  context.CancelFunc
 	options     options
+	logger      logger.Logger
 }
 
 // NewAdmission creates and initializes a new Admission using matcher patterns as its match rules.
@@ -85,18 +87,17 @@ func NewAdmission(opts ...Option) admission.Admission {
 		opt(&options)
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	p := &localAdmission{
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
+	}
+	if p.logger == nil {
+		p.logger = xlogger.Nop()
 	}
 
-	if err := p.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
-	}
-	if p.options.period > 0 {
-		go p.periodReload(ctx)
-	}
+	go p.periodReload(ctx)
 
 	return p
 }
@@ -117,13 +118,20 @@ func (p *localAdmission) Admit(ctx context.Context, addr string, opts ...admissi
 		p.options.whitelist && matched
 
 	if !b {
-		p.options.logger.Debugf("%s is denied", addr)
+		p.logger.Debugf("%s is denied", addr)
 	}
 	return b
 }
 
 func (p *localAdmission) periodReload(ctx context.Context) error {
+	if err := p.reload(ctx); err != nil {
+		p.logger.Warnf("reload: %v", err)
+	}
+
 	period := p.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
@@ -134,7 +142,7 @@ func (p *localAdmission) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
-				p.options.logger.Warnf("reload: %v", err)
+				p.logger.Warnf("reload: %v", err)
 				// return err
 			}
 		case <-ctx.Done():
@@ -162,7 +170,7 @@ func (p *localAdmission) reload(ctx context.Context) error {
 			continue
 		}
 		if ipAddr, _ := net.ResolveIPAddr("ip", pattern); ipAddr != nil {
-			p.options.logger.Debugf("resolve IP: %s -> %s", pattern, ipAddr)
+			p.logger.Debugf("resolve IP: %s -> %s", pattern, ipAddr)
 			ips = append(ips, ipAddr.IP)
 		}
 	}
@@ -181,7 +189,7 @@ func (p *localAdmission) load(ctx context.Context) (patterns []string, err error
 		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				p.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			for _, s := range list {
 				if line := p.parseLine(s); line != "" {
@@ -191,7 +199,7 @@ func (p *localAdmission) load(ctx context.Context) (patterns []string, err error
 		} else {
 			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
-				p.options.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("file loader: %v", er)
 			}
 			if v, _ := p.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
@@ -202,13 +210,13 @@ func (p *localAdmission) load(ctx context.Context) (patterns []string, err error
 		if lister, ok := p.options.redisLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
 			if er != nil {
-				p.options.logger.Warnf("redis loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
 			}
 			patterns = append(patterns, list...)
 		} else {
 			r, er := p.options.redisLoader.Load(ctx)
 			if er != nil {
-				p.options.logger.Warnf("redis loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
 			}
 			if v, _ := p.parsePatterns(r); v != nil {
 				patterns = append(patterns, v...)
@@ -219,14 +227,14 @@ func (p *localAdmission) load(ctx context.Context) (patterns []string, err error
 	if p.options.httpLoader != nil {
 		r, er := p.options.httpLoader.Load(ctx)
 		if er != nil {
-			p.options.logger.Warnf("http loader: %v", er)
+			p.logger.Warnf("http loader: %v", er)
 		}
 		if v, _ := p.parsePatterns(r); v != nil {
 			patterns = append(patterns, v...)
 		}
 	}
 
-	p.options.logger.Debugf("load items %d", len(patterns))
+	p.logger.Debugf("load items %d", len(patterns))
 	return
 }
 

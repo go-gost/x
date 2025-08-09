@@ -19,6 +19,7 @@ import (
 	"github.com/go-gost/x/config"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	"github.com/go-gost/x/internal/loader"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 type options struct {
@@ -89,9 +90,10 @@ func LoggerOption(logger logger.Logger) Option {
 
 type chainHop struct {
 	nodes      []*chain.Node
+	options    options
+	logger     logger.Logger
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
-	options    options
 }
 
 func NewHop(opts ...Option) hop.Hop {
@@ -106,14 +108,14 @@ func NewHop(opts ...Option) hop.Hop {
 	p := &chainHop{
 		cancelFunc: cancel,
 		options:    options,
+		logger:     options.logger,
 	}
 
-	if err := p.reload(ctx); err != nil {
-		options.logger.Warnf("reload: %v", err)
+	if p.logger == nil {
+		p.logger = xlogger.Nop()
 	}
-	if p.options.period > 0 {
-		go p.periodReload(ctx)
-	}
+
+	go p.periodReload(ctx)
 
 	return p
 }
@@ -133,7 +135,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		opt(&options)
 	}
 
-	log := p.options.logger
+	log := p.logger
 
 	// hop level bypass
 	if p.options.bypass != nil &&
@@ -258,10 +260,18 @@ func (p *chainHop) checkPath(path string, node *chain.Node) bool {
 }
 
 func (p *chainHop) periodReload(ctx context.Context) error {
+	if err := p.reload(ctx); err != nil {
+		p.logger.Warnf("reload: %v", err)
+	}
+
 	period := p.options.period
+	if period <= 0 {
+		return nil
+	}
 	if period < time.Second {
 		period = time.Second
 	}
+
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -269,10 +279,10 @@ func (p *chainHop) periodReload(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
-				p.options.logger.Warnf("reload: %v", err)
+				p.logger.Warnf("reload: %v", err)
 				// return err
 			}
-			p.options.logger.Debug("hop reload done")
+			p.logger.Debug("hop reload done")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -286,7 +296,7 @@ func (p *chainHop) reload(ctx context.Context) (err error) {
 
 	nodes = append(nodes, nl...)
 
-	p.options.logger.Debugf("load items %d", len(nodes))
+	p.logger.Debugf("load items %d", len(nodes))
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -300,7 +310,7 @@ func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
 	if loader := p.options.fileLoader; loader != nil {
 		r, er := loader.Load(ctx)
 		if er != nil {
-			p.options.logger.Warnf("file loader: %v", er)
+			p.logger.Warnf("file loader: %v", er)
 		}
 		nodes, _ = p.parseNode(r)
 	}
@@ -308,7 +318,7 @@ func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
 	if loader := p.options.redisLoader; loader != nil {
 		r, er := loader.Load(ctx)
 		if er != nil {
-			p.options.logger.Warnf("redis loader: %v", er)
+			p.logger.Warnf("redis loader: %v", er)
 		}
 		ns, _ := p.parseNode(r)
 		nodes = append(nodes, ns...)
@@ -317,7 +327,7 @@ func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
 	if loader := p.options.httpLoader; loader != nil {
 		r, er := loader.Load(ctx)
 		if er != nil {
-			p.options.logger.Warnf("http loader: %v", er)
+			p.logger.Warnf("http loader: %v", er)
 		}
 		if ns, _ := p.parseNode(r); ns != nil {
 			nodes = append(nodes, ns...)
