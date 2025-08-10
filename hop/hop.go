@@ -106,6 +106,7 @@ func NewHop(opts ...Option) hop.Hop {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	p := &chainHop{
+		nodes:      options.nodes,
 		cancelFunc: cancel,
 		options:    options,
 		logger:     options.logger,

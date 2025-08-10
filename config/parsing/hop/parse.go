@@ -68,7 +68,6 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
 		netns = mdutil.GetString(md, parsing.MDKeyNetns)
-
 	}
 
 	var nodes []*chain.Node
