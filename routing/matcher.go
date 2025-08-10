@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-gost/core/routing"
+	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/routing/rules"
 	"golang.org/x/exp/slices"
 )
@@ -149,6 +151,8 @@ var httpFuncs = map[string]func(*matchersTree, ...string) error{
 	"HeaderRegexp": expectNParameters(headerRegexp, 1, 2),
 	"Query":        expectNParameters(query, 1, 2),
 	"QueryRegexp":  expectNParameters(queryRegexp, 1, 2),
+	"Bypass":       expectNParameters(bypass, 1),
+	"Admission":    expectNParameters(admission, 1),
 }
 
 func expectNParameters(fn func(*matchersTree, ...string) error, n ...int) func(*matchersTree, ...string) error {
@@ -430,6 +434,36 @@ func queryRegexp(tree *matchersTree, queries ...string) error {
 		})
 
 		return idx >= 0
+	}
+
+	return nil
+}
+
+func admission(tree *matchersTree, names ...string) error {
+	name := names[0]
+
+	tree.matcher = func(req *routing.Request) bool {
+		if req.ClientIP == nil {
+			return false
+		}
+		if adm := registry.AdmissionRegistry().Get(name); adm != nil {
+			return adm.Admit(context.Background(), req.ClientIP.String())
+		}
+		return false
+	}
+
+	return nil
+}
+
+func bypass(tree *matchersTree, names ...string) error {
+	name := names[0]
+
+	tree.matcher = func(req *routing.Request) bool {
+		if bp := registry.BypassRegistry().Get(name); bp != nil {
+			v := bp.Contains(context.Background(), "tcp", req.Host)
+			return !v
+		}
+		return false
 	}
 
 	return nil
