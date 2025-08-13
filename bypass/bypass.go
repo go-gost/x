@@ -100,9 +100,13 @@ func NewBypass(opts ...Option) bypass.Bypass {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &localBypass{
-		cancelFunc: cancel,
-		options:    options,
-		logger:     options.logger,
+		cidrMatcher:     matcher.NopMatcher(),
+		addrMatcher:     matcher.NopMatcher(),
+		wildcardMatcher: matcher.NopMatcher(),
+		ipRangeMatcher:  matcher.NopMatcher(),
+		cancelFunc:      cancel,
+		options:         options,
+		logger:          options.logger,
 	}
 	if p.logger == nil {
 		p.logger = xlogger.Nop()

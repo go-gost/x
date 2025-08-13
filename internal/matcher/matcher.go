@@ -259,3 +259,14 @@ func (m *ipRangeMatcher) Match(addr string) bool {
 	}
 	return false
 }
+
+type nopMatcher struct {
+}
+
+func NopMatcher() Matcher {
+	return &nopMatcher{}
+}
+
+func (m *nopMatcher) Match(addr string) bool {
+	return false
+}

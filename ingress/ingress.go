@@ -80,6 +80,7 @@ func NewIngress(opts ...Option) ingress.Ingress {
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	ing := &localIngress{
+		rules:      make(map[string]*ingress.Rule),
 		cancelFunc: cancel,
 		options:    options,
 		logger:     options.logger,

@@ -89,9 +89,11 @@ func NewAdmission(opts ...Option) admission.Admission {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &localAdmission{
-		cancelFunc: cancel,
-		options:    options,
-		logger:     options.logger,
+		ipMatcher:   matcher.NopMatcher(),
+		cidrMatcher: matcher.NopMatcher(),
+		cancelFunc:  cancel,
+		options:     options,
+		logger:      options.logger,
 	}
 	if p.logger == nil {
 		p.logger = xlogger.Nop()
