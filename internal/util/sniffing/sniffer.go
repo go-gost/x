@@ -54,43 +54,43 @@ var (
 )
 
 type HandleOptions struct {
-	Dial    func(ctx context.Context, network, address string) (net.Conn, error)
-	DialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
+	dial    func(ctx context.Context, network, address string) (net.Conn, error)
+	dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
 
-	Bypass         bypass.Bypass
-	RecorderObject *xrecorder.HandlerRecorderObject
-	Log            logger.Logger
+	bypass         bypass.Bypass
+	recorderObject *xrecorder.HandlerRecorderObject
+	log            logger.Logger
 }
 
 type HandleOption func(opts *HandleOptions)
 
 func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.Dial = dial
+		opts.dial = dial
 	}
 }
 
 func WithDialTLS(dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.DialTLS = dialTLS
+		opts.dialTLS = dialTLS
 	}
 }
 
 func WithBypass(bypass bypass.Bypass) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.Bypass = bypass
+		opts.bypass = bypass
 	}
 }
 
 func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.RecorderObject = ro
+		opts.recorderObject = ro
 	}
 }
 
 func WithLog(log logger.Logger) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.Log = log
+		opts.log = log
 	}
 }
 
@@ -111,7 +111,7 @@ type Sniffer struct {
 	ReadTimeout time.Duration
 }
 
-func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
+func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn, opts ...HandleOption) error {
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
@@ -130,13 +130,13 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		return err
 	}
 
-	log := ho.Log
+	log := ho.log
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
 		log.Trace(string(dump))
 	}
 
-	ro := ho.RecorderObject
+	ro := ho.recorderObject
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
 		Host:   req.Host,
 		Proto:  req.Proto,
@@ -156,7 +156,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 	// http/2
 	if req.Method == "PRI" && len(req.Header) == 0 && req.URL.Path == "*" && req.Proto == "HTTP/2.0" {
-		return h.serveH2(ctx, xnet.NewReadWriteConn(br, conn, conn), &ho)
+		return h.serveH2(ctx, network, xnet.NewReadWriteConn(br, conn, conn), &ho)
 	}
 
 	host := req.Host
@@ -170,16 +170,16 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			"host": host,
 		})
 
-		if ho.Bypass != nil && ho.Bypass.Contains(ctx, "tcp", host) {
+		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host) {
 			return xbypass.ErrBypass
 		}
 	}
 
-	dial := ho.Dial
+	dial := ho.dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
-	cc, err := dial(ctx, "tcp", host)
+	cc, err := dial(ctx, network, host)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 }
 
-func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions) error {
+func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho *HandleOptions) error {
 	const expectedBody = "SM\r\n\r\n"
 
 	buf := make([]byte, len(expectedBody))
@@ -230,14 +230,14 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 		return errors.New("h2: invalid client preface")
 	}
 
-	ro := ho.RecorderObject
-	log := ho.Log
+	ro := ho.recorderObject
+	log := ho.log
 
 	ro.Time = time.Time{}
 
 	tr := &http2.Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-			if dial := ho.DialTLS; dial != nil {
+		DialTLSContext: func(ctx context.Context, nw, addr string, cfg *tls.Config) (net.Conn, error) {
+			if dial := ho.dialTLS; dial != nil {
 				return dial(ctx, network, addr, cfg)
 			}
 
@@ -564,7 +564,7 @@ func (h *Sniffer) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer
 	return nil
 }
 
-func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
+func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, opts ...HandleOption) error {
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
@@ -580,9 +580,9 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		return err
 	}
 
-	log := ho.Log
+	log := ho.log
 
-	ro := ho.RecorderObject
+	ro := ho.recorderObject
 	ro.TLS = &xrecorder.TLSRecorderObject{
 		ServerName:  clientHello.ServerName,
 		ClientHello: hex.EncodeToString(buf.Bytes()),
@@ -600,16 +600,16 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		}
 		ro.Host = host
 
-		if ho.Bypass != nil && ho.Bypass.Contains(ctx, "tcp", host) {
+		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host) {
 			return xbypass.ErrBypass
 		}
 	}
 
-	dial := ho.Dial
+	dial := ho.dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
-	cc, err := dial(ctx, "tcp", host)
+	cc, err := dial(ctx, network, host)
 	if err != nil {
 		return err
 	}
@@ -624,8 +624,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		if host == "" {
 			host = ro.Host
 		}
-		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, "tcp", host) {
-			return h.terminateTLS(ctx, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello, &ho)
+		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, network, host) {
+			return h.terminateTLS(ctx, network, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello, &ho)
 		}
 	}
 
@@ -666,9 +666,9 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	return err
 }
 
-func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, ho *HandleOptions) error {
-	ro := ho.RecorderObject
-	log := ho.Log
+func (h *Sniffer) terminateTLS(ctx context.Context, network string, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, ho *HandleOptions) error {
+	ro := ho.recorderObject
+	log := ho.log
 
 	nextProtos := clientHello.SupportedProtos
 	if h.NegotiatedProtocol != "" {
@@ -773,7 +773,7 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 		WithRecorderObject(ro),
 		WithLog(log),
 	}
-	return h.HandleHTTP(ctx, serverConn, opts...)
+	return h.HandleHTTP(ctx, network, serverConn, opts...)
 }
 
 type h2Handler struct {

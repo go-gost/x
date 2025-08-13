@@ -206,7 +206,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			return sniffer.HandleHTTP(ctx, conn,
+			return sniffer.HandleHTTP(ctx, "tcp", conn,
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.options.Bypass),
@@ -214,7 +214,9 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				sniffing.WithLog(log),
 			)
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx, conn,
+			return sniffer.HandleTLS(ctx,
+				ro.Network,
+				conn,
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.options.Bypass),

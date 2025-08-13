@@ -205,14 +205,14 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 
 		switch proto {
 		case sniffing.ProtoHTTP:
-			return sniffer.HandleHTTP(ctx, xnet.NewReadWriteConn(br, conn, conn),
+			return sniffer.HandleHTTP(ctx, "tcp", xnet.NewReadWriteConn(br, conn, conn),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx, xnet.NewReadWriteConn(br, conn, conn),
+			return sniffer.HandleTLS(ctx, "tcp", xnet.NewReadWriteConn(br, conn, conn),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),

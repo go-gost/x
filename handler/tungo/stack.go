@@ -57,6 +57,8 @@ type transportHandler struct {
 	stats    *stats_util.HandlerStats
 	recorder recorder.RecorderObject
 
+	ipv6 bool
+
 	opts *handler.Options
 }
 
@@ -111,9 +113,14 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	sid := xid.New().String()
 	ctx := xctx.ContextWithSid(context.Background(), xctx.Sid(sid))
 
+	network := "tcp"
+	if remoteIP.Unmap().Is6() && h.ipv6 {
+		network = "tcp6"
+	}
+
 	ro := &xrecorder.HandlerRecorderObject{
 		Service:    h.opts.Service,
-		Network:    "tcp",
+		Network:    network,
 		RemoteAddr: remoteAddr.String(),
 		DstAddr:    dstAddr.String(),
 		Host:       dstAddr.String(),
@@ -191,7 +198,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 				ro.Host = address
 
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
 				ro.Route = buf.String()
 				if err != nil && !h.sniffingFallback {
 					return nil, err
@@ -200,7 +207,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 
 			if cc == nil {
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
 				ro.Route = buf.String()
 				ro.Host = dstAddr.String()
 			}
@@ -221,7 +228,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
-			sniffer.HandleHTTP(ctx, conn,
+			sniffer.HandleHTTP(ctx, network, conn,
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.opts.Bypass),
@@ -230,7 +237,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			)
 			return
 		case sniffing.ProtoTLS:
-			sniffer.HandleTLS(ctx, conn,
+			sniffer.HandleTLS(ctx, network, conn,
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.opts.Bypass),
@@ -242,13 +249,13 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	if h.opts.Bypass != nil &&
-		h.opts.Bypass.Contains(ctx, "tcp", dstAddr.String()) {
+		h.opts.Bypass.Contains(ctx, network, dstAddr.String()) {
 		log.Debug("bypass: ", dstAddr)
 		return
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+	cc, err := h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
 	ro.Route = buf.String()
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)

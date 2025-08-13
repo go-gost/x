@@ -32,6 +32,8 @@ type metadata struct {
 
 	multicastGroups []netip.Addr
 
+	ipv6 bool
+
 	tcpSendBufferSize        int
 	tcpReceiveBufferSize     int
 	tcpModerateReceiveBuffer bool
@@ -72,6 +74,8 @@ func (h *tungoHandler) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		h.md.multicastGroups = append(h.md.multicastGroups, addr)
 	}
+
+	h.md.ipv6 = mdutil.GetBool(md, "ipv6")
 
 	h.md.tcpSendBufferSize = mdutil.GetInt(md, "tcpSendBufferSize", "tungo.tcpSendBufferSize")
 	h.md.tcpReceiveBufferSize = mdutil.GetInt(md, "tcpReceiveBufferSize", "tungo.tcpReceiveBufferSize")

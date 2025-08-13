@@ -125,6 +125,8 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		recorder: h.recorder,
 		stats:    h.stats,
 
+		ipv6: h.md.ipv6,
+
 		opts: &h.options,
 	}
 
