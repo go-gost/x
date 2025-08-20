@@ -265,6 +265,11 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	if err != nil {
 		log.Error(err)
 		resp.StatusCode = http.StatusServiceUnavailable
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warnf("Recovered from panic: %v", r)
+			}
+		}()
 		w.WriteHeader(resp.StatusCode)
 		return err
 	}
