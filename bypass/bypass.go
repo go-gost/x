@@ -18,6 +18,7 @@ import (
 	"github.com/go-gost/x/internal/matcher"
 	xnet "github.com/go-gost/x/internal/net"
 	xlogger "github.com/go-gost/x/logger"
+	"github.com/gobwas/glob"
 )
 
 var (
@@ -165,8 +166,10 @@ func (p *localBypass) reload(ctx context.Context) error {
 		}
 
 		if strings.ContainsAny(pattern, "*?") {
-			wildcards = append(wildcards, pattern)
-			continue
+			if _, err := glob.Compile(pattern); err == nil {
+				wildcards = append(wildcards, pattern)
+				continue
+			}
 		}
 
 		r := xnet.IPRange{}
