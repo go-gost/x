@@ -178,6 +178,7 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		raddr:  remoteAddr,
 		ctx:    ctx,
 		cancel: cancel,
+		closed: make(chan struct{}),
 	}
 
 	select {
@@ -187,5 +188,6 @@ func (l *http2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	<-ctx.Done()
+	// NOTE: we need to wait for conn closed, or the connection will be closed.
+	<-conn.closed
 }

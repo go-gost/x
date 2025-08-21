@@ -13,6 +13,7 @@ type conn struct {
 	raddr  net.Addr
 	ctx    context.Context
 	cancel context.CancelFunc
+	closed chan struct{}
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -26,6 +27,12 @@ func (c *conn) Write(b []byte) (n int, err error) {
 func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel()
+	}
+
+	select {
+	case <-c.closed:
+	default:
+		close(c.closed)
 	}
 	return nil
 }
