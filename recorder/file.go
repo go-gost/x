@@ -3,6 +3,7 @@ package recorder
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/recorder"
@@ -32,6 +33,8 @@ type fileRecorder struct {
 	recorder string
 	out      io.WriteCloser
 	sep      string
+
+	mu sync.Mutex
 }
 
 // FileRecorder records data to file.
@@ -50,6 +53,11 @@ func FileRecorder(out io.WriteCloser, opts ...FileRecorderOption) recorder.Recor
 
 func (r *fileRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
+
+	if r.sep != "" {
+		r.mu.Lock() // mutex is used to prevent unordered writes to the file
+		defer r.mu.Unlock()
+	}
 
 	if _, err := r.out.Write(b); err != nil {
 		return err
