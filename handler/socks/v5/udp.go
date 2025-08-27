@@ -121,7 +121,12 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		}
 	}
 
-	r := udp.NewRelay(socks.UDPConn(cc, h.md.udpBufferSize), pc).
+	r := udp.NewRelay(socks.UDPConn(
+		&filteredPacketConn{
+			PacketConn: cc,
+			filterIP:   conn.RemoteAddr().(*net.TCPAddr).IP,
+		},
+		h.md.udpBufferSize), pc).
 		WithBypass(h.options.Bypass).
 		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)
@@ -135,4 +140,24 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		Debugf("%s >-< %s", conn.RemoteAddr(), cc.LocalAddr())
 
 	return nil
+}
+
+// filteredPacketConn implements SOCKS5 RFC 1928 UDP relay security by filtering
+// incoming packets to only accept those from the client IP that established the TCP control connection.
+type filteredPacketConn struct {
+	net.PacketConn
+	filterIP net.IP // The expected client IP from the SOCKS5 TCP connection
+}
+
+func (f *filteredPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	for {
+		n, addr, err = f.PacketConn.ReadFrom(p)
+		if err != nil {
+			return
+		}
+
+		if udpAddr := addr.(*net.UDPAddr); udpAddr.IP.Equal(f.filterIP) {
+			return
+		}
+	}
 }
