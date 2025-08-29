@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/limiter"
@@ -200,7 +201,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	}
 
 	if h.options.Auther != nil {
-		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass)
+		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass, auth.WithService(h.options.Service))
 		if !ok {
 			resp.Status = relay.StatusUnauthorized
 			resp.WriteTo(conn)

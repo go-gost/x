@@ -41,7 +41,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if host == "" || h.md.ingress == nil {
 		host = endpoint
 	} else if host != endpoint {
-		if rule := h.md.ingress.GetRule(ctx, host); rule != nil && rule.Endpoint != tunnelID.String() {
+		if rule := h.md.ingress.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil && rule.Endpoint != tunnelID.String() {
 			host = endpoint
 		}
 	}
@@ -82,12 +82,12 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 		h.md.ingress.SetRule(ctx, &ingress.Rule{
 			Hostname: endpoint,
 			Endpoint: tunnelID.String(),
-		})
+		}, ingress.WithService(h.options.Service))
 		if host != "" {
 			h.md.ingress.SetRule(ctx, &ingress.Rule{
 				Hostname: host,
 				Endpoint: tunnelID.String(),
-			})
+			}, ingress.WithService(h.options.Service))
 		}
 	}
 	if h.md.sd != nil {

@@ -10,16 +10,18 @@ import (
 )
 
 type listener struct {
+	service string
 	net.Listener
 	admission admission.Admission
 	log       logger.Logger
 }
 
-func WrapListener(admission admission.Admission, ln net.Listener) net.Listener {
+func WrapListener(service string, admission admission.Admission, ln net.Listener) net.Listener {
 	if admission == nil {
 		return ln
 	}
 	return &listener{
+		service:   service,
 		Listener:  ln,
 		admission: admission,
 	}
@@ -45,7 +47,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 		}
 
 		if ln.admission != nil &&
-			!ln.admission.Admit(ctx, clientAddr.String()) {
+			!ln.admission.Admit(ctx, clientAddr.String(), admission.WithService(ln.service)) {
 			c.Close()
 			continue
 		}

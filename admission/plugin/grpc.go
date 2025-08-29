@@ -48,9 +48,15 @@ func (p *grpcPlugin) Admit(ctx context.Context, addr string, opts ...admission.O
 		return false
 	}
 
+	var options admission.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	r, err := p.client.Admit(ctx,
 		&proto.AdmissionRequest{
-			Addr: addr,
+			Service: options.Service,
+			Addr:    addr,
 		})
 	if err != nil {
 		p.log.Error(err)

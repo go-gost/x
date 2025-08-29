@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	xmetrics "github.com/go-gost/x/metrics"
@@ -72,7 +73,7 @@ func (h *metricsHandler) Close() error {
 func (h *metricsHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 	if auther := h.options.Auther; auther != nil {
 		u, p, _ := r.BasicAuth()
-		if _, ok := auther.Authenticate(r.Context(), u, p); !ok {
+		if _, ok := auther.Authenticate(r.Context(), u, p, auth.WithService(h.options.Service)); !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

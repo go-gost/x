@@ -13,6 +13,7 @@ import (
 )
 
 type httpPluginRequest struct {
+	Service string `json:"service"`
 	Network string `json:"network"`
 	Addr    string `json:"addr"`
 	Client  string `json:"client"`
@@ -60,6 +61,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	}
 
 	rb := httpPluginRequest{
+		Service: options.Service,
 		Network: network,
 		Addr:    addr,
 		Client:  string(ctxvalue.ClientIDFromContext(ctx)),

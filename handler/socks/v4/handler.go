@@ -9,6 +9,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
@@ -172,7 +174,7 @@ func (h *socks4Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	conn.SetReadDeadline(time.Time{})
 
 	if h.options.Auther != nil {
-		clientID, ok := h.options.Auther.Authenticate(ctx, string(req.Userid), "")
+		clientID, ok := h.options.Auther.Authenticate(ctx, string(req.Userid), "", auth.WithService(h.options.Service))
 		if !ok {
 			resp := gosocks4.NewReply(gosocks4.RejectedUserid, nil)
 			log.Trace(resp)
@@ -235,7 +237,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", addr, bypass.WithService(h.options.Service)) {
 		resp := gosocks4.NewReply(gosocks4.Rejected, nil)
 		log.Trace(resp)
 		log.Debug("bypass: ", addr)
@@ -305,6 +307,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),
@@ -312,6 +315,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 			)
 		case sniffing.ProtoTLS:
 			return sniffer.HandleTLS(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),

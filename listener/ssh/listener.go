@@ -70,13 +70,13 @@ func (l *sshListener) Init(md md.Metadata) (err error) {
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = stats.WrapListener(ln, l.options.Stats)
-	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = admission.WrapListener(l.options.Service, l.options.Admission, ln)
 	ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 	l.Listener = ln
 
 	config := &ssh.ServerConfig{
-		PasswordCallback:  ssh_util.PasswordCallback(l.options.Auther),
+		PasswordCallback:  ssh_util.PasswordCallback(l.options.Service, l.options.Auther),
 		PublicKeyCallback: ssh_util.PublicKeyCallback(l.md.authorizedKeys),
 	}
 	config.AddHostKey(l.md.signer)

@@ -13,6 +13,7 @@ import (
 )
 
 type httpPluginRequest struct {
+	Service  string `json:"service"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Client   string `json:"client"`
@@ -53,12 +54,18 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 		return
 	}
 
+	var options auth.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	var clientAddr string
 	if v := xctx.SrcAddrFromContext(ctx); v != nil {
 		clientAddr = v.String()
 	}
 
 	rb := httpPluginRequest{
+		Service:  options.Service,
 		Username: user,
 		Password: password,
 		Client:   clientAddr,

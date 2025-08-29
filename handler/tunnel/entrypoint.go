@@ -132,7 +132,7 @@ func (ep *entrypoint) Handle(ctx context.Context, conn net.Conn) (err error) {
 func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
 	var tunnelID relay.TunnelID
 	if ep.ingress != nil {
-		if rule := ep.ingress.GetRule(ctx, addr); rule != nil {
+		if rule := ep.ingress.GetRule(ctx, addr, ingress.WithService(ep.service)); rule != nil {
 			tunnelID = parseTunnelID(rule.Endpoint)
 		}
 	}
@@ -731,7 +731,7 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 	ln := l.ln
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
-	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = admission.WrapListener(l.options.Service, l.options.Admission, ln)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 	l.ln = ln
 

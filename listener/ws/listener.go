@@ -107,7 +107,7 @@ func (l *wsListener) Init(md md.Metadata) (err error) {
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = stats.WrapListener(ln, l.options.Stats)
-	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = admission.WrapListener(l.options.Service, l.options.Admission, ln)
 	ln = limiter_wrapper.WrapListener(l.options.Service, ln, l.options.TrafficLimiter)
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 

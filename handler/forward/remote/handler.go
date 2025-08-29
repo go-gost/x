@@ -179,6 +179,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, conn,
+				forwarder.WithService(h.options.Service),
 				forwarder.WithDial(dial),
 				forwarder.WithHop(h.hop),
 				forwarder.WithBypass(h.options.Bypass),
@@ -188,6 +189,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 			)
 		case sniffing.ProtoTLS:
 			return sniffer.HandleTLS(ctx, conn,
+				forwarder.WithService(h.options.Service),
 				forwarder.WithDial(dial),
 				forwarder.WithHop(h.hop),
 				forwarder.WithBypass(h.options.Bypass),

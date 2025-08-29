@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
@@ -260,7 +261,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 	}()
 
 	if h.options.Bypass != nil && mq.Question[0].Qclass == dns.ClassINET {
-		if h.options.Bypass.Contains(context.Background(), "udp", strings.Trim(mq.Question[0].Name, ".")) {
+		if h.options.Bypass.Contains(context.Background(), "udp", strings.Trim(mq.Question[0].Name, "."), bypass.WithService(h.options.Service)) {
 			log.Debug("bypass: ", mq.Question[0].Name)
 			mr = (&dns.Msg{}).SetReply(&mq)
 			b := bufpool.Get(h.md.bufferSize)

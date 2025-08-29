@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
@@ -106,7 +107,7 @@ func (h *http3Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		w.Header().Set(k, h.md.header.Get(k))
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "udp", addr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "udp", addr, bypass.WithService(h.options.Service)) {
 		w.WriteHeader(http.StatusForbidden)
 		log.Debug("bypass: ", addr)
 		return nil

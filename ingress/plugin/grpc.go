@@ -48,9 +48,15 @@ func (p *grpcPlugin) GetRule(ctx context.Context, host string, opts ...ingress.O
 		return nil
 	}
 
+	var options ingress.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	r, err := p.client.GetRule(ctx,
 		&proto.GetRuleRequest{
-			Host: host,
+			Service: options.Service,
+			Host:    host,
 		})
 	if err != nil {
 		p.log.Error(err)
@@ -70,7 +76,13 @@ func (p *grpcPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...in
 		return false
 	}
 
+	var options ingress.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	r, _ := p.client.SetRule(ctx, &proto.SetRuleRequest{
+		Service:  options.Service,
 		Host:     rule.Hostname,
 		Endpoint: rule.Endpoint,
 	})

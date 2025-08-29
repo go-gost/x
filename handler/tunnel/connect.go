@@ -6,6 +6,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
 	xnet "github.com/go-gost/x/internal/net"
@@ -24,7 +26,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		Status:  relay.StatusOK,
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, dstAddr) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, dstAddr, bypass.WithService(h.options.Service)) {
 		log.Debug("bypass: ", dstAddr)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
@@ -34,8 +36,8 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	host, _, _ := net.SplitHostPort(dstAddr)
 
 	var tid relay.TunnelID
-	if ingress := h.md.ingress; ingress != nil && host != "" {
-		if rule := ingress.GetRule(ctx, host); rule != nil {
+	if ing := h.md.ingress; ing != nil && host != "" {
+		if rule := ing.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil {
 			tid = parseTunnelID(rule.Endpoint)
 		}
 	}

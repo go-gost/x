@@ -246,7 +246,7 @@ func (s *defaultService) Serve() error {
 			}
 		}
 		if s.options.admission != nil &&
-			!s.options.admission.Admit(ctx, srcAddr.String()) {
+			!s.options.admission.Admit(ctx, srcAddr.String(), admission.WithService(s.name)) {
 			conn.Close()
 			log.Debugf("admission: %s is denied", srcAddr)
 			continue

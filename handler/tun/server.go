@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/router"
 	xip "github.com/go-gost/x/internal/net/ip"
@@ -142,7 +143,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 						ok := true
 						key := bytes.TrimRight(b[4:20], "\x00")
 						for _, ip := range peerIPs {
-							if _, ok = auther.Authenticate(ctx, ip.String(), string(key)); !ok {
+							if _, ok = auther.Authenticate(ctx, ip.String(), string(key), auth.WithService(h.options.Service)); !ok {
 								break
 							}
 						}

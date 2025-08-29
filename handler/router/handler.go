@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
@@ -211,7 +212,7 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 
 	if h.options.Auther != nil {
-		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass)
+		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass, auth.WithService(h.options.Service))
 		if !ok {
 			resp.Status = relay.StatusUnauthorized
 			resp.WriteTo(conn)

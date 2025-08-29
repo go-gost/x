@@ -51,7 +51,9 @@ func (h *unixHandler) handleHTTP(ctx context.Context, rw, cc io.ReadWriteCloser,
 	})
 
 	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
+		h.options.Bypass.Contains(ctx, "tcp", host,
+			bypass.WithService(h.options.Service),
+			bypass.WithPathOption(req.RequestURI)) {
 		log.Debugf("bypass: %s %s", host, req.RequestURI)
 		return xbypass.ErrBypass
 	}

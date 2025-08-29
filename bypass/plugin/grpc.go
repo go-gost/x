@@ -56,6 +56,7 @@ func (p *grpcPlugin) Contains(ctx context.Context, network, addr string, opts ..
 
 	r, err := p.client.Bypass(ctx,
 		&proto.BypassRequest{
+			Service: options.Service,
 			Network: network,
 			Addr:    addr,
 			Client:  string(ctxvalue.ClientIDFromContext(ctx)),

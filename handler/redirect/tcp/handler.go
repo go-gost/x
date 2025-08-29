@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
@@ -175,7 +176,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			}
 
 			if cc == nil {
-				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", dstAddr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", dstAddr.String(), bypass.WithService(h.options.Service)) {
 					return nil, xbypass.ErrBypass
 				}
 				var buf bytes.Buffer
@@ -207,6 +208,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.options.Bypass),
@@ -214,9 +216,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				sniffing.WithLog(log),
 			)
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx,
-				ro.Network,
-				conn,
+			return sniffer.HandleTLS(ctx, ro.Network, conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.options.Bypass),
@@ -229,7 +230,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
 	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
+		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
 		log.Debug("bypass: ", dstAddr)
 		return xbypass.ErrBypass
 	}

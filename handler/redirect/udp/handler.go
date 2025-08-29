@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
@@ -122,7 +123,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
 	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String()) {
+		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
 		log.Debug("bypass: ", dstAddr)
 		return xbypass.ErrBypass
 	}

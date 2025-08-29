@@ -12,7 +12,8 @@ import (
 )
 
 type httpPluginGetRuleRequest struct {
-	Host string `json:"host"`
+	Service string `json:"service"`
+	Host    string `json:"host"`
 }
 
 type httpPluginGetRuleResponse struct {
@@ -20,6 +21,7 @@ type httpPluginGetRuleResponse struct {
 }
 
 type httpPluginSetRuleRequest struct {
+	Service  string `json:"service"`
 	Host     string `json:"host"`
 	Endpoint string `json:"endpoint"`
 }
@@ -58,6 +60,11 @@ func (p *httpPlugin) GetRule(ctx context.Context, host string, opts ...ingress.O
 		return nil
 	}
 
+	var options ingress.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
 		return nil
@@ -69,6 +76,9 @@ func (p *httpPlugin) GetRule(ctx context.Context, host string, opts ...ingress.O
 
 	q := req.URL.Query()
 	q.Set("host", host)
+	if options.Service != "" {
+		q.Set("service", options.Service)
+	}
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := p.client.Do(req)
@@ -99,7 +109,13 @@ func (p *httpPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...in
 		return false
 	}
 
+	var options ingress.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	rb := httpPluginSetRuleRequest{
+		Service:  options.Service,
 		Host:     rule.Hostname,
 		Endpoint: rule.Endpoint,
 	}

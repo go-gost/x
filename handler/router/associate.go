@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/common/bufpool"
+	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
@@ -43,9 +44,9 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 		Status:  relay.StatusOK,
 	}
 
-	if ingress := h.md.ingress; ingress != nil && host != "" {
+	if ing := h.md.ingress; ing != nil && host != "" {
 		var rid relay.TunnelID
-		if rule := ingress.GetRule(ctx, host); rule != nil {
+		if rule := ing.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil {
 			rid = parseRouterID(rule.Endpoint)
 		}
 

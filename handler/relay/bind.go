@@ -204,6 +204,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	log.Infof("bind on %s OK", pc.LocalAddr())
 
 	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).
+		WithService(h.options.Service).
 		WithBypass(h.options.Bypass).
 		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)

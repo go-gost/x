@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
@@ -51,6 +52,7 @@ var (
 )
 
 type HandleOptions struct {
+	service        string
 	dial           func(ctx context.Context, network, address string) (net.Conn, error)
 	httpKeepalive  bool
 	node           *chain.Node
@@ -61,6 +63,12 @@ type HandleOptions struct {
 }
 
 type HandleOption func(opts *HandleOptions)
+
+func WithService(service string) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.service = service
+	}
+}
 
 func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
@@ -241,7 +249,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 		})
 
 		if ho.bypass != nil &&
-			ho.bypass.Contains(ctx, "tcp", host, bypass.WithPathOption(req.RequestURI)) {
+			ho.bypass.Contains(ctx, "tcp", host,
+				bypass.WithService(ho.service),
+				bypass.WithPathOption(req.RequestURI)) {
 			ho.log.Debugf("bypass: %s %s", host, req.RequestURI)
 			res.StatusCode = http.StatusForbidden
 			ro.HTTP.StatusCode = res.StatusCode
@@ -426,7 +436,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	if httpSettings := node.Options().HTTP; httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
 			username, password, _ := req.BasicAuth()
-			id, ok := auther.Authenticate(ctx, username, password)
+			id, ok := auther.Authenticate(ctx, username, password, auth.WithService(ho.service))
 			if !ok {
 				res.StatusCode = http.StatusUnauthorized
 				ro.HTTP.StatusCode = res.StatusCode
@@ -807,7 +817,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		}
 		ro.Host = host
 
-		if ho.bypass != nil && ho.bypass.Contains(ctx, "tcp", host) {
+		if ho.bypass != nil && ho.bypass.Contains(ctx, "tcp", host, bypass.WithService(ho.service)) {
 			return xbypass.ErrBypass
 		}
 	}

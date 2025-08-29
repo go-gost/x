@@ -14,6 +14,7 @@ const (
 )
 
 type Relay struct {
+	service    string
 	pc1        net.PacketConn
 	pc2        net.PacketConn
 	bufferSize int
@@ -26,6 +27,11 @@ func NewRelay(pc1, pc2 net.PacketConn) *Relay {
 		pc1: pc1,
 		pc2: pc2,
 	}
+}
+
+func (r *Relay) WithService(service string) *Relay {
+	r.service = service
+	return r
 }
 
 func (r *Relay) WithBypass(bp bypass.Bypass) *Relay {
@@ -62,7 +68,7 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(ctx, "udp", raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(ctx, "udp", raddr.String(), bypass.WithService(r.service)) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}
@@ -99,7 +105,7 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 					return err
 				}
 
-				if r.bypass != nil && r.bypass.Contains(ctx, "udp", raddr.String()) {
+				if r.bypass != nil && r.bypass.Contains(ctx, "udp", raddr.String(), bypass.WithService(r.service)) {
 					if r.logger != nil {
 						r.logger.Warn("bypass: ", raddr)
 					}

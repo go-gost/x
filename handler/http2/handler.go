@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
@@ -241,7 +243,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 
 	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithService(h.options.Service)) {
 		resp.StatusCode = http.StatusForbidden
 		w.WriteHeader(resp.StatusCode)
 		log.Debug("bypass: ", host)
@@ -383,7 +385,7 @@ func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, 
 	if h.options.Auther == nil {
 		return "", true
 	}
-	if id, ok = h.options.Auther.Authenticate(ctx, u, p); ok {
+	if id, ok = h.options.Auther.Authenticate(ctx, u, p, auth.WithService(h.options.Service)); ok {
 		return
 	}
 

@@ -9,6 +9,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
@@ -54,7 +55,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
-	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address) {
+	if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, network, address, bypass.WithService(h.options.Service)) {
 		resp := gosocks5.NewReply(gosocks5.NotAllowed, nil)
 		log.Trace(resp)
 		log.Debug("bypass: ", address)
@@ -124,6 +125,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),
@@ -131,6 +133,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			)
 		case sniffing.ProtoTLS:
 			return sniffer.HandleTLS(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),

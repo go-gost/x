@@ -160,6 +160,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	switch proto {
 	case sniffing.ProtoHTTP:
 		return sniffer.HandleHTTP(ctx, "tcp", conn,
+			sniffing.WithService(h.options.Service),
 			sniffing.WithDial(dial),
 			sniffing.WithDialTLS(dialTLS),
 			sniffing.WithBypass(h.options.Bypass),
@@ -168,6 +169,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		)
 	case sniffing.ProtoTLS:
 		return sniffer.HandleTLS(ctx, "tcp", conn,
+			sniffing.WithService(h.options.Service),
 			sniffing.WithDial(dial),
 			sniffing.WithDialTLS(dialTLS),
 			sniffing.WithBypass(h.options.Bypass),

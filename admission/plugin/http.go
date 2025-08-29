@@ -12,7 +12,8 @@ import (
 )
 
 type httpPluginRequest struct {
-	Addr string `json:"addr"`
+	Service string `json:"service"`
+	Addr    string `json:"addr"`
 }
 
 type httpPluginResponse struct {
@@ -49,8 +50,14 @@ func (p *httpPlugin) Admit(ctx context.Context, addr string, opts ...admission.O
 		return
 	}
 
+	var options admission.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	rb := httpPluginRequest{
-		Addr: addr,
+		Service: options.Service,
+		Addr:    addr,
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

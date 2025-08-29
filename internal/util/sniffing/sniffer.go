@@ -54,6 +54,7 @@ var (
 )
 
 type HandleOptions struct {
+	service string
 	dial    func(ctx context.Context, network, address string) (net.Conn, error)
 	dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
 
@@ -63,6 +64,12 @@ type HandleOptions struct {
 }
 
 type HandleOption func(opts *HandleOptions)
+
+func WithService(service string) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.service = service
+	}
+}
 
 func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
@@ -170,7 +177,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 			"host": host,
 		})
 
-		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host) {
+		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
 			return xbypass.ErrBypass
 		}
 	}
@@ -600,7 +607,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		}
 		ro.Host = host
 
-		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host) {
+		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
 			return xbypass.ErrBypass
 		}
 	}
@@ -624,7 +631,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		if host == "" {
 			host = ro.Host
 		}
-		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, network, host) {
+		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
 			return h.terminateTLS(ctx, network, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello, &ho)
 		}
 	}

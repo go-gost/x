@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
@@ -175,7 +176,7 @@ func (h *ssuHandler) relayPacket(ctx context.Context, pc1, pc2 net.PacketConn, r
 					ro.Host = addr.String()
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr.Network(), addr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, addr.Network(), addr.String(), bypass.WithService(h.options.Service)) {
 					log.Warn("bypass: ", addr)
 					return nil
 				}
@@ -207,7 +208,7 @@ func (h *ssuHandler) relayPacket(ctx context.Context, pc1, pc2 net.PacketConn, r
 					return err
 				}
 
-				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, raddr.Network(), raddr.String()) {
+				if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, raddr.Network(), raddr.String(), bypass.WithService(h.options.Service)) {
 					log.Warn("bypass: ", raddr)
 					return nil
 				}

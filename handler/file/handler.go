@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -141,7 +142,7 @@ func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
 	if auther := h.options.Auther; auther != nil {
 		u, p, _ := r.BasicAuth()
 		ro.ClientID = u
-		if _, ok := auther.Authenticate(r.Context(), u, p); !ok {
+		if _, ok := auther.Authenticate(r.Context(), u, p, auth.WithService(ro.Service)); !ok {
 			w.Header().Set("WWW-Authenticate", "Basic")
 			w.WriteHeader(http.StatusUnauthorized)
 			return

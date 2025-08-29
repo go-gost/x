@@ -22,12 +22,12 @@ var (
 // It authenticates user using a password.
 type PasswordCallbackFunc func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error)
 
-func PasswordCallback(au auth.Authenticator) PasswordCallbackFunc {
+func PasswordCallback(service string, au auth.Authenticator) PasswordCallbackFunc {
 	if au == nil {
 		return nil
 	}
 	return func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-		if _, ok := au.Authenticate(context.Background(), conn.User(), string(password)); ok {
+		if _, ok := au.Authenticate(context.Background(), conn.User(), string(password), auth.WithService(service)); ok {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("password rejected for %s", conn.User())

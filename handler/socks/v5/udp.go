@@ -127,6 +127,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 			filterIP:   conn.RemoteAddr().(*net.TCPAddr).IP,
 		},
 		h.md.udpBufferSize), pc).
+		WithService(h.options.Service).
 		WithBypass(h.options.Bypass).
 		WithBufferSize(h.md.udpBufferSize).
 		WithLogger(log)

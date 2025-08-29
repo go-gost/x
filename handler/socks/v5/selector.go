@@ -13,6 +13,7 @@ import (
 )
 
 type serverSelector struct {
+	service       string
 	methods       []uint8
 	Authenticator auth.Authenticator
 	TLSConfig     *tls.Config
@@ -71,7 +72,7 @@ func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (string, net.Co
 		if s.Authenticator != nil {
 			var ok bool
 			ctx := xctx.ContextWithSrcAddr(context.Background(), conn.RemoteAddr())
-			id, ok = s.Authenticator.Authenticate(ctx, req.Username, req.Password)
+			id, ok = s.Authenticator.Authenticate(ctx, req.Username, req.Password, auth.WithService(s.service))
 			if !ok {
 				resp := gosocks5.NewUserPassResponse(gosocks5.UserPassVer, gosocks5.Failure)
 				if err := resp.Write(conn); err != nil {

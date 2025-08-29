@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
@@ -296,7 +298,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
 
 	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, network, addr) {
+		h.options.Bypass.Contains(ctx, network, addr, bypass.WithService(h.options.Service)) {
 		resp.StatusCode = http.StatusForbidden
 
 		if log.IsLevelEnabled(logger.TraceLevel) {
@@ -406,6 +408,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		switch proto {
 		case sniffing.ProtoHTTP:
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),
@@ -413,6 +416,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			)
 		case sniffing.ProtoTLS:
 			return sniffer.HandleTLS(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithRecorderObject(ro),
@@ -538,7 +542,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	ro.HTTP.StatusCode = res.StatusCode
 
 	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, "tcp", host) {
+		h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithService(h.options.Service)) {
 		res.StatusCode = http.StatusForbidden
 
 		if log.IsLevelEnabled(logger.TraceLevel) {
@@ -855,7 +859,7 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 	if h.options.Auther == nil {
 		return "", true
 	}
-	if id, ok = h.options.Auther.Authenticate(ctx, u, p); ok {
+	if id, ok = h.options.Auther.Authenticate(ctx, u, p, auth.WithService(h.options.Service)); ok {
 		return
 	}
 

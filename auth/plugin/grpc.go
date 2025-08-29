@@ -51,12 +51,18 @@ func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, op
 		return "", false
 	}
 
+	var options auth.Options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	var clientAddr string
 	if v := xctx.SrcAddrFromContext(ctx); v != nil {
 		clientAddr = v.String()
 	}
 	r, err := p.client.Authenticate(ctx,
 		&proto.AuthenticateRequest{
+			Service:  options.Service,
 			Username: user,
 			Password: password,
 			Client:   clientAddr,

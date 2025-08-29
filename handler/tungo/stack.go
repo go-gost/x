@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/observer/stats"
@@ -37,6 +38,8 @@ const (
 var _ adapter.TransportHandler = (*transportHandler)(nil)
 
 type transportHandler struct {
+	service string
+
 	// Unbuffered TCP/UDP queues.
 	tcpQueue chan adapter.TCPConn
 	udpQueue chan adapter.UDPConn
@@ -229,6 +232,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		switch proto {
 		case sniffing.ProtoHTTP:
 			sniffer.HandleHTTP(ctx, network, conn,
+				sniffing.WithService(h.service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.opts.Bypass),
@@ -238,6 +242,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			return
 		case sniffing.ProtoTLS:
 			sniffer.HandleTLS(ctx, network, conn,
+				sniffing.WithService(h.service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
 				sniffing.WithBypass(h.opts.Bypass),
@@ -249,7 +254,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	if h.opts.Bypass != nil &&
-		h.opts.Bypass.Contains(ctx, network, dstAddr.String()) {
+		h.opts.Bypass.Contains(ctx, network, dstAddr.String(), bypass.WithService(h.opts.Service)) {
 		log.Debug("bypass: ", dstAddr)
 		return
 	}

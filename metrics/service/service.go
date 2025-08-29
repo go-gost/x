@@ -59,7 +59,7 @@ func NewService(network, addr string, opts ...Option) (service.Service, error) {
 	mux.Handle(options.path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if options.auther != nil {
 			u, p, _ := r.BasicAuth()
-			if _, ok := options.auther.Authenticate(r.Context(), u, p); !ok {
+			if _, ok := options.auther.Authenticate(r.Context(), u, p, auth.WithService("@metrics")); !ok {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}

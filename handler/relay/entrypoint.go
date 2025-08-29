@@ -37,7 +37,7 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 	ln := l.ln
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
-	ln = admission.WrapListener(l.options.Admission, ln)
+	ln = admission.WrapListener(l.options.Service, l.options.Admission, ln)
 	l.ln = ln
 
 	return

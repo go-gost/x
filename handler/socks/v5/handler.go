@@ -63,6 +63,7 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	}
 
 	h.selector = &serverSelector{
+		service:       h.options.Service,
 		Authenticator: h.options.Auther,
 		TLSConfig:     h.options.TLSConfig,
 		logger:        h.options.Logger,
