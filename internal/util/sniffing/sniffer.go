@@ -360,7 +360,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			err = fmt.Errorf("read response: %v", err)
 			return
 		}
-		if resp.StatusCode >= http.StatusContinue && resp.StatusCode < http.StatusOK {
+		if resp.StatusCode == http.StatusContinue {
 			resp.Write(rw)
 			resp.Body.Close()
 			continue
