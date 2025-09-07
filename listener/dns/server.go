@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	xnet "github.com/go-gost/x/internal/net"
@@ -77,6 +78,7 @@ type serverConn struct {
 	w      ResponseWriter
 	laddr  net.Addr
 	closed chan struct{}
+	mu     sync.Mutex
 }
 
 func (c *serverConn) Read(b []byte) (n int, err error) {
@@ -100,6 +102,9 @@ func (c *serverConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *serverConn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	select {
 	case <-c.closed:
 	default:

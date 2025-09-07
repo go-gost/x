@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type conn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	closed chan struct{}
+	mu     sync.Mutex
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -28,6 +30,9 @@ func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel()
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	select {
 	case <-c.closed:

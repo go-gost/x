@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type conn struct {
 	localAddr  net.Addr
 	closed     chan struct{}
 	ctx        context.Context
+	mu         sync.Mutex
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -28,12 +30,17 @@ func (c *conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *conn) Close() (err error) {
+	c.mu.Lock()
+
 	select {
 	case <-c.closed:
+		c.mu.Unlock()
 		return
 	default:
 		close(c.closed)
 	}
+	c.mu.Unlock()
+
 	if rc, ok := c.r.(io.Closer); ok {
 		err = rc.Close()
 	}

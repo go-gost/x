@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type conn struct {
 	raddr  net.Addr
 	closed chan struct{}
 	ctx    context.Context
+	mu     sync.Mutex
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -24,6 +26,9 @@ func (c *conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *conn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	select {
 	case <-c.closed:
 	default:

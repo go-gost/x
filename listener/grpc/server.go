@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -88,6 +89,7 @@ type conn struct {
 	remoteAddr net.Addr
 	closed     chan struct{}
 	ctx        context.Context
+	mu         sync.Mutex
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -135,6 +137,9 @@ func (c *conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *conn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	select {
 	case <-c.closed:
 	default:
