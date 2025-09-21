@@ -17,7 +17,7 @@ func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.I
 	ifce, err := water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
-			ComponentID:   "tap0901",
+			ComponentID:   l.md.config.ComponentID,
 			InterfaceName: l.md.config.Name,
 			Network:       l.md.config.Net,
 		},
