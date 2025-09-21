@@ -8,9 +8,10 @@ type Route struct {
 	Gateway net.IP
 }
 type Config struct {
-	Name    string
-	Net     string
-	MTU     int
-	Gateway string
-	Routes  []Route
+	Name        string
+	Net         string
+	MTU         int
+	Gateway     string
+	ComponentID string
+	Routes      []Route
 }

@@ -19,22 +19,27 @@ type metadata struct {
 
 func (l *tapListener) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		name    = "name"
-		netKey  = "net"
-		mtu     = "mtu"
-		route   = "route"
-		routes  = "routes"
-		gateway = "gw"
+		name        = "name"
+		netKey      = "net"
+		mtu         = "mtu"
+		route       = "route"
+		routes      = "routes"
+		gateway     = "gw"
+		componentID = "componentID"
 	)
 
 	config := &tap_util.Config{
-		Name:    mdutil.GetString(md, name),
-		Net:     mdutil.GetString(md, netKey),
-		MTU:     mdutil.GetInt(md, mtu),
-		Gateway: mdutil.GetString(md, gateway),
+		Name:        mdutil.GetString(md, name),
+		Net:         mdutil.GetString(md, netKey),
+		MTU:         mdutil.GetInt(md, mtu),
+		Gateway:     mdutil.GetString(md, gateway),
+		ComponentID: mdutil.GetString(md, componentID),
 	}
 	if config.MTU <= 0 {
 		config.MTU = DefaultMTU
+	}
+	if config.ComponentID == "" {
+		config.ComponentID = "tap0901"
 	}
 
 	gw := net.ParseIP(config.Gateway)
