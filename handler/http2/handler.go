@@ -276,68 +276,68 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
-	if req.Method == http.MethodConnect {
-		resp.StatusCode = http.StatusOK
-		w.WriteHeader(http.StatusOK)
-		if fw, ok := w.(http.Flusher); ok {
-			fw.Flush()
-		}
-
-		rw := xio.NewReadWriter(req.Body, flushWriter{w})
-
-		// compatible with HTTP1.x
-		if hj, ok := w.(http.Hijacker); ok && req.ProtoMajor == 1 {
-			// we take over the underly connection
-			conn, _, err := hj.Hijack()
-			if err != nil {
-				log.Error(err)
-				resp.StatusCode = http.StatusInternalServerError
-				w.WriteHeader(http.StatusInternalServerError)
-				return err
-			}
-			defer conn.Close()
-
-			rw = conn
-		}
-
-		rw = traffic_wrapper.WrapReadWriter(
-			h.limiter,
-			rw,
-			clientID,
-			limiter.ScopeOption(limiter.ScopeClient),
-			limiter.ServiceOption(h.options.Service),
-			limiter.NetworkOption("tcp"),
-			limiter.AddrOption(host),
-			limiter.ClientOption(clientID),
-			limiter.SrcOption(req.RemoteAddr),
-		)
-		if h.options.Observer != nil {
-			pstats := h.stats.Stats(clientID)
-			pstats.Add(stats.KindTotalConns, 1)
-			pstats.Add(stats.KindCurrentConns, 1)
-			defer pstats.Add(stats.KindCurrentConns, -1)
-			rw = stats_wrapper.WrapReadWriter(rw, pstats)
-		}
-
+	if req.Method != http.MethodConnect {
 		start := time.Now()
 		log.Infof("%s <-> %s", req.RemoteAddr, host)
-		// xnet.Transport(rw, cc)
-		xnet.Pipe(ctx, xio.NewReadWriteCloser(rw, rw, req.Body), cc)
+		if err := h.forwardRequest(w, req, cc); err != nil {
+			log.Info("%s - %s: %s", req.RemoteAddr, host, err)
+		}
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >-< %s", req.RemoteAddr, host)
+
 		return nil
+	}
+
+	resp.StatusCode = http.StatusOK
+	w.WriteHeader(http.StatusOK)
+	if fw, ok := w.(http.Flusher); ok {
+		fw.Flush()
+	}
+
+	rw := xio.NewReadWriter(req.Body, flushWriter{w})
+
+	// compatible with HTTP1.x
+	if hj, ok := w.(http.Hijacker); ok && req.ProtoMajor == 1 {
+		// we take over the underly connection
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			log.Error(err)
+			resp.StatusCode = http.StatusInternalServerError
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+		defer conn.Close()
+
+		rw = conn
+	}
+
+	rw = traffic_wrapper.WrapReadWriter(
+		h.limiter,
+		rw,
+		clientID,
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.ServiceOption(h.options.Service),
+		limiter.NetworkOption("tcp"),
+		limiter.AddrOption(host),
+		limiter.ClientOption(clientID),
+		limiter.SrcOption(req.RemoteAddr),
+	)
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(clientID)
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		rw = stats_wrapper.WrapReadWriter(rw, pstats)
 	}
 
 	start := time.Now()
 	log.Infof("%s <-> %s", req.RemoteAddr, host)
-	if err := h.forwardRequest(w, req, cc); err != nil {
-		log.Info("%s - %s: %s", req.RemoteAddr, host, err)
-	}
+	// xnet.Transport(rw, cc)
+	xnet.Pipe(ctx, xio.NewReadWriteCloser(rw, rw, req.Body), cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", req.RemoteAddr, host)
-
 	return nil
 }
 

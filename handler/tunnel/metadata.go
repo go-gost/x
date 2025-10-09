@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -22,6 +23,8 @@ const (
 type metadata struct {
 	readTimeout time.Duration
 
+	entrypoints []entrypointConfig
+
 	entryPoint                  string
 	entryPointID                relay.TunnelID
 	entryPointProxyProtocol     int
@@ -31,11 +34,11 @@ type metadata struct {
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
 
-	directTunnel           bool
-	tunnelTTL              time.Duration
-	ingress                ingress.Ingress
-	sd                     sd.SD
-	muxCfg                 *mux.Config
+	directTunnel bool
+	tunnelTTL    time.Duration
+	ingress      ingress.Ingress
+	sd           sd.SD
+	muxCfg       *mux.Config
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -91,6 +94,39 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 			)
 		}
 	}
+
+	if md != nil {
+		if v := md.Get("entrypoints"); v != nil {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+
+			var entrypoints []struct {
+				Addr    string
+				Ingress string
+			}
+
+			if err := json.Unmarshal(b, &entrypoints); err != nil {
+				return err
+			}
+
+			for _, ep := range entrypoints {
+				if ep.Addr == "" {
+					continue
+				}
+				ingress := registry.IngressRegistry().Get(ep.Ingress)
+				if ingress == nil {
+					ingress = h.md.ingress
+				}
+				h.md.entrypoints = append(h.md.entrypoints, entrypointConfig{
+					Addr:    ep.Addr,
+					Ingress: ingress,
+				})
+			}
+		}
+	}
+
 	h.md.sd = registry.SDRegistry().Get(mdutil.GetString(md, "sd"))
 
 	h.md.muxCfg = &mux.Config{
@@ -122,4 +158,10 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
 
 	return
+}
+
+type entrypointConfig struct {
+	Name    string
+	Addr    string
+	Ingress ingress.Ingress
 }
