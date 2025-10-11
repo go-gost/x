@@ -27,7 +27,7 @@ type serverConn struct {
 }
 
 func WrapConn(service string, c net.Conn) net.Conn {
-	if !xmetrics.IsEnabled() || c == nil {
+	if c == nil {
 		return c
 	}
 
@@ -102,7 +102,7 @@ type packetConn struct {
 }
 
 func WrapPacketConn(service string, pc net.PacketConn) net.PacketConn {
-	if !xmetrics.IsEnabled() || pc == nil {
+	if pc == nil {
 		return pc
 	}
 	return &packetConn{

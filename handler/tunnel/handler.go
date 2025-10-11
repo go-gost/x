@@ -184,7 +184,7 @@ func (h *tunnelHandler) createEntrypointService(addr string, ingress ingress.Ing
 		"kind":     "service",
 	})
 	epListener := newTCPListener(ln,
-		listener.AddrOption(h.md.entryPoint),
+		listener.AddrOption(addr),
 		listener.ServiceOption(serviceName),
 		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
 		listener.LoggerOption(log.WithFields(map[string]any{
