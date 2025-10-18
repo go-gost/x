@@ -69,6 +69,7 @@ func RedisStringLoader(addr string, opts ...RedisLoaderOption) Loader {
 	return &redisStringLoader{
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
@@ -110,6 +111,7 @@ func RedisSetLoader(addr string, opts ...RedisLoaderOption) Loader {
 	return &redisSetLoader{
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
@@ -154,6 +156,7 @@ func RedisListLoader(addr string, opts ...RedisLoaderOption) Loader {
 	return &redisListLoader{
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
@@ -198,6 +201,7 @@ func RedisHashLoader(addr string, opts ...RedisLoaderOption) Loader {
 	return &redisHashLoader{
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),

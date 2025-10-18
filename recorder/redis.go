@@ -64,6 +64,7 @@ func RedisSetRecorder(addr string, opts ...RedisRecorderOption) recorder.Recorde
 		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
@@ -102,6 +103,7 @@ func RedisListRecorder(addr string, opts ...RedisRecorderOption) recorder.Record
 		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
@@ -140,6 +142,7 @@ func RedisSortedSetRecorder(addr string, opts ...RedisRecorderOption) recorder.R
 		recorder: options.recorder,
 		client: redis.NewClient(&redis.Options{
 			Addr:     addr,
+			Username: options.username,
 			Password: options.password,
 			DB:       options.db,
 		}),
