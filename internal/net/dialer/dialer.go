@@ -154,8 +154,16 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 	default:
 		return nil, fmt.Errorf("dial: unsupported network %s", network)
 	}
+	// Fix: When binding to a network interface via SO_BINDTODEVICE,
+	// setting LocalAddr with Port: 0 causes the kernel to reject the bind.
+	// Instead, let bindDevice() handle the interface binding via Control function,
+	// and only set LocalAddr when there's no interface binding.
+	var localAddr net.Addr
+	if ifceName == "" {
+		localAddr = ifAddr
+	}
 	netd := net.Dialer{
-		LocalAddr: ifAddr,
+		LocalAddr: localAddr,
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
 				if ifceName != "" {
