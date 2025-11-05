@@ -9,11 +9,13 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/connector"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/go-shadowsocks2/core"
+	"github.com/go-gost/go-shadowsocks2/socks"
+	"github.com/go-gost/go-shadowsocks2/utils"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/ss"
 	"github.com/go-gost/x/registry"
-	"github.com/shadowsocks/go-shadowsocks2/core"
 )
 
 func init() {
@@ -21,7 +23,7 @@ func init() {
 }
 
 type ssConnector struct {
-	cipher  core.Cipher
+	client  core.TCPClient
 	md      metadata
 	options connector.Options
 }
@@ -45,7 +47,13 @@ func (c *ssConnector) Init(md md.Metadata) (err error) {
 	if c.options.Auth != nil {
 		method := c.options.Auth.Username()
 		password, _ := c.options.Auth.Password()
-		c.cipher, err = ss.ShadowCipher(method, password, c.md.key)
+
+		clientConfig, err := utils.NewClientConfig(method, password)
+		if err != nil {
+			return nil
+		}
+
+		c.client = core.NewTCPClient(clientConfig)
 	}
 
 	return
@@ -93,21 +101,24 @@ func (c *ssConnector) Connect(ctx context.Context, conn net.Conn, network, addre
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	if c.cipher != nil {
-		conn = c.cipher.StreamConn(conn)
+	target := socks.Addr(rawaddr[:n])
+	_, padding, err := utils.GeneratePadding()
+	if err != nil {
+		return nil, err
+	}
+	conn, err = c.client.WrapConn(conn, target, padding, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	var sc net.Conn
 	if c.md.noDelay {
-		sc = ss.ShadowConn(conn, nil)
-		// write the addr at once.
-		if _, err := sc.Write(rawaddr[:n]); err != nil {
+		err := conn.(core.TCPConn).ClientFirstWrite()
+		if err != nil {
 			return nil, err
 		}
-	} else {
-		// cache the header
-		sc = ss.ShadowConn(conn, rawaddr[:n])
 	}
+	sc = ss.ShadowConn(conn, nil)
 
 	return sc, nil
 }
