@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	mdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/go-shadowsocks2/core"
 	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
@@ -26,12 +27,22 @@ type metadata struct {
 	privateKey  crypto.PrivateKey
 	alpn        string
 	mitmBypass  bypass.Bypass
+
+	users []core.UserConfig
 }
 
 func (h *ssHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {
 		h.md.readTimeout = 15 * time.Second
+	}
+
+	usersMap := mdutil.GetStringMapString(md, "users")
+	for name, pass := range usersMap {
+		h.md.users = append(h.md.users, core.UserConfig{
+			Name:     name,
+			Password: pass,
+		})
 	}
 
 	h.md.key = mdutil.GetString(md, "key")

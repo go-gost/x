@@ -147,6 +147,7 @@ func (s *defaultService) Serve() error {
 	})
 
 	gctx, cancel := context.WithCancel(context.Background())
+
 	defer cancel()
 
 	if s.status.Stats() != nil {
