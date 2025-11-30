@@ -93,13 +93,8 @@ func (c *ssuConnector) Connect(ctx context.Context, conn net.Conn, network, addr
 		return ss.UDPClientConn(pc, conn.RemoteAddr(), taddr, c.md.udpBufferSize, &c.client, &c.sessionMap), nil
 	}
 
-	_, padding, err := utils.GeneratePadding()
-	if err != nil {
-		return nil, err
-	}
-
 	target := socks.ParseAddr(taddr.String())
-	conn, err = c.tcpClient.WrapConn(conn, target, padding, nil)
+	conn, err := c.tcpClient.WrapConn(conn, target)
 	if err != nil {
 		return nil, err
 	}
