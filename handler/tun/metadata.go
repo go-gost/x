@@ -20,6 +20,10 @@ type metadata struct {
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
+	if dec, ok := md.Get("decisionEvaluator").(DecisionEvaluator); ok {
+		h.dec = dec
+	}
+
 	if mdutil.GetBool(md, "tun.keepalive", "keepalive") {
 		h.md.keepAlivePeriod = mdutil.GetDuration(md, "tun.ttl", "ttl")
 		if h.md.keepAlivePeriod <= 0 {

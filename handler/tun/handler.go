@@ -3,12 +3,10 @@ package tun
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
@@ -31,6 +29,8 @@ type tunHandler struct {
 	hop     hop.Hop
 	routes  sync.Map
 	md      metadata
+	dec     DecisionEvaluator
+	direct  *directForwarder
 	options handler.Options
 }
 
@@ -66,6 +66,9 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	var config *tun_util.Config
 	if md := ictx.MetadataFromContext(ctx); md != nil {
 		config, _ = md.Get("config").(*tun_util.Config)
+		if dec, ok := md.Get("decisionEvaluator").(DecisionEvaluator); ok {
+			h.dec = dec
+		}
 	}
 	if config == nil {
 		err := errors.New("tun: wrong connection type")
@@ -87,22 +90,8 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	var target *chain.Node
 	if h.hop != nil {
-		target = h.hop.Select(ctx)
-	}
-	if target != nil {
-		network := "udp"
-		if _, _, err := net.SplitHostPort(target.Addr); err != nil {
-			network = "ip"
-		}
-
-		log = log.WithFields(map[string]any{
-			"dst": fmt.Sprintf("%s/%s", target.Addr, network),
-		})
-		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
-
-		if err := h.handleClient(ctx, conn, network, target.Addr, config, log); err != nil {
+		if err := h.handleClient(ctx, conn, config, log); err != nil {
 			log.Error(err)
 		}
 		return nil

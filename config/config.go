@@ -360,11 +360,13 @@ type ForwarderConfig struct {
 }
 
 type ForwardNodeConfig struct {
-	Name     string   `yaml:",omitempty" json:"name,omitempty"`
-	Addr     string   `yaml:",omitempty" json:"addr,omitempty"`
-	Network  string   `yaml:",omitempty" json:"network,omitempty"`
-	Bypass   string   `yaml:",omitempty" json:"bypass,omitempty"`
-	Bypasses []string `yaml:",omitempty" json:"bypasses,omitempty"`
+	Name      string           `yaml:",omitempty" json:"name,omitempty"`
+	Addr      string           `yaml:",omitempty" json:"addr,omitempty"`
+	Network   string           `yaml:",omitempty" json:"network,omitempty"`
+	Bypass    string           `yaml:",omitempty" json:"bypass,omitempty"`
+	Bypasses  []string         `yaml:",omitempty" json:"bypasses,omitempty"`
+	Connector *ConnectorConfig `yaml:",omitempty" json:"connector,omitempty"`
+	Dialer    *DialerConfig    `yaml:",omitempty" json:"dialer,omitempty"`
 	// Deprecated: use matcher instead
 	Protocol string `yaml:",omitempty" json:"protocol,omitempty"`
 	// Deprecated: use matcher instead

@@ -39,6 +39,9 @@ import (
 )
 
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("service config is nil")
+	}
 	if cfg.Listener == nil {
 		cfg.Listener = &config.ListenerConfig{}
 	}
@@ -54,6 +57,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	log := logger.Default()
+	if log == nil {
+		return nil, fmt.Errorf("default logger is nil")
+	}
 	if loggers := logger_parser.List(cfg.Logger, cfg.Loggers...); len(loggers) > 0 {
 		log = logger.LoggerGroup(loggers...)
 	}
@@ -389,16 +395,18 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 			}
 		}
 		hc.Nodes = append(hc.Nodes, &config.NodeConfig{
-			Name:     node.Name,
-			Addr:     node.Addr,
-			Network:  node.Network,
-			Bypass:   node.Bypass,
-			Bypasses: node.Bypasses,
-			Filter:   filter,
-			Matcher:  node.Matcher,
-			HTTP:     httpCfg,
-			TLS:      node.TLS,
-			Metadata: node.Metadata,
+			Name:      node.Name,
+			Addr:      node.Addr,
+			Network:   node.Network,
+			Bypass:    node.Bypass,
+			Bypasses:  node.Bypasses,
+			Connector: node.Connector,
+			Dialer:    node.Dialer,
+			Filter:    filter,
+			Matcher:   node.Matcher,
+			HTTP:      httpCfg,
+			TLS:       node.TLS,
+			Metadata:  node.Metadata,
 		})
 	}
 	return hop_parser.ParseHop(&hc, log)
