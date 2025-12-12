@@ -376,9 +376,24 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		listener = schemes[1]
 	}
 
-	addrs := xnet.AddrPortRange(url.Host).Addrs()
-	if len(addrs) == 0 {
-		addrs = append(addrs, url.Host)
+	// For path-based protocols (unix socket, serial), use path as address
+	isPathBasedProtocol := listener == "unix" || listener == "serial"
+
+	var addrs []string
+	if isPathBasedProtocol {
+		path := url.EscapedPath()
+		if url.Host != "" {
+			addrs = append(addrs, url.Host+strings.TrimPrefix(path, "/"))
+		} else if path != "" {
+			addrs = append(addrs, path)
+		} else {
+			addrs = append(addrs, url.Host)
+		}
+	} else {
+		addrs = xnet.AddrPortRange(url.Host).Addrs()
+		if len(addrs) == 0 {
+			addrs = append(addrs, url.Host)
+		}
 	}
 
 	var services []*config.ServiceConfig
@@ -400,7 +415,8 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 
 	var nodes []*config.ForwardNodeConfig
 	// forward mode
-	if remotes := strings.Trim(url.EscapedPath(), "/"); remotes != "" {
+	// For path-based protocols, path is address not forward target
+	if remotes := strings.Trim(url.EscapedPath(), "/"); remotes != "" && !isPathBasedProtocol {
 		i := 0
 		for _, addr := range strings.Split(remotes, ",") {
 			addrs := xnet.AddrPortRange(addr).Addrs()
@@ -664,8 +680,26 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 		nodeMd[k] = v
 	}
 
+	// For path-based protocols (unix socket, serial), use path as address
+	var nodeAddr string
+	isPathBasedProtocol := dialer == "unix" || dialer == "serial"
+	if isPathBasedProtocol {
+		path := url.EscapedPath()
+		if url.Host != "" {
+			// Two slashes: host + path = relative path
+			nodeAddr = url.Host + strings.TrimPrefix(path, "/")
+		} else if path != "" {
+			// Three slashes: path is absolute (keep leading slash)
+			nodeAddr = path
+		} else {
+			nodeAddr = url.Host
+		}
+	} else {
+		nodeAddr = url.Host
+	}
+
 	node := &config.NodeConfig{
-		Addr:     url.Host,
+		Addr:     nodeAddr,
 		Metadata: nodeMd,
 	}
 	node.Connector = &config.ConnectorConfig{
