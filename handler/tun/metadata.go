@@ -16,6 +16,7 @@ const (
 type metadata struct {
 	keepAlivePeriod time.Duration
 	passphrase      string
+	relayTarget     string
 	p2p             bool
 }
 
@@ -32,6 +33,9 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	h.md.passphrase = mdutil.GetString(md, "tun.token", "token", "passphrase")
+	// relayTarget is used for TCP/WSS overlays where the server expects a relay CONNECT
+	// request with a non-empty destination address.
+	h.md.relayTarget = mdutil.GetString(md, "tun.relayTarget", "relayTarget", "relay_target")
 	h.md.p2p = mdutil.GetBool(md, "tun.p2p", "p2p")
 	return
 }

@@ -50,6 +50,21 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	if h.options.Logger != nil {
+		rt0 := md.Get("tun.relayTarget")
+		rt1 := md.Get("relayTarget")
+		rt2 := md.Get("relay_target")
+
+		h.options.Logger.WithFields(map[string]any{
+			"tun.keepAlivePeriod": h.md.keepAlivePeriod,
+			"tun.p2p":             h.md.p2p,
+			"tun.relayTarget":     h.md.relayTarget,
+			"md.tun.relayTarget":  rt0,
+			"md.relayTarget":      rt1,
+			"md.relay_target":     rt2,
+		}).Debugf("tun metadata parsed")
+	}
+
 	return
 }
 

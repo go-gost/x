@@ -81,7 +81,7 @@ func (p *httpPlugin) Register(ctx context.Context, service *sd.Service, opts ...
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return fmt.Errorf("%s", resp.Status)
 	}
 
 	return nil
@@ -119,7 +119,7 @@ func (p *httpPlugin) Deregister(ctx context.Context, service *sd.Service) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return fmt.Errorf("%s", resp.Status)
 	}
 
 	return nil
@@ -157,7 +157,7 @@ func (p *httpPlugin) Renew(ctx context.Context, service *sd.Service) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return fmt.Errorf("%s", resp.Status)
 	}
 
 	return nil
@@ -189,7 +189,7 @@ func (p *httpPlugin) Get(ctx context.Context, name string) (services []*sd.Servi
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf(resp.Status)
+		return nil, fmt.Errorf("%s", resp.Status)
 	}
 
 	res := &httpGetResponse{}

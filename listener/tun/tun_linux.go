@@ -1,11 +1,13 @@
 package tun
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/vishvananda/netlink"
 )
@@ -32,9 +34,11 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 	}
 
 	for _, net := range l.md.config.Net {
-		if err = netlink.AddrAdd(link, &netlink.Addr{
-			IPNet: &net,
-		}); err != nil {
+		if err = netlink.AddrAdd(link, &netlink.Addr{IPNet: &net}); err != nil {
+			if errors.Is(err, syscall.EEXIST) {
+				l.log.Debugf("address already exists: %s", net.String())
+				continue
+			}
 			l.log.Error(err)
 			continue
 		}

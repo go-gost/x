@@ -12,11 +12,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AeroCore-IO/avionics/pkg/decision"
 	"github.com/go-gost/core/bypass"
+	corechain "github.com/go-gost/core/chain"
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
+	xchain "github.com/go-gost/x/chain"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
@@ -39,6 +43,11 @@ var _ adapter.TransportHandler = (*transportHandler)(nil)
 
 type transportHandler struct {
 	service string
+	dec     interface {
+		CheckTrafficRules(input decision.RuleInput) *decision.TrafficDecision
+		ResolveMetadata(srcIP, dstIP string, srcPort, dstPort int, proto string) (appID string, hostname string)
+	}
+	forwarder hop.Hop
 
 	// Unbuffered TCP/UDP queues.
 	tcpQueue chan adapter.TCPConn
@@ -191,6 +200,37 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			var cc net.Conn
 			var err error
+			useProxy := false
+			if h.dec != nil {
+				appID, hostname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+				if hostname == "" {
+					if host, _, _ := net.SplitHostPort(address); host != "" {
+						hostname = host
+					} else if strings.TrimSpace(address) != "" {
+						hostname = strings.TrimSpace(address)
+					}
+				}
+				if hostname == "" {
+					type domainLookup interface{ GetDomainsForIP(string) []string }
+					if dl, ok := any(h.dec).(domainLookup); ok {
+						if domains := dl.GetDomainsForIP(dstIP.String()); len(domains) > 0 {
+							hostname = domains[0]
+						}
+					}
+				}
+				if d := h.dec.CheckTrafficRules(decision.RuleInput{
+					SteamAppID: appID,
+					DestHost:   dstIP.String(),
+					DestPort:   int32(id.LocalPort),
+					Protocol:   "TCP",
+					DestDomain: hostname,
+				}); d != nil {
+					log.Debugf("traffic decision: action=%s rule=%s appID=%s dst=%s domain=%s", d.Action, d.RuleName, appID, dstAddr.String(), hostname)
+					if strings.EqualFold(strings.TrimSpace(string(d.Action)), "PROXY") {
+						useProxy = true
+					}
+				}
+			}
 			if address != "" {
 				host, _, _ := net.SplitHostPort(address)
 				if host == "" {
@@ -201,7 +241,32 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 				ro.Host = address
 
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+				if useProxy && h.forwarder != nil {
+					baseRouter, ok := any(h.opts.Router).(interface {
+						Options() *corechain.RouterOptions
+					})
+					if ok {
+						c := xchain.NewChain("tungo-forwarder")
+						c.AddHop(h.forwarder)
+						bo := baseRouter.Options()
+						proxyRouter := xchain.NewRouter(
+							corechain.RetriesRouterOption(bo.Retries),
+							corechain.TimeoutRouterOption(bo.Timeout),
+							corechain.InterfaceRouterOption(bo.IfceName),
+							corechain.NetnsRouterOption(bo.Netns),
+							corechain.SockOptsRouterOption(bo.SockOpts),
+							corechain.ResolverRouterOption(bo.Resolver),
+							corechain.HostMapperRouterOption(bo.HostMapper),
+							corechain.ChainRouterOption(c),
+							corechain.LoggerRouterOption(log),
+						)
+						cc, err = proxyRouter.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+					} else {
+						cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+					}
+				} else {
+					cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+				}
 				ro.Route = buf.String()
 				if err != nil && !h.sniffingFallback {
 					return nil, err
@@ -253,6 +318,35 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 		}
 	}
 
+	useProxy := false
+	if h.dec != nil {
+		appID, hostname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+		if hostname == "" {
+			type domainLookup interface{ GetDomainsForIP(string) []string }
+			if dl, ok := any(h.dec).(domainLookup); ok {
+				if domains := dl.GetDomainsForIP(dstIP.String()); len(domains) > 0 {
+					hostname = domains[0]
+				}
+			}
+		}
+		if d := h.dec.CheckTrafficRules(decision.RuleInput{
+			SteamAppID: appID,
+			DestHost:   dstIP.String(),
+			DestPort:   int32(id.LocalPort),
+			Protocol:   "TCP",
+			DestDomain: hostname,
+		}); d != nil {
+			log.Debugf("traffic decision: action=%s rule=%s appID=%s dst=%s domain=%s", d.Action, d.RuleName, appID, dstAddr.String(), hostname)
+			if strings.EqualFold(strings.TrimSpace(string(d.Action)), "PROXY") {
+				useProxy = true
+			}
+		}
+	}
+	log.Debugf("traffic routing: useProxy=%t forwarderInjected=%t", useProxy, h.forwarder != nil)
+	if useProxy && h.forwarder == nil {
+		log.Warnf("traffic decision is PROXY but forwarder is nil; falling back to direct dial")
+	}
+
 	if h.opts.Bypass != nil &&
 		h.opts.Bypass.Contains(ctx, network, dstAddr.String(), bypass.WithService(h.opts.Service)) {
 		log.Debug("bypass: ", dstAddr)
@@ -260,7 +354,38 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+	var cc net.Conn
+	// reuse the outer err so the deferred recorder sees failures
+	if useProxy && h.forwarder != nil {
+		baseRouter, ok := any(h.opts.Router).(interface {
+			Options() *corechain.RouterOptions
+		})
+		if ok {
+			bo := baseRouter.Options()
+			if bo != nil {
+				c := xchain.NewChain("tungo-forwarder")
+				c.AddHop(h.forwarder)
+				proxyRouter := xchain.NewRouter(
+					corechain.RetriesRouterOption(bo.Retries),
+					corechain.TimeoutRouterOption(bo.Timeout),
+					corechain.InterfaceRouterOption(bo.IfceName),
+					corechain.NetnsRouterOption(bo.Netns),
+					corechain.SockOptsRouterOption(bo.SockOpts),
+					corechain.ResolverRouterOption(bo.Resolver),
+					corechain.HostMapperRouterOption(bo.HostMapper),
+					corechain.ChainRouterOption(c),
+					corechain.LoggerRouterOption(log),
+				)
+				cc, err = proxyRouter.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+			} else {
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+			}
+		} else {
+			cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+		}
+	} else {
+		cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+	}
 	ro.Route = buf.String()
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)

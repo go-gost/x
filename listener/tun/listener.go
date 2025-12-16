@@ -93,9 +93,13 @@ func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 			l.log.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
 				itf.Name, ip, l.md.config.MTU, addrs)
 
-			ctx = ictx.ContextWithMetadata(ctx, mdx.NewMetadata(map[string]any{
+			mdMap := map[string]any{
 				"config": l.md.config,
-			}))
+			}
+			if dec := getDecisionEvaluator(l.md.guid); dec != nil {
+				mdMap["decisionEvaluator"] = dec
+			}
+			ctx = ictx.ContextWithMetadata(ctx, mdx.NewMetadata(mdMap))
 
 			var c net.Conn
 			c = &conn{

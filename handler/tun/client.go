@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
+	xnet "github.com/go-gost/x/internal/net"
 	xip "github.com/go-gost/x/internal/net/ip"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	"github.com/songgao/water/waterutil"
@@ -32,12 +34,35 @@ var (
 	magicHeader = []byte("GOST")
 )
 
+func normalizeRelayTarget(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	// Allow users to provide a URL and extract the host part.
+	if strings.Contains(addr, "://") {
+		if u, err := url.Parse(addr); err == nil && u.Host != "" {
+			addr = u.Host
+		}
+	}
+
+	// For relay CONNECT over TCP/WSS, the server will Dial(network, address).
+	// That requires an explicit host:port. Do not guess a port.
+	if host, port, err := net.SplitHostPort(addr); err == nil && host != "" && port != "" {
+		return addr
+	}
+	return ""
+}
+
 func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP) {
 	// handshake
 	keepAliveData := bufpool.Get(keepAliveHeaderLength + len(ips)*net.IPv6len)
 	defer bufpool.Put(keepAliveData)
 
 	copy(keepAliveData[:4], magicHeader) // magic header
+	for i := 4; i < 20; i++ {
+		keepAliveData[i] = 0
+	}
 	copy(keepAliveData[4:20], []byte(h.md.passphrase))
 	pos := 20
 	for _, ip := range ips {
@@ -253,8 +278,20 @@ func (h *tunHandler) dispatchPackets(
 			continue
 		}
 
+		var appID, hostname string
 		if h.dec != nil {
-			appID, hostname := h.dec.ResolveMetadata(src.String(), dst.String(), sport, dport, strings.ToUpper(proto))
+			appID, hostname = h.dec.ResolveMetadata(src.String(), dst.String(), sport, dport, strings.ToUpper(proto))
+
+			// If we don't have a hostname (e.g., no SNI), try to enrich it from domain mappings for logging/decisions.
+			if hostname == "" {
+				type domainLookup interface{ GetDomainsForIP(string) []string }
+				if dl, ok := h.dec.(domainLookup); ok {
+					if domains := dl.GetDomainsForIP(dst.String()); len(domains) > 0 {
+						hostname = domains[0]
+					}
+				}
+			}
+
 			deci := h.dec.CheckTrafficRules(decision.RuleInput{
 				SteamAppID: appID,
 				DestHost:   dst.String(),
@@ -262,6 +299,8 @@ func (h *tunHandler) dispatchPackets(
 				Protocol:   strings.ToUpper(proto),
 				DestDomain: hostname,
 			})
+
+			log.Debugf("decision result: action=%s appID=%s host=%s domain=%s proto=%s", deci.Action, appID, dst, hostname, proto)
 
 			switch deci.Action {
 			case decision.ActionBlock:
@@ -291,7 +330,13 @@ func (h *tunHandler) dispatchPackets(
 			return
 		}
 
-		session, er := h.ensureSession(ctx, node, ips, tun, tunMu, log, sessions, sessMu, errc)
+		log.Debugf("proxying packet: host=%s proto=%s appID=%s domain=%s node=%s addr=%s", dst, proto, appID, hostname, node.Name, node.Addr)
+
+		overlayNetwork := strings.ToLower(strings.TrimSpace(proto))
+		if overlayNetwork != "tcp" && overlayNetwork != "udp" {
+			overlayNetwork = "tcp"
+		}
+		session, er := h.ensureSession(ctx, node, overlayNetwork, ips, tun, tunMu, log, sessions, sessMu, errc)
 		if er != nil {
 			errc <- er
 			return
@@ -302,6 +347,7 @@ func (h *tunHandler) dispatchPackets(
 
 		select {
 		case session.writeCh <- pkt:
+			log.Debugf("packet enqueued to proxy: host=%s proto=%s appID=%s domain=%s node=%s", dst, proto, appID, hostname, node.Name)
 		case <-ctx.Done():
 			errc <- ctx.Err()
 			return
@@ -312,6 +358,7 @@ func (h *tunHandler) dispatchPackets(
 func (h *tunHandler) ensureSession(
 	ctx context.Context,
 	node *chain.Node,
+	overlayNetwork string,
 	ips []net.IP,
 	tun io.Writer,
 	tunMu *sync.Mutex,
@@ -320,7 +367,16 @@ func (h *tunHandler) ensureSession(
 	sessMu *sync.Mutex,
 	errc chan<- error,
 ) (*clientSession, error) {
-	key := sessionKeyForNode(node)
+	network := strings.ToLower(strings.TrimSpace(overlayNetwork))
+	if network == "" {
+		network = "udp"
+	}
+	raddr := node.Addr
+	if _, _, err := net.SplitHostPort(raddr); err != nil {
+		network = "ip"
+	}
+
+	key := sessionKeyForNode(node, network)
 
 	sessMu.Lock()
 	s := sessions[key]
@@ -329,16 +385,72 @@ func (h *tunHandler) ensureSession(
 		return s, nil
 	}
 
-	network := "udp"
-	raddr := node.Addr
-	if _, _, err := net.SplitHostPort(raddr); err != nil {
-		network = "ip"
-	}
-
 	cctx, cancel := context.WithCancel(ctx)
-	cc, err := h.options.Router.Dial(cctx, network, raddr)
+
+	cc, err := func() (net.Conn, error) {
+		if node == nil {
+			return nil, errors.New("tun: nil node")
+		}
+
+		tr := node.Options().Transport
+		if tr == nil {
+			// Fallback: no transport configured on the node (unexpected for forwarder nodes).
+			return h.options.Router.Dial(cctx, network, raddr)
+		}
+
+		// Establish the overlay connection using the node transport (WSS/DTLS/etc) and then
+		// run the node connector (relay protocol) to create a tunnel/association. The server
+		// expects the relay CONNECT header before any tun keepalive/payload bytes.
+		ipAddr, err := xnet.Resolve(cctx, "ip", raddr, node.Options().Resolver, node.Options().HostMapper, log)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := tr.Dial(cctx, ipAddr)
+		if err != nil {
+			return nil, err
+		}
+		raw, err = tr.Handshake(cctx, raw)
+		if err != nil {
+			raw.Close()
+			return nil, err
+		}
+
+		// For TCP/WSS overlays some servers expect a relay CONNECT request with an explicit
+		// destination address; empty address is treated as a bad request.
+		connectAddr := ""
+		if network == "tcp" || network == "tcp4" || network == "tcp6" {
+			connectAddr = normalizeRelayTarget(h.md.relayTarget)
+		}
+		if connectAddr == "" && (network == "tcp" || network == "tcp4" || network == "tcp6") {
+			if log != nil {
+				log.Errorf("invalid relay connect target %q: must be host:port (set metadata tun.relayTarget / relayTarget / relay_target)", h.md.relayTarget)
+			}
+			return nil, errors.New("tun: invalid relay connect target (must be host:port)")
+		}
+		if log != nil {
+			log.Debugf("relay connect target: %q", connectAddr)
+		}
+		conn, err := tr.Connect(cctx, raw, network, connectAddr)
+		if err != nil {
+			raw.Close()
+			return nil, err
+		}
+		return conn, nil
+	}()
 	if err != nil {
 		cancel()
+
+		if ctx.Err() != nil {
+			return nil, err
+		}
+
+		// If UDP path fails, try a TCP fallback node (e.g., relay+wss) before giving up.
+		if network == "udp" && h.hop != nil {
+			if alt := h.hop.Select(ctx, hop.NetworkSelectOption("tcp")); alt != nil && alt.Name != node.Name {
+				log.Warnf("udp dial failed, falling back to tcp node %s (current: %s)", alt.Name, node.Name)
+				return h.ensureSession(ctx, alt, "tcp", ips, tun, tunMu, log, sessions, sessMu, errc)
+			}
+		}
 		return nil, err
 	}
 
@@ -359,6 +471,10 @@ func (h *tunHandler) ensureSession(
 
 	if network == "udp" {
 		go h.keepalive(cctx, cc, ips)
+	} else {
+		// TCP/WSS overlay also needs the same initial handshake payload that advertises
+		// the local tunnel IPs; without it the server may close immediately.
+		go h.keepalive(cctx, cc, ips)
 	}
 
 	go s.writeLoop(cctx, errc)
@@ -376,21 +492,42 @@ func (h *tunHandler) selectTargetForPacket(ctx context.Context, dst net.IP, prot
 		return nil
 	}
 
-	network := strings.ToLower(proto)
-	if network == "" {
-		network = "ip"
+	// proto here is the L4 protocol name derived from the IP header (e.g. TCP/UDP).
+	// go-gost-x hop selection does NOT filter by SelectOptions.Network; it only applies bypasses.
+	// To avoid selecting an incompatible overlay node (e.g. udp-dtls for TCP packets), we
+	// explicitly pick a node by chain.NodeOptions.Network when the Hop supports listing nodes.
+	desiredNetwork := strings.ToLower(strings.TrimSpace(proto))
+	if desiredNetwork != "udp" {
+		desiredNetwork = "tcp"
 	}
 
-	opts := []hop.SelectOption{
-		hop.NetworkSelectOption(network),
-		hop.AddrSelectOption(dst.String()),
-		hop.HostSelectOption(dst.String()),
-	}
-	if proto != "" {
-		opts = append(opts, hop.ProtocolSelectOption(strings.ToLower(proto)))
+	if nl, ok := h.hop.(hop.NodeList); ok {
+		var best *chain.Node
+		bestPrio := -1 << 30
+		for _, node := range nl.Nodes() {
+			if node == nil {
+				continue
+			}
+			netw := strings.ToLower(strings.TrimSpace(node.Options().Network))
+			if netw == "" {
+				continue
+			}
+			if netw != desiredNetwork {
+				continue
+			}
+			prio := node.Options().Priority
+			if best == nil || prio > bestPrio {
+				best = node
+				bestPrio = prio
+			}
+		}
+		if best != nil {
+			return best
+		}
 	}
 
-	return h.hop.Select(ctx, opts...)
+	// Fallback: keep default hop behavior.
+	return h.hop.Select(ctx)
 }
 
 func (h *tunHandler) forwardDirect(ctx context.Context, tun net.Conn, config *tun_util.Config, log logger.Logger, tunMu *sync.Mutex, pkt []byte) error {
@@ -410,6 +547,11 @@ func (h *tunHandler) forwardDirect(ctx context.Context, tun net.Conn, config *tu
 }
 
 func parsePacketMetadata(data []byte, log logger.Logger) (src, dst net.IP, sport, dport int, proto string, ok bool) {
+	if len(data) == 0 {
+		log.Warnf("empty packet, discarded")
+		return
+	}
+
 	if waterutil.IsIPv4(data) {
 		header, err := ipv4.ParseHeader(data)
 		if err != nil {
@@ -473,12 +615,16 @@ func collectIPs(nets []net.IPNet) []net.IP {
 	return ips
 }
 
-func sessionKeyForNode(node *chain.Node) string {
+func sessionKeyForNode(node *chain.Node, network string) string {
 	if node == nil {
 		return ""
 	}
+	base := node.Addr
 	if node.Name != "" {
-		return node.Name
+		base = node.Name
 	}
-	return node.Addr
+	if network == "" {
+		return base
+	}
+	return base + "/" + network
 }
