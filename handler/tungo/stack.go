@@ -337,10 +337,10 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			p, ok := h.getCachedPolicy(now, key)
 			if !ok {
 				useProxy := false
-					hostname := ""
+				hostname := ""
 				if h.dec != nil {
-						appID, hname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
-						hostname = hname
+					appID, hname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+					hostname = hname
 					if hostname == "" {
 						if host, _, _ := net.SplitHostPort(address); host != "" {
 							hostname = host
@@ -369,7 +369,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 						}
 					}
 				}
-					p = flowPolicy{useProxy: useProxy, proxyHost: hostname}
+				p = flowPolicy{useProxy: useProxy, proxyHost: hostname}
 				ttl := h.tcpConntrackTTLShort
 				if ttl <= 0 {
 					ttl = 60 * time.Second

@@ -23,8 +23,8 @@ type flowKey struct {
 }
 
 type flowPolicy struct {
-	action   string
-	useProxy bool
+	action    string
+	useProxy  bool
 	proxyHost string
 }
 
