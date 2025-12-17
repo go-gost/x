@@ -126,6 +126,12 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		service:   h.options.Service,
 		dec:       dec,
 		forwarder: h.forwarder,
+		conntrack: newConntrackTable(),
+
+		conntrackCleanupInterval: 30 * time.Second,
+		udpConntrackTTL:          60 * time.Second,
+		tcpConntrackTTLShort:     60 * time.Second,
+		tcpConntrackTTLLong:      5 * time.Minute,
 
 		tcpQueue:   make(chan adapter.TCPConn),
 		udpQueue:   make(chan adapter.UDPConn),
