@@ -180,6 +180,11 @@ func (l *wsListener) upgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	conn.SetCloseHandler(func(code int, text string) error {
+		log.Debugf("ws close received: %d %q", code, text)
+		return nil
+	})
+
 	ctx := context.WithoutCancel(r.Context())
 	if cc, ok := conn.NetConn().(xctx.Context); ok {
 		if cv := cc.Context(); cv != nil {

@@ -2,12 +2,15 @@ package net
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/go-gost/core/common/bufpool"
 	xio "github.com/go-gost/x/internal/io"
+	ws_util "github.com/go-gost/x/internal/util/ws"
 )
 
 const (
@@ -59,7 +62,7 @@ func pipeBuffer(dst io.ReadWriteCloser, src io.ReadWriteCloser, bufferSize int) 
 	buf := bufpool.Get(bufferSize)
 	defer bufpool.Put(buf)
 
-	_, err := io.CopyBuffer(dst, src, buf)
+	n, err := io.CopyBuffer(dst, src, buf)
 
 	// Do the upload/download side TCP half-close.
 	if cr, ok := src.(xio.CloseRead); ok {
@@ -67,15 +70,38 @@ func pipeBuffer(dst io.ReadWriteCloser, src io.ReadWriteCloser, bufferSize int) 
 	}
 
 	if cw, ok := dst.(xio.CloseWrite); ok {
-		if e := cw.CloseWrite(); e == xio.ErrUnsupported {
-			dst.Close()
-		} else {
-			// Set TCP half-close timeout.
-			xio.SetReadDeadline(dst, time.Now().Add(tcpWaitTimeout))
+		// WebSocket is message-based and does not support TCP half-close semantics.
+		// Attempting to emulate half-close (or enforcing a half-close timeout) can
+		// tear down the tunnel prematurely and manifest as abnormal websocket close
+		// errors (e.g. close 1006 unexpected EOF).
+		if _, isWS := dst.(ws_util.WebsocketConn); !isWS {
+			if e := cw.CloseWrite(); e == xio.ErrUnsupported {
+				dst.Close()
+			} else {
+				// Set TCP half-close timeout.
+				xio.SetReadDeadline(dst, time.Now().Add(tcpWaitTimeout))
+			}
 		}
 	} else {
 		dst.Close()
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("pipe %s <- %s copied=%d: %w", connLabel(dst), connLabel(src), n, err)
+	}
+	return nil
+}
+
+func connLabel(v any) string {
+	label := fmt.Sprintf("%T", v)
+	if c, ok := v.(interface {
+		LocalAddr() net.Addr
+		RemoteAddr() net.Addr
+	}); ok {
+		la, ra := c.LocalAddr(), c.RemoteAddr()
+		if la != nil || ra != nil {
+			label = fmt.Sprintf("%T(%v->%v)", v, la, ra)
+		}
+	}
+	return label
 }

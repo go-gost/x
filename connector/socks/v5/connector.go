@@ -85,9 +85,11 @@ func (c *socks5Connector) Handshake(ctx context.Context, conn net.Conn) (net.Con
 
 	cc := gosocks5.ClientConn(conn, c.selector)
 	if err := cc.Handleshake(); err != nil {
+		err = fmt.Errorf("socks5 handshake failed: %w", err)
 		log.Error(err)
 		return nil, err
 	}
+	log.Debug("socks5 handshake OK")
 
 	return cc, nil
 }
@@ -140,19 +142,22 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 	req := gosocks5.NewRequest(gosocks5.CmdConnect, &addr)
 	log.Trace(req)
 	if err := req.Write(conn); err != nil {
+		err = fmt.Errorf("socks5 CONNECT request write failed: %w", err)
 		log.Error(err)
 		return nil, err
 	}
 
 	reply, err := gosocks5.ReadReply(conn)
 	if err != nil {
+		err = fmt.Errorf("socks5 CONNECT reply read failed: %w", err)
 		log.Error(err)
 		return nil, err
 	}
 	log.Trace(reply)
+	log.Debugf("socks5 CONNECT reply rep=%d addr=%v", reply.Rep, reply.Addr)
 
 	if reply.Rep != gosocks5.Succeeded {
-		err = errors.New("host unreachable")
+		err = fmt.Errorf("socks5 CONNECT failed: rep=%d addr=%v", reply.Rep, reply.Addr)
 		log.Error(err)
 		return nil, err
 	}

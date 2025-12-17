@@ -144,6 +144,8 @@ func (h *tungoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 		sniffingResponseTimeout: h.md.sniffingResponseTimeout,
 		sniffingFallback:        h.md.sniffingFallback,
 
+		proxyDialByDomain: h.md.proxyDialByDomain,
+
 		recorder: h.recorder,
 		stats:    h.stats,
 

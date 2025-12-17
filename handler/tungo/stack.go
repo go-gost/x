@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,60 @@ const (
 
 var _ adapter.TransportHandler = (*transportHandler)(nil)
 
+// protocolPinnedHop wraps a hop and pins selection to a preferred node name
+// based on the requested target network (tcp* vs udp*).
+//
+// This is used to avoid accidentally routing TCP streams through the UDP/DTLS
+// relay node, which can break HTTPS/TLS even though it may avoid ws 1006.
+type protocolPinnedHop struct {
+	base        hop.Hop
+	tcpNodeName string
+	udpNodeName string
+}
+
+func (h protocolPinnedHop) Select(ctx context.Context, opts ...hop.SelectOption) *corechain.Node {
+	if h.base == nil {
+		return nil
+	}
+
+	var so hop.SelectOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&so)
+		}
+	}
+
+	preferred := h.tcpNodeName
+	if strings.HasPrefix(strings.ToLower(so.Network), "udp") {
+		preferred = h.udpNodeName
+	}
+
+	if preferred != "" {
+		if nl, ok := any(h.base).(hop.NodeList); ok {
+			for _, n := range nl.Nodes() {
+				if n != nil && n.Name == preferred {
+					return n
+				}
+			}
+		}
+	}
+
+	return h.base.Select(ctx, opts...)
+}
+
+func normalizeProxyHost(host string) (string, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	host = strings.TrimSuffix(host, ".")
+	host = strings.Trim(host, "[]")
+	if host == "" {
+		return "", false
+	}
+	if net.ParseIP(host) != nil {
+		return "", false
+	}
+	return host, true
+}
+
 type transportHandler struct {
 	service string
 	dec     interface {
@@ -50,6 +105,8 @@ type transportHandler struct {
 	}
 	forwarder hop.Hop
 	conntrack *conntrackTable
+
+	proxyDialByDomain bool
 
 	conntrackCleanupInterval time.Duration
 	udpConntrackTTL          time.Duration
@@ -280,8 +337,10 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			p, ok := h.getCachedPolicy(now, key)
 			if !ok {
 				useProxy := false
+					hostname := ""
 				if h.dec != nil {
-					appID, hostname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+						appID, hname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+						hostname = hname
 					if hostname == "" {
 						if host, _, _ := net.SplitHostPort(address); host != "" {
 							hostname = host
@@ -310,7 +369,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 						}
 					}
 				}
-				p = flowPolicy{useProxy: useProxy}
+					p = flowPolicy{useProxy: useProxy, proxyHost: hostname}
 				ttl := h.tcpConntrackTTLShort
 				if ttl <= 0 {
 					ttl = 60 * time.Second
@@ -319,13 +378,24 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			}
 
 			useProxy := p.useProxy
+			proxyHost := p.proxyHost
 			if address != "" {
 				host, _, _ := net.SplitHostPort(address)
 				if host == "" {
 					host = address
 				}
 				_, port, _ := net.SplitHostPort(dstAddr.String())
-				address = net.JoinHostPort(strings.Trim(host, "[]"), port)
+				if useProxy {
+					if !h.proxyDialByDomain {
+						address = dstAddr.String()
+					} else if ph, ok := normalizeProxyHost(proxyHost); ok {
+						address = net.JoinHostPort(ph, port)
+					} else {
+						address = net.JoinHostPort(strings.Trim(host, "[]"), port)
+					}
+				} else {
+					address = net.JoinHostPort(strings.Trim(host, "[]"), port)
+				}
 				ro.Host = address
 
 				var buf bytes.Buffer
@@ -335,7 +405,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 					})
 					if ok {
 						c := xchain.NewChain("tungo-forwarder")
-						c.AddHop(h.forwarder)
+						c.AddHop(protocolPinnedHop{base: h.forwarder, tcpNodeName: "tcp-wss", udpNodeName: "udp-dtls"})
 						bo := baseRouter.Options()
 						proxyRouter := xchain.NewRouter(
 							corechain.RetriesRouterOption(bo.Retries),
@@ -415,12 +485,15 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	useProxy := false
+	hostname := ""
 	if h.dec != nil {
 		now := time.Now()
 		if p, ok := h.getCachedPolicy(now, key); ok {
 			useProxy = p.useProxy
+			hostname = p.proxyHost
 		} else {
-			appID, hostname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+			appID, hname := h.dec.ResolveMetadata(remoteIP.String(), dstIP.String(), int(id.RemotePort), int(id.LocalPort), "TCP")
+			hostname = hname
 			if hostname == "" {
 				type domainLookup interface{ GetDomainsForIP(string) []string }
 				if dl, ok := any(h.dec).(domainLookup); ok {
@@ -441,7 +514,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 					useProxy = true
 				}
 			}
-			p := flowPolicy{action: "", useProxy: useProxy}
+			p := flowPolicy{action: "", useProxy: useProxy, proxyHost: hostname}
 			ttl := h.tcpConntrackTTLShort
 			if ttl <= 0 {
 				ttl = 60 * time.Second
@@ -462,6 +535,12 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 
 	var buf bytes.Buffer
 	var cc net.Conn
+	dialAddr := dstAddr.String()
+	if useProxy && h.proxyDialByDomain {
+		if ph, ok := normalizeProxyHost(hostname); ok {
+			dialAddr = net.JoinHostPort(ph, strconv.Itoa(int(dstAddr.Port())))
+		}
+	}
 	// reuse the outer err so the deferred recorder sees failures
 	if useProxy && h.forwarder != nil {
 		baseRouter, ok := any(h.opts.Router).(interface {
@@ -471,7 +550,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 			bo := baseRouter.Options()
 			if bo != nil {
 				c := xchain.NewChain("tungo-forwarder")
-				c.AddHop(h.forwarder)
+				c.AddHop(protocolPinnedHop{base: h.forwarder, tcpNodeName: "tcp-wss", udpNodeName: "udp-dtls"})
 				proxyRouter := xchain.NewRouter(
 					corechain.RetriesRouterOption(bo.Retries),
 					corechain.TimeoutRouterOption(bo.Timeout),
@@ -483,15 +562,15 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 					corechain.ChainRouterOption(c),
 					corechain.LoggerRouterOption(log),
 				)
-				cc, err = proxyRouter.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+				cc, err = proxyRouter.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dialAddr)
 			} else {
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dialAddr)
 			}
 		} else {
-			cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+			cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dialAddr)
 		}
 	} else {
-		cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+		cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dialAddr)
 	}
 	ro.Route = buf.String()
 	if err != nil {
@@ -616,6 +695,10 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		}
 		h.putCachedPolicy(time.Now(), key, flowPolicy{useProxy: useProxy}, udpTTL)
 	}
+	log.Debugf("traffic routing: useProxy=%t forwarderInjected=%t", useProxy, h.forwarder != nil)
+	if useProxy && h.forwarder == nil {
+		log.Warnf("traffic decision is PROXY but forwarder is nil; falling back to direct dial")
+	}
 
 	var err error
 	var conn net.Conn = uc
@@ -642,7 +725,38 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		}).Infof("%s >< %s", remoteAddr.String(), dstAddr.String())
 	}()
 
-	cc, err := h.opts.Router.Dial(ctx, "udp", dstAddr.String())
+	var buf bytes.Buffer
+	var cc net.Conn
+	if useProxy && h.forwarder != nil {
+		baseRouter, ok := any(h.opts.Router).(interface {
+			Options() *corechain.RouterOptions
+		})
+		if ok {
+			bo := baseRouter.Options()
+			if bo != nil {
+				c := xchain.NewChain("tungo-forwarder")
+				c.AddHop(protocolPinnedHop{base: h.forwarder, tcpNodeName: "tcp-wss", udpNodeName: "udp-dtls"})
+				proxyRouter := xchain.NewRouter(
+					corechain.RetriesRouterOption(bo.Retries),
+					corechain.TimeoutRouterOption(bo.Timeout),
+					corechain.InterfaceRouterOption(bo.IfceName),
+					corechain.NetnsRouterOption(bo.Netns),
+					corechain.SockOptsRouterOption(bo.SockOpts),
+					corechain.ResolverRouterOption(bo.Resolver),
+					corechain.HostMapperRouterOption(bo.HostMapper),
+					corechain.ChainRouterOption(c),
+					corechain.LoggerRouterOption(log),
+				)
+				cc, err = proxyRouter.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", dstAddr.String())
+			} else {
+				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", dstAddr.String())
+			}
+		} else {
+			cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", dstAddr.String())
+		}
+	} else {
+		cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", dstAddr.String())
+	}
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)
 		return

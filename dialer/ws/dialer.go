@@ -110,9 +110,20 @@ func (d *wsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dial
 	if err != nil {
 		return nil, err
 	}
+	if resp != nil {
+		d.options.Logger.Debugf("ws handshake OK: %s %d", url.String(), resp.StatusCode)
+	}
 	resp.Body.Close()
 
 	cc := ws_util.Conn(c)
+
+	// Close frame observability: if the peer sends a close control frame, log it.
+	// If we only ever see close 1006 on reads, it usually means the underlying
+	// TCP connection was torn down without a WebSocket close handshake.
+	c.SetCloseHandler(func(code int, text string) error {
+		d.options.Logger.Debugf("ws close received: %d %q", code, text)
+		return nil
+	})
 
 	if d.md.keepaliveInterval > 0 {
 		d.options.Logger.Debugf("keepalive is enabled, ttl: %v", d.md.keepaliveInterval)
@@ -136,7 +147,7 @@ func (d *wsDialer) keepalive(conn ws_util.WebsocketConn) {
 		d.options.Logger.Debug("send ping")
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-			// d.options.Logger.Error(err)
+			d.options.Logger.Debugf("ping failed: %v", err)
 			return
 		}
 		conn.SetWriteDeadline(time.Time{})

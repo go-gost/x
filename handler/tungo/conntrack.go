@@ -25,6 +25,7 @@ type flowKey struct {
 type flowPolicy struct {
 	action   string
 	useProxy bool
+	proxyHost string
 }
 
 type conntrackEntry struct {
