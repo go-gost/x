@@ -93,7 +93,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
 			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
 			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			cache_limiter.ScopeOption(limiter.ScopeClient),
+			cache_limiter.ScopeOption(limiter.ScopeService),
 		)
 	}
 
@@ -317,7 +317,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			h.limiter,
 			conn,
 			clientID,
-			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ScopeOption(limiter.ScopeService),
 			limiter.ServiceOption(h.options.Service),
 			limiter.NetworkOption(network),
 			limiter.AddrOption(addr),

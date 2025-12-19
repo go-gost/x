@@ -81,7 +81,7 @@ func (h *socks4Handler) Init(md md.Metadata) (err error) {
 		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
 			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
 			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			cache_limiter.ScopeOption(limiter.ScopeClient),
+			cache_limiter.ScopeOption(limiter.ScopeService),
 		)
 	}
 
@@ -217,7 +217,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 			h.limiter,
 			conn,
 			string(clientID),
-			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ScopeOption(limiter.ScopeService),
 			limiter.ServiceOption(h.options.Service),
 			limiter.NetworkOption("tcp"),
 			limiter.AddrOption(addr),

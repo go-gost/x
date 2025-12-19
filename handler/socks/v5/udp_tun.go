@@ -34,7 +34,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 			conn,
 			string(clientID),
 			limiter.ServiceOption(h.options.Service),
-			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ScopeOption(limiter.ScopeService),
 			limiter.NetworkOption(network),
 			limiter.AddrOption(address),
 			limiter.ClientOption(string(clientID)),

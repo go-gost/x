@@ -37,7 +37,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			conn,
 			string(clientID),
 			limiter.ServiceOption(h.options.Service),
-			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ScopeOption(limiter.ScopeService),
 			limiter.NetworkOption(network),
 			limiter.AddrOption(address),
 			limiter.ClientOption(string(clientID)),
