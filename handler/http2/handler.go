@@ -82,7 +82,7 @@ func (h *http2Handler) Init(md md.Metadata) error {
 		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
 			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
 			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			cache_limiter.ScopeOption(limiter.ScopeService),
+			cache_limiter.ScopeOption(limiter.ScopeClient),
 		)
 	}
 
@@ -302,7 +302,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 			h.limiter,
 			rw,
 			clientID,
-			limiter.ScopeOption(limiter.ScopeService),
+			limiter.ScopeOption(limiter.ScopeClient),
 			limiter.ServiceOption(h.options.Service),
 			limiter.NetworkOption("tcp"),
 			limiter.AddrOption(host),
