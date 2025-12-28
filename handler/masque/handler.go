@@ -1,6 +1,7 @@
 package masque
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/udp"
 	masque_util "github.com/go-gost/x/internal/util/masque"
 	stats_util "github.com/go-gost/x/internal/util/stats"
@@ -169,7 +171,29 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return ErrBadRequest
 	}
 
-	return h.handleConnectUDP(ctx, w, r, conn.LocalAddr(), ro, log)
+	// Validate CONNECT method
+	if r.Method != http.MethodConnect {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		log.Error(ErrMethodNotAllowed)
+		return ErrMethodNotAllowed
+	}
+
+	// Dispatch based on :protocol pseudo-header
+	// In quic-go, the :protocol pseudo-header is stored in r.Proto
+	switch r.Proto {
+	case "connect-udp":
+		// Extended CONNECT for UDP (RFC 9298)
+		return h.handleConnectUDP(ctx, w, r, conn.LocalAddr(), ro, log)
+	case "HTTP/3.0", "":
+		// Standard CONNECT for TCP (RFC 9114)
+		// r.Proto is "HTTP/3.0" for standard HTTP/3 CONNECT (no :protocol header)
+		ro.Network = "tcp"
+		return h.handleConnectTCP(ctx, w, r, conn.LocalAddr(), ro, log)
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		log.Errorf("masque: unsupported protocol: %s", r.Proto)
+		return ErrBadRequest
+	}
 }
 
 func (h *masqueHandler) Close() error {
@@ -180,22 +204,7 @@ func (h *masqueHandler) Close() error {
 }
 
 func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	// Validate Extended CONNECT request
-	if r.Method != http.MethodConnect {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		log.Error(ErrMethodNotAllowed)
-		return ErrMethodNotAllowed
-	}
-
-	// Check for :protocol pseudo-header (Extended CONNECT)
-	// In quic-go, the :protocol pseudo-header is stored in r.Proto
-	if r.Proto != "connect-udp" {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Error("masque: expected :protocol=connect-udp, got: ", r.Proto)
-		return ErrBadRequest
-	}
-
-	// Validate capsule-protocol header
+	// Validate capsule-protocol header (required for CONNECT-UDP per RFC 9298)
 	if r.Header.Get("Capsule-Protocol") != "?1" {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Error(ErrCapsuleRequired)
@@ -305,14 +314,19 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: targetAddr})
 	}
 
+	var buf bytes.Buffer
+
 	if h.options.Router != nil {
 		// Use router to dial through chain (for forwarding through upstream proxy)
-		c, err := h.options.Router.Dial(ctx, "udp", targetAddr)
+		c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", targetAddr)
+		ro.Route = buf.String()
 		if err != nil {
 			log.Error("masque: failed to dial through router: ", err)
 			return err
 		}
 		defer c.Close()
+
+		ro.SrcAddr = c.LocalAddr().String()
 
 		// The connection from router should be a PacketConn (e.g., from masque connector)
 		if pc, ok := c.(net.PacketConn); ok {
@@ -332,6 +346,8 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		}
 		defer directConn.Close()
 
+		ro.SrcAddr = directConn.LocalAddr().String()
+
 		// Wrap with fixed target address
 		targetPC = &fixedTargetPacketConn{
 			PacketConn: directConn,
@@ -350,6 +366,147 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		WithBufferSize(h.md.bufferSize)
 
 	return relay.Run(ctx)
+}
+
+func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	// Extract user for logging
+	if u, _, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization")); u != "" {
+		log = log.WithFields(map[string]any{"user": u})
+		ro.ClientID = u
+	}
+
+	// Authenticate
+	clientID, ok := h.authenticate(ctx, w, r, log)
+	if !ok {
+		return errors.New("authentication failed")
+	}
+
+	if clientID != "" {
+		log = log.WithFields(map[string]any{"clientID": clientID})
+		ro.ClientID = clientID
+	}
+	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
+
+	// Target address comes from :authority (r.Host) for standard CONNECT
+	targetAddr := r.Host
+	if targetAddr == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Error("masque: missing target address in :authority")
+		return ErrBadRequest
+	}
+
+	// Ensure port is present
+	if _, port, _ := net.SplitHostPort(targetAddr); port == "" {
+		targetAddr = net.JoinHostPort(strings.Trim(targetAddr, "[]"), "443")
+	}
+
+	ro.Host = targetAddr
+	log = log.WithFields(map[string]any{
+		"target": targetAddr,
+	})
+	log.Debug("connect-tcp request to ", targetAddr)
+
+	// Check bypass
+	if h.options.Bypass != nil &&
+		h.options.Bypass.Contains(ctx, "tcp", targetAddr, bypass.WithService(h.options.Service)) {
+		w.WriteHeader(http.StatusForbidden)
+		log.Debug("bypass: ", targetAddr)
+		return xbypass.ErrBypass
+	}
+
+	// Get HTTP/3 stream
+	streamer, ok := w.(http3.HTTPStreamer)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Error("masque: failed to get HTTP/3 streamer")
+		return errors.New("masque: HTTP/3 streamer not available")
+	}
+
+	// Dial target connection
+	switch h.md.hash {
+	case "host":
+		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: targetAddr})
+	}
+
+	var cc net.Conn
+	var err error
+	var buf bytes.Buffer
+
+	if h.options.Router != nil {
+		cc, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
+	} else {
+		cc, err = net.Dial("tcp", targetAddr)
+	}
+	ro.Route = buf.String()
+
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		log.Error("masque: failed to dial target: ", err)
+		return err
+	}
+	defer cc.Close()
+
+	ro.SrcAddr = cc.LocalAddr().String()
+	ro.DstAddr = cc.RemoteAddr().String()
+
+	// Send 200 OK response
+	w.WriteHeader(http.StatusOK)
+
+	// Flush the response headers
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Get the underlying HTTP/3 stream
+	stream := streamer.HTTPStream()
+
+	// Resolve target address for StreamConn
+	raddr, err := net.ResolveTCPAddr("tcp", targetAddr)
+	if err != nil {
+		log.Error("masque: failed to resolve target address: ", err)
+		return err
+	}
+
+	// Create stream connection wrapping the HTTP/3 stream
+	streamConn := masque_util.NewStreamConn(stream, laddr, raddr)
+	defer streamConn.Close()
+
+	// Wrap with traffic limiter
+	var clientConn net.Conn = streamConn
+	clientConn = traffic_wrapper.WrapConn(
+		clientConn,
+		h.limiter,
+		clientID,
+		limiter.ServiceOption(h.options.Service),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.NetworkOption("tcp"),
+		limiter.AddrOption(targetAddr),
+		limiter.ClientOption(clientID),
+		limiter.SrcOption(ro.RemoteAddr),
+	)
+
+	// Track per-client connection stats
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(clientID)
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		clientConn = stats_wrapper.WrapConn(clientConn, pstats)
+	}
+
+	// Wrap target with metrics
+	cc = metrics.WrapConn(h.options.Service, cc)
+
+	log.Infof("%s <-> %s", ro.RemoteAddr, targetAddr)
+
+	// Bidirectional relay
+	xnet.Pipe(ctx, clientConn, cc)
+
+	log.WithFields(map[string]any{
+		"duration": time.Since(ro.Time),
+	}).Infof("%s >-< %s", ro.RemoteAddr, targetAddr)
+
+	return nil
 }
 
 // fixedTargetPacketConn wraps a PacketConn and always reads/writes to a fixed target address
