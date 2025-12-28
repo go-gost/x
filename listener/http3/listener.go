@@ -75,8 +75,10 @@ func (l *http3Listener) Init(md md.Metadata) (err error) {
 			},
 			MaxIncomingStreams: int64(l.md.maxStreams),
 			Allow0RTT:          true,
+			EnableDatagrams:    l.md.enableDatagrams,
 		},
-		Handler: http.HandlerFunc(l.handleFunc),
+		EnableDatagrams: l.md.enableDatagrams,
+		Handler:         http.HandlerFunc(l.handleFunc),
 	}
 
 	ln, err := quic.ListenAddrEarly(addr, http3.ConfigureTLSConfig(l.server.TLSConfig), l.server.QUICConfig.Clone())
