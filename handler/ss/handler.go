@@ -19,7 +19,6 @@ import (
 	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
-	"github.com/go-gost/x/internal/util/ss"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xstats "github.com/go-gost/x/observer/stats"
@@ -141,7 +140,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		return
 	}
 	target := wrappedConn.Target()
-	conn = ss.ShadowConn(wrappedConn, nil)
+	conn = wrappedConn
 
 	conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 
