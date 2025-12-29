@@ -130,7 +130,7 @@ func (d *mwsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dia
 		if host == "" {
 			host = opts.Addr
 		}
-		s, err := d.initSession(ctx, host, conn, log)
+		s, err := d.initSession(ctx, host, conn, log, opts.Addr)
 		if err != nil {
 			log.Error(err)
 			conn.Close()
@@ -151,7 +151,7 @@ func (d *mwsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dia
 	return cc, nil
 }
 
-func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn, log logger.Logger) (*muxSession, error) {
+func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn, log logger.Logger, optAddr string) (*muxSession, error) {
 	dialer := websocket.Dialer{
 		HandshakeTimeout:  d.md.handshakeTimeout,
 		ReadBufferSize:    d.md.readBufferSize,
@@ -191,7 +191,7 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn,
 			c.SetReadDeadline(time.Now().Add(d.md.keepaliveInterval * 2))
 			return nil
 		})
-		go d.keepAlive(cc)
+		go d.keepAlive(cc, optAddr)
 	}
 
 	// stream multiplex
@@ -203,7 +203,7 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn,
 	return &muxSession{conn: cc, session: session}, nil
 }
 
-func (d *mwsDialer) keepAlive(conn ws_util.WebsocketConn) {
+func (d *mwsDialer) keepAlive(conn ws_util.WebsocketConn, optAddr string) {
 	ticker := time.NewTicker(d.md.keepaliveInterval)
 	defer ticker.Stop()
 
@@ -211,6 +211,11 @@ func (d *mwsDialer) keepAlive(conn ws_util.WebsocketConn) {
 		d.options.Logger.Debug("send ping")
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+
+			d.sessionMutex.Lock()
+			delete(d.sessions, optAddr)
+			d.sessionMutex.Unlock()
+			conn.Close()
 			return
 		}
 		conn.SetWriteDeadline(time.Time{})
