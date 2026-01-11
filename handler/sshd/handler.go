@@ -107,7 +107,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
 	pStats := xstats.Stats{}
-	conn = stats_wrapper.WrapConn(conn, &pStats)
 
 	defer func() {
 		if err != nil {
@@ -133,9 +132,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 
 	switch cc := conn.(type) {
 	case *sshd_util.DirectForwardConn:
-		return h.handleDirectForward(ctx, cc, ro, log)
+		return h.handleDirectForward(ctx, cc, ro, log, &pStats)
 	case *sshd_util.RemoteForwardConn:
-		return h.handleRemoteForward(ctx, cc, ro, log)
+		return h.handleRemoteForward(ctx, cc, ro, log, &pStats)
 	default:
 		err := errors.New("sshd: wrong connection type")
 		log.Error(err)
@@ -143,8 +142,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 }
 
-func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_util.DirectForwardConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	targetAddr := conn.DstAddr()
+func (h *forwardHandler) handleDirectForward(ctx context.Context, c *sshd_util.DirectForwardConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, stats *xstats.Stats) error {
+	targetAddr := c.DstAddr()
+	conn := stats_wrapper.WrapConn(c, stats)
 
 	ro.Host = targetAddr
 	log = log.WithFields(map[string]any{
@@ -235,8 +235,9 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, conn *sshd_uti
 	return nil
 }
 
-func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_util.RemoteForwardConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	req := conn.Request()
+func (h *forwardHandler) handleRemoteForward(ctx context.Context, c *sshd_util.RemoteForwardConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, stats *xstats.Stats) error {
+	req := c.Request()
+	conn := stats_wrapper.WrapConn(c, stats)
 
 	t := tcpipForward{}
 	if err := ssh.Unmarshal(req.Payload, &t); err != nil {
@@ -290,7 +291,7 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 		return err
 	}
 
-	sshConn := conn.Conn()
+	sshConn := c.Conn()
 
 	go func() {
 		for {
@@ -340,7 +341,7 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, conn *sshd_uti
 
 	tm := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	<-conn.Done()
+	<-c.Done()
 	log.WithFields(map[string]any{
 		"duration": time.Since(tm),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
