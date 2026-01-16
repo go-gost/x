@@ -109,6 +109,7 @@ func (d *phtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 			PushPath:      d.md.pushPath,
 			PullPath:      d.md.pullPath,
 			TLSEnabled:    d.tlsEnabled,
+			Header:        d.md.header,
 			Logger:        d.options.Logger,
 		}
 		d.clients[addr] = client

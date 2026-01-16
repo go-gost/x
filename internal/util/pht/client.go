@@ -21,6 +21,7 @@ type Client struct {
 	PushPath      string
 	PullPath      string
 	TLSEnabled    bool
+	Header        http.Header
 	Logger        logger.Logger
 }
 
@@ -43,6 +44,7 @@ func (c *Client) Dial(ctx context.Context, addr string) (net.Conn, error) {
 
 	cn := &clientConn{
 		client:     c.Client,
+		header:     c.Header,
 		rxc:        make(chan []byte, 128),
 		closed:     make(chan struct{}),
 		localAddr:  &net.TCPAddr{},
@@ -72,6 +74,15 @@ func (c *Client) authorize(ctx context.Context, addr string) (token string, err 
 	r, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return
+	}
+
+	// Inject custom headers
+	if c.Header != nil {
+		for k, values := range c.Header {
+			for _, v := range values {
+				r.Header.Add(k, v)
+			}
+		}
 	}
 
 	if c.Logger.IsLevelEnabled(logger.TraceLevel) {

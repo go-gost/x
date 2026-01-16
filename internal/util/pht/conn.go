@@ -17,6 +17,7 @@ import (
 
 type clientConn struct {
 	client     *http.Client
+	header     http.Header
 	pushURL    string
 	pullURL    string
 	buf        []byte
@@ -69,6 +70,15 @@ func (c *clientConn) write(b []byte) (n int, err error) {
 		return
 	}
 
+	// Add custom headers
+	if c.header != nil {
+		for k, values := range c.header {
+			for _, v := range values {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+
 	if c.logger.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
 		c.logger.Trace(string(dump))
@@ -107,6 +117,15 @@ func (c *clientConn) readLoop() {
 			r, err := http.NewRequest(http.MethodGet, c.pullURL, nil)
 			if err != nil {
 				return err
+			}
+
+			// Add custom headers
+			if c.header != nil {
+				for k, values := range c.header {
+					for _, v := range values {
+						r.Header.Add(k, v)
+					}
+				}
 			}
 
 			if c.logger.IsLevelEnabled(logger.TraceLevel) {
