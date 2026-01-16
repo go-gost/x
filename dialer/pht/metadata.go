@@ -1,6 +1,7 @@
 package pht
 
 import (
+	"net/http"
 	"strings"
 
 	mdata "github.com/go-gost/core/metadata"
@@ -19,6 +20,7 @@ type metadata struct {
 	pushPath      string
 	pullPath      string
 	host          string
+	header        http.Header
 }
 
 func (d *phtDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -27,6 +29,7 @@ func (d *phtDialer) parseMetadata(md mdata.Metadata) (err error) {
 		pushPath      = "pushPath"
 		pullPath      = "pullPath"
 		host          = "host"
+		header        = "header"
 	)
 
 	d.md.authorizePath = mdutil.GetString(md, authorizePath)
@@ -43,5 +46,15 @@ func (d *phtDialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	d.md.host = mdutil.GetString(md, host)
+
+	// Parse custom headers
+	if m := mdutil.GetStringMapString(md, header); len(m) > 0 {
+		h := http.Header{}
+		for k, v := range m {
+			h.Add(k, v)
+		}
+		d.md.header = h
+	}
+
 	return
 }
