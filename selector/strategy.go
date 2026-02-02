@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
@@ -102,6 +103,15 @@ func (s *hashStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 	if len(vs) == 0 {
 		return
 	}
+
+	// 打印 基于用户 id 进行 hash  选择最终出口
+	if clientID := xctx.ClientIDFromContext(ctx); clientID != "" {
+		idStr := string(clientID)
+		value := uint64(crc32.ChecksumIEEE([]byte(idStr)))
+		logger.Default().Infof("【命中】从 xctx 拿到 ID: %s, Hash: %d", idStr, value)
+		return vs[value%uint64(len(vs))]
+	}
+
 	if h := xctx.HashFromContext(ctx); h != nil {
 		value := uint64(crc32.ChecksumIEEE([]byte(h.Source)))
 		logger.Default().Tracef("hash %s %d", h.Source, value)
