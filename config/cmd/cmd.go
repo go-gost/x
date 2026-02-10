@@ -453,10 +453,15 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 
 	var auth *config.AuthConfig
 	if url.User != nil {
-		auth = &config.AuthConfig{
-			Username: url.User.Username(),
+		if strings.HasPrefix(url.Scheme, "ss") {
+			auth = decodeSIP002Auth(url)
 		}
-		auth.Password, _ = url.User.Password()
+		if auth == nil {
+			auth = &config.AuthConfig{
+				Username: url.User.Username(),
+			}
+			auth.Password, _ = url.User.Password()
+		}
 	}
 
 	m := map[string]any{}
@@ -598,10 +603,15 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 
 	var auth *config.AuthConfig
 	if url.User != nil {
-		auth = &config.AuthConfig{
-			Username: url.User.Username(),
+		if strings.HasPrefix(url.Scheme, "ss") {
+			auth = decodeSIP002Auth(url)
 		}
-		auth.Password, _ = url.User.Password()
+		if auth == nil {
+			auth = &config.AuthConfig{
+				Username: url.User.Username(),
+			}
+			auth.Password, _ = url.User.Password()
+		}
 	}
 
 	if sauth := mdutil.GetString(md, "auth"); sauth != "" && auth == nil {
@@ -708,10 +718,46 @@ func Norm(s string) (*url.URL, error) {
 	return url, nil
 }
 
-func parseAuthFromCmd(sa string) (*config.AuthConfig, error) {
-	v, err := base64.StdEncoding.DecodeString(sa)
+func decodeSIP002Auth(u *url.URL) *config.AuthConfig {
+	if u.User == nil {
+		return nil
+	}
+	_, hasPassword := u.User.Password()
+	if hasPassword {
+		return nil
+	}
+	username := u.User.Username()
+	if username == "" {
+		return nil
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(username)
 	if err != nil {
-		return nil, err
+		decoded, err = base64.StdEncoding.DecodeString(username)
+		if err != nil {
+			return nil
+		}
+	}
+
+	cs := string(decoded)
+	n := strings.IndexByte(cs, ':')
+	if n < 0 {
+		return nil
+	}
+
+	return &config.AuthConfig{
+		Username: cs[:n],
+		Password: cs[n+1:],
+	}
+}
+
+func parseAuthFromCmd(sa string) (*config.AuthConfig, error) {
+	v, err := base64.RawURLEncoding.DecodeString(sa)
+	if err != nil {
+		v, err = base64.StdEncoding.DecodeString(sa)
+		if err != nil {
+			return nil, err
+		}
 	}
 	cs := string(v)
 	n := strings.IndexByte(cs, ':')
