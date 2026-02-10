@@ -51,9 +51,10 @@ func (c *ssuConnector) Init(md md.Metadata) (err error) {
 		password, _ := c.options.Auth.Password()
 		clientConfig, err := utils.NewClientConfig(method, password)
 		if err != nil {
-			return nil
+			return err
 		}
 		c.client = core.NewUDPClient(clientConfig, 60)
+		c.tcpClient = core.NewTCPClient(clientConfig)
 	}
 
 	return

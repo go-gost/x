@@ -49,7 +49,7 @@ func (c *ssConnector) Init(md md.Metadata) (err error) {
 
 		clientConfig, err := utils.NewClientConfig(method, password)
 		if err != nil {
-			return nil
+			return err
 		}
 
 		c.client = core.NewTCPClient(clientConfig)
