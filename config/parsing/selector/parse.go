@@ -47,6 +47,8 @@ func ParseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node
 		strategy = xs.FIFOStrategy[*chain.Node]()
 	case "hash":
 		strategy = xs.HashStrategy[*chain.Node]()
+	case "parallel":
+		strategy = xs.ParallelStrategy[*chain.Node]()
 	default:
 		strategy = xs.RoundRobinStrategy[*chain.Node]()
 	}
