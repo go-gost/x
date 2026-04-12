@@ -229,6 +229,7 @@ func (c *conn) SetIdle(idle bool) {
 func (c *conn) WriteQueue(b []byte) error {
 	select {
 	case c.rc <- b:
+		c.SetIdle(false)
 		return nil
 
 	case <-c.closed:
