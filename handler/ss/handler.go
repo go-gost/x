@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/go-shadowsocks2/core"
+	"github.com/go-gost/go-shadowsocks2/socks"
 	"github.com/go-gost/go-shadowsocks2/utils"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
@@ -54,19 +56,22 @@ func (h *ssHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
 	}
-	if h.options.Auth != nil {
-		method := h.options.Auth.Username()
-		password, _ := h.options.Auth.Password()
 
-		serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
-		if err != nil {
-			return err
-		}
-		h.server = core.NewTCPServer(serverConfig)
-		err = h.server.Init()
-		if err != nil {
-			return err
-		}
+	if h.options.Auth == nil {
+		return errors.New("ss: auth is required")
+	}
+
+	method := h.options.Auth.Username()
+	password, _ := h.options.Auth.Password()
+
+	serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
+	if err != nil {
+		return err
+	}
+	h.server = core.NewTCPServer(serverConfig)
+	err = h.server.Init()
+	if err != nil {
+		return err
 	}
 
 	for _, ro := range h.options.Recorders {
@@ -139,7 +144,13 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	if err != nil {
 		return
 	}
-	target := wrappedConn.Target()
+	var target socks.Addr
+	if tc, ok := wrappedConn.(interface{ Target() socks.Addr }); ok {
+		target = tc.Target()
+	}
+	if len(target) == 0 {
+		return
+	}
 	conn = wrappedConn
 
 	conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
