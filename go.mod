@@ -28,8 +28,13 @@ require (
 	github.com/pion/dtls/v2 v2.2.6
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.19.1
+<<<<<<< dependabot/go_modules/github.com/quic-go/webtransport-go-0.10.0
 	github.com/quic-go/quic-go v0.59.0
 	github.com/quic-go/webtransport-go v0.10.0
+=======
+	github.com/quic-go/quic-go v0.57.0
+	github.com/quic-go/webtransport-go v0.9.0
+>>>>>>> master
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/sirupsen/logrus v1.9.3
@@ -50,7 +55,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.38.0
 	golang.org/x/text v0.31.0
-	golang.org/x/time v0.11.0
+	golang.org/x/time v0.12.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1
