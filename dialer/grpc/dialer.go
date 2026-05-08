@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/core/dialer"
 	md "github.com/go-gost/core/metadata"
 	xctx "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	pb "github.com/go-gost/x/internal/util/grpc/proto"
 	"github.com/go-gost/x/registry"
@@ -76,6 +77,15 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 				conn, err := options.Dialer.Dial(c, "tcp", s)
 				if err != nil {
 					return nil, err
+				}
+
+				if d.md.tcpKeepalive {
+					xnet.ApplyKeepalive(conn, net.KeepAliveConfig{
+						Enable:   true,
+						Idle:     d.md.tcpKeepaliveIdle,
+						Interval: d.md.tcpKeepaliveInterval,
+						Count:    d.md.tcpKeepaliveCount,
+					})
 				}
 
 				conn = proxyproto.WrapClientConn(

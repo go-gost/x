@@ -22,6 +22,11 @@ type metadata struct {
 	keepalivePermitWithoutStream bool
 	keepaliveMaxConnectionIdle   time.Duration
 	mptcp                        bool
+
+	tcpKeepalive         bool
+	tcpKeepaliveIdle     time.Duration
+	tcpKeepaliveInterval time.Duration
+	tcpKeepaliveCount    int
 }
 
 func (l *grpcListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -50,8 +55,12 @@ func (l *grpcListener) parseMetadata(md mdata.Metadata) (err error) {
 
 		l.md.keepalivePermitWithoutStream = mdutil.GetBool(md, "grpc.keepalive.permitWithoutStream", "keepalive.permitWithoutStream")
 		l.md.keepaliveMaxConnectionIdle = mdutil.GetDuration(md, "grpc.keepalive.maxConnectionIdle", "keepalive.maxConnectionIdle")
-		l.md.mptcp = mdutil.GetBool(md, "mptcp")
 	}
+	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+	l.md.tcpKeepalive = mdutil.GetBool(md, "tcp.keepalive")
+	l.md.tcpKeepaliveIdle = mdutil.GetDuration(md, "tcp.keepalive.idle")
+	l.md.tcpKeepaliveInterval = mdutil.GetDuration(md, "tcp.keepalive.interval")
+	l.md.tcpKeepaliveCount = mdutil.GetInt(md, "tcp.keepalive.count")
 
 	return
 }

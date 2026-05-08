@@ -19,6 +19,11 @@ type metadata struct {
 	keepaliveInterval time.Duration
 	keepaliveTimeout  time.Duration
 	keepaliveRetries  int
+
+	tcpKeepalive         bool
+	tcpKeepaliveIdle     time.Duration
+	tcpKeepaliveInterval time.Duration
+	tcpKeepaliveCount    int
 }
 
 func (d *sshdDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -64,5 +69,11 @@ func (d *sshdDialer) parseMetadata(md mdata.Metadata) (err error) {
 		d.md.keepaliveTimeout = mdutil.GetDuration(md, "keepalive.timeout")
 		d.md.keepaliveRetries = mdutil.GetInt(md, "keepalive.retries")
 	}
+
+	d.md.tcpKeepalive = mdutil.GetBool(md, "tcp.keepalive")
+	d.md.tcpKeepaliveIdle = mdutil.GetDuration(md, "tcp.keepalive.idle")
+	d.md.tcpKeepaliveInterval = mdutil.GetDuration(md, "tcp.keepalive.interval")
+	d.md.tcpKeepaliveCount = mdutil.GetInt(md, "tcp.keepalive.count")
+
 	return
 }

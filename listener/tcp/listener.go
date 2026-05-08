@@ -62,7 +62,7 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 	}
 
 	if l.md.keepalive {
-		ln = newKeepaliveListener(ln, net.KeepAliveConfig{
+		ln = xnet.WrapKeepaliveListener(ln, net.KeepAliveConfig{
 			Enable:   true,
 			Idle:     l.md.keepaliveIdle,
 			Interval: l.md.keepaliveInterval,
@@ -112,24 +112,3 @@ func (l *tcpListener) Close() error {
 	return l.ln.Close()
 }
 
-// keepaliveListener applies TCP keepalive settings to every accepted connection
-// before the connection enters the middleware chain.
-type keepaliveListener struct {
-	net.Listener
-	cfg net.KeepAliveConfig
-}
-
-func newKeepaliveListener(ln net.Listener, cfg net.KeepAliveConfig) net.Listener {
-	return &keepaliveListener{Listener: ln, cfg: cfg}
-}
-
-func (l *keepaliveListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	if tc, ok := conn.(*net.TCPConn); ok {
-		tc.SetKeepAliveConfig(l.cfg)
-	}
-	return conn, nil
-}

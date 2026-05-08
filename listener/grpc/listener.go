@@ -66,6 +66,16 @@ func (l *grpcListener) Init(md md.Metadata) (err error) {
 	if err != nil {
 		return
 	}
+	if l.md.tcpKeepalive {
+		ln = xnet.WrapKeepaliveListener(ln, net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     l.md.tcpKeepaliveIdle,
+			Interval: l.md.tcpKeepaliveInterval,
+			Count:    l.md.tcpKeepaliveCount,
+		})
+		l.logger.Debugf("tcp keepalive enabled: idle=%v interval=%v count=%d",
+			l.md.tcpKeepaliveIdle, l.md.tcpKeepaliveInterval, l.md.tcpKeepaliveCount)
+	}
 
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)

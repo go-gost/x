@@ -1,6 +1,8 @@
 package mtcp
 
 import (
+	"time"
+
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/x/internal/util/mux"
 	mdutil "github.com/go-gost/x/metadata/util"
@@ -11,9 +13,13 @@ const (
 )
 
 type metadata struct {
-	mptcp   bool
-	muxCfg  *mux.Config
-	backlog int
+	mptcp             bool
+	muxCfg            *mux.Config
+	backlog           int
+	keepalive         bool
+	keepaliveIdle     time.Duration
+	keepaliveInterval time.Duration
+	keepaliveCount    int
 }
 
 func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
@@ -37,5 +43,9 @@ func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
 		l.md.backlog = defaultBacklog
 	}
 
+	l.md.keepalive = mdutil.GetBool(md, "keepalive")
+	l.md.keepaliveIdle = mdutil.GetDuration(md, "keepalive.idle")
+	l.md.keepaliveInterval = mdutil.GetDuration(md, "keepalive.interval")
+	l.md.keepaliveCount = mdutil.GetInt(md, "keepalive.count")
 	return
 }

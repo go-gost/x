@@ -11,10 +11,20 @@ import (
 type metadata struct {
 	handshakeTimeout time.Duration
 	muxCfg           *mux.Config
+
+	keepalive         bool
+	keepaliveIdle     time.Duration
+	keepaliveInterval time.Duration
+	keepaliveCount    int
 }
 
 func (d *mtlsDialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.handshakeTimeout = mdutil.GetDuration(md, "handshakeTimeout")
+
+	d.md.keepalive = mdutil.GetBool(md, "keepalive")
+	d.md.keepaliveIdle = mdutil.GetDuration(md, "keepalive.idle")
+	d.md.keepaliveInterval = mdutil.GetDuration(md, "keepalive.interval")
+	d.md.keepaliveCount = mdutil.GetInt(md, "keepalive.count")
 
 	d.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),

@@ -93,6 +93,16 @@ func (l *http2Listener) Init(md md.Metadata) (err error) {
 	if err != nil {
 		return err
 	}
+	if l.md.keepalive {
+		ln = xnet.WrapKeepaliveListener(ln, net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     l.md.keepaliveIdle,
+			Interval: l.md.keepaliveInterval,
+			Count:    l.md.keepaliveCount,
+		})
+		l.log.Debugf("tcp keepalive enabled: idle=%v interval=%v count=%d",
+			l.md.keepaliveIdle, l.md.keepaliveInterval, l.md.keepaliveCount)
+	}
 	l.addr = ln.Addr()
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
