@@ -61,6 +61,17 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
+	if l.md.keepalive {
+		ln = newKeepaliveListener(ln, net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     l.md.keepaliveIdle,
+			Interval: l.md.keepaliveInterval,
+			Count:    l.md.keepaliveCount,
+		})
+		l.logger.Debugf("tcp keepalive enabled: idle=%v interval=%v count=%d",
+			l.md.keepaliveIdle, l.md.keepaliveInterval, l.md.keepaliveCount)
+	}
+
 	l.logger.Debugf("pp: %d", l.options.ProxyProtocol)
 
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
@@ -99,4 +110,26 @@ func (l *tcpListener) Addr() net.Addr {
 
 func (l *tcpListener) Close() error {
 	return l.ln.Close()
+}
+
+// keepaliveListener applies TCP keepalive settings to every accepted connection
+// before the connection enters the middleware chain.
+type keepaliveListener struct {
+	net.Listener
+	cfg net.KeepAliveConfig
+}
+
+func newKeepaliveListener(ln net.Listener, cfg net.KeepAliveConfig) net.Listener {
+	return &keepaliveListener{Listener: ln, cfg: cfg}
+}
+
+func (l *keepaliveListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.SetKeepAliveConfig(l.cfg)
+	}
+	return conn, nil
 }
