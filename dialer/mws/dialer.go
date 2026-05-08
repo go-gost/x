@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xctx "github.com/go-gost/x/ctx"
+	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/mux"
 	ws_util "github.com/go-gost/x/internal/util/ws"
@@ -87,6 +88,15 @@ func (d *mwsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 		conn, err = options.Dialer.Dial(ctx, "tcp", addr)
 		if err != nil {
 			return
+		}
+
+		if d.md.tcpKeepalive {
+			xnet.ApplyKeepalive(conn, net.KeepAliveConfig{
+				Enable:   true,
+				Idle:     d.md.tcpKeepaliveIdle,
+				Interval: d.md.tcpKeepaliveInterval,
+				Count:    d.md.tcpKeepaliveCount,
+			})
 		}
 
 		conn = proxyproto.WrapClientConn(

@@ -3,6 +3,7 @@ package ssh
 import (
 	"fmt"
 	"os"
+	"time"
 
 	mdata "github.com/go-gost/core/metadata"
 	ssh_util "github.com/go-gost/x/internal/util/ssh"
@@ -21,6 +22,11 @@ type metadata struct {
 	authorizedKeys map[string]bool
 	backlog        int
 	mptcp          bool
+
+	keepalive         bool
+	keepaliveIdle     time.Duration
+	keepaliveInterval time.Duration
+	keepaliveCount    int
 }
 
 func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -81,6 +87,11 @@ func (l *sshdListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+
+	l.md.keepalive = mdutil.GetBool(md, "keepalive")
+	l.md.keepaliveIdle = mdutil.GetDuration(md, "keepalive.idle")
+	l.md.keepaliveInterval = mdutil.GetDuration(md, "keepalive.interval")
+	l.md.keepaliveCount = mdutil.GetInt(md, "keepalive.count")
 
 	return
 }

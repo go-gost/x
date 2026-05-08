@@ -27,6 +27,11 @@ type metadata struct {
 	header            http.Header
 	keepaliveInterval time.Duration
 	muxCfg            *mux.Config
+
+	tcpKeepalive         bool
+	tcpKeepaliveIdle     time.Duration
+	tcpKeepaliveInterval time.Duration
+	tcpKeepaliveCount    int
 }
 
 func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -66,6 +71,11 @@ func (d *mwsDialer) parseMetadata(md mdata.Metadata) (err error) {
 			d.md.keepaliveInterval = defaultKeepalivePeriod
 		}
 	}
+
+	d.md.tcpKeepalive = mdutil.GetBool(md, "tcp.keepalive")
+	d.md.tcpKeepaliveIdle = mdutil.GetDuration(md, "tcp.keepalive.idle")
+	d.md.tcpKeepaliveInterval = mdutil.GetDuration(md, "tcp.keepalive.interval")
+	d.md.tcpKeepaliveCount = mdutil.GetInt(md, "tcp.keepalive.count")
 
 	return
 }
