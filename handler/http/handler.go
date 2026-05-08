@@ -428,7 +428,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	start := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
 	// xnet.Transport(conn, cc)
-	xnet.Pipe(ctx, conn, cc)
+	xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.idleTimeout))
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
@@ -694,7 +694,7 @@ func (h *httpHandler) handleUpgradeResponse(ctx context.Context, rw io.ReadWrite
 	}
 
 	// return xnet.Transport(rw, backConn)
-	return xnet.Pipe(ctx, rw, backConn)
+	return xnet.Pipe(ctx, rw, backConn, xnet.WithReadTimeout(h.md.idleTimeout))
 }
 
 func (h *httpHandler) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
@@ -893,7 +893,7 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 
 			req.Write(cc)
 			// xnet.Transport(conn, cc)
-			xnet.Pipe(ctx, conn, cc)
+			xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.idleTimeout))
 			return
 		case "file":
 			f, _ := os.Open(pr.Value)
