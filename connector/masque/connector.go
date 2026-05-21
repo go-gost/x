@@ -26,9 +26,10 @@ func init() {
 }
 
 var (
-	ErrInvalidConnection = errors.New("masque: invalid connection type, expected MasqueConn")
-	ErrConnectFailed     = errors.New("masque: CONNECT-UDP failed")
-	ErrCapsuleRequired   = errors.New("masque: server did not confirm capsule-protocol")
+	ErrInvalidConnection  = errors.New("masque: invalid connection type, expected MasqueConn")
+	ErrConnectFailed      = errors.New("masque: CONNECT failed")
+	ErrCapsuleRequired    = errors.New("masque: server did not confirm capsule-protocol")
+	ErrUnsupportedNetwork = errors.New("masque: unsupported network type")
 )
 
 type masqueConnector struct {
@@ -60,12 +61,109 @@ func (c *masqueConnector) Connect(ctx context.Context, conn net.Conn, network, a
 		"sid":     string(ctxvalue.SidFromContext(ctx)),
 	})
 
-	// Only support UDP
-	if !strings.HasPrefix(network, "udp") {
-		return nil, fmt.Errorf("masque connector only supports UDP, got %s", network)
+	// Dispatch based on network type
+	if strings.HasPrefix(network, "tcp") {
+		return c.connectTCP(ctx, conn, address, log)
+	}
+	if strings.HasPrefix(network, "udp") {
+		return c.connectUDP(ctx, conn, address, log)
 	}
 
-	log.Debugf("connect-udp %s/%s", address, network)
+	log.Errorf("masque: unsupported network: %s", network)
+	return nil, fmt.Errorf("%w: %s", ErrUnsupportedNetwork, network)
+}
+
+func (c *masqueConnector) connectTCP(ctx context.Context, conn net.Conn, address string, log logger.Logger) (net.Conn, error) {
+	log.Debugf("connect-tcp %s", address)
+
+	// Get the MasqueConn from the dialer
+	masqueConn, ok := conn.(*masque_dialer.MasqueConn)
+	if !ok {
+		log.Error(ErrInvalidConnection)
+		return nil, ErrInvalidConnection
+	}
+
+	// Get pre-opened stream from dialer
+	reqStream := masqueConn.GetRequestStream()
+	proxyHost := masqueConn.GetHost()
+
+	// Apply connect timeout to the actual stream
+	if c.md.connectTimeout > 0 {
+		reqStream.SetDeadline(time.Now().Add(c.md.connectTimeout))
+		defer reqStream.SetDeadline(time.Time{})
+	}
+
+	// Ensure stream is closed on any error
+	success := false
+	defer func() {
+		if !success {
+			reqStream.Close()
+		}
+	}()
+
+	// Create standard HTTP/3 CONNECT request (RFC 9114)
+	// No :protocol pseudo-header for standard CONNECT
+	req := &http.Request{
+		Method: http.MethodConnect,
+		URL:    &url.URL{},
+		Host:   address, // Target address goes in :authority
+		Header: http.Header{},
+		Proto:  "HTTP/3.0",
+	}
+
+	// Add proxy authentication if configured
+	if c.options.Auth != nil {
+		u := c.options.Auth.Username()
+		p, _ := c.options.Auth.Password()
+		auth := u + ":" + p
+		encoded := base64.StdEncoding.EncodeToString([]byte(auth))
+		req.Header.Set("Proxy-Authorization", "Basic "+encoded)
+	}
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
+		log.Tracef("CONNECT request: %s Host=%s ProxyHost=%s", req.Method, address, proxyHost)
+	}
+	log.Debugf("sending CONNECT request for %s", address)
+
+	// Send request headers
+	if err := reqStream.SendRequestHeader(req); err != nil {
+		log.Error("masque: failed to send request:", err)
+		return nil, err
+	}
+
+	// Read response
+	resp, err := reqStream.ReadResponse()
+	if err != nil {
+		log.Error("masque: failed to read response:", err)
+		return nil, err
+	}
+
+	if log.IsLevelEnabled(logger.TraceLevel) {
+		log.Tracef("CONNECT response: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Errorf("masque: proxy returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("%w: status %d", ErrConnectFailed, resp.StatusCode)
+	}
+
+	log.Debugf("CONNECT established to %s", address)
+
+	// Resolve target address
+	raddr, err := net.ResolveTCPAddr("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create stream connection for TCP data transfer
+	streamConn := masque_util.NewStreamConnFromRequestStream(reqStream, conn.LocalAddr(), raddr)
+
+	success = true // Prevent defer from closing stream - streamConn now owns it
+	return streamConn, nil
+}
+
+func (c *masqueConnector) connectUDP(ctx context.Context, conn net.Conn, address string, log logger.Logger) (net.Conn, error) {
+	log.Debugf("connect-udp %s", address)
 
 	// Get the MasqueConn from the dialer
 	masqueConn, ok := conn.(*masque_dialer.MasqueConn)
