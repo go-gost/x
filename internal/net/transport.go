@@ -11,7 +11,7 @@ const (
 )
 
 func Transport(rw1, rw2 io.ReadWriter) error {
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() {
 		errc <- CopyBuffer(rw1, rw2, bufferSize)
 	}()

@@ -15,34 +15,32 @@ const (
 	readTimeout    = 30 * time.Second
 )
 
-// Pipe 在两个连接之间建立双向数据通道
 func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	errCh := make(chan error, 2)
 
-	// 启动两个方向的传输
-	go func() {
-		errCh <- pipeHalf(ctx, rw1, rw2)
-	}()
+	go func() { errCh <- pipeHalf(ctx, rw1, rw2) }()
+	go func() { errCh <- pipeHalf(ctx, rw2, rw1) }()
 
-	go func() {
-		errCh <- pipeHalf(ctx, rw2, rw1)
-	}()
-
-	// 等待第一个错误或完成
 	var firstErr error
-	for i := 0; i < 2; i++ {
+	completed := 0
+	for completed < 2 {
 		select {
 		case err := <-errCh:
+			completed++
 			if firstErr == nil && err != nil {
 				firstErr = err
-				cancel() // 一个方向出错，取消另一个
 			}
 		case <-ctx.Done():
-			// 超时或主动取消
 			forceClose(rw1, rw2)
+			for completed < 2 {
+				if err := <-errCh; firstErr == nil && err != nil {
+					firstErr = err
+				}
+				completed++
+			}
+			if firstErr != nil {
+				return firstErr
+			}
 			return ctx.Err()
 		}
 	}
@@ -59,7 +57,6 @@ func pipeHalf(ctx context.Context, src, dst io.ReadWriteCloser) error {
 
 	buf := bufpool.Get(bufferSize / 2)
 	defer bufpool.Put(buf)
-
 
 	// 创建带超时的读取器
 	reader := &readDeadliner{
