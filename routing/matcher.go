@@ -447,7 +447,7 @@ func admission(tree *matchersTree, names ...string) error {
 			return false
 		}
 		if adm := registry.AdmissionRegistry().Get(name); adm != nil {
-			return adm.Admit(context.Background(), req.ClientIP.String())
+			return adm.Admit(context.Background(), "ip", req.ClientIP.String())
 		}
 		return false
 	}

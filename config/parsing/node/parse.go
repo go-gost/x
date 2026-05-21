@@ -142,7 +142,7 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 	opts := []chain.NodeOption{
 		chain.TransportNodeOption(tr),
 		chain.BypassNodeOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
-		chain.ResoloverNodeOption(registry.ResolverRegistry().Get(cfg.Resolver)),
+		chain.ResolverNodeOption(registry.ResolverRegistry().Get(cfg.Resolver)),
 		chain.HostMapperNodeOption(registry.HostsRegistry().Get(cfg.Hosts)),
 		chain.MetadataNodeOption(md),
 		chain.NetworkNodeOption(cfg.Network),

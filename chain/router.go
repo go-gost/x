@@ -43,7 +43,7 @@ func (r *Router) Options() *chain.RouterOptions {
 	return &r.options
 }
 
-func (r *Router) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
+func (r *Router) Dial(ctx context.Context, network, address string, opts ...chain.DialOption) (conn net.Conn, err error) {
 	host := address
 	if h, _, _ := net.SplitHostPort(address); h != "" {
 		host = h
@@ -54,7 +54,7 @@ func (r *Router) Dial(ctx context.Context, network, address string) (conn net.Co
 		"sid": xctx.SidFromContext(ctx),
 	})
 
-	conn, err = r.dial(ctx, network, address, log)
+	conn, err = r.dial(ctx, network, address, log, opts...)
 	if err != nil {
 		r.record(ctx, recorder.RecorderServiceRouterDialAddressError, []byte(host))
 		return
@@ -81,7 +81,7 @@ func (r *Router) record(ctx context.Context, name string, data []byte) error {
 	return nil
 }
 
-func (r *Router) dial(ctx context.Context, network, address string, log logger.Logger) (conn net.Conn, err error) {
+func (r *Router) dial(ctx context.Context, network, address string, log logger.Logger, callerOpts ...chain.DialOption) (conn net.Conn, err error) {
 	count := r.options.Retries + 1
 	if count <= 0 {
 		count = 1
@@ -131,10 +131,12 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			route = DefaultRoute
 		}
 		conn, err = route.Dial(ctx, network, ipAddr,
-			chain.InterfaceDialOption(r.options.IfceName),
-			chain.NetnsDialOption(r.options.Netns),
-			chain.SockOptsDialOption(r.options.SockOpts),
-			chain.LoggerDialOption(log),
+			append([]chain.DialOption{
+				chain.InterfaceDialOption(r.options.IfceName),
+				chain.NetnsDialOption(r.options.Netns),
+				chain.SockOptsDialOption(r.options.SockOpts),
+				chain.LoggerDialOption(log),
+			}, callerOpts...)...,
 		)
 		if err == nil {
 			break

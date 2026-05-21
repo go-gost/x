@@ -104,7 +104,7 @@ func NewAdmission(opts ...Option) admission.Admission {
 	return p
 }
 
-func (p *localAdmission) Admit(ctx context.Context, addr string, opts ...admission.Option) bool {
+func (p *localAdmission) Admit(ctx context.Context, network, addr string, opts ...admission.Option) bool {
 	if addr == "" || p == nil {
 		return true
 	}
@@ -292,9 +292,9 @@ func AdmissionGroup(admissions ...admission.Admission) admission.Admission {
 	}
 }
 
-func (p *admissionGroup) Admit(ctx context.Context, addr string, opts ...admission.Option) bool {
+func (p *admissionGroup) Admit(ctx context.Context, network, addr string, opts ...admission.Option) bool {
 	for _, admission := range p.admissions {
-		if admission != nil && !admission.Admit(ctx, addr, opts...) {
+		if admission != nil && !admission.Admit(ctx, network, addr, opts...) {
 			return false
 		}
 	}

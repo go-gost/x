@@ -47,7 +47,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 		}
 
 		if ln.admission != nil &&
-			!ln.admission.Admit(ctx, clientAddr.String(), admission.WithService(ln.service)) {
+			!ln.admission.Admit(ctx, ln.Addr().Network(), clientAddr.String(), admission.WithService(ln.service)) {
 			c.Close()
 			continue
 		}

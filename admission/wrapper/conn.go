@@ -35,7 +35,7 @@ func WrapConn(admission admission.Admission, c net.Conn) net.Conn {
 
 func (c *serverConn) Read(b []byte) (n int, err error) {
 	if c.admission != nil &&
-		!c.admission.Admit(context.Background(), c.RemoteAddr().String()) {
+		!c.admission.Admit(context.Background(), c.RemoteAddr().Network(), c.RemoteAddr().String()) {
 		err = io.EOF
 		return
 	}
@@ -95,7 +95,7 @@ func (c *packetConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		}
 
 		if c.admission != nil &&
-			!c.admission.Admit(context.Background(), addr.String()) {
+			!c.admission.Admit(context.Background(), addr.Network(), addr.String()) {
 			continue
 		}
 
@@ -159,7 +159,7 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 		if c.admission != nil &&
-			!c.admission.Admit(context.Background(), addr.String()) {
+			!c.admission.Admit(context.Background(), addr.Network(), addr.String()) {
 			continue
 		}
 		return
@@ -174,7 +174,7 @@ func (c *udpConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
 				return
 			}
 			if c.admission != nil &&
-				!c.admission.Admit(context.Background(), addr.String()) {
+				!c.admission.Admit(context.Background(), addr.Network(), addr.String()) {
 				continue
 			}
 			return
@@ -192,7 +192,7 @@ func (c *udpConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAd
 				return
 			}
 			if c.admission != nil &&
-				!c.admission.Admit(context.Background(), addr.String()) {
+				!c.admission.Admit(context.Background(), addr.Network(), addr.String()) {
 				continue
 			}
 			return

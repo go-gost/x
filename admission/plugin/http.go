@@ -13,6 +13,7 @@ import (
 
 type httpPluginRequest struct {
 	Service string `json:"service"`
+	Network string `json:"network"`
 	Addr    string `json:"addr"`
 }
 
@@ -45,7 +46,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) admission.Adm
 	}
 }
 
-func (p *httpPlugin) Admit(ctx context.Context, addr string, opts ...admission.Option) (ok bool) {
+func (p *httpPlugin) Admit(ctx context.Context, network, addr string, opts ...admission.Option) (ok bool) {
 	if p.client == nil {
 		return
 	}
@@ -57,6 +58,7 @@ func (p *httpPlugin) Admit(ctx context.Context, addr string, opts ...admission.O
 
 	rb := httpPluginRequest{
 		Service: options.Service,
+		Network: network,
 		Addr:    addr,
 	}
 	v, err := json.Marshal(&rb)

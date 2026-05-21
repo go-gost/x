@@ -140,7 +140,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 
 	// hop level bypass
 	if p.options.bypass != nil &&
-		p.options.bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOpton(options.Host)) {
+		p.options.bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOption(options.Host)) {
 		return nil
 	}
 
@@ -151,7 +151,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		}
 		// node level bypass
 		if node.Options().Bypass != nil &&
-			node.Options().Bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOpton(options.Host)) {
+			node.Options().Bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOption(options.Host)) {
 			continue
 		}
 
