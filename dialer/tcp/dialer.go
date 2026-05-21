@@ -47,6 +47,18 @@ func (d *tcpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 	conn, err := options.Dialer.Dial(ctx, "tcp", addr)
 	if err != nil {
 		d.logger.Error(err)
+		return conn, err
+	}
+
+	if d.md.keepalive {
+		if tc, ok := conn.(*net.TCPConn); ok {
+			tc.SetKeepAliveConfig(net.KeepAliveConfig{
+				Enable:   true,
+				Idle:     d.md.keepaliveIdle,
+				Interval: d.md.keepaliveInterval,
+				Count:    d.md.keepaliveCount,
+			})
+		}
 	}
 
 	conn = proxyproto.WrapClientConn(

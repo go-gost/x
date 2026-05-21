@@ -16,6 +16,11 @@ type metadata struct {
 	keepaliveTimeout             time.Duration
 	keepalivePermitWithoutStream bool
 	minConnectTimeout            time.Duration
+
+	tcpKeepalive         bool
+	tcpKeepaliveIdle     time.Duration
+	tcpKeepaliveInterval time.Duration
+	tcpKeepaliveCount    int
 }
 
 func (d *grpcDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -38,6 +43,11 @@ func (d *grpcDialer) parseMetadata(md mdata.Metadata) (err error) {
 	if d.md.minConnectTimeout <= 0 {
 		d.md.minConnectTimeout = 30 * time.Second
 	}
+
+	d.md.tcpKeepalive = mdutil.GetBool(md, "tcp.keepalive")
+	d.md.tcpKeepaliveIdle = mdutil.GetDuration(md, "tcp.keepalive.idle")
+	d.md.tcpKeepaliveInterval = mdutil.GetDuration(md, "tcp.keepalive.interval")
+	d.md.tcpKeepaliveCount = mdutil.GetInt(md, "tcp.keepalive.count")
 
 	return
 }
