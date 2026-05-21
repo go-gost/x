@@ -107,7 +107,7 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	start := time.Now()
 
 	ro := &xrecorder.HandlerRecorderObject{
-		Network:    "udp",
+		Network:    "",
 		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
@@ -183,6 +183,7 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	switch r.Proto {
 	case "connect-udp":
 		// Extended CONNECT for UDP (RFC 9298)
+		ro.Network = "udp"
 		return h.handleConnectUDP(ctx, w, r, conn.LocalAddr(), ro, log)
 	case "HTTP/3.0", "":
 		// Standard CONNECT for TCP (RFC 9114)

@@ -83,9 +83,11 @@ func (c *DatagramConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 		return 0, c.remoteAddr, nil
 	}
 
-	// Per RFC 9297: datagram format is context-id (varint) + payload
-	// For CONNECT-UDP with context ID 0, the first byte is 0x00
-	// We strip the context ID prefix
+	// Per RFC 9297: datagram format is context-id (varint) + payload.
+	// For CONNECT-UDP (RFC 9298), the context ID is always 0.
+	// QUIC varints encode 0 as a single byte 0x00.
+	// NOTE: Only context ID 0 is supported. Non-zero context IDs would
+	// require full QUIC varint decoding.
 	if data[0] == 0x00 {
 		data = data[1:]
 	}
@@ -103,7 +105,7 @@ func (c *DatagramConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	default:
 	}
 
-	// Prepend context ID (0x00 for context ID 0)
+	// Prepend context ID (0x00 for CONNECT-UDP context ID 0 per RFC 9298)
 	datagram := make([]byte, 1+len(b))
 	datagram[0] = 0x00 // Context ID = 0
 	copy(datagram[1:], b)

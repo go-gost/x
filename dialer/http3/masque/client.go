@@ -3,6 +3,7 @@ package masque
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
+
+var errReadWriteNotSupported = errors.New("masque: direct Read/Write not supported on MasqueConn, use GetRequestStream")
 
 // Client manages HTTP/3 connections for MASQUE proxying.
 // It wraps a QUIC connection and HTTP/3 client, following the session pattern
@@ -105,17 +108,15 @@ func (c *MasqueConn) GetHost() string {
 }
 
 // Read implements net.Conn but is not used for MASQUE.
-// The actual data transfer happens via datagrams.
+// The actual data transfer happens via datagrams or the request stream.
 func (c *MasqueConn) Read(b []byte) (n int, err error) {
-	// This should not be called - datagrams are used for data transfer
-	return 0, nil
+	return 0, errReadWriteNotSupported
 }
 
 // Write implements net.Conn but is not used for MASQUE.
-// The actual data transfer happens via datagrams.
+// The actual data transfer happens via datagrams or the request stream.
 func (c *MasqueConn) Write(b []byte) (n int, err error) {
-	// This should not be called - datagrams are used for data transfer
-	return len(b), nil
+	return 0, errReadWriteNotSupported
 }
 
 // Close closes the connection.
