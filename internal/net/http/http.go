@@ -17,7 +17,7 @@ func GetClientIP(req *http.Request) net.IP {
 	if sip == "" {
 		ss := strings.Split(req.Header.Get("X-Forwarded-For"), ",")
 		if len(ss) > 0 && ss[0] != "" {
-			sip = ss[0]
+			sip = strings.TrimSpace(ss[0])
 		}
 	}
 	if sip == "" {
@@ -53,7 +53,7 @@ func (p *Body) Read(b []byte) (n int, err error) {
 			b = b[:p.recordSize]
 		}
 		p.buf.Write(b)
-		p.recordSize -= n
+		p.recordSize -= len(b)
 	}
 
 	return
