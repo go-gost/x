@@ -12,15 +12,47 @@ import (
 const (
 	// tcpWaitTimeout implements a TCP half-close timeout.
 	tcpWaitTimeout = 10 * time.Second
-	readTimeout    = 30 * time.Second
 )
 
-func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser) error {
+// PipeOption configures the behaviour of Pipe.
+type PipeOption func(*pipeOptions)
+
+type pipeOptions struct {
+	readTimeout time.Duration
+}
+
+// WithReadTimeout sets an idle read timeout on each pipe half. When a read
+// blocks for longer than d the connection is closed. A value of 0 disables
+// the timeout entirely, relying on TCP keepalives or context cancellation to
+// detect dead connections.
+func WithReadTimeout(d time.Duration) PipeOption {
+	return func(o *pipeOptions) {
+		o.readTimeout = d
+	}
+}
+
+// Pipe 在两个连接之间建立双向数据通道
+func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser, opts ...PipeOption) error {
+	var options pipeOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	errCh := make(chan error, 2)
 
-	go func() { errCh <- pipeHalf(ctx, rw1, rw2) }()
-	go func() { errCh <- pipeHalf(ctx, rw2, rw1) }()
+	// 启动两个方向的传输
+	go func() {
+		errCh <- pipeHalf(ctx, rw1, rw2, options.readTimeout)
+	}()
 
+	go func() {
+		errCh <- pipeHalf(ctx, rw2, rw1, options.readTimeout)
+	}()
+
+	// 等待第一个错误或完成
 	var firstErr error
 	completed := 0
 	for completed < 2 {
@@ -49,7 +81,7 @@ func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser) error {
 }
 
 // pipeHalf 单向管道传输
-func pipeHalf(ctx context.Context, src, dst io.ReadWriteCloser) error {
+func pipeHalf(ctx context.Context, src, dst io.ReadWriteCloser, readTimeout time.Duration) error {
 	defer func() {
 		// 传输完成后执行TCP半关闭
 		halfClose(src, dst)
@@ -70,9 +102,11 @@ func pipeHalf(ctx context.Context, src, dst io.ReadWriteCloser) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// 设置读取超时
-			if rd, ok := src.(interface{ SetReadDeadline(time.Time) error }); ok {
-				rd.SetReadDeadline(time.Now().Add(readTimeout))
+			// 设置读取超时 (仅当配置了超时时)
+			if readTimeout > 0 {
+				if rd, ok := src.(interface{ SetReadDeadline(time.Time) error }); ok {
+					rd.SetReadDeadline(time.Now().Add(readTimeout))
+				}
 			}
 
 			// 读取数据

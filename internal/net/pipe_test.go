@@ -278,7 +278,7 @@ func Test_pipeHalf(t *testing.T) {
 	src := newPipeConn([]byte("hello world"))
 	dst := newPipeConn(nil)
 
-	err := pipeHalf(ctx, src, dst)
+	err := pipeHalf(ctx, src, dst, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func Test_pipeHalf_ReadError(t *testing.T) {
 	src.readErr = readErr
 	dst := newPipeConn(nil)
 
-	err := pipeHalf(ctx, src, dst)
+	err := pipeHalf(ctx, src, dst, 0)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -306,7 +306,7 @@ func Test_pipeHalf_WriteError(t *testing.T) {
 	dst := newPipeConn(nil)
 	dst.writeClosed = true
 
-	err := pipeHalf(ctx, src, dst)
+	err := pipeHalf(ctx, src, dst, 0)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -320,7 +320,7 @@ func Test_pipeHalf_ContextCanceled(t *testing.T) {
 	src.eofAfter = -1
 	dst := newPipeConn(nil)
 
-	err := pipeHalf(ctx, src, dst)
+	err := pipeHalf(ctx, src, dst, 0)
 	if err == nil {
 		t.Error("expected context error, got nil")
 	}

@@ -21,6 +21,7 @@ const (
 
 type metadata struct {
 	readTimeout     time.Duration
+	idleTimeout     time.Duration
 	keepalive       bool
 	compression     bool
 	probeResistance *probeResistance
@@ -55,6 +56,11 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	}
 	if h.md.readTimeout < 0 {
 		h.md.readTimeout = 0
+	}
+
+	h.md.idleTimeout = mdutil.GetDuration(md, "idleTimeout")
+	if h.md.idleTimeout < 0 {
+		h.md.idleTimeout = 0
 	}
 
 	if m := mdutil.GetStringMapString(md, "http.header", "header"); len(m) > 0 {
