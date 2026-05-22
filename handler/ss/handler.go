@@ -149,7 +149,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		target = tc.Target()
 	}
 	if len(target) == 0 {
-		return
+		return errors.New("ss: target not available")
 	}
 	conn = wrappedConn
 

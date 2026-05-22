@@ -58,13 +58,8 @@ func (c *ssuConnector) Init(md md.Metadata) (err error) {
 	}
 	clientConfig.UDPTimeout = time.Minute
 
-	tcpClientConfig, err := utils.NewClientConfig(method, password)
-	if err != nil {
-		return err
-	}
-
 	c.clientCfg = clientConfig
-	c.tcpClient = core.NewTCPClient(tcpClientConfig)
+	c.tcpClient = core.NewTCPClient(clientConfig)
 
 	return
 }
@@ -98,15 +93,11 @@ func (c *ssuConnector) Connect(ctx context.Context, conn net.Conn, network, addr
 	}
 	serverAddr, err := netip.ParseAddrPort(conn.RemoteAddr().String())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ss: parse remote addr %q: %w", conn.RemoteAddr().String(), err)
 	}
 	clientCfg := c.clientCfg
 	clientCfg.ServerAddr = serverAddr
-	client := core.NewUDPClient(core.ClientConfig{
-		Cipher:     clientCfg.Cipher,
-		ServerAddr: serverAddr,
-		UDPTimeout: time.Minute,
-	})
+	client := core.NewUDPClient(clientCfg)
 	if err := client.Init(); err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -191,7 +192,7 @@ func (h *ssuHandler) relayPacketUDP(ctx context.Context, src net.PacketConn, ro 
 			TargetAddr() net.Addr
 		})
 		if !ok {
-			return errors.New("ss: missing udp session context")
+			return fmt.Errorf("ss: missing udp session context for addr %v", addr)
 		}
 
 		targetAddr := ctxAddr.TargetAddr()
@@ -204,9 +205,13 @@ func (h *ssuHandler) relayPacketUDP(ctx context.Context, src net.PacketConn, ro 
 			return nil
 		}
 
+		if targetAddr == nil {
+			return errors.New("ss: target address not available")
+		}
+
 		session := ctxAddr.Session()
 		if session == nil {
-			return errors.New("ss: udp session not found")
+			return fmt.Errorf("ss: udp session not found for addr %v", addr)
 		}
 
 		dstConn, err := h.packetConnForSession(ctx, src, session, ro, log)
@@ -255,10 +260,11 @@ func (h *ssuHandler) packetConnForSession(ctx context.Context, src net.PacketCon
 			h.connMap.Delete(session.Hash())
 		}()
 
-		b := make([]byte, h.md.udpBufferSize)
-		if len(b) == 0 {
-			b = make([]byte, defaultBufferSize)
+		bufSize := h.md.udpBufferSize
+		if bufSize <= 0 {
+			bufSize = defaultBufferSize
 		}
+		b := make([]byte, bufSize)
 
 		for {
 			n, raddr, err := cc.ReadFrom(b)
