@@ -91,3 +91,10 @@ func (p *httpPlugin) Admit(ctx context.Context, network, addr string, opts ...ad
 	}
 	return res.OK
 }
+
+func (p *httpPlugin) Close() error {
+	if p.client != nil {
+		p.client.CloseIdleConnections()
+	}
+	return nil
+}

@@ -45,7 +45,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) admission.Ad
 
 func (p *grpcPlugin) Admit(ctx context.Context, network, addr string, opts ...admission.Option) bool {
 	if p.client == nil {
-		return false
+		return true
 	}
 
 	var options admission.Options

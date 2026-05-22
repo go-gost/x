@@ -145,7 +145,6 @@ func (p *localAdmission) periodReload(ctx context.Context) error {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
 				p.logger.Warnf("reload: %v", err)
-				// return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -278,6 +277,9 @@ func (p *localAdmission) Close() error {
 	}
 	if p.options.redisLoader != nil {
 		p.options.redisLoader.Close()
+	}
+	if p.options.httpLoader != nil {
+		p.options.httpLoader.Close()
 	}
 	return nil
 }
