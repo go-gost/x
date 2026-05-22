@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/go-gost/core/auth"
@@ -91,6 +92,7 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body)
 		return
 	}
 

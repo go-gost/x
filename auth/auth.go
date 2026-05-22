@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -138,16 +139,15 @@ func (p *authenticator) periodReload(ctx context.Context) error {
 	}
 }
 
-func (p *authenticator) reload(ctx context.Context) (err error) {
+func (p *authenticator) reload(ctx context.Context) error {
 	kvs := make(map[string]string)
-	for k, v := range p.options.auths {
-		kvs[k] = v
-	}
+	maps.Copy(kvs, p.options.auths)
 
 	m, err := p.load(ctx)
-	for k, v := range m {
-		kvs[k] = v
+	if err != nil {
+		return err
 	}
+	maps.Copy(kvs, m)
 
 	p.logger.Debugf("load items %d", len(m))
 
@@ -156,47 +156,56 @@ func (p *authenticator) reload(ctx context.Context) (err error) {
 
 	p.kvs = kvs
 
-	return
+	return nil
 }
 
-func (p *authenticator) load(ctx context.Context) (m map[string]string, err error) {
-	m = make(map[string]string)
+func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
+	m := make(map[string]string)
+	var loadErr error
 
 	if p.options.fileLoader != nil {
 		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
 			auths, er := mapper.Map(ctx)
 			if er != nil {
 				p.logger.Warnf("file loader: %v", er)
+				loadErr = er
 			}
 			m = auths
 		} else {
 			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
 				p.logger.Warnf("file loader: %v", er)
+				loadErr = er
 			}
-			if auths, _ := p.parseAuths(r); auths != nil {
+			if auths, err := p.parseAuths(r); err == nil {
 				m = auths
+			} else {
+				p.logger.Warnf("file loader parse: %v", err)
 			}
 		}
 	}
 	if p.options.redisLoader != nil {
-		if mapper, ok := p.options.fileLoader.(loader.Mapper); ok {
+		if mapper, ok := p.options.redisLoader.(loader.Mapper); ok {
 			auths, er := mapper.Map(ctx)
 			if er != nil {
-				p.logger.Warnf("file loader: %v", er)
+				p.logger.Warnf("redis loader: %v", er)
+				if loadErr == nil {
+					loadErr = er
+				}
 			}
-			for k, v := range auths {
-				m[k] = v
-			}
+			maps.Copy(m, auths)
 		} else {
 			r, er := p.options.redisLoader.Load(ctx)
 			if er != nil {
 				p.logger.Warnf("redis loader: %v", er)
-			}
-			if auths, _ := p.parseAuths(r); auths != nil {
-				for k, v := range auths {
-					m[k] = v
+				if loadErr == nil {
+					loadErr = er
 				}
+			}
+			if auths, err := p.parseAuths(r); err == nil {
+				maps.Copy(m, auths)
+			} else {
+				p.logger.Warnf("redis loader parse: %v", err)
 			}
 		}
 	}
@@ -204,15 +213,18 @@ func (p *authenticator) load(ctx context.Context) (m map[string]string, err erro
 		r, er := p.options.httpLoader.Load(ctx)
 		if er != nil {
 			p.logger.Warnf("http loader: %v", er)
-		}
-		if auths, _ := p.parseAuths(r); auths != nil {
-			for k, v := range auths {
-				m[k] = v
+			if loadErr == nil {
+				loadErr = er
 			}
+		}
+		if auths, err := p.parseAuths(r); err == nil {
+			maps.Copy(m, auths)
+		} else {
+			p.logger.Warnf("http loader parse: %v", err)
 		}
 	}
 
-	return
+	return m, loadErr
 }
 
 func (p *authenticator) parseAuths(r io.Reader) (auths map[string]string, err error) {
@@ -253,6 +265,9 @@ func (p *authenticator) Close() error {
 	}
 	if p.options.redisLoader != nil {
 		p.options.redisLoader.Close()
+	}
+	if p.options.httpLoader != nil {
+		p.options.httpLoader.Close()
 	}
 	return nil
 }
