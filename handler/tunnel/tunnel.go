@@ -230,8 +230,8 @@ func (t *Tunnel) Close() error {
 }
 
 func (t *Tunnel) CloseOnIdle() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	select {
 	case <-t.close:

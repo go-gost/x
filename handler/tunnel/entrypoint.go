@@ -440,8 +440,8 @@ func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWrite
 	return xnet.Pipe(ctx, rw, backConn)
 }
 
-func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	errc := make(chan error, 1)
+func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	errc := make(chan error, 2)
 
 	sampleRate := ep.websocketSampleRate
 	if sampleRate == 0 {
@@ -503,6 +503,9 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		}
 	}()
 
+	<-errc
+	rw.Close()
+	cc.Close()
 	<-errc
 	return nil
 }
