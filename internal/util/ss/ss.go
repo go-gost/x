@@ -34,9 +34,16 @@ func (c *shadowConn) Write(b []byte) (n int, err error) {
 	n = len(b) // force byte length consistent
 	if c.wbuf.Len() > 0 {
 		c.wbuf.Write(b) // append the data to the cached header
-		_, err = c.Conn.Write(c.wbuf.Bytes())
+		written, err := c.Conn.Write(c.wbuf.Bytes())
+		if err != nil {
+			// If short write, keep unwritten bytes
+			if written > 0 && written < c.wbuf.Len() {
+				c.wbuf.Next(written)
+			}
+			return written, err
+		}
 		c.wbuf.Reset()
-		return
+		return n, nil
 	}
 	_, err = c.Conn.Write(b)
 	return
