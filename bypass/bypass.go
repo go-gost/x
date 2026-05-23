@@ -1,3 +1,19 @@
+// Package bypass implements address-based routing that decides whether a
+// target address should skip the proxy chain and connect directly.
+//
+// The package provides:
+//   - NewBypass: a local bypass that matches addresses against CIDR, IP range,
+//     wildcard, and exact-address patterns, with optional periodic reload from
+//     file, Redis, or HTTP sources.
+//   - BypassGroup: composes multiple bypass rules; whitelist rules use AND
+//     logic, blacklist rules use OR logic (evaluated only if whitelist fails).
+//   - Plugin-based bypass (gRPC and HTTP) in the plugin sub-package.
+//
+// Matching modes:
+//   - Blacklist (whitelist=false): matching addresses bypass the proxy.
+//     This is the default.
+//   - Whitelist (whitelist=true):  only matching addresses bypass the proxy;
+//     all other addresses go through the proxy chain.
 package bypass
 
 import (
@@ -21,64 +37,102 @@ import (
 	"github.com/gobwas/glob"
 )
 
-var (
-	ErrBypass = errors.New("bypass")
-)
+// ErrBypass is returned by wrapped connections when the bypass rule
+// determines that the connection should skip the proxy chain.
+var ErrBypass = errors.New("bypass")
 
+// options holds the configuration for a localBypass instance.
 type options struct {
-	whitelist   bool
-	matchers    []string
-	fileLoader  loader.Loader
+	// whitelist toggles between blacklist and whitelist mode.
+	// When false (default): matching addresses bypass the proxy.
+	// When true: only matching addresses bypass the proxy.
+	whitelist bool
+
+	// matchers holds static patterns provided at construction time
+	// (e.g. from config file or command-line arguments).
+	matchers []string
+
+	// fileLoader loads patterns from a file or directory.
+	fileLoader loader.Loader
+
+	// redisLoader loads patterns from a Redis set or key.
 	redisLoader loader.Loader
-	httpLoader  loader.Loader
-	period      time.Duration
-	logger      logger.Logger
+
+	// httpLoader loads patterns from an HTTP endpoint.
+	httpLoader loader.Loader
+
+	// period controls the interval between automatic reloads.
+	// Values less than 1 second are clamped to 1 second.
+	// A value <= 0 disables periodic reload (load once at startup).
+	period time.Duration
+
+	// logger is used for debug and warning messages.
+	// Falls back to a no-op logger if nil.
+	logger logger.Logger
 }
 
+// Option is a functional option for configuring a Bypass instance.
 type Option func(opts *options)
 
+// WhitelistOption sets whether the bypass operates in whitelist mode.
+// In whitelist mode, only matching addresses bypass the proxy;
+// all others go through the proxy chain.
 func WhitelistOption(whitelist bool) Option {
 	return func(opts *options) {
 		opts.whitelist = whitelist
 	}
 }
 
+// MatchersOption sets the static bypass patterns (CIDR, IP range, wildcard, or address).
 func MatchersOption(matchers []string) Option {
 	return func(opts *options) {
 		opts.matchers = matchers
 	}
 }
 
+// ReloadPeriodOption sets the interval between automatic reloads of bypass
+// patterns from external loaders (file, Redis, HTTP).
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets the file loader for reading bypass patterns from a
+// file or directory.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets the Redis loader for reading bypass patterns from a
+// Redis set or key.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets the HTTP loader for reading bypass patterns from an
+// HTTP endpoint.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the logger for debug and warning messages.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
 	}
 }
 
+// localBypass is a Bypass that matches addresses against local pattern
+// matchers. Patterns are classified into CIDR, wildcard, IP range, and
+// exact address matchers. Patterns can be loaded from static config,
+// file, Redis, or HTTP sources with optional periodic reload.
 type localBypass struct {
 	cidrMatcher     matcher.Matcher
 	addrMatcher     matcher.Matcher
@@ -90,8 +144,14 @@ type localBypass struct {
 	cancelFunc      context.CancelFunc
 }
 
-// NewBypass creates and initializes a new Bypass.
-// The rules will be reversed if the reverse option is true.
+// NewBypass creates and initializes a local Bypass instance.
+//
+// In blacklist mode (the default), addresses matching any pattern bypass the
+// proxy. In whitelist mode (set via WhitelistOption(true)), only matching
+// addresses bypass the proxy and all others go through the chain.
+//
+// If a reload period is configured, patterns from external loaders are
+// refreshed automatically in the background.
 func NewBypass(opts ...Option) bypass.Bypass {
 	var options options
 	for _, opt := range opts {
@@ -118,6 +178,9 @@ func NewBypass(opts ...Option) bypass.Bypass {
 	return p
 }
 
+// periodReload loads patterns immediately, then periodically reloads them
+// from external sources at the configured interval. Returns when ctx is
+// cancelled.
 func (p *localBypass) periodReload(ctx context.Context) error {
 	if err := p.reload(ctx); err != nil {
 		p.logger.Warnf("reload: %v", err)
@@ -147,6 +210,9 @@ func (p *localBypass) periodReload(ctx context.Context) error {
 	}
 }
 
+// reload loads patterns from all configured sources, classifies them into
+// CIDR, wildcard, IP range, and address matchers, then atomically swaps the
+// matchers under the write lock.
 func (p *localBypass) reload(ctx context.Context) error {
 	v, err := p.load(ctx)
 	if err != nil {
@@ -192,6 +258,7 @@ func (p *localBypass) reload(ctx context.Context) error {
 	return nil
 }
 
+// load reads patterns from file, Redis and HTTP loaders if configured.
 func (p *localBypass) load(ctx context.Context) (patterns []string, err error) {
 	if p.options.fileLoader != nil {
 		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
@@ -244,6 +311,8 @@ func (p *localBypass) load(ctx context.Context) (patterns []string, err error) {
 	return
 }
 
+// parsePatterns reads lines from r, strips comments and whitespace, and
+// returns non-empty lines as patterns.
 func (p *localBypass) parsePatterns(r io.Reader) (patterns []string, err error) {
 	if r == nil {
 		return
@@ -286,6 +355,7 @@ func (p *localBypass) IsWhitelist() bool {
 	return p.options.whitelist
 }
 
+// parseLine removes comments (starting with '#') and trims whitespace.
 func (p *localBypass) parseLine(s string) string {
 	if n := strings.IndexByte(s, '#'); n >= 0 {
 		s = s[:n]
@@ -293,6 +363,9 @@ func (p *localBypass) parseLine(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// matched checks whether addr matches any of the configured patterns.
+// It tries IP range, address, CIDR, and wildcard matchers in order,
+// returning true on the first match.
 func (p *localBypass) matched(addr string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -331,10 +404,18 @@ func (p *localBypass) Close() error {
 	return nil
 }
 
+// bypassGroup composes multiple Bypass instances into a single rule.
+// Whitelist rules use AND logic (all must match); blacklist rules use
+// OR logic (any match triggers bypass) and are only evaluated when
+// whitelist rules fail.
 type bypassGroup struct {
 	bypasses []bypass.Bypass
 }
 
+// BypassGroup creates a composite Bypass from multiple rules.
+// Whitelist rules use AND logic (all must match); blacklist rules use
+// OR logic (any match triggers bypass) and are only evaluated when
+// whitelist rules fail.
 func BypassGroup(bypasses ...bypass.Bypass) bypass.Bypass {
 	return &bypassGroup{
 		bypasses: bypasses,
@@ -374,6 +455,8 @@ func (p *bypassGroup) Contains(ctx context.Context, network, addr string, opts .
 	return status
 }
 
+// IsWhitelist always returns false for a group, since the group may contain
+// a mix of whitelist and blacklist rules.
 func (p *bypassGroup) IsWhitelist() bool {
 	return false
 }

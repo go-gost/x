@@ -1,3 +1,6 @@
+// Package bypass implements plugin-based Bypass using gRPC and HTTP
+// transports. Plugins delegate bypass decisions to an external process
+// or service.
 package bypass
 
 import (
@@ -12,13 +15,18 @@ import (
 	"google.golang.org/grpc"
 )
 
+// grpcPlugin delegates bypass decisions to a remote gRPC service.
+// If the connection fails or the client is nil, all addresses bypass
+// the proxy (fail-open).
 type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.BypassClient
 	log    logger.Logger
 }
 
-// NewGRPCPlugin creates a Bypass plugin based on gRPC.
+// NewGRPCPlugin creates a Bypass that delegates decisions to a gRPC
+// bypass service at addr. On connection failure, the plugin logs the
+// error and returns a fail-open instance (all addresses bypass).
 func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) bypass.Bypass {
 	var options plugin.Options
 	for _, opt := range opts {

@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 )
 
+// httpPluginRequest is the JSON payload sent to a remote HTTP bypass service.
 type httpPluginRequest struct {
 	Service string `json:"service"`
 	Network string `json:"network"`
@@ -21,10 +22,14 @@ type httpPluginRequest struct {
 	Path    string `json:"path"`
 }
 
+// httpPluginResponse is the JSON response from a remote HTTP bypass service.
 type httpPluginResponse struct {
 	OK bool `json:"ok"`
 }
 
+// httpPlugin delegates bypass decisions to a remote HTTP service.
+// All error paths return true (fail-open) so that a down plugin
+// does not block traffic.
 type httpPlugin struct {
 	url    string
 	client *http.Client
@@ -32,7 +37,9 @@ type httpPlugin struct {
 	log    logger.Logger
 }
 
-// NewHTTPPlugin creates an Bypass plugin based on HTTP.
+// NewHTTPPlugin creates a Bypass that delegates decisions to an HTTP
+// bypass service at url. The service should accept POST requests with
+// a JSON body and return {"ok": true/false}.
 func NewHTTPPlugin(name string, url string, opts ...plugin.Option) bypass.Bypass {
 	var options plugin.Options
 	for _, opt := range opts {
