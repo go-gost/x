@@ -62,6 +62,11 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 		return true
 	}
 
+	log := p.log
+	if log == nil {
+		log = logger.Default()
+	}
+
 	var options bypass.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -77,13 +82,13 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {
-		p.log.Error(err)
+		log.Error(err)
 		return true
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(v))
 	if err != nil {
-		p.log.Error(err)
+		log.Error(err)
 		return true
 	}
 
@@ -93,7 +98,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		p.log.Error(err)
+		log.Error(err)
 		return true
 	}
 	defer resp.Body.Close()
@@ -104,7 +109,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 
 	res := httpPluginResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		p.log.Error(err)
+		log.Error(err)
 		return true
 	}
 	return res.OK
