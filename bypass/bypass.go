@@ -325,6 +325,9 @@ func (p *localBypass) Close() error {
 	if p.options.redisLoader != nil {
 		p.options.redisLoader.Close()
 	}
+	if p.options.httpLoader != nil {
+		p.options.httpLoader.Close()
+	}
 	return nil
 }
 
@@ -338,6 +341,11 @@ func BypassGroup(bypasses ...bypass.Bypass) bypass.Bypass {
 	}
 }
 
+// Contains evaluates all bypass rules in the group with the following logic:
+//   - Whitelist rules: ALL must match (AND logic). If any whitelist rule
+//     returns false, the combined whitelist result is false.
+//   - Blacklist rules: only evaluated if the whitelist result is false.
+//     ANY matching blacklist rule triggers a bypass (OR logic).
 func (p *bypassGroup) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	var whitelist, blacklist []bool
 	for _, bypass := range p.bypasses {
