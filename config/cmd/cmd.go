@@ -1,3 +1,7 @@
+// Package cmd converts CLI command-line arguments (-L services, -F chain nodes)
+// into structured config.Config objects. It supports URL-format service and node
+// specifications, metadata query parameters, and auto-detection of handler,
+// listener, dialer, and connector types via the registry.
 package cmd
 
 import (
@@ -20,10 +24,17 @@ import (
 )
 
 var (
-	ErrInvalidCmd  = errors.New("invalid cmd")
+	// ErrInvalidCmd is returned when the command-line argument is empty.
+	ErrInvalidCmd = errors.New("invalid cmd")
+	// ErrInvalidNode is returned when a node specification cannot be parsed.
 	ErrInvalidNode = errors.New("invalid node")
 )
 
+// BuildConfigFromCmd converts CLI service (-L) and node (-F) arguments into
+// a Config. Each node becomes a hop in a single chain; each service produces
+// a ServiceConfig with auto-detected handler and listener types. Query
+// parameters in the URL are parsed as metadata and routed to the appropriate
+// config sub-struct (handler, listener, hop, connector, dialer, service).
 func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) {
 	namePrefix := ""
 	cfg := &config.Config{}
@@ -338,6 +349,9 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 	return cfg, nil
 }
 
+// cutHost extracts the host portion from a URL string, stripping any auth
+// info (user:pass@). It returns the host and the remainder of the URL with
+// the host portion removed.
 func cutHost(s string) (host, remain string) {
 	if s == "" {
 		return
@@ -362,6 +376,10 @@ func cutHost(s string) (host, remain string) {
 	return
 }
 
+// buildServiceConfig converts a parsed service URL into one or more
+// ServiceConfig entries. Scheme components (handler+listener) are resolved
+// against the registry; path-based protocols use the URL path as the listen
+// address; a non-empty path for other protocols indicates forwarding mode.
 func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 	namePrefix := ""
 	if v := os.Getenv("_GOST_ID"); v != "" {
@@ -596,6 +614,9 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 	return services, nil
 }
 
+// buildNodeConfig converts a parsed node URL into a NodeConfig. Scheme
+// components (connector+dialer) are resolved against the registry; path-based
+// dialers use the URL path as the node address.
 func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error) {
 	var connector, dialer string
 	schemes := strings.Split(url.Scheme, "+")
@@ -734,6 +755,9 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 	return node, nil
 }
 
+// Norm normalizes a raw command-line string into a parsed URL. Missing schemes
+// default to "auto" and "https" is rewritten to "http+tls". An empty string
+// returns ErrInvalidCmd.
 func Norm(s string) (*url.URL, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -755,6 +779,9 @@ func Norm(s string) (*url.URL, error) {
 	return url, nil
 }
 
+// decodeSIP002Auth attempts to decode a Shadowsocks SIP002-style URL where
+// the userinfo is a single base64-encoded "method:password" string with no
+// separate password field. Returns nil if the URL does not use this format.
 func decodeSIP002Auth(u *url.URL) *config.AuthConfig {
 	if u.User == nil {
 		return nil
@@ -788,6 +815,8 @@ func decodeSIP002Auth(u *url.URL) *config.AuthConfig {
 	}
 }
 
+// parseAuthFromCmd decodes a base64-encoded "username:password" string from
+// a query parameter into an AuthConfig. The password portion is optional.
 func parseAuthFromCmd(sa string) (*config.AuthConfig, error) {
 	v, err := base64.RawURLEncoding.DecodeString(sa)
 	if err != nil {
@@ -810,6 +839,9 @@ func parseAuthFromCmd(sa string) (*config.AuthConfig, error) {
 	}, nil
 }
 
+// parseSelector extracts selector configuration (strategy, maxFails,
+// failTimeout) from metadata and removes the consumed keys. Returns nil
+// if no selector parameters are present.
 func parseSelector(m map[string]any) *config.SelectorConfig {
 	md := mdx.NewMetadata(m)
 	strategy := mdutil.GetString(md, "strategy")
