@@ -157,6 +157,9 @@ func BuildConfigFromCmd(serviceList, nodeList []string) (*config.Config, error) 
 			}
 			nodeCfg := &config.NodeConfig{}
 			*nodeCfg = *nodeConfig
+			nodeCfg.Connector = copyConnectorConfig(nodeConfig.Connector)
+			nodeCfg.Dialer = copyDialerConfig(nodeConfig.Dialer)
+			nodeCfg.Metadata = copyMap(nodeConfig.Metadata)
 			nodeCfg.Name = fmt.Sprintf("%snode-%d", namePrefix, len(nodes))
 			nodeCfg.Addr = host
 			nodes = append(nodes, nodeCfg)
@@ -488,7 +491,7 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 	}
 	md := mdx.NewMetadata(m)
 
-	if sa := mdutil.GetString(md, "auth"); sa != "" {
+	if sa := mdutil.GetString(md, "auth"); sa != "" && auth == nil {
 		au, err := parseAuthFromCmd(sa)
 		if err != nil {
 			return nil, err
@@ -585,9 +588,9 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		if svc.Forwarder != nil {
 			svc.Forwarder.Selector = selector
 		}
-		svc.Handler = handlerCfg
-		svc.Listener = listenerCfg
-		svc.Metadata = serviceMd
+		svc.Handler = copyHandlerConfig(handlerCfg)
+		svc.Listener = copyListenerConfig(listenerCfg)
+		svc.Metadata = copyMap(serviceMd)
 	}
 
 	return services, nil
@@ -836,4 +839,75 @@ func parseSelector(m map[string]any) *config.SelectorConfig {
 		MaxFails:    maxFails,
 		FailTimeout: failTimeout,
 	}
+}
+
+func copyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	c := make(map[string]any, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
+}
+
+func copyAuth(cfg *config.AuthConfig) *config.AuthConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	return &c
+}
+
+func copyTLS(cfg *config.TLSConfig) *config.TLSConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	return &c
+}
+
+func copyConnectorConfig(cfg *config.ConnectorConfig) *config.ConnectorConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	c.Auth = copyAuth(cfg.Auth)
+	c.TLS = copyTLS(cfg.TLS)
+	c.Metadata = copyMap(cfg.Metadata)
+	return &c
+}
+
+func copyDialerConfig(cfg *config.DialerConfig) *config.DialerConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	c.Auth = copyAuth(cfg.Auth)
+	c.TLS = copyTLS(cfg.TLS)
+	c.Metadata = copyMap(cfg.Metadata)
+	return &c
+}
+
+func copyHandlerConfig(cfg *config.HandlerConfig) *config.HandlerConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	c.Auth = copyAuth(cfg.Auth)
+	c.TLS = copyTLS(cfg.TLS)
+	c.Metadata = copyMap(cfg.Metadata)
+	return &c
+}
+
+func copyListenerConfig(cfg *config.ListenerConfig) *config.ListenerConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	c.Auth = copyAuth(cfg.Auth)
+	c.TLS = copyTLS(cfg.TLS)
+	c.Metadata = copyMap(cfg.Metadata)
+	return &c
 }
