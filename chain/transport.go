@@ -102,5 +102,5 @@ func (tr *Transport) Options() *chain.TransportOptions {
 func (tr *Transport) Copy() chain.Transporter {
 	tr2 := &Transport{}
 	*tr2 = *tr
-	return tr
+	return tr2
 }

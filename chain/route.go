@@ -271,20 +271,29 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		}
 		cc, err = preNode.Options().Transport.Connect(ctx, cn, "tcp", addr)
 		if err != nil {
+			if cc != nil {
+				cc.Close()
+			}
 			cn.Close()
 			if marker != nil {
 				marker.Mark()
 			}
 			return
 		}
-		cc, err = node.Options().Transport.Handshake(ctx, cc)
+		var cc2 net.Conn
+		cc2, err = node.Options().Transport.Handshake(ctx, cc)
 		if err != nil {
+			if cc2 != nil {
+				cc2.Close()
+			}
+			cc.Close()
 			cn.Close()
 			if marker != nil {
 				marker.Mark()
 			}
 			return
 		}
+		cc = cc2
 		if marker != nil {
 			marker.Reset()
 		}

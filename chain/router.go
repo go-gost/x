@@ -90,58 +90,63 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 	log.Debugf("dial %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
-		ctx := ctx
-		if r.options.Timeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
-			defer cancel()
-		}
+		func() {
+			ctx := ctx
+			if r.options.Timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
+				defer cancel()
+			}
 
-		buf := ictx.BufferFromContext(ctx)
-		if buf != nil {
-			buf.Reset()
-		}
+			buf := ictx.BufferFromContext(ctx)
+			if buf != nil {
+				buf.Reset()
+			}
 
-		var ipAddr string
-		ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, log)
-		if err != nil {
-			log.Error(err)
+			var ipAddr string
+			ipAddr, err = xnet.Resolve(ctx, "ip", address, r.options.Resolver, r.options.HostMapper, log)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+
+			if buf != nil {
+				buf.Reset()
+			}
+
+			var route chain.Route
+			if r.options.Chain != nil {
+				route = r.options.Chain.Route(ctx, network, ipAddr, chain.WithHostRouteOption(address))
+			}
+
+			if buf == nil {
+				buf = &bytes.Buffer{}
+			}
+			for _, node := range routePath(route) {
+				fmt.Fprintf(buf, "%s@%s > ", node.Name, node.Addr)
+			}
+			fmt.Fprintf(buf, "%s", ipAddr)
+			log.Debugf("route(retry=%d) %s", i, buf.String())
+
+			if route == nil {
+				route = DefaultRoute
+			}
+			conn, err = route.Dial(ctx, network, ipAddr,
+				append([]chain.DialOption{
+					chain.InterfaceDialOption(r.options.IfceName),
+					chain.NetnsDialOption(r.options.Netns),
+					chain.SockOptsDialOption(r.options.SockOpts),
+					chain.LoggerDialOption(log),
+				}, callerOpts...)...,
+			)
+			if err == nil {
+				return
+			}
+			log.Errorf("route(retry=%d) %s", i, err)
+		}()
+		if conn != nil || err == nil {
 			break
 		}
-
-		if buf != nil {
-			buf.Reset()
-		}
-
-		var route chain.Route
-		if r.options.Chain != nil {
-			route = r.options.Chain.Route(ctx, network, ipAddr, chain.WithHostRouteOption(address))
-		}
-
-		if buf == nil {
-			buf = &bytes.Buffer{}
-		}
-		for _, node := range routePath(route) {
-			fmt.Fprintf(buf, "%s@%s > ", node.Name, node.Addr)
-		}
-		fmt.Fprintf(buf, "%s", ipAddr)
-		log.Debugf("route(retry=%d) %s", i, buf.String())
-
-		if route == nil {
-			route = DefaultRoute
-		}
-		conn, err = route.Dial(ctx, network, ipAddr,
-			append([]chain.DialOption{
-				chain.InterfaceDialOption(r.options.IfceName),
-				chain.NetnsDialOption(r.options.Netns),
-				chain.SockOptsDialOption(r.options.SockOpts),
-				chain.LoggerDialOption(log),
-			}, callerOpts...)...,
-		)
-		if err == nil {
-			break
-		}
-		log.Errorf("route(retry=%d) %s", i, err)
 	}
 
 	return
@@ -160,39 +165,44 @@ func (r *Router) Bind(ctx context.Context, network, address string, opts ...chai
 	log.Debugf("bind on %s/%s", address, network)
 
 	for i := 0; i < count; i++ {
-		ctx := ctx
-		if r.options.Timeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
-			defer cancel()
-		}
+		func() {
+			ctx := ctx
+			if r.options.Timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, r.options.Timeout)
+				defer cancel()
+			}
 
-		var route chain.Route
-		if r.options.Chain != nil {
-			route = r.options.Chain.Route(ctx, network, address)
-			if route == nil || len(route.Nodes()) == 0 {
-				err = ErrEmptyRoute
+			var route chain.Route
+			if r.options.Chain != nil {
+				route = r.options.Chain.Route(ctx, network, address)
+				if route == nil || len(route.Nodes()) == 0 {
+					err = ErrEmptyRoute
+					return
+				}
+			}
+
+			if log.IsLevelEnabled(logger.DebugLevel) {
+				buf := bytes.Buffer{}
+				for _, node := range routePath(route) {
+					fmt.Fprintf(&buf, "%s@%s > ", node.Name, node.Addr)
+				}
+				fmt.Fprintf(&buf, "%s", address)
+				log.Debugf("route(retry=%d) %s", i, buf.String())
+			}
+
+			if route == nil {
+				route = DefaultRoute
+			}
+			ln, err = route.Bind(ctx, network, address, opts...)
+			if err == nil {
 				return
 			}
-		}
-
-		if log.IsLevelEnabled(logger.DebugLevel) {
-			buf := bytes.Buffer{}
-			for _, node := range routePath(route) {
-				fmt.Fprintf(&buf, "%s@%s > ", node.Name, node.Addr)
-			}
-			fmt.Fprintf(&buf, "%s", address)
-			log.Debugf("route(retry=%d) %s", i, buf.String())
-		}
-
-		if route == nil {
-			route = DefaultRoute
-		}
-		ln, err = route.Bind(ctx, network, address, opts...)
-		if err == nil {
+			log.Errorf("route(retry=%d) %s", i, err)
+		}()
+		if ln != nil || err == nil {
 			break
 		}
-		log.Errorf("route(retry=%d) %s", i, err)
 	}
 
 	return
