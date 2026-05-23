@@ -15,10 +15,15 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 )
 
+// Router is the top-level routing entry point. It resolves addresses,
+// selects routes through the configured chain, retries on failure, and
+// records telemetry (address events, errors, metrics).
 type Router struct {
 	options chain.RouterOptions
 }
 
+// NewRouter creates a Router with the given options. Defaults: 15s timeout,
+// a logger with kind "router" if none is provided.
 func NewRouter(opts ...chain.RouterOption) *Router {
 	r := &Router{}
 	for _, opt := range opts {
@@ -43,6 +48,11 @@ func (r *Router) Options() *chain.RouterOptions {
 	return &r.options
 }
 
+// Dial establishes a connection to the target address through the configured
+// chain. It resolves the address, records the dial event, retries up to
+// Retries+1 times, and returns the resulting connection.
+// For UDP networks the returned connection is wrapped as a PacketConn if the
+// underlying transport does not already implement net.PacketConn.
 func (r *Router) Dial(ctx context.Context, network, address string, opts ...chain.DialOption) (conn net.Conn, err error) {
 	host := address
 	if h, _, _ := net.SplitHostPort(address); h != "" {
@@ -152,6 +162,8 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 	return
 }
 
+// Bind creates a listener bound to the given address through the configured
+// chain. It retries up to Retries+1 times on failure.
 func (r *Router) Bind(ctx context.Context, network, address string, opts ...chain.BindOption) (ln net.Listener, err error) {
 	count := r.options.Retries + 1
 	if count <= 0 {

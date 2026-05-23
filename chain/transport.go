@@ -10,12 +10,16 @@ import (
 	net_dialer "github.com/go-gost/x/internal/net/dialer"
 )
 
+// Transport bundles a dialer and connector for a single chain node.
+// It implements chain.Transporter and handles the four operations in
+// the proxy chain lifecycle: Dial, Handshake, Connect, and Bind.
 type Transport struct {
 	dialer    dialer.Dialer
 	connector connector.Connector
 	options   chain.TransportOptions
 }
 
+// NewTransport creates a Transport with the given dialer and connector.
 func NewTransport(d dialer.Dialer, c connector.Connector, opts ...chain.TransportOption) *Transport {
 	tr := &Transport{
 		dialer:    d,
@@ -99,6 +103,9 @@ func (tr *Transport) Options() *chain.TransportOptions {
 	return nil
 }
 
+// Copy returns a shallow copy of the transport. Used by Chain when
+// splitting a route at a multiplex-capable node so the sub-route can
+// be embedded in the transport without sharing state across calls.
 func (tr *Transport) Copy() chain.Transporter {
 	tr2 := &Transport{}
 	*tr2 = *tr

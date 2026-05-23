@@ -19,14 +19,18 @@ import (
 )
 
 var (
+	// ErrEmptyRoute is returned when the configured chain produces a route
+	// with no nodes.
 	ErrEmptyRoute = errors.New("empty route")
 )
 
 var (
+	// DefaultRoute is a fallback route that dials the target directly
+	// without going through any proxy nodes.
 	DefaultRoute chain.Route = &defaultRoute{}
 )
 
-// defaultRoute is a Route without nodes.
+// defaultRoute dials the target directly without any proxy nodes.
 type defaultRoute struct{}
 
 func (*defaultRoute) Dial(ctx context.Context, network, address string, opts ...chain.DialOption) (net.Conn, error) {
@@ -98,6 +102,8 @@ type RouteOptions struct {
 
 type RouteOption func(*RouteOptions)
 
+// ChainRouteOption sets the parent chain on a route, enabling error
+// tracking and metrics for the chain.
 func ChainRouteOption(c chain.Chainer) RouteOption {
 	return func(o *RouteOptions) {
 		o.Chain = c
@@ -109,6 +115,7 @@ type chainRoute struct {
 	options RouteOptions
 }
 
+// NewRoute creates a new route with the given options.
 func NewRoute(opts ...RouteOption) *chainRoute {
 	var options RouteOptions
 	for _, opt := range opts {
