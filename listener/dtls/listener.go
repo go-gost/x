@@ -1,7 +1,6 @@
 package dtls
 
 import (
-	"context"
 	"crypto/tls"
 	"net"
 	"time"
@@ -19,7 +18,7 @@ import (
 	metrics "github.com/go-gost/x/metrics/wrapper"
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 )
 
 func init() {
@@ -62,20 +61,14 @@ func (l *dtlsListener) Init(md md.Metadata) (err error) {
 	if tlsCfg == nil {
 		tlsCfg = &tls.Config{}
 	}
-	config := dtls.Config{
-		Certificates:         tlsCfg.Certificates,
-		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
-		// Create timeout context for accepted connection.
-		ConnectContextMaker: func() (context.Context, func()) {
-			return context.WithTimeout(context.Background(), 30*time.Second)
-		},
-		ClientCAs:      tlsCfg.ClientCAs,
-		ClientAuth:     dtls.ClientAuthType(tlsCfg.ClientAuth),
-		FlightInterval: l.md.flightInterval,
-		MTU:            l.md.mtu,
-	}
-
-	ln, err := dtls.Listen(network, laddr, &config)
+	ln, err := dtls.ListenWithOptions(network, laddr,
+		dtls.WithCertificates(tlsCfg.Certificates...),
+		dtls.WithExtendedMasterSecret(dtls.RequireExtendedMasterSecret),
+		dtls.WithClientCAs(tlsCfg.ClientCAs),
+		dtls.WithClientAuth(dtls.ClientAuthType(tlsCfg.ClientAuth)),
+		dtls.WithFlightInterval(l.md.flightInterval),
+		dtls.WithMTU(l.md.mtu),
+	)
 	if err != nil {
 		return
 	}

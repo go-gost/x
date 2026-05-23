@@ -12,7 +12,7 @@ import (
 	"github.com/go-gost/x/internal/net/proxyproto"
 	xdtls "github.com/go-gost/x/internal/util/dtls"
 	"github.com/go-gost/x/registry"
-	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v3"
 )
 
 func init() {
@@ -64,17 +64,15 @@ func (d *dtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			InsecureSkipVerify: true,
 		}
 	}
-	config := dtls.Config{
-		Certificates:         tlsCfg.Certificates,
-		InsecureSkipVerify:   tlsCfg.InsecureSkipVerify,
-		ExtendedMasterSecret: dtls.RequireExtendedMasterSecret,
-		ServerName:           tlsCfg.ServerName,
-		RootCAs:              tlsCfg.RootCAs,
-		FlightInterval:       d.md.flightInterval,
-		MTU:                  d.md.mtu,
-	}
-
-	c, err := dtls.ClientWithContext(ctx, conn, &config)
+	c, err := dtls.ClientWithOptions(conn.(net.PacketConn), conn.RemoteAddr(),
+		dtls.WithCertificates(tlsCfg.Certificates...),
+		dtls.WithInsecureSkipVerify(tlsCfg.InsecureSkipVerify),
+		dtls.WithExtendedMasterSecret(dtls.RequireExtendedMasterSecret),
+		dtls.WithServerName(tlsCfg.ServerName),
+		dtls.WithRootCAs(tlsCfg.RootCAs),
+		dtls.WithFlightInterval(d.md.flightInterval),
+		dtls.WithMTU(d.md.mtu),
+	)
 	if err != nil {
 		return nil, err
 	}
