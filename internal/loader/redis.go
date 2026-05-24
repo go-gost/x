@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	// DefaultRedisKey is the default Redis key used by loaders.
 	DefaultRedisKey = "gost"
 )
 
@@ -21,26 +22,31 @@ type redisLoaderOptions struct {
 	key      string
 }
 
+// RedisLoaderOption configures a Redis loader.
 type RedisLoaderOption func(opts *redisLoaderOptions)
 
+// DBRedisLoaderOption sets the Redis database number.
 func DBRedisLoaderOption(db int) RedisLoaderOption {
 	return func(opts *redisLoaderOptions) {
 		opts.db = db
 	}
 }
 
+// UsernameRedisLoaderOption sets the Redis username.
 func UsernameRedisLoaderOption(username string) RedisLoaderOption {
 	return func(opts *redisLoaderOptions) {
 		opts.username = username
 	}
 }
 
+// PasswordRedisLoaderOption sets the Redis password.
 func PasswordRedisLoaderOption(password string) RedisLoaderOption {
 	return func(opts *redisLoaderOptions) {
 		opts.password = password
 	}
 }
 
+// KeyRedisLoaderOption sets the Redis key.
 func KeyRedisLoaderOption(key string) RedisLoaderOption {
 	return func(opts *redisLoaderOptions) {
 		opts.key = key
@@ -145,7 +151,9 @@ type redisListLoader struct {
 func RedisListLoader(addr string, opts ...RedisLoaderOption) Loader {
 	var options redisLoaderOptions
 	for _, opt := range opts {
-		opt(&options)
+		if opt != nil {
+			opt(&options)
+		}
 	}
 
 	key := options.key
@@ -190,7 +198,9 @@ type redisHashLoader struct {
 func RedisHashLoader(addr string, opts ...RedisLoaderOption) Loader {
 	var options redisLoaderOptions
 	for _, opt := range opts {
-		opt(&options)
+		if opt != nil {
+			opt(&options)
+		}
 	}
 
 	key := options.key

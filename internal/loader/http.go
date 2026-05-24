@@ -13,8 +13,10 @@ type httpLoaderOptions struct {
 	timeout time.Duration
 }
 
+// HTTPLoaderOption configures an HTTP loader.
 type HTTPLoaderOption func(opts *httpLoaderOptions)
 
+// TimeoutHTTPLoaderOption sets the HTTP request timeout.
 func TimeoutHTTPLoaderOption(timeout time.Duration) HTTPLoaderOption {
 	return func(opts *httpLoaderOptions) {
 		opts.timeout = timeout
@@ -43,7 +45,7 @@ func HTTPLoader(url string, opts ...HTTPLoaderOption) Loader {
 }
 
 func (l *httpLoader) Load(ctx context.Context) (io.Reader, error) {
-	req, err := http.NewRequest(http.MethodGet, l.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l.url, nil)
 	if err != nil {
 		return nil, err
 	}
