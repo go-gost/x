@@ -11,6 +11,9 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 )
 
+// Resolve resolves addr to a concrete IP address. If hosts is non-nil, it is
+// consulted first. If r is non-nil and no host mapping matched, the resolver
+// is used. If neither is available, addr is returned unchanged.
 func Resolve(ctx context.Context, network, addr string, r resolver.Resolver, hosts hosts.HostMapper, log logger.Logger) (string, error) {
 	if addr == "" {
 		return addr, nil

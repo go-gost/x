@@ -18,6 +18,7 @@ var prots = map[waterutil.IPProtocol]string{
 	waterutil.IPv6_ICMP:  "IPv6-ICMP",
 }
 
+// Protocol returns the string name for the given IP protocol number.
 func Protocol(p waterutil.IPProtocol) string {
 	if v, ok := prots[p]; ok {
 		return v

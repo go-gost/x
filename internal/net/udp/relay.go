@@ -13,6 +13,7 @@ const (
 	defaultBufferSize = 4096
 )
 
+// Relay copies UDP datagrams between two net.PacketConns bidirectionally.
 type Relay struct {
 	service    string
 	pc1        net.PacketConn
@@ -22,6 +23,7 @@ type Relay struct {
 	logger     logger.Logger
 }
 
+// NewRelay creates a Relay that copies datagrams between pc1 and pc2.
 func NewRelay(pc1, pc2 net.PacketConn) *Relay {
 	return &Relay{
 		pc1: pc1,
@@ -29,26 +31,31 @@ func NewRelay(pc1, pc2 net.PacketConn) *Relay {
 	}
 }
 
+// WithService sets the service name for bypass matching.
 func (r *Relay) WithService(service string) *Relay {
 	r.service = service
 	return r
 }
 
+// WithBypass sets the bypass matcher to skip certain addresses.
 func (r *Relay) WithBypass(bp bypass.Bypass) *Relay {
 	r.bypass = bp
 	return r
 }
 
+// WithLogger sets the logger.
 func (r *Relay) WithLogger(logger logger.Logger) *Relay {
 	r.logger = logger
 	return r
 }
 
+// WithBufferSize sets the buffer size for copy operations.
 func (r *Relay) WithBufferSize(n int) *Relay {
 	r.bufferSize = n
 	return r
 }
 
+// Run starts the relay. It blocks until an error occurs or ctx is cancelled.
 func (r *Relay) Run(ctx context.Context) (err error) {
 	errc := make(chan error, 2)
 

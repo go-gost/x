@@ -1,3 +1,6 @@
+// Package plugin provides shared utilities for building gRPC and HTTP plugin
+// clients. Both transport types support authentication tokens, TLS
+// configuration, custom headers (HTTP), and connection timeouts.
 package plugin
 
 import (
@@ -13,10 +16,13 @@ import (
 )
 
 const (
+	// GRPC is the transport type identifier for gRPC-based plugins.
 	GRPC string = "grpc"
+	// HTTP is the transport type identifier for HTTP-based plugins.
 	HTTP string = "http"
 )
 
+// Options holds the common configuration for gRPC and HTTP plugin clients.
 type Options struct {
 	Token     string
 	TLSConfig *tls.Config
@@ -24,38 +30,50 @@ type Options struct {
 	Timeout   time.Duration
 }
 
+// Option configures Options.
 type Option func(opts *Options)
 
+// TokenOption sets the authentication token sent with each request.
 func TokenOption(token string) Option {
 	return func(opts *Options) {
 		opts.Token = token
 	}
 }
 
+// TLSConfigOption sets the TLS configuration for transport security.
 func TLSConfigOption(cfg *tls.Config) Option {
 	return func(opts *Options) {
 		opts.TLSConfig = cfg
 	}
 }
 
+// HeaderOption sets custom HTTP headers sent with each request (HTTP transport only).
 func HeaderOption(header http.Header) Option {
 	return func(opts *Options) {
 		opts.Header = header
 	}
 }
 
+// TimeoutOption sets the request timeout (HTTP transport only).
 func TimeoutOption(timeout time.Duration) Option {
 	return func(opts *Options) {
 		opts.Timeout = timeout
 	}
 }
 
+// NewGRPCConn creates a gRPC client connection to addr. If opts is nil or
+// opts.TLSConfig is nil, the connection uses insecure transport. When
+// opts.Token is set, it is attached as per-RPC credentials.
 func NewGRPCConn(addr string, opts *Options) (*grpc.ClientConn, error) {
 	grpcOpts := []grpc.DialOption{
 		// grpc.WithBlock(),
 		grpc.WithConnectParams(grpc.ConnectParams{
 			Backoff: backoff.DefaultConfig,
 		}),
+	}
+	if opts == nil {
+		grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		return grpc.NewClient(addr, grpcOpts...)
 	}
 	if opts.TLSConfig != nil {
 		grpcOpts = append(grpcOpts,
@@ -85,11 +103,30 @@ func (c *rpcCredentials) RequireTransportSecurity() bool {
 	return false
 }
 
+// NewHTTPClient creates an http.Client from opts. If opts is nil, a default
+// client with no timeout is returned. Use HTTPClientTransport to access the
+// underlying transport and close idle connections when the client is no longer
+// needed.
 func NewHTTPClient(opts *Options) *http.Client {
+	if opts == nil {
+		return &http.Client{}
+	}
 	return &http.Client{
 		Timeout: opts.Timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: opts.TLSConfig,
 		},
 	}
+}
+
+// HTTPClientTransport returns the *http.Transport underlying c, or nil if c's
+// transport is not an *http.Transport. Callers that hold the client for a
+// long time should call tr.CloseIdleConnections() when the client is no longer
+// needed.
+func HTTPClientTransport(c *http.Client) *http.Transport {
+	if c == nil {
+		return nil
+	}
+	tr, _ := c.Transport.(*http.Transport)
+	return tr
 }

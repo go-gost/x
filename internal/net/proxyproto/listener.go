@@ -32,6 +32,8 @@ func (ln *listener) Accept() (net.Conn, error) {
 	return &serverConn{Conn: conn, ctx: innerCtx}, nil
 }
 
+// WrapListener wraps ln with a PROXY protocol listener that parses the PROXY
+// header on each accepted connection. If ppv <= 0, ln is returned unchanged.
 func WrapListener(ppv int, ln net.Listener, readHeaderTimeout time.Duration) net.Listener {
 	if ppv <= 0 {
 		return ln

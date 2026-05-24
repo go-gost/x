@@ -31,7 +31,11 @@ func WithReadTimeout(d time.Duration) PipeOption {
 	}
 }
 
-// Pipe 在两个连接之间建立双向数据通道
+// Pipe establishes a bidirectional data channel between two connections.
+// Data read from rw1 is written to rw2, and data read from rw2 is written to
+// rw1. Each direction runs in its own goroutine. Pipe returns the first
+// non-EOF error encountered, or nil if both directions complete cleanly.
+// When ctx is cancelled, both connections are forcefully closed.
 func Pipe(ctx context.Context, rw1, rw2 io.ReadWriteCloser, opts ...PipeOption) error {
 	var options pipeOptions
 	for _, opt := range opts {

@@ -16,13 +16,18 @@ import (
 )
 
 const (
+	// DefaultTimeout is the default dial timeout.
 	DefaultTimeout = 10 * time.Second
 )
 
+// DefaultNetDialer is the default Dialer used when a nil Dialer is provided.
 var (
 	DefaultNetDialer = &Dialer{}
 )
 
+// Dialer is a network dialer with support for interface binding, network
+// namespace switching, and socket marking. The zero value is ready to use
+// via DefaultNetDialer.
 type Dialer struct {
 	Interface string
 	Netns     string
@@ -31,6 +36,10 @@ type Dialer struct {
 	Log       logger.Logger
 }
 
+// Dial connects to addr on the named network. If d is nil, DefaultNetDialer
+// is used. When Netns is set, the dial switches into that network namespace
+// before creating the connection. When Interface is set, it iterates the
+// specified interfaces, trying each address in turn.
 func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
 	if d == nil {
 		d = DefaultNetDialer

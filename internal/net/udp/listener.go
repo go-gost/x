@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/logger"
 )
 
+// ListenConfig configures a UDP-to-TCP-stream listener.
 type ListenConfig struct {
 	Addr           net.Addr
 	Backlog        int
@@ -29,6 +30,9 @@ type listener struct {
 	config   *ListenConfig
 }
 
+// NewListener creates a net.Listener from a net.PacketConn by demultiplexing
+// UDP datagrams into per-client net.Conn streams. Idle connections are cleaned
+// up according to cfg.TTL.
 func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
 	if cfg == nil {
 		cfg = &ListenConfig{}
