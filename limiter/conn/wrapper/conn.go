@@ -1,3 +1,5 @@
+// Package wrapper provides net.Conn and net.Listener wrappers that enforce
+// connection limits.
 package wrapper
 
 import (
@@ -21,6 +23,9 @@ type serverConn struct {
 	limiter limiter.Limiter
 }
 
+// WrapConn wraps a net.Conn with a connection limiter. On Close, the
+// limiter's Allow(-1) is called to decrement the current count. If limiter
+// is nil, the original connection is returned unchanged.
 func WrapConn(limiter limiter.Limiter, c net.Conn) net.Conn {
 	if limiter == nil {
 		return c
@@ -63,5 +68,5 @@ func (c *serverConn) Context() context.Context {
 	if innerCtx, ok := c.Conn.(ctx.Context); ok {
 		return innerCtx.Context()
 	}
-	return nil
+	return context.Background()
 }

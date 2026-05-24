@@ -1,3 +1,7 @@
+// Package conn implements connection limiters that control the number of
+// concurrent connections per key (global, per-IP, or per-CIDR). Limits can
+// be loaded from static configuration, files, Redis, or HTTP endpoints with
+// periodic hot-reload support.
 package conn
 
 import (
@@ -18,8 +22,12 @@ import (
 )
 
 const (
+	// GlobalLimitKey is the special key for a global connection limit that applies
+	// to all connections regardless of their source IP.
 	GlobalLimitKey = "$"
-	IPLimitKey     = "$$"
+	// IPLimitKey is the special key for a per-IP connection limit that applies
+	// as a default when no specific IP or CIDR rule matches.
+	IPLimitKey = "$$"
 )
 
 type options struct {
@@ -33,36 +41,44 @@ type options struct {
 
 type Option func(opts *options)
 
+// LimitsOption sets the static limit rules.
+// Each rule is a string in the form "key limit", e.g. "192.168.1.0/24 100".
 func LimitsOption(limits ...string) Option {
 	return func(opts *options) {
 		opts.limits = limits
 	}
 }
 
+// ReloadPeriodOption sets the period for hot-reloading limit rules from
+// external loaders (file, Redis, HTTP). A period <= 0 disables periodic reload.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets the file loader for reading limit rules from a file.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets the Redis loader for reading limit rules from Redis.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets the HTTP loader for reading limit rules from an HTTP endpoint.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the logger for the connection limiter.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -79,6 +95,8 @@ type connLimiter struct {
 	logger     logger.Logger
 }
 
+// NewConnLimiter creates a new ConnLimiter with the given options.
+// It starts a background goroutine for periodic reload of limit rules.
 func NewConnLimiter(opts ...Option) limiter.ConnLimiter {
 	var options options
 	for _, opt := range opts {
@@ -146,13 +164,14 @@ func (l *connLimiter) Limiter(key string) limiter.Limiter {
 		}
 	}
 
-	var lim limiter.Limiter
-	if len(lims) > 0 {
-		lim = newLimiterGroup(lims...)
+	if len(lims) == 0 {
+		return nil
 	}
+
+	lim := newLimiterGroup(lims...)
 	l.limits[key] = lim
 
-	if lim != nil && l.logger != nil {
+	if l.logger != nil {
 		l.logger.Debugf("conn limit for %s: %d", key, lim.Limit())
 	}
 
@@ -233,7 +252,7 @@ func (l *connLimiter) reload(ctx context.Context) error {
 	return nil
 }
 
-func (l *connLimiter) load(ctx context.Context) (patterns []string, err error) {
+func (l *connLimiter) load(ctx context.Context) (patterns []string, _ error) {
 	if l.options.fileLoader != nil {
 		if lister, ok := l.options.fileLoader.(loader.Lister); ok {
 			list, er := lister.List(ctx)
@@ -335,6 +354,9 @@ func (l *connLimiter) Close() error {
 	}
 	if l.options.redisLoader != nil {
 		l.options.redisLoader.Close()
+	}
+	if l.options.httpLoader != nil {
+		l.options.httpLoader.Close()
 	}
 	return nil
 }

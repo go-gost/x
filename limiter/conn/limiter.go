@@ -12,6 +12,7 @@ type llimiter struct {
 	current int64
 }
 
+// NewLimiter creates a Limiter that allows up to n concurrent connections.
 func NewLimiter(n int) limiter.Limiter {
 	return &llimiter{limit: n}
 }
@@ -21,10 +22,12 @@ func (l *llimiter) Limit() int {
 }
 
 func (l *llimiter) Allow(n int) bool {
+	if n < 0 {
+		atomic.AddInt64(&l.current, int64(n))
+		return true
+	}
 	if atomic.AddInt64(&l.current, int64(n)) > int64(l.limit) {
-		if n > 0 {
-			atomic.AddInt64(&l.current, -int64(n))
-		}
+		atomic.AddInt64(&l.current, -int64(n))
 		return false
 	}
 	return true
