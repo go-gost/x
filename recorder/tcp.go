@@ -17,20 +17,24 @@ type tcpRecorderOptions struct {
 	log      logger.Logger
 }
 
+// TCPRecorderOption configures TCPRecorder options.
 type TCPRecorderOption func(opts *tcpRecorderOptions)
 
+// RecorderTCPRecorderOption sets the recorder name for metrics labeling.
 func RecorderTCPRecorderOption(recorder string) TCPRecorderOption {
 	return func(opts *tcpRecorderOptions) {
 		opts.recorder = recorder
 	}
 }
 
+// TimeoutTCPRecorderOption sets the dial timeout for TCP connections.
 func TimeoutTCPRecorderOption(timeout time.Duration) TCPRecorderOption {
 	return func(opts *tcpRecorderOptions) {
 		opts.timeout = timeout
 	}
 }
 
+// LogTCPRecorderOption sets the logger for the TCP recorder.
 func LogTCPRecorderOption(log logger.Logger) TCPRecorderOption {
 	return func(opts *tcpRecorderOptions) {
 		opts.log = log
@@ -70,6 +74,12 @@ func (r *tcpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Rec
 	}
 	defer c.Close()
 
-	_, err = c.Write(b)
-	return err
+	for written := 0; written < len(b); {
+		n, err := c.Write(b[written:])
+		if err != nil {
+			return err
+		}
+		written += n
+	}
+	return nil
 }

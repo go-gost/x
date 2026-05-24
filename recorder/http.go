@@ -19,20 +19,24 @@ type httpRecorderOptions struct {
 	header   http.Header
 }
 
+// HTTPRecorderOption configures HTTPRecorder options.
 type HTTPRecorderOption func(opts *httpRecorderOptions)
 
+// RecorderHTTPRecorderOption sets the recorder name for metrics labeling.
 func RecorderHTTPRecorderOption(recorder string) HTTPRecorderOption {
 	return func(opts *httpRecorderOptions) {
 		opts.recorder = recorder
 	}
 }
 
+// TimeoutHTTPRecorderOption sets the HTTP client timeout.
 func TimeoutHTTPRecorderOption(timeout time.Duration) HTTPRecorderOption {
 	return func(opts *httpRecorderOptions) {
 		opts.timeout = timeout
 	}
 }
 
+// HeaderHTTPRecorderOption sets additional HTTP headers sent with each record.
 func HeaderHTTPRecorderOption(header http.Header) HTTPRecorderOption {
 	return func(opts *httpRecorderOptions) {
 		opts.header = header
@@ -72,7 +76,7 @@ func HTTPRecorder(url string, opts ...HTTPRecorderOption) recorder.Recorder {
 func (r *httpRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
 	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
 
-	req, err := http.NewRequest(http.MethodPost, r.url, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url, bytes.NewReader(b))
 	if err != nil {
 		return err
 	}

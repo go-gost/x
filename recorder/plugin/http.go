@@ -56,7 +56,10 @@ func (p *httpPlugin) Record(ctx context.Context, b []byte, opts ...recorder.Reco
 		opt(&options)
 	}
 
-	md, _ := json.Marshal(options.Metadata)
+	md, err := json.Marshal(options.Metadata)
+	if err != nil {
+		return err
+	}
 
 	rb := httpPluginRequest{
 		Data:     b,

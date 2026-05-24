@@ -15,14 +15,17 @@ type fileRecorderOptions struct {
 	sep      string
 }
 
+// FileRecorderOption configures FileRecorder options.
 type FileRecorderOption func(opts *fileRecorderOptions)
 
+// RecorderFileRecorderOption sets the recorder name for metrics labeling.
 func RecorderFileRecorderOption(recorder string) FileRecorderOption {
 	return func(opts *fileRecorderOptions) {
 		opts.recorder = recorder
 	}
 }
 
+// SepFileRecorderOption sets the record separator written after each record.
 func SepFileRecorderOption(sep string) FileRecorderOption {
 	return func(opts *fileRecorderOptions) {
 		opts.sep = sep
@@ -34,7 +37,8 @@ type fileRecorder struct {
 	out      io.WriteCloser
 	sep      string
 
-	mu sync.Mutex
+	mu        sync.Mutex
+	closeOnce sync.Once
 }
 
 // FileRecorder records data to file.
@@ -52,6 +56,10 @@ func FileRecorder(out io.WriteCloser, opts ...FileRecorderOption) recorder.Recor
 }
 
 func (r *fileRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	if r.out == nil {
+		return nil
+	}
+
 	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
 
 	if r.sep != "" {
@@ -72,5 +80,11 @@ func (r *fileRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Re
 }
 
 func (r *fileRecorder) Close() error {
-	return r.out.Close()
+	var err error
+	r.closeOnce.Do(func() {
+		if r.out != nil {
+			err = r.out.Close()
+		}
+	})
+	return err
 }

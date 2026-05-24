@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"context"
+	"sync"
 
 	"github.com/go-gost/core/metrics"
 	"github.com/go-gost/core/recorder"
@@ -16,31 +17,37 @@ type redisRecorderOptions struct {
 	password string
 	key      string
 }
+// RedisRecorderOption configures Redis recorder options.
 type RedisRecorderOption func(opts *redisRecorderOptions)
 
+// RecorderRedisRecorderOption sets the recorder name for metrics labeling.
 func RecorderRedisRecorderOption(recorder string) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.recorder = recorder
 	}
 }
 
+// DBRedisRecorderOption sets the Redis database number.
 func DBRedisRecorderOption(db int) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.db = db
 	}
 }
 
+// UsernameRedisRecorderOption sets the Redis username for authentication.
 func UsernameRedisRecorderOption(username string) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.username = username
 	}
 }
+// PasswordRedisRecorderOption sets the Redis password for authentication.
 func PasswordRedisRecorderOption(password string) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.password = password
 	}
 }
 
+// KeyRedisRecorderOption sets the Redis key for storing records.
 func KeyRedisRecorderOption(key string) RedisRecorderOption {
 	return func(opts *redisRecorderOptions) {
 		opts.key = key
@@ -48,9 +55,10 @@ func KeyRedisRecorderOption(key string) RedisRecorderOption {
 }
 
 type redisSetRecorder struct {
-	recorder string
-	client   *redis.Client
-	key      string
+	recorder  string
+	client    *redis.Client
+	key       string
+	closeOnce sync.Once
 }
 
 // RedisSetRecorder records data to a redis set.
@@ -83,13 +91,18 @@ func (r *redisSetRecorder) Record(ctx context.Context, b []byte, opts ...recorde
 }
 
 func (r *redisSetRecorder) Close() error {
-	return r.client.Close()
+	var err error
+	r.closeOnce.Do(func() {
+		err = r.client.Close()
+	})
+	return err
 }
 
 type redisListRecorder struct {
-	recorder string
-	client   *redis.Client
-	key      string
+	recorder  string
+	client    *redis.Client
+	key       string
+	closeOnce sync.Once
 }
 
 // RedisListRecorder records data to a redis list.
@@ -122,13 +135,18 @@ func (r *redisListRecorder) Record(ctx context.Context, b []byte, opts ...record
 }
 
 func (r *redisListRecorder) Close() error {
-	return r.client.Close()
+	var err error
+	r.closeOnce.Do(func() {
+		err = r.client.Close()
+	})
+	return err
 }
 
 type redisSortedSetRecorder struct {
-	recorder string
-	client   *redis.Client
-	key      string
+	recorder  string
+	client    *redis.Client
+	key       string
+	closeOnce sync.Once
 }
 
 // RedisSortedSetRecorder records data to a redis sorted set.
@@ -164,5 +182,9 @@ func (r *redisSortedSetRecorder) Record(ctx context.Context, b []byte, opts ...r
 }
 
 func (r *redisSortedSetRecorder) Close() error {
-	return r.client.Close()
+	var err error
+	r.closeOnce.Do(func() {
+		err = r.client.Close()
+	})
+	return err
 }

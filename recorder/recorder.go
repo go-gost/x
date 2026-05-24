@@ -15,18 +15,22 @@ const (
 	RecorderServiceHandlerTunnel = "recorder.service.handler.tunnel"
 )
 
+// HTTPRequestRecorderObject holds the recorded data of an HTTP request.
 type HTTPRequestRecorderObject struct {
 	ContentLength int64       `json:"contentLength"`
 	Header        http.Header `json:"header"`
 	Body          []byte      `json:"body"`
 }
 
+// HTTPResponseRecorderObject holds the recorded data of an HTTP response.
 type HTTPResponseRecorderObject struct {
 	ContentLength int64       `json:"contentLength"`
 	Header        http.Header `json:"header"`
 	Body          []byte      `json:"body"`
 }
 
+// HTTPRecorderObject holds the recorded HTTP request and response data
+// for a single HTTP transaction.
 type HTTPRecorderObject struct {
 	Host       string                     `json:"host"`
 	Method     string                     `json:"method"`
@@ -38,6 +42,7 @@ type HTTPRecorderObject struct {
 	Response   HTTPResponseRecorderObject `json:"response"`
 }
 
+// WebsocketRecorderObject holds the recorded data of a WebSocket frame.
 type WebsocketRecorderObject struct {
 	From    string `json:"from"`
 	Fin     bool   `json:"fin"`
@@ -51,6 +56,7 @@ type WebsocketRecorderObject struct {
 	Payload []byte `json:"payload"`
 }
 
+// TLSRecorderObject holds the recorded data of a TLS handshake.
 type TLSRecorderObject struct {
 	ServerName        string `json:"serverName"`
 	CipherSuite       string `json:"cipherSuite"`
@@ -61,6 +67,7 @@ type TLSRecorderObject struct {
 	ServerHello       string `json:"serverHello"`
 }
 
+// DNSRecorderObject holds the recorded data of a DNS query and response.
 type DNSRecorderObject struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
@@ -71,6 +78,9 @@ type DNSRecorderObject struct {
 	Cached   bool   `json:"cached"`
 }
 
+// HandlerRecorderObject bundles traffic metadata recorded at the handler
+// level — addresses, protocols, transferred bytes, and optional sub-records
+// for HTTP, WebSocket, TLS, and DNS traffic.
 type HandlerRecorderObject struct {
 	Node       string `json:"node,omitempty"`
 	Service    string `json:"service"`
@@ -98,6 +108,8 @@ type HandlerRecorderObject struct {
 	Time        time.Time                `json:"time"`
 }
 
+// Record serializes the HandlerRecorderObject as JSON and writes it to r.
+// It returns nil if p or r is nil or if p.Time is the zero value.
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
 	if p == nil || r == nil || p.Time.IsZero() {
 		return nil
