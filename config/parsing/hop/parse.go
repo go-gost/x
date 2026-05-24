@@ -54,15 +54,17 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 	var soMark int
 	ifce := cfg.Interface
 	var netns string
+
+	if cfg.SockOpts != nil {
+		soMark = cfg.SockOpts.Mark
+	}
+
 	if cfg.Metadata != nil {
 		md := metadata.NewMetadata(cfg.Metadata)
 		if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "" {
 			ifce = v
 		}
 
-		if cfg.SockOpts != nil {
-			soMark = cfg.SockOpts.Mark
-		}
 		if v := mdutil.GetInt(md, parsing.MDKeySoMark); v > 0 {
 			soMark = v
 		}
@@ -121,7 +123,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			}
 			// node level
 			if v.Netns != "" {
-				m[parsing.MDKeyNetns] = v.Name
+				m[parsing.MDKeyNetns] = v.Netns
 			}
 		}
 

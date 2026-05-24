@@ -1,7 +1,24 @@
 package loader
 
 import (
+	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
+	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/ingress"
+	"github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/core/limiter/rate"
+	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/observer"
+	"github.com/go-gost/core/recorder"
+	reg "github.com/go-gost/core/registry"
+	"github.com/go-gost/core/resolver"
+	"github.com/go-gost/core/router"
+	"github.com/go-gost/core/sd"
+	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	admission_parser "github.com/go-gost/x/config/parsing/admission"
@@ -33,198 +50,256 @@ func Load(cfg *config.Config) error {
 type loader struct{}
 
 func (l *loader) Load(cfg *config.Config) error {
-	logCfg := cfg.Log
-	if logCfg == nil {
-		logCfg = &config.LogConfig{}
+	if cfg == nil {
+		return nil
 	}
-	logger.SetDefault(logger_parser.ParseLogger(&config.LoggerConfig{Log: logCfg}))
 
 	tlsCfg, err := parsing.BuildDefaultTLSConfig(cfg.TLS)
 	if err != nil {
 		return err
 	}
-	parsing.SetDefaultTLSConfig(tlsCfg)
 
 	if err := register(cfg); err != nil {
 		return err
 	}
 
+	logCfg := cfg.Log
+	if logCfg == nil {
+		logCfg = &config.LogConfig{}
+	}
+	logger.SetDefault(logger_parser.ParseLogger(&config.LoggerConfig{Log: logCfg}))
+	parsing.SetDefaultTLSConfig(tlsCfg)
+
 	return nil
 }
 
+// named is a generic name+value pair used to buffer parsed components
+// before registering them.
+type named[T any] struct {
+	name string
+	v    T
+}
+
+// registerGroup replaces all entries in r with the given entries.
+// Old entries are unregistered first; if any new entry fails to register,
+// the group is left partially updated (matching the historical reload
+// behavior for intra-group failures).
+func registerGroup[T any](entries []named[T], r reg.Registry[T]) error {
+	for name := range r.GetAll() {
+		r.Unregister(name)
+	}
+	for _, e := range entries {
+		if err := r.Register(e.name, e.v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// register parses config sections and registers them into the global
+// registries. Groups are processed in dependency order: leaf components
+// first, then hops, chains, and finally services. This ensures that
+// when a component reads its dependencies from registries during
+// parsing, those dependencies are already registered.
 func register(cfg *config.Config) error {
 	if cfg == nil {
 		return nil
 	}
 
-	for name := range registry.LoggerRegistry().GetAll() {
-		registry.LoggerRegistry().Unregister(name)
-	}
-	for _, loggerCfg := range cfg.Loggers {
-		if err := registry.LoggerRegistry().Register(loggerCfg.Name, logger_parser.ParseLogger(loggerCfg)); err != nil {
+	// --- leaf components (no inter-group registry dependencies) ---
+
+	{
+		var entries []named[logger.Logger]
+		for _, c := range cfg.Loggers {
+			entries = append(entries, named[logger.Logger]{c.Name, logger_parser.ParseLogger(c)})
+		}
+		if err := registerGroup(entries, registry.LoggerRegistry()); err != nil {
 			return err
 		}
 	}
 
-	for name := range registry.AutherRegistry().GetAll() {
-		registry.AutherRegistry().Unregister(name)
-	}
-	for _, autherCfg := range cfg.Authers {
-		if err := registry.AutherRegistry().Register(autherCfg.Name, auth_parser.ParseAuther(autherCfg)); err != nil {
+	{
+		var entries []named[auth.Authenticator]
+		for _, c := range cfg.Authers {
+			entries = append(entries, named[auth.Authenticator]{c.Name, auth_parser.ParseAuther(c)})
+		}
+		if err := registerGroup(entries, registry.AutherRegistry()); err != nil {
 			return err
 		}
 	}
 
-	for name := range registry.AdmissionRegistry().GetAll() {
-		registry.AdmissionRegistry().Unregister(name)
-	}
-	for _, admissionCfg := range cfg.Admissions {
-		if err := registry.AdmissionRegistry().Register(admissionCfg.Name, admission_parser.ParseAdmission(admissionCfg)); err != nil {
+	{
+		var entries []named[admission.Admission]
+		for _, c := range cfg.Admissions {
+			entries = append(entries, named[admission.Admission]{c.Name, admission_parser.ParseAdmission(c)})
+		}
+		if err := registerGroup(entries, registry.AdmissionRegistry()); err != nil {
 			return err
 		}
 	}
 
-	for name := range registry.BypassRegistry().GetAll() {
-		registry.BypassRegistry().Unregister(name)
-	}
-	for _, bypassCfg := range cfg.Bypasses {
-		if err := registry.BypassRegistry().Register(bypassCfg.Name, bypass_parser.ParseBypass(bypassCfg)); err != nil {
+	{
+		var entries []named[bypass.Bypass]
+		for _, c := range cfg.Bypasses {
+			entries = append(entries, named[bypass.Bypass]{c.Name, bypass_parser.ParseBypass(c)})
+		}
+		if err := registerGroup(entries, registry.BypassRegistry()); err != nil {
 			return err
 		}
 	}
 
-	for name := range registry.ResolverRegistry().GetAll() {
-		registry.ResolverRegistry().Unregister(name)
-	}
-	for _, resolverCfg := range cfg.Resolvers {
-		r, err := resolver_parser.ParseResolver(resolverCfg)
-		if err != nil {
-			return err
-		}
-		if err := registry.ResolverRegistry().Register(resolverCfg.Name, r); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.HostsRegistry().GetAll() {
-		registry.HostsRegistry().Unregister(name)
-	}
-	for _, hostsCfg := range cfg.Hosts {
-		if err := registry.HostsRegistry().Register(hostsCfg.Name, hosts_parser.ParseHostMapper(hostsCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.IngressRegistry().GetAll() {
-		registry.IngressRegistry().Unregister(name)
-	}
-	for _, ingressCfg := range cfg.Ingresses {
-		if err := registry.IngressRegistry().Register(ingressCfg.Name, ingress_parser.ParseIngress(ingressCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.RouterRegistry().GetAll() {
-		registry.RouterRegistry().Unregister(name)
-	}
-	for _, routerCfg := range cfg.Routers {
-		if err := registry.RouterRegistry().Register(routerCfg.Name, router_parser.ParseRouter(routerCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.SDRegistry().GetAll() {
-		registry.SDRegistry().Unregister(name)
-	}
-	for _, sdCfg := range cfg.SDs {
-		if err := registry.SDRegistry().Register(sdCfg.Name, sd_parser.ParseSD(sdCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.ObserverRegistry().GetAll() {
-		registry.ObserverRegistry().Unregister(name)
-	}
-	for _, observerCfg := range cfg.Observers {
-		if err := registry.ObserverRegistry().Register(observerCfg.Name, observer_parser.ParseObserver(observerCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.RecorderRegistry().GetAll() {
-		registry.RecorderRegistry().Unregister(name)
-	}
-	for _, recorderCfg := range cfg.Recorders {
-		if err := registry.RecorderRegistry().Register(recorderCfg.Name, recorder_parser.ParseRecorder(recorderCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.TrafficLimiterRegistry().GetAll() {
-		registry.TrafficLimiterRegistry().Unregister(name)
-	}
-	for _, limiterCfg := range cfg.Limiters {
-		if err := registry.TrafficLimiterRegistry().Register(limiterCfg.Name, limiter_parser.ParseTrafficLimiter(limiterCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.ConnLimiterRegistry().GetAll() {
-		registry.ConnLimiterRegistry().Unregister(name)
-	}
-	for _, limiterCfg := range cfg.CLimiters {
-		if err := registry.ConnLimiterRegistry().Register(limiterCfg.Name, limiter_parser.ParseConnLimiter(limiterCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.RateLimiterRegistry().GetAll() {
-		registry.RateLimiterRegistry().Unregister(name)
-	}
-	for _, limiterCfg := range cfg.RLimiters {
-		if err := registry.RateLimiterRegistry().Register(limiterCfg.Name, limiter_parser.ParseRateLimiter(limiterCfg)); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.HopRegistry().GetAll() {
-		registry.HopRegistry().Unregister(name)
-	}
-	for _, hopCfg := range cfg.Hops {
-		hop, err := hop_parser.ParseHop(hopCfg, logger.Default())
-		if err != nil {
-			return err
-		}
-		if err := registry.HopRegistry().Register(hopCfg.Name, hop); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.ChainRegistry().GetAll() {
-		registry.ChainRegistry().Unregister(name)
-	}
-	for _, chainCfg := range cfg.Chains {
-		c, err := chain_parser.ParseChain(chainCfg, logger.Default())
-		if err != nil {
-			return err
-		}
-		if err := registry.ChainRegistry().Register(chainCfg.Name, c); err != nil {
-			return err
-		}
-	}
-
-	for name := range registry.ServiceRegistry().GetAll() {
-		registry.ServiceRegistry().Unregister(name)
-	}
-	for _, svcCfg := range cfg.Services {
-		svc, err := service_parser.ParseService(svcCfg)
-		if err != nil {
-			return err
-		}
-		if svc != nil {
-			if err := registry.ServiceRegistry().Register(svcCfg.Name, svc); err != nil {
+	{
+		var entries []named[resolver.Resolver]
+		for _, c := range cfg.Resolvers {
+			r, err := resolver_parser.ParseResolver(c)
+			if err != nil {
 				return err
 			}
+			entries = append(entries, named[resolver.Resolver]{c.Name, r})
+		}
+		if err := registerGroup(entries, registry.ResolverRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[hosts.HostMapper]
+		for _, c := range cfg.Hosts {
+			entries = append(entries, named[hosts.HostMapper]{c.Name, hosts_parser.ParseHostMapper(c)})
+		}
+		if err := registerGroup(entries, registry.HostsRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[ingress.Ingress]
+		for _, c := range cfg.Ingresses {
+			entries = append(entries, named[ingress.Ingress]{c.Name, ingress_parser.ParseIngress(c)})
+		}
+		if err := registerGroup(entries, registry.IngressRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[router.Router]
+		for _, c := range cfg.Routers {
+			entries = append(entries, named[router.Router]{c.Name, router_parser.ParseRouter(c)})
+		}
+		if err := registerGroup(entries, registry.RouterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[sd.SD]
+		for _, c := range cfg.SDs {
+			entries = append(entries, named[sd.SD]{c.Name, sd_parser.ParseSD(c)})
+		}
+		if err := registerGroup(entries, registry.SDRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[observer.Observer]
+		for _, c := range cfg.Observers {
+			entries = append(entries, named[observer.Observer]{c.Name, observer_parser.ParseObserver(c)})
+		}
+		if err := registerGroup(entries, registry.ObserverRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[recorder.Recorder]
+		for _, c := range cfg.Recorders {
+			entries = append(entries, named[recorder.Recorder]{c.Name, recorder_parser.ParseRecorder(c)})
+		}
+		if err := registerGroup(entries, registry.RecorderRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[traffic.TrafficLimiter]
+		for _, c := range cfg.Limiters {
+			entries = append(entries, named[traffic.TrafficLimiter]{c.Name, limiter_parser.ParseTrafficLimiter(c)})
+		}
+		if err := registerGroup(entries, registry.TrafficLimiterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[conn.ConnLimiter]
+		for _, c := range cfg.CLimiters {
+			entries = append(entries, named[conn.ConnLimiter]{c.Name, limiter_parser.ParseConnLimiter(c)})
+		}
+		if err := registerGroup(entries, registry.ConnLimiterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[rate.RateLimiter]
+		for _, c := range cfg.RLimiters {
+			entries = append(entries, named[rate.RateLimiter]{c.Name, limiter_parser.ParseRateLimiter(c)})
+		}
+		if err := registerGroup(entries, registry.RateLimiterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	// --- hops (references bypasses, resolvers, hosts from registries) ---
+
+	{
+		var entries []named[hop.Hop]
+		for _, c := range cfg.Hops {
+			h, err := hop_parser.ParseHop(c, logger.Default())
+			if err != nil {
+				return err
+			}
+			entries = append(entries, named[hop.Hop]{c.Name, h})
+		}
+		if err := registerGroup(entries, registry.HopRegistry()); err != nil {
+			return err
+		}
+	}
+
+	// --- chains (references hops from registries) ---
+
+	{
+		var entries []named[chain.Chainer]
+		for _, c := range cfg.Chains {
+			ch, err := chain_parser.ParseChain(c, logger.Default())
+			if err != nil {
+				return err
+			}
+			entries = append(entries, named[chain.Chainer]{c.Name, ch})
+		}
+		if err := registerGroup(entries, registry.ChainRegistry()); err != nil {
+			return err
+		}
+	}
+
+	// --- services (references chains, resolvers, hosts, recorders,
+	//     limiters, observers, hops from registries) ---
+
+	{
+		var entries []named[service.Service]
+		for _, c := range cfg.Services {
+			svc, err := service_parser.ParseService(c)
+			if err != nil {
+				return err
+			}
+			if svc != nil {
+				entries = append(entries, named[service.Service]{c.Name, svc})
+			}
+		}
+		if err := registerGroup(entries, registry.ServiceRegistry()); err != nil {
+			return err
 		}
 	}
 
