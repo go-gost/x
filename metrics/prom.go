@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"maps"
 	"os"
 
 	"github.com/go-gost/core/metrics"
@@ -14,6 +15,8 @@ type promMetrics struct {
 	histograms map[metrics.MetricName]*prometheus.HistogramVec
 }
 
+// NewMetrics returns a Prometheus-based Metrics implementation. All metrics are
+// automatically registered with the default Prometheus registry.
 func NewMetrics() metrics.Metrics {
 	host, _ := os.Hostname()
 	m := &promMetrics{
@@ -107,35 +110,32 @@ func NewMetrics() metrics.Metrics {
 func (m *promMetrics) Gauge(name metrics.MetricName, labels metrics.Labels) metrics.Gauge {
 	v, ok := m.gauges[name]
 	if !ok {
-		return nil
+		return nopGauge
 	}
-	if labels == nil {
-		labels = metrics.Labels{}
-	}
-	labels["host"] = m.host
-	return v.With(prometheus.Labels(labels))
+	plabels := prometheus.Labels{}
+	maps.Copy(plabels, labels)
+	plabels["host"] = m.host
+	return v.With(plabels)
 }
 
 func (m *promMetrics) Counter(name metrics.MetricName, labels metrics.Labels) metrics.Counter {
 	v, ok := m.counters[name]
 	if !ok {
-		return nil
+		return nopCounter
 	}
-	if labels == nil {
-		labels = metrics.Labels{}
-	}
-	labels["host"] = m.host
-	return v.With(prometheus.Labels(labels))
+	plabels := prometheus.Labels{}
+	maps.Copy(plabels, labels)
+	plabels["host"] = m.host
+	return v.With(plabels)
 }
 
 func (m *promMetrics) Observer(name metrics.MetricName, labels metrics.Labels) metrics.Observer {
 	v, ok := m.histograms[name]
 	if !ok {
-		return nil
+		return nopObserver
 	}
-	if labels == nil {
-		labels = metrics.Labels{}
-	}
-	labels["host"] = m.host
-	return v.With(prometheus.Labels(labels))
+	plabels := prometheus.Labels{}
+	maps.Copy(plabels, labels)
+	plabels["host"] = m.host
+	return v.With(plabels)
 }

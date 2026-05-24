@@ -12,6 +12,8 @@ var (
 
 type noopMetrics struct{}
 
+// Noop returns a Metrics implementation whose counters, gauges, and observers
+// are all no-ops.
 func Noop() metrics.Metrics {
 	return noop
 }

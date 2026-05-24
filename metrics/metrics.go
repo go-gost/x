@@ -34,14 +34,19 @@ var (
 	enabled        atomic.Bool
 )
 
+// Enable enables or disables metrics collection globally. When disabled, all
+// GetCounter, GetGauge, and GetObserver calls return noop implementations.
 func Enable(b bool) {
 	enabled.Store(b)
 }
 
+// IsEnabled reports whether metrics collection is enabled.
 func IsEnabled() bool {
 	return enabled.Load()
 }
 
+// GetCounter returns a Counter for the given name and labels. When metrics are
+// disabled, a noop implementation is returned.
 func GetCounter(name metrics.MetricName, labels metrics.Labels) metrics.Counter {
 	if IsEnabled() {
 		return defaultMetrics.Counter(name, labels)
@@ -49,6 +54,8 @@ func GetCounter(name metrics.MetricName, labels metrics.Labels) metrics.Counter 
 	return noop.Counter(name, labels)
 }
 
+// GetGauge returns a Gauge for the given name and labels. When metrics are
+// disabled, a noop implementation is returned.
 func GetGauge(name metrics.MetricName, labels metrics.Labels) metrics.Gauge {
 	if IsEnabled() {
 		return defaultMetrics.Gauge(name, labels)
@@ -56,6 +63,8 @@ func GetGauge(name metrics.MetricName, labels metrics.Labels) metrics.Gauge {
 	return noop.Gauge(name, labels)
 }
 
+// GetObserver returns an Observer for the given name and labels. When metrics are
+// disabled, a noop implementation is returned.
 func GetObserver(name metrics.MetricName, labels metrics.Labels) metrics.Observer {
 	if IsEnabled() {
 		return defaultMetrics.Observer(name, labels)

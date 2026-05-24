@@ -3,6 +3,7 @@ package service
 import (
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/service"
@@ -10,6 +11,7 @@ import (
 )
 
 const (
+	// DefaultPath is the default HTTP path for the metrics endpoint.
 	DefaultPath = "/metrics"
 )
 
@@ -18,14 +20,17 @@ type options struct {
 	auther auth.Authenticator
 }
 
+// Option configures the metrics service.
 type Option func(*options)
 
+// PathOption sets the HTTP path for the metrics endpoint.
 func PathOption(path string) Option {
 	return func(o *options) {
 		o.path = path
 	}
 }
 
+// AutherOption sets the authenticator for the metrics endpoint.
 func AutherOption(auther auth.Authenticator) Option {
 	return func(o *options) {
 		o.auther = auther
@@ -33,11 +38,14 @@ func AutherOption(auther auth.Authenticator) Option {
 }
 
 type metricService struct {
-	s      *http.Server
-	ln     net.Listener
-	cclose chan struct{}
+	s        *http.Server
+	ln       net.Listener
+	cclose   chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 }
 
+// NewService creates a metrics Service that exposes Prometheus metrics over HTTP.
 func NewService(network, addr string, opts ...Option) (service.Service, error) {
 	if network == "" {
 		network = "tcp"
@@ -75,18 +83,26 @@ func NewService(network, addr string, opts ...Option) (service.Service, error) {
 	}, nil
 }
 
+// Serve starts the metrics HTTP server and blocks until the listener is closed.
 func (s *metricService) Serve() error {
 	return s.s.Serve(s.ln)
 }
 
+// Addr returns the network address the metrics server is listening on.
 func (s *metricService) Addr() net.Addr {
 	return s.ln.Addr()
 }
 
+// Close stops the metrics HTTP server. It is safe to call multiple times.
 func (s *metricService) Close() error {
-	return s.s.Close()
+	s.closeOnce.Do(func() {
+		close(s.cclose)
+		s.closeErr = s.s.Close()
+	})
+	return s.closeErr
 }
 
+// IsClosed reports whether the metrics service has been closed.
 func (s *metricService) IsClosed() bool {
 	select {
 	case <-s.cclose:
