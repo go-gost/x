@@ -81,11 +81,15 @@ func (p *grpcPlugin) SetRule(ctx context.Context, rule *ingress.Rule, opts ...in
 		opt(&options)
 	}
 
-	r, _ := p.client.SetRule(ctx, &proto.SetRuleRequest{
+	r, err := p.client.SetRule(ctx, &proto.SetRuleRequest{
 		Service:  options.Service,
 		Host:     rule.Hostname,
 		Endpoint: rule.Endpoint,
 	})
+	if err != nil {
+		p.log.Error(err)
+		return false
+	}
 	if r == nil {
 		return false
 	}

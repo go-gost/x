@@ -216,7 +216,7 @@ func (ing *localIngress) parseRules(r io.Reader) (rules []*ingress.Rule, err err
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		if rule := ing.parseLine(scanner.Text()); rule.Hostname != "" {
+		if rule := ing.parseLine(scanner.Text()); rule != nil && rule.Hostname != "" {
 			rules = append(rules, rule)
 		}
 	}
@@ -305,6 +305,9 @@ func (ing *localIngress) Close() error {
 	}
 	if ing.options.redisLoader != nil {
 		ing.options.redisLoader.Close()
+	}
+	if ing.options.httpLoader != nil {
+		ing.options.httpLoader.Close()
 	}
 	return nil
 }
