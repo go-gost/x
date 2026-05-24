@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -81,7 +82,7 @@ func (p *httpPlugin) Register(ctx context.Context, service *sd.Service, opts ...
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return errors.New(resp.Status)
 	}
 
 	return nil
@@ -119,7 +120,7 @@ func (p *httpPlugin) Deregister(ctx context.Context, service *sd.Service) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return errors.New(resp.Status)
 	}
 
 	return nil

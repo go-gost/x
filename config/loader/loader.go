@@ -1,3 +1,8 @@
+// Package loader converts a parsed [config.Config] into running components
+// by parsing each config section and registering the results into the
+// global registries. Components are registered in dependency order so that
+// when a component reads its dependencies from registries during parsing,
+// those dependencies are already available.
 package loader
 
 import (
@@ -39,16 +44,24 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// defaultLoader is a singleton loader used by the top-level Load function.
 var (
 	defaultLoader *loader = &loader{}
 )
 
+// Load parses all config sections from cfg and registers the resulting
+// components into the global registries, then sets up the default logger
+// and TLS config.
 func Load(cfg *config.Config) error {
 	return defaultLoader.Load(cfg)
 }
 
+// loader holds no state; its Load method is the entry point for converting
+// a config into running components.
 type loader struct{}
 
+// Load builds the default TLS config, registers all named components from
+// cfg into the global registries, and sets the default logger and TLS config.
 func (l *loader) Load(cfg *config.Config) error {
 	if cfg == nil {
 		return nil
