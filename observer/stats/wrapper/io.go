@@ -12,6 +12,8 @@ type readWriter struct {
 	stats stats.Stats
 }
 
+// WrapReadWriter wraps an io.ReadWriter to track input and output bytes.
+// If rw or stats is nil, the original ReadWriter is returned unchanged.
 func WrapReadWriter(rw io.ReadWriter, stats stats.Stats) io.ReadWriter {
 	if rw == nil || stats == nil {
 		return rw

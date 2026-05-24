@@ -26,6 +26,10 @@ type conn struct {
 	mu     sync.Mutex
 }
 
+// WrapConn wraps a net.Conn to track connection and traffic statistics.
+// It increments total and current connection counts, and tracks bytes
+// read and written. On Close, it decrements the current connection count.
+// If c or pStats is nil, the original conn is returned unchanged.
 func WrapConn(c net.Conn, pStats stats.Stats) net.Conn {
 	if c == nil || pStats == nil {
 		return c
@@ -103,8 +107,10 @@ type packetConn struct {
 	stats stats.Stats
 }
 
+// WrapPacketConn wraps a net.PacketConn to track input and output bytes.
+// If pc or stats is nil, the original conn is returned unchanged.
 func WrapPacketConn(pc net.PacketConn, stats stats.Stats) net.PacketConn {
-	if stats == nil {
+	if pc == nil || stats == nil {
 		return pc
 	}
 	return &packetConn{
@@ -137,7 +143,14 @@ type udpConn struct {
 	stats stats.Stats
 }
 
+// WrapUDPConn wraps a net.PacketConn as a udp.Conn to track input and output
+// bytes across all read/write methods (Read, Write, ReadFrom, WriteTo,
+// ReadFromUDP, ReadMsgUDP, WriteToUDP, WriteMsgUDP). If pc or stats is nil,
+// it returns nil.
 func WrapUDPConn(pc net.PacketConn, stats stats.Stats) udp.Conn {
+	if pc == nil || stats == nil {
+		return nil
+	}
 	return &udpConn{
 		PacketConn: pc,
 		stats:      stats,

@@ -21,6 +21,8 @@ type grpcPlugin struct {
 }
 
 // NewGRPCPlugin creates an Observer plugin based on gRPC.
+// On connection error it returns a no-op observer that logs and discards
+// events rather than nil, so callers can always call Observe safely.
 func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) observer.Observer {
 	var options plugin.Options
 	for _, opt := range opts {
@@ -34,7 +36,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) observer.Obs
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
 		log.Error(err)
-		return nil
+		return &grpcPlugin{log: log} // no-op: client is nil, Observe returns nil
 	}
 
 	p := &grpcPlugin{
@@ -82,6 +84,8 @@ func (p *grpcPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 					TotalErrs:    ev.TotalErrs,
 				},
 			})
+		default:
+			p.log.Warnf("unknown event type: %s", event.Type())
 		}
 	}
 	reply, err := p.client.Observe(ctx, &req)

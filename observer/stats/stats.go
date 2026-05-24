@@ -7,6 +7,10 @@ import (
 	"github.com/go-gost/core/observer/stats"
 )
 
+// Stats implements the stats.Stats interface using atomic counters.
+// When resetTraffic is true, Get for KindInputBytes and KindOutputBytes
+// atomically swaps the counter with zero, returning the value at the time
+// of the call.
 type Stats struct {
 	updated      atomic.Bool
 	totalConns   atomic.Uint64
@@ -17,6 +21,9 @@ type Stats struct {
 	resetTraffic bool
 }
 
+// NewStats creates a new Stats instance. When resetTraffic is true, calls
+// to Get for KindInputBytes and KindOutputBytes atomically reset the counter
+// to zero after reading, which is useful for rate calculations.
 func NewStats(resetTraffic bool) stats.Stats {
 	return &Stats{
 		resetTraffic: resetTraffic,
@@ -85,6 +92,8 @@ func (s *Stats) IsUpdated() bool {
 	return s.updated.Swap(false)
 }
 
+// StatsEvent carries a snapshot of all tracked statistics for a specific
+// service and optional client. It implements observer.Event.
 type StatsEvent struct {
 	Kind    string
 	Service string
@@ -97,6 +106,7 @@ type StatsEvent struct {
 	TotalErrs    uint64
 }
 
+// Type returns observer.EventStats to identify this as a statistics event.
 func (StatsEvent) Type() observer.EventType {
 	return observer.EventStats
 }

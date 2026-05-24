@@ -302,6 +302,11 @@ func (s *defaultService) Close() error {
 	if closer, ok := s.handler.(io.Closer); ok {
 		closer.Close()
 	}
+	if s.options.observer != nil {
+		if closer, ok := s.options.observer.(io.Closer); ok {
+			closer.Close()
+		}
+	}
 	return s.listener.Close()
 }
 

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"io"
 
 	"github.com/go-gost/core/observer"
 )
@@ -36,4 +37,16 @@ func (w *observerWrapper) Observe(ctx context.Context, events []observer.Event, 
 		return nil
 	}
 	return v.Observe(ctx, events, opts...)
+}
+
+// Close closes the underlying observer if it implements io.Closer.
+func (w *observerWrapper) Close() error {
+	v := w.r.get(w.name)
+	if v == nil {
+		return nil
+	}
+	if closer, ok := v.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }

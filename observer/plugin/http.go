@@ -53,6 +53,8 @@ type httpPlugin struct {
 }
 
 // NewHTTPPlugin creates an Observer plugin based on HTTP.
+// Events are POSTed as JSON to the given URL. If url does not have a scheme
+// prefix, "http://" is prepended.
 func NewHTTPPlugin(name string, url string, opts ...plugin.Option) observer.Observer {
 	var options plugin.Options
 	for _, opt := range opts {
@@ -74,7 +76,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) observer.Obse
 }
 
 func (p *httpPlugin) Observe(ctx context.Context, events []observer.Event, opts ...observer.Option) error {
-	if p.client == nil || len(events) == 0 {
+	if len(events) == 0 {
 		return nil
 	}
 
@@ -108,6 +110,8 @@ func (p *httpPlugin) Observe(ctx context.Context, events []observer.Event, opts 
 					TotalErrs:    ev.TotalErrs,
 				},
 			})
+		default:
+			p.log.Warnf("unknown event type: %s", e.Type())
 		}
 	}
 	v, err := json.Marshal(r)

@@ -11,8 +11,11 @@ type listener struct {
 	net.Listener
 }
 
+// WrapListener wraps a net.Listener to track connection statistics. Each
+// accepted connection is wrapped via WrapConn to count connections and bytes.
+// If ln or stats is nil, the original listener is returned unchanged.
 func WrapListener(ln net.Listener, stats stats.Stats) net.Listener {
-	if stats == nil {
+	if ln == nil || stats == nil {
 		return ln
 	}
 
