@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/go-gost/core/chain"
@@ -114,4 +115,15 @@ func (p *httpPlugin) Select(ctx context.Context, opts ...hop.SelectOption) *chai
 		return nil
 	}
 	return node
+}
+
+func (p *httpPlugin) Close() error {
+	if p.client == nil {
+		return nil
+	}
+	p.client.CloseIdleConnections()
+	if tr, ok := p.client.Transport.(io.Closer); ok {
+		return tr.Close()
+	}
+	return nil
 }

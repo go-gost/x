@@ -13,13 +13,14 @@ import (
 	"google.golang.org/grpc"
 )
 
+// grpcPlugin is a HostMapper that delegates lookups to a remote gRPC service.
 type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.HostMapperClient
 	log    logger.Logger
 }
 
-// NewGRPCPlugin creates a HostMapper plugin based on gRPC.
+// NewGRPCPlugin creates a HostMapper plugin that delegates lookups to a remote gRPC endpoint.
 func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hosts.HostMapper {
 	var options plugin.Options
 	for _, opt := range opts {
@@ -44,6 +45,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) hosts.HostMa
 	return p
 }
 
+// Lookup calls the gRPC HostMapper service and returns the resolved IPs.
 func (p *grpcPlugin) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 
@@ -70,6 +72,7 @@ func (p *grpcPlugin) Lookup(ctx context.Context, network, host string, opts ...h
 	return
 }
 
+// Close closes the underlying gRPC connection.
 func (p *grpcPlugin) Close() error {
 	if p.conn == nil {
 		return nil

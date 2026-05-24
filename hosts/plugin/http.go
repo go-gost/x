@@ -24,6 +24,7 @@ type httpPluginResponse struct {
 	OK  bool     `json:"ok"`
 }
 
+// httpPlugin is a HostMapper that delegates lookups to a remote HTTP service.
 type httpPlugin struct {
 	url    string
 	client *http.Client
@@ -31,7 +32,7 @@ type httpPlugin struct {
 	log    logger.Logger
 }
 
-// NewHTTPPlugin creates an HostMapper plugin based on HTTP.
+// NewHTTPPlugin creates a HostMapper plugin that delegates lookups to a remote HTTP endpoint.
 func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hosts.HostMapper {
 	var options plugin.Options
 	for _, opt := range opts {
@@ -49,6 +50,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) hosts.HostMap
 	}
 }
 
+// Lookup sends a JSON POST request to the configured HTTP endpoint and returns the resolved IPs.
 func (p *httpPlugin) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	p.log.Debugf("lookup %s/%s", host, network)
 

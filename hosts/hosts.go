@@ -15,6 +15,7 @@ import (
 	xlogger "github.com/go-gost/x/logger"
 )
 
+// Mapping is a static mapping from a hostname to an IP address.
 type Mapping struct {
 	Hostname string
 	IP       net.IP
@@ -29,38 +30,45 @@ type options struct {
 	logger      logger.Logger
 }
 
+// Option configures a hostMapper.
 type Option func(opts *options)
 
+// MappingsOption sets the static host-to-IP mappings.
 func MappingsOption(mappings []Mapping) Option {
 	return func(opts *options) {
 		opts.mappings = mappings
 	}
 }
 
+// ReloadPeriodOption sets the period for automatic reload from external loaders.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets a file-based loader for hosts mappings (supports both Loader and Lister).
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets a Redis-based loader for hot-reloadable hosts mappings.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets an HTTP-based loader for hot-reloadable hosts mappings.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the logger for the hostMapper.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -80,6 +88,8 @@ type hostMapper struct {
 	cancelFunc context.CancelFunc
 }
 
+// NewHostMapper creates a new HostMapper with the given options.
+// It starts a background goroutine for periodic reload from external loaders.
 func NewHostMapper(opts ...Option) hosts.HostMapper {
 	var options options
 	for _, opt := range opts {
@@ -102,9 +112,10 @@ func NewHostMapper(opts ...Option) hosts.HostMapper {
 	return p
 }
 
-// Lookup searches the IP address corresponds to the given network and host from the host table.
-// The network should be 'ip', 'ip4' or 'ip6', default network is 'ip'.
-// the host should be a hostname (example.org) or a hostname with dot prefix (.example.org).
+// Lookup resolves a hostname to IP addresses using the host table.
+// It first tries an exact match, then a wildcard match (by prefixing with "."),
+// then progressively shorter suffix matches for subdomain wildcards.
+// The network parameter filters results: "ip4" returns only IPv4, "ip6" only IPv6.
 func (h *hostMapper) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) (ips []net.IP, ok bool) {
 	h.options.logger.Debugf("lookup %s/%s", host, network)
 	ips = h.lookup(host)
@@ -151,13 +162,14 @@ func (h *hostMapper) Lookup(ctx context.Context, network, host string, opts ...h
 
 	if len(ips) > 0 {
 		h.options.logger.Debugf("host mapper: %s/%s -> %s", host, network, ips)
+		ok = true
 	}
 
 	return
 }
 
 func (h *hostMapper) lookup(host string) []net.IP {
-	if h == nil || len(h.mappings) == 0 {
+	if len(h.mappings) == 0 {
 		return nil
 	}
 
@@ -234,6 +246,7 @@ func (h *hostMapper) reload(ctx context.Context) (err error) {
 	return
 }
 
+// load fetches mappings from all configured loaders (file, redis, http).
 func (h *hostMapper) load(ctx context.Context) (mappings []Mapping, err error) {
 	if h.options.fileLoader != nil {
 		if lister, ok := h.options.fileLoader.(loader.Lister); ok {
@@ -298,6 +311,8 @@ func (h *hostMapper) parseMapping(r io.Reader) (mappings []Mapping, err error) {
 	return
 }
 
+// parseLine parses a single line in hosts-file format: "IP hostname [hostname...]".
+// Lines starting with "#" are comments. Invalid IP addresses or lines with no hostname are silently dropped.
 func (h *hostMapper) parseLine(s string) (mappings []Mapping) {
 	line := strings.Replace(s, "\t", " ", -1)
 	line = strings.TrimSpace(line)
@@ -328,6 +343,7 @@ func (h *hostMapper) parseLine(s string) (mappings []Mapping) {
 	return
 }
 
+// Close stops the background reload goroutine and closes all loaders.
 func (h *hostMapper) Close() error {
 	h.cancelFunc()
 	if h.options.fileLoader != nil {
@@ -335,6 +351,9 @@ func (h *hostMapper) Close() error {
 	}
 	if h.options.redisLoader != nil {
 		h.options.redisLoader.Close()
+	}
+	if h.options.httpLoader != nil {
+		h.options.httpLoader.Close()
 	}
 	return nil
 }

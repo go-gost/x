@@ -1,8 +1,13 @@
+// Package hop provides a hop (node group) implementation that selects a node
+// from a group of proxy nodes using load-balancing strategies, filters, and
+// bypass rules. It supports periodic reloading of node lists from file, Redis,
+// or HTTP sources.
 package hop
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"sort"
@@ -34,54 +39,66 @@ type options struct {
 	logger      logger.Logger
 }
 
+// Option configures a hop.
 type Option func(*options)
 
+// NameOption sets the hop name.
 func NameOption(name string) Option {
 	return func(o *options) {
 		o.name = name
 	}
 }
 
+// NodeOption sets the initial node list for the hop.
 func NodeOption(nodes ...*chain.Node) Option {
 	return func(o *options) {
 		o.nodes = nodes
 	}
 }
+
+// BypassOption sets a hop-level bypass that can skip the entire hop.
 func BypassOption(bp bypass.Bypass) Option {
 	return func(o *options) {
 		o.bypass = bp
 	}
 }
 
+// SelectorOption sets the load-balancing strategy for node selection.
 func SelectorOption(s selector.Selector[*chain.Node]) Option {
 	return func(o *options) {
 		o.selector = s
 	}
 }
 
+// ReloadPeriodOption sets the interval for periodic reloading of node lists.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets a loader that reads node configs from a file source.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets a loader that reads node configs from a Redis source.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets a loader that reads node configs from an HTTP source.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
+
+// LoggerOption sets the logger for the hop.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -96,6 +113,7 @@ type chainHop struct {
 	cancelFunc context.CancelFunc
 }
 
+// NewHop creates a new hop with the given options and starts periodic reloading.
 func NewHop(opts ...Option) hop.Hop {
 	var options options
 	for _, opt := range opts {
@@ -308,20 +326,31 @@ func (p *chainHop) reload(ctx context.Context) (err error) {
 }
 
 func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
+	var errs []error
+
 	if loader := p.options.fileLoader; loader != nil {
 		r, er := loader.Load(ctx)
 		if er != nil {
 			p.logger.Warnf("file loader: %v", er)
+			errs = append(errs, er)
 		}
-		nodes, _ = p.parseNode(r)
+		ns, pe := p.parseNode(r)
+		if pe != nil {
+			errs = append(errs, pe)
+		}
+		nodes = append(nodes, ns...)
 	}
 
 	if loader := p.options.redisLoader; loader != nil {
 		r, er := loader.Load(ctx)
 		if er != nil {
 			p.logger.Warnf("redis loader: %v", er)
+			errs = append(errs, er)
 		}
-		ns, _ := p.parseNode(r)
+		ns, pe := p.parseNode(r)
+		if pe != nil {
+			errs = append(errs, pe)
+		}
 		nodes = append(nodes, ns...)
 	}
 
@@ -329,13 +358,16 @@ func (p *chainHop) load(ctx context.Context) (nodes []*chain.Node, err error) {
 		r, er := loader.Load(ctx)
 		if er != nil {
 			p.logger.Warnf("http loader: %v", er)
+			errs = append(errs, er)
 		}
-		if ns, _ := p.parseNode(r); ns != nil {
-			nodes = append(nodes, ns...)
+		ns, pe := p.parseNode(r)
+		if pe != nil {
+			errs = append(errs, pe)
 		}
+		nodes = append(nodes, ns...)
 	}
 
-	return
+	return nodes, errors.Join(errs...)
 }
 
 func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
@@ -348,7 +380,10 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 		return nil, err
 	}
 
-	var nodes []*chain.Node
+	var (
+		nodes []*chain.Node
+		errs  []error
+	)
 	for _, nc := range ncs {
 		if nc == nil {
 			continue
@@ -356,11 +391,13 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 
 		node, err := node_parser.ParseNode(p.options.name, nc, logger.Default())
 		if err != nil {
-			return nodes, err
+			p.logger.Warnf("skip node %s: %v", nc.Name, err)
+			errs = append(errs, err)
+			continue
 		}
 		nodes = append(nodes, node)
 	}
-	return nodes, nil
+	return nodes, errors.Join(errs...)
 }
 
 func (p *chainHop) Close() error {
@@ -370,6 +407,9 @@ func (p *chainHop) Close() error {
 	}
 	if p.options.redisLoader != nil {
 		p.options.redisLoader.Close()
+	}
+	if p.options.httpLoader != nil {
+		p.options.httpLoader.Close()
 	}
 	return nil
 }
