@@ -24,7 +24,9 @@ func (l *llimiter) Wait(ctx context.Context, n int) int {
 	if l.limiter.Burst() < n {
 		n = l.limiter.Burst()
 	}
-	l.limiter.WaitN(ctx, n)
+	if err := l.limiter.WaitN(ctx, n); err != nil {
+		return 0
+	}
 	return n
 }
 

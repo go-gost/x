@@ -69,7 +69,11 @@ func (p *readWriter) Write(b []byte) (n int, err error) {
 
 	nn := 0
 	for len(b) > 0 {
-		nn, err = p.ReadWriter.Write(b[:limiter.Wait(context.Background(), len(b))])
+		burst := limiter.Wait(context.Background(), len(b))
+		if burst == 0 {
+			return
+		}
+		nn, err = p.ReadWriter.Write(b[:burst])
 		n += nn
 		if err != nil {
 			return

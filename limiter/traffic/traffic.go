@@ -166,7 +166,10 @@ func (l *trafficLimiter) In(ctx context.Context, key string, opts ...limiter.Opt
 		}
 	}
 
-	host, _, _ := net.SplitHostPort(key)
+	host, _, err := net.SplitHostPort(key)
+	if err != nil {
+		host = key
+	}
 	// IP level limiter
 	if lim, ok := l.inLimits.Get(host); ok {
 		// cached IP limiter
@@ -245,7 +248,10 @@ func (l *trafficLimiter) Out(ctx context.Context, key string, opts ...limiter.Op
 		}
 	}
 
-	host, _, _ := net.SplitHostPort(key)
+	host, _, err := net.SplitHostPort(key)
+	if err != nil {
+		host = key
+	}
 	// IP level limiter
 	if lim, ok := l.outLimits.Get(host); ok {
 		if lim != nil {
@@ -362,7 +368,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			if in != value.in {
 				for _, item := range l.connInLimits.Items() {
 					if v := item.Object; v != nil {
-						v.(traffic.Limiter).Set(in)
+						v.(traffic.Limiter).Set(value.in)
 					}
 				}
 			}
@@ -374,7 +380,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			if out != value.out {
 				for _, item := range l.connOutLimits.Items() {
 					if v := item.Object; v != nil {
-						v.(traffic.Limiter).Set(out)
+						v.(traffic.Limiter).Set(value.out)
 					}
 				}
 			}
@@ -622,6 +628,9 @@ func (l *trafficLimiter) Close() error {
 	}
 	if l.options.redisLoader != nil {
 		l.options.redisLoader.Close()
+	}
+	if l.options.httpLoader != nil {
+		l.options.httpLoader.Close()
 	}
 	return nil
 }
