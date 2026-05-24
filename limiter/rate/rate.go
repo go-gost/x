@@ -1,3 +1,5 @@
+// Package rate implements a rate limiter with support for global, per-IP,
+// and CIDR-based rate limits with periodic hot-reload from file, Redis, or HTTP sources.
 package rate
 
 import (
@@ -18,8 +20,11 @@ import (
 )
 
 const (
+	// GlobalLimitKey is the key used to configure a global rate limit that applies to all traffic.
 	GlobalLimitKey = "$"
-	IPLimitKey     = "$$"
+	// IPLimitKey is the key used to configure a per-IP rate limit where each unique IP
+	// gets its own independent rate limiter.
+	IPLimitKey = "$$"
 )
 
 type options struct {
@@ -31,38 +36,49 @@ type options struct {
 	logger      logger.Logger
 }
 
+// Option configures a [rateLimiter].
 type Option func(opts *options)
 
+// LimitsOption sets the static rate limit rules as strings in "key limit" format
+// (e.g., "$ 100", "192.168.1.1 50", "10.0.0.0/8 30").
 func LimitsOption(limits ...string) Option {
 	return func(opts *options) {
 		opts.limits = limits
 	}
 }
 
+// ReloadPeriodOption sets the period for periodic reload of rate limit rules
+// from external loaders. If zero or negative, periodic reload is disabled.
+// Values less than one second are clamped to one second.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets the file-based [loader.Loader] for rate limit rules.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets the Redis-based [loader.Loader] for rate limit rules.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets the HTTP-based [loader.Loader] for rate limit rules.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the [logger.Logger] for the rate limiter.
+// If not set, a no-op logger is used.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -79,6 +95,9 @@ type rateLimiter struct {
 	logger     logger.Logger
 }
 
+// NewRateLimiter creates a [limiter.RateLimiter] with the given options.
+// It starts a background goroutine for periodic reload and returns an
+// implementation that supports global, per-IP, and CIDR-based rate limits.
 func NewRateLimiter(opts ...Option) limiter.RateLimiter {
 	var options options
 	for _, opt := range opts {
@@ -335,6 +354,9 @@ func (l *rateLimiter) Close() error {
 	}
 	if l.options.redisLoader != nil {
 		l.options.redisLoader.Close()
+	}
+	if l.options.httpLoader != nil {
+		l.options.httpLoader.Close()
 	}
 	return nil
 }

@@ -9,14 +9,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-var (
-	ErrRateLimit = errors.New("rate limit")
-)
+// ErrRateLimit is returned when a rate limit is exceeded.
+var ErrRateLimit = errors.New("rate limit")
 
 type rlimiter struct {
 	limiter *rate.Limiter
 }
 
+// NewLimiter creates a [limiter.Limiter] with the specified rate r (events per second)
+// and burst b.
 func NewLimiter(r float64, b int) limiter.Limiter {
 	return &rlimiter{
 		limiter: rate.NewLimiter(rate.Limit(r), b),
@@ -42,14 +43,13 @@ func newLimiterGroup(limiters ...limiter.Limiter) *limiterGroup {
 	return &limiterGroup{limiters: limiters}
 }
 
-func (l *limiterGroup) Allow(n int) (b bool) {
-	b = true
+func (l *limiterGroup) Allow(n int) bool {
 	for i := range l.limiters {
-		if v := l.limiters[i].Allow(n); !v {
-			b = false
+		if !l.limiters[i].Allow(n) {
+			return false
 		}
 	}
-	return
+	return true
 }
 
 func (l *limiterGroup) Limit() float64 {
