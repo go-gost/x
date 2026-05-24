@@ -115,6 +115,9 @@ func (p *cachedTrafficLimiter) In(ctx context.Context, key string, opts ...limit
 
 	limNew := p.limiter.In(ctx, key, opts...)
 	if limNew == nil {
+		if lim == nil {
+			return nil
+		}
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {
@@ -149,6 +152,9 @@ func (p *cachedTrafficLimiter) Out(ctx context.Context, key string, opts ...limi
 
 	limNew := p.limiter.Out(ctx, key, opts...)
 	if limNew == nil {
+		if lim == nil {
+			return nil
+		}
 		limNew = lim
 	}
 	if item == nil || !p.equal(lim, limNew) {

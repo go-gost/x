@@ -110,7 +110,10 @@ func TestParseLimit(t *testing.T) {
 		{"key invalid_bytes", "key", 0, 0},
 	}
 	for _, tt := range tests {
-		key, in, out := l.parseLimit(tt.input)
+		key, in, out, burst := l.parseLimit(tt.input)
+		if burst != 0 {
+			t.Errorf("parseLimit(%q) unexpected burst: %d", tt.input, burst)
+		}
 		if key != tt.key || in != tt.in || out != tt.out {
 			t.Errorf("parseLimit(%q) = (%q, %d, %d), want (%q, %d, %d)",
 				tt.input, key, in, out, tt.key, tt.in, tt.out)

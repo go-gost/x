@@ -362,6 +362,35 @@ func TestWrapUDPConn(t *testing.T) {
 	}
 }
 
+func TestPacketConn_DroppedPackets(t *testing.T) {
+	pc := &mockPacketConn{writeBuf: make([]byte, 100)}
+	calls := 0
+	pc.readFromFunc = func(p []byte) (int, net.Addr, error) {
+		calls++
+		if calls == 1 {
+			return copy(p, "data-4"), nil, nil // 6 bytes, limiter allows 5 = drop
+		}
+		return copy(p, "ok"), nil, nil // 2 bytes, limiter allows 5 = pass
+	}
+	ml := &mockLimiter{
+		limit: 100,
+		waitFunc: func(ctx context.Context, n int) int {
+			return 5 // allow 5 bytes; 6-byte packet is dropped, 2-byte passes
+		},
+	}
+	tl := &mockTrafficLimiter{inLim: ml}
+	wrapped := WrapPacketConn(pc, tl, "test-key")
+
+	_, _, err := wrapped.ReadFrom(make([]byte, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := wrapped.(DroppedPacketCounter)
+	if n := counter.DroppedPackets(); n != 1 {
+		t.Fatalf("expected 1 dropped packet, got %d", n)
+	}
+}
+
 func TestUDPConn_Write_RateLimited(t *testing.T) {
 	pc := &mockPacketConn{writeBuf: make([]byte, 100)}
 	ml := &mockLimiter{
@@ -388,6 +417,9 @@ var (
 	_ xio.CloseWrite = (*limitConn)(nil)
 	_ syscall.Conn   = (*limitConn)(nil)
 	_ ctxutil.Context = (*limitConn)(nil)
+
+	_ DroppedPacketCounter = (*packetConn)(nil)
+	_ DroppedPacketCounter = (*udpConn)(nil)
 )
 
 // --- helpers ---
@@ -412,7 +444,8 @@ func (rw *bytesReadWriter) Write(b []byte) (int, error) {
 
 type mockPacketConn struct {
 	net.PacketConn
-	writeBuf []byte
+	writeBuf     []byte
+	readFromFunc func(p []byte) (int, net.Addr, error)
 }
 
 func (pc *mockPacketConn) Write(p []byte) (int, error) {
@@ -426,6 +459,9 @@ func (pc *mockPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 }
 
 func (pc *mockPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	if pc.readFromFunc != nil {
+		return pc.readFromFunc(p)
+	}
 	return copy(p, "test"), nil, nil
 }
 

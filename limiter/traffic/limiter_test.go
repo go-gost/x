@@ -17,6 +17,40 @@ func TestNewLimiter(t *testing.T) {
 	}
 }
 
+func TestNewLimiterWithBurst(t *testing.T) {
+	l := NewLimiterWithBurst(100, 500)
+	if l == nil {
+		t.Fatal("NewLimiterWithBurst should not be nil")
+	}
+	if l.Limit() != 100 {
+		t.Fatalf("expected limit 100, got %d", l.Limit())
+	}
+	// With burst=500, Wait for 500 should succeed immediately.
+	if n := l.Wait(context.Background(), 500); n != 500 {
+		t.Fatalf("expected 500 with burst, got %d", n)
+	}
+	// With burst=500, Wait for 501 clamps to burst.
+	if n := l.Wait(context.Background(), 501); n != 500 {
+		t.Fatalf("expected burst 500, got %d", n)
+	}
+}
+
+func TestNewLimiterWithBurst_Defaults(t *testing.T) {
+	// burst <= 0 defaults to rate.
+	l := NewLimiterWithBurst(100, 0)
+	if l.Limit() != 100 {
+		t.Fatalf("expected limit 100, got %d", l.Limit())
+	}
+	if n := l.Wait(context.Background(), 100); n != 100 {
+		t.Fatalf("expected burst=rate=100, got %d", n)
+	}
+
+	l2 := NewLimiterWithBurst(50, -1)
+	if n := l2.Wait(context.Background(), 50); n != 50 {
+		t.Fatalf("expected burst=rate=50, got %d", n)
+	}
+}
+
 func TestLimiter_Wait(t *testing.T) {
 	// High burst so Wait does not block.
 	l := NewLimiter(1000000)
