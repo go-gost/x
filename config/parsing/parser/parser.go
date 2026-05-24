@@ -17,23 +17,44 @@ var (
 	defaultParser = &parser{}
 )
 
+// Init stores the parsed CLI arguments so that subsequent calls to Parse can
+// merge them with config-file and environment-variable sources.
 func Init(args Args) {
 	defaultParser = &parser{
 		args: args,
 	}
 }
 
+// Parse reads configuration from the sources specified during Init (config
+// file, CLI services/nodes, and environment variables) and returns a merged
+// Config ready for loading.
 func Parse() (*config.Config, error) {
 	return defaultParser.Parse()
 }
 
+// Args holds the raw CLI flags and positional arguments that Init will merge
+// into the final configuration.
 type Args struct {
-	CfgFile     string
-	Services    []string
-	Nodes       []string
-	Debug       bool
-	Trace       bool
-	ApiAddr     string
+	// CfgFile is the path to a YAML or JSON config file, "-" for stdin, or
+	// an inline JSON string.
+	CfgFile string
+
+	// Services is the list of service definitions from -L flags.
+	Services []string
+
+	// Nodes is the list of chain-node definitions from -F flags.
+	Nodes []string
+
+	// Debug toggles debug-level logging.
+	Debug bool
+
+	// Trace toggles trace-level logging (supersedes Debug).
+	Trace bool
+
+	// ApiAddr is the address for the HTTP API server.
+	ApiAddr string
+
+	// MetricsAddr is the address for the Prometheus metrics endpoint.
 	MetricsAddr string
 }
 

@@ -10,6 +10,9 @@ import (
 	observer_plugin "github.com/go-gost/x/observer/plugin"
 )
 
+// ParseObserver converts an ObserverConfig into an observer.Observer. It only
+// supports plugin backends (HTTP or gRPC); returns nil when cfg or cfg.Plugin
+// is nil.
 func ParseObserver(cfg *config.ObserverConfig) observer.Observer {
 	if cfg == nil || cfg.Plugin == nil {
 		return nil

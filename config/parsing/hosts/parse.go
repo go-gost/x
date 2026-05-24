@@ -14,6 +14,9 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 )
 
+// ParseHostMapper converts a HostsConfig into a hosts.HostMapper. It resolves
+// plugin backends (HTTP or gRPC), parses inline IP→hostname mappings, and
+// configures optional file, Redis, and HTTP hot-reload support.
 func ParseHostMapper(cfg *config.HostsConfig) hosts.HostMapper {
 	if cfg == nil {
 		return nil

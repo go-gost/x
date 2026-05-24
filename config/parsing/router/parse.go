@@ -14,6 +14,9 @@ import (
 	router_plugin "github.com/go-gost/x/router/plugin"
 )
 
+// ParseRouter converts a RouterConfig into a router.Router. It supports plugin
+// backends (HTTP or gRPC) or inline static route definitions with optional
+// file, Redis, and HTTP hot-reload support.
 func ParseRouter(cfg *config.RouterConfig) router.Router {
 	if cfg == nil {
 		return nil

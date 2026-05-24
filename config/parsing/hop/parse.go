@@ -21,6 +21,10 @@ import (
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
+// ParseHop converts a HopConfig into a hop.Hop. It resolves plugin backends
+// (HTTP or gRPC), parses inline nodes with metadata inheritance from the parent
+// hop, wires up a node selector, and configures optional file, Redis, and HTTP
+// hot-reload sources. Returns nil with no error when cfg is nil.
 func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 	if cfg == nil {
 		return nil, nil

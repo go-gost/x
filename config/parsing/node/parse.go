@@ -24,6 +24,11 @@ import (
 	"github.com/go-gost/x/routing"
 )
 
+// ParseNode converts a NodeConfig into a *chain.Node. It resolves the
+// connector and dialer from their registries, applies TLS settings, extracts
+// metadata-driven options (so_mark, interface, netns, proxy protocol), sets up
+// bypass rules, node filters, HTTP settings, and TLS node settings. The hop
+// parameter is used only for logging context.
 func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.Node, error) {
 	if cfg == nil {
 		return nil, nil

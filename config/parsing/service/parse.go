@@ -38,6 +38,13 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+// ParseService constructs a fully-wired service.Service from a ServiceConfig.
+// It defaults the listener to "tcp" and the handler to "auto", resolves named
+// components from the registry (authers, admissions, bypasses, resolvers,
+// hosts, chains, hops, limiters, recorders, observers), composes TLS settings,
+// and applies metadata-driven options (proxy protocol, netns, sockopts,
+// pre/post hooks, stats, etc.). It returns an error if the listener or handler
+// type is unknown or if construction of any sub-component fails.
 func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Listener == nil {
 		cfg.Listener = &config.ListenerConfig{}

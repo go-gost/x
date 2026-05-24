@@ -22,6 +22,11 @@ type discardCloser struct{}
 func (discardCloser) Write(p []byte) (n int, err error) { return len(p), nil }
 func (discardCloser) Close() error                      { return nil }
 
+// ParseRecorder converts a RecorderConfig into a recorder.Recorder. It
+// supports plugin backends (HTTP or gRPC), file output (with optional
+// rotation), TCP syslog-style delivery, HTTP POST delivery, and Redis storage
+// (set, list, or sorted set). Returns nil when cfg is nil or no backend is
+// configured.
 func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 	if cfg == nil {
 		return nil

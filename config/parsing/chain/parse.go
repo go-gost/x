@@ -12,6 +12,9 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// ParseChain converts a ChainConfig into a chain.Chainer. Each hop reference
+// is either looked up from the registry (by name) or parsed inline via
+// ParseHop. Returns nil with no error when cfg is nil.
 func ParseChain(cfg *config.ChainConfig, log logger.Logger) (chain.Chainer, error) {
 	if cfg == nil {
 		return nil, nil

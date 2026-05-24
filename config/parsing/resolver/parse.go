@@ -14,6 +14,10 @@ import (
 	resolver_plugin "github.com/go-gost/x/resolver/plugin"
 )
 
+// ParseResolver converts a ResolverConfig into a resolver.Resolver. It
+// supports plugin backends (HTTP or gRPC) and inline nameserver definitions
+// with optional chain-based upstream routing, TTL, timeout, and
+// prefer/async/only settings. Returns nil with no error when cfg is nil.
 func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 	if cfg == nil {
 		return nil, nil

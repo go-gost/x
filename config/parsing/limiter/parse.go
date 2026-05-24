@@ -17,6 +17,9 @@ import (
 	traffic_plugin "github.com/go-gost/x/limiter/traffic/plugin"
 )
 
+// ParseTrafficLimiter converts a LimiterConfig into a traffic.TrafficLimiter.
+// It resolves plugin backends (HTTP or gRPC), inline rate limits, and optional
+// file, Redis, and HTTP hot-reload support.
 func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter) {
 	if cfg == nil {
 		return nil
@@ -89,6 +92,8 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 	return xtraffic.NewTrafficLimiter(opts...)
 }
 
+// ParseConnLimiter converts a LimiterConfig into a conn.ConnLimiter with
+// inline limits and optional file, Redis, and HTTP hot-reload support.
 func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 	if cfg == nil {
 		return nil
@@ -137,6 +142,8 @@ func ParseConnLimiter(cfg *config.LimiterConfig) (lim conn.ConnLimiter) {
 	return xconn.NewConnLimiter(opts...)
 }
 
+// ParseRateLimiter converts a LimiterConfig into a rate.RateLimiter with
+// inline limits and optional file, Redis, and HTTP hot-reload support.
 func ParseRateLimiter(cfg *config.LimiterConfig) (lim rate.RateLimiter) {
 	if cfg == nil {
 		return nil

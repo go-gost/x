@@ -10,6 +10,8 @@ import (
 	sd_plugin "github.com/go-gost/x/sd/plugin"
 )
 
+// ParseSD converts an SDConfig into an sd.SD. It only supports plugin backends
+// (HTTP or gRPC); returns nil when cfg or cfg.Plugin is nil.
 func ParseSD(cfg *config.SDConfig) sd.SD {
 	if cfg == nil || cfg.Plugin == nil {
 		return nil

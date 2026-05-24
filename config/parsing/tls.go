@@ -24,15 +24,25 @@ var (
 	defaultTLSConfig atomic.Value
 )
 
+// DefaultTLSConfig returns the global default TLS configuration used as a
+// fallback when a listener or handler does not specify its own TLS settings.
+// The returned config is a shared instance; callers that need to mutate it
+// should clone it first.
 func DefaultTLSConfig() *tls.Config {
 	v, _ := defaultTLSConfig.Load().(*tls.Config)
 	return v
 }
 
+// SetDefaultTLSConfig replaces the global default TLS configuration. It is safe
+// to call from multiple goroutines.
 func SetDefaultTLSConfig(cfg *tls.Config) {
 	defaultTLSConfig.Store(cfg)
 }
 
+// BuildDefaultTLSConfig loads or generates the default TLS certificate and key
+// from the given config. If cfg is nil it attempts to load well-known files
+// ("cert.pem", "key.pem", "ca.pem"). On failure it generates a self-signed
+// ECDSA P-256 certificate valid for one year.
 func BuildDefaultTLSConfig(cfg *config.TLSConfig) (*tls.Config, error) {
 	log := logger.Default()
 

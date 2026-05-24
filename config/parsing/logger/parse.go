@@ -12,6 +12,9 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// ParseLogger converts a LoggerConfig into a logger.Logger. It configures
+// output destination (stderr, stdout, file, or discard), log level, format,
+// and optional log rotation via lumberjack.
 func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 	if cfg == nil || cfg.Log == nil {
 		return nil
@@ -55,6 +58,8 @@ func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 	return xlogger.NewLogger(opts...)
 }
 
+// List resolves one or more logger names from the registry. It returns only
+// the loggers that were found, skipping any that are not registered.
 func List(name string, names ...string) []logger.Logger {
 	var loggers []logger.Logger
 	if adm := registry.LoggerRegistry().Get(name); adm != nil {

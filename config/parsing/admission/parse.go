@@ -14,6 +14,10 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// ParseAdmission converts an AdmissionConfig into an admission.Admission. It
+// resolves plugin backends (HTTP or gRPC) when cfg.Plugin is set, or
+// constructs an in-process admission controller with optional file, Redis, and
+// HTTP hot-reload support.
 func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	if cfg == nil {
 		return nil
@@ -74,6 +78,9 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	return xadmission.NewAdmission(opts...)
 }
 
+// List resolves one or more admission controller names from the registry. It
+// returns only the controllers that were found, skipping any that are not
+// registered.
 func List(name string, names ...string) []admission.Admission {
 	var admissions []admission.Admission
 	if adm := registry.AdmissionRegistry().Get(name); adm != nil {

@@ -18,6 +18,9 @@ import (
 	"github.com/go-gost/x/registry"
 )
 
+// ParseAuther converts an AutherConfig into an auth.Authenticator. It handles
+// plugin backends (HTTP or gRPC), inline auth credentials, and optional file,
+// Redis, and HTTP hot-reload sources.
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	if cfg == nil {
 		return nil
@@ -85,6 +88,9 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 	return xauth.NewAuthenticator(opts...)
 }
 
+// ParseAutherFromAuth creates a simple authenticator from a single
+// username/password pair in an AuthConfig. Returns nil if the config is nil or
+// has no username.
 func ParseAutherFromAuth(au *config.AuthConfig) auth.Authenticator {
 	if au == nil || au.Username == "" {
 		return nil
@@ -101,6 +107,9 @@ func ParseAutherFromAuth(au *config.AuthConfig) auth.Authenticator {
 	)
 }
 
+// Info extracts authentication credentials from an AuthConfig as a
+// url.Userinfo. It supports reading the first line from a password file when
+// cfg.File is set, or falls back to inline username/password fields.
 func Info(cfg *config.AuthConfig) *url.Userinfo {
 	if cfg == nil {
 		return nil
@@ -158,6 +167,9 @@ func parseInfo(r io.Reader, max int) (infos []*url.Userinfo, err error) {
 	return
 }
 
+// List resolves one or more authenticator names from the registry. It returns
+// only the authenticators that were found, skipping any that are not
+// registered.
 func List(name string, names ...string) []auth.Authenticator {
 	var authers []auth.Authenticator
 	if auther := registry.AutherRegistry().Get(name); auther != nil {

@@ -13,6 +13,9 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 )
 
+// ParseIngress converts an IngressConfig into an ingress.Ingress. It resolves
+// plugin backends (HTTP or gRPC), parses inline hostname→endpoint rules, and
+// configures optional file, Redis, and HTTP hot-reload support.
 func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 	if cfg == nil {
 		return nil
