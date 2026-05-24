@@ -78,12 +78,13 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			continue
 		}
 
-		m := v.Metadata
-		if m == nil {
-			m = map[string]any{}
-			v.Metadata = m
+		// Build a merged metadata map for inheritance without mutating
+		// the original node config.
+		merged := make(map[string]any)
+		for k, val := range v.Metadata {
+			merged[k] = val
 		}
-		md := metadata.NewMetadata(m)
+		md := metadata.NewMetadata(merged)
 
 		if v.Resolver == "" {
 			v.Resolver = cfg.Resolver
@@ -93,37 +94,30 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 
 		if !md.IsExists(parsing.MDKeyInterface) {
-			// inherit from hop
 			if ifce != "" {
-				m[parsing.MDKeyInterface] = ifce
+				merged[parsing.MDKeyInterface] = ifce
 			}
-			// node level
 			if v.Interface != "" {
-				m[parsing.MDKeyInterface] = v.Interface
+				merged[parsing.MDKeyInterface] = v.Interface
 			}
 		}
 		if !md.IsExists(parsing.MDKeySoMark) {
-			// inherit from hop
 			if soMark != 0 {
-				m[parsing.MDKeySoMark] = soMark
+				merged[parsing.MDKeySoMark] = soMark
 			}
-			// node level
 			if v.SockOpts != nil && v.SockOpts.Mark != 0 {
-				m[parsing.MDKeySoMark] = v.SockOpts.Mark
+				merged[parsing.MDKeySoMark] = v.SockOpts.Mark
 			}
 		}
 		if !md.IsExists(parsing.MDKeyProxyProtocol) && ppv > 0 {
-			// inherit from hop
-			m[parsing.MDKeyProxyProtocol] = ppv
+			merged[parsing.MDKeyProxyProtocol] = ppv
 		}
 		if !md.IsExists(parsing.MDKeyNetns) {
-			// inherit from hop
 			if netns != "" {
-				m[parsing.MDKeyNetns] = netns
+				merged[parsing.MDKeyNetns] = netns
 			}
-			// node level
 			if v.Netns != "" {
-				m[parsing.MDKeyNetns] = v.Netns
+				merged[parsing.MDKeyNetns] = v.Netns
 			}
 		}
 
@@ -141,7 +135,11 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			v.Dialer.Type = "tcp"
 		}
 
+		// Temporarily swap merged metadata so ParseNode sees inherited values.
+		origMeta := v.Metadata
+		v.Metadata = merged
 		node, err := node_parser.ParseNode(cfg.Name, v, log)
+		v.Metadata = origMeta
 		if err != nil {
 			return nil, err
 		}

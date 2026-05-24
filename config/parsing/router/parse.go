@@ -51,7 +51,9 @@ func ParseRouter(cfg *config.RouterConfig) router.Router {
 		_, ipNet, _ := net.ParseCIDR(route.Net)
 		dst := route.Dst
 		if dst != "" {
-			_, ipNet, _ = net.ParseCIDR(dst)
+			if _, parsed, _ := net.ParseCIDR(dst); parsed != nil {
+				ipNet = parsed
+			}
 		} else {
 			if ipNet != nil {
 				dst = ipNet.String()

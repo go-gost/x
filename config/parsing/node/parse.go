@@ -29,29 +29,33 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		return nil, nil
 	}
 
-	if cfg.Connector == nil {
-		cfg.Connector = &config.ConnectorConfig{
-			Type: "http",
-		}
+	connCfg := cfg.Connector
+	if connCfg == nil {
+		connCfg = &config.ConnectorConfig{}
+	}
+	if connCfg.Type == "" {
+		connCfg.Type = "http"
 	}
 
-	if cfg.Dialer == nil {
-		cfg.Dialer = &config.DialerConfig{
-			Type: "tcp",
-		}
+	dialCfg := cfg.Dialer
+	if dialCfg == nil {
+		dialCfg = &config.DialerConfig{}
+	}
+	if dialCfg.Type == "" {
+		dialCfg.Type = "tcp"
 	}
 
 	nodeLogger := log.WithFields(map[string]any{
 		"hop":       hop,
 		"kind":      "node",
 		"node":      cfg.Name,
-		"connector": cfg.Connector.Type,
-		"dialer":    cfg.Dialer.Type,
+		"connector": connCfg.Type,
+		"dialer":    dialCfg.Type,
 	})
 
 	serverName, _, _ := net.SplitHostPort(cfg.Addr)
 
-	tlsCfg := cfg.Connector.TLS
+	tlsCfg := connCfg.TLS
 	if tlsCfg == nil {
 		tlsCfg = &config.TLSConfig{}
 	}
@@ -68,25 +72,22 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		"kind": "connector",
 	})
 	var cr connector.Connector
-	if rf := registry.ConnectorRegistry().Get(cfg.Connector.Type); rf != nil {
+	if rf := registry.ConnectorRegistry().Get(connCfg.Type); rf != nil {
 		cr = rf(
-			connector.AuthOption(auth_parser.Info(cfg.Connector.Auth)),
+			connector.AuthOption(auth_parser.Info(connCfg.Auth)),
 			connector.TLSConfigOption(tlsConfig),
 			connector.LoggerOption(connectorLogger),
 		)
 	} else {
-		return nil, fmt.Errorf("unregistered connector: %s", cfg.Connector.Type)
+		return nil, fmt.Errorf("unregistered connector: %s", connCfg.Type)
 	}
 
-	if cfg.Connector.Metadata == nil {
-		cfg.Connector.Metadata = make(map[string]any)
-	}
-	if err := cr.Init(mdx.NewMetadata(cfg.Connector.Metadata)); err != nil {
+	if err := cr.Init(mdx.NewMetadata(connCfg.Metadata)); err != nil {
 		connectorLogger.Error("init: ", err)
 		return nil, err
 	}
 
-	tlsCfg = cfg.Dialer.TLS
+	tlsCfg = dialCfg.TLS
 	if tlsCfg == nil {
 		tlsCfg = &config.TLSConfig{}
 	}
@@ -106,21 +107,18 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 	})
 
 	var d dialer.Dialer
-	if rf := registry.DialerRegistry().Get(cfg.Dialer.Type); rf != nil {
+	if rf := registry.DialerRegistry().Get(dialCfg.Type); rf != nil {
 		d = rf(
-			dialer.AuthOption(auth_parser.Info(cfg.Dialer.Auth)),
+			dialer.AuthOption(auth_parser.Info(dialCfg.Auth)),
 			dialer.TLSConfigOption(tlsConfig),
 			dialer.LoggerOption(dialerLogger),
 			dialer.ProxyProtocolOption(mdutil.GetInt(md, parsing.MDKeyProxyProtocol)),
 		)
 	} else {
-		return nil, fmt.Errorf("unregistered dialer: %s", cfg.Dialer.Type)
+		return nil, fmt.Errorf("unregistered dialer: %s", dialCfg.Type)
 	}
 
-	if cfg.Dialer.Metadata == nil {
-		cfg.Dialer.Metadata = make(map[string]any)
-	}
-	if err := d.Init(mdx.NewMetadata(cfg.Dialer.Metadata)); err != nil {
+	if err := d.Init(mdx.NewMetadata(dialCfg.Metadata)); err != nil {
 		dialerLogger.Error("init: ", err)
 		return nil, err
 	}

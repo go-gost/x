@@ -33,6 +33,10 @@ func ParseChain(cfg *config.ChainConfig, log logger.Logger) (chain.Chainer, erro
 	)
 
 	for _, ch := range cfg.Hops {
+		if ch == nil {
+			continue
+		}
+
 		var hop hop.Hop
 		var err error
 

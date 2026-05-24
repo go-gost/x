@@ -84,24 +84,28 @@ func (p *parser) Parse() (*config.Config, error) {
 	}
 
 	if v := os.Getenv("GOST_LOGGER_LEVEL"); v != "" {
-		cfg.Log = &config.LogConfig{
-			Level: v,
+		if cfg.Log == nil {
+			cfg.Log = &config.LogConfig{}
 		}
+		cfg.Log.Level = v
 	}
 	if v := os.Getenv("GOST_API"); v != "" {
-		cfg.API = &config.APIConfig{
-			Addr: v,
+		if cfg.API == nil {
+			cfg.API = &config.APIConfig{}
 		}
+		cfg.API.Addr = v
 	}
 	if v := os.Getenv("GOST_METRICS"); v != "" {
-		cfg.Metrics = &config.MetricsConfig{
-			Addr: v,
+		if cfg.Metrics == nil {
+			cfg.Metrics = &config.MetricsConfig{}
 		}
+		cfg.Metrics.Addr = v
 	}
 	if v := os.Getenv("GOST_PROFILING"); v != "" {
-		cfg.Profiling = &config.ProfilingConfig{
-			Addr: v,
+		if cfg.Profiling == nil {
+			cfg.Profiling = &config.ProfilingConfig{}
 		}
+		cfg.Profiling.Addr = v
 	}
 
 	if p.args.Debug || p.args.Trace {
