@@ -1,3 +1,6 @@
+// Package traffic provides a traffic/bandwidth limiter implementation that
+// supports per-service, per-connection, per-IP, and per-CIDR rate limiting
+// for both ingress (In) and egress (Out) directions.
 package traffic
 
 import (
@@ -20,8 +23,10 @@ import (
 )
 
 const (
+	// ServiceLimitKey is the special key used for service-level rate limits.
 	ServiceLimitKey = "$"
-	ConnLimitKey    = "$$"
+	// ConnLimitKey is the special key used for connection-level rate limits.
+	ConnLimitKey = "$$"
 )
 
 const (
@@ -38,38 +43,48 @@ type options struct {
 	logger      logger.Logger
 }
 
+// Option configures a TrafficLimiter.
 type Option func(opts *options)
 
+// LimitsOption sets the static limit rules. Each string is a limit definition
+// in the format "<key> <in> [out]" where in/out are byte quantities with
+// optional SI/IEC suffixes (e.g., "100B", "1MB", "512KB").
 func LimitsOption(limits ...string) Option {
 	return func(opts *options) {
 		opts.limits = limits
 	}
 }
 
+// ReloadPeriodOption sets the period for reloading limit rules from external
+// loaders. A period of zero disables periodic reloading.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets a file-based loader for limit rules.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets a Redis-based loader for limit rules.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets an HTTP-based loader for limit rules.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the logger for the traffic limiter.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -96,6 +111,9 @@ type trafficLimiter struct {
 	cancelFunc context.CancelFunc
 }
 
+// NewTrafficLimiter creates a new TrafficLimiter with the given options.
+// It starts a background goroutine for periodic reload of limit rules from
+// external loaders.
 func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
 	var options options
 	for _, opt := range opts {

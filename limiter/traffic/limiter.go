@@ -14,6 +14,8 @@ type llimiter struct {
 	limiter *rate.Limiter
 }
 
+// NewLimiter creates a rate-based traffic Limiter with the given rate
+// (bytes per second) and burst size.
 func NewLimiter(r int) limiter.Limiter {
 	return &llimiter{
 		limiter: rate.NewLimiter(rate.Limit(r), r),

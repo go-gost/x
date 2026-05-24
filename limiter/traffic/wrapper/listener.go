@@ -14,6 +14,8 @@ type listener struct {
 	service string
 }
 
+// WrapListener wraps a net.Listener so that accepted connections are
+// automatically wrapped with service-level traffic rate limiting.
 func WrapListener(service string, ln net.Listener, limiter traffic.TrafficLimiter) net.Listener {
 	if limiter == nil {
 		return ln

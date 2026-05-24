@@ -1,3 +1,6 @@
+// Package limiter provides a cached traffic limiter that wraps a
+// TrafficLimiter with in-memory caching to reduce calls to the underlying
+// limiter (e.g., plugin-based limiters).
 package limiter
 
 import (
@@ -20,20 +23,27 @@ type options struct {
 	scope           string
 }
 
+// Option configures a cachedTrafficLimiter.
 type Option func(*options)
 
+// RefreshIntervalOption sets the cache refresh interval. Cached limiters
+// are refreshed after this duration. The minimum value is 1 second.
 func RefreshIntervalOption(interval time.Duration) Option {
 	return func(o *options) {
 		o.refreshInterval = interval
 	}
 }
 
+// CleanupIntervalOption sets the interval for cleaning up expired cache
+// entries. The minimum value is 1 second.
 func CleanupIntervalOption(interval time.Duration) Option {
 	return func(o *options) {
 		o.cleanupInterval = interval
 	}
 }
 
+// ScopeOption filters cached limiters by scope. When set, only requests
+// with a matching scope return a limiter; non-matching scopes return nil.
 func ScopeOption(scope string) Option {
 	return func(o *options) {
 		o.scope = scope
@@ -47,6 +57,9 @@ type cachedTrafficLimiter struct {
 	options   options
 }
 
+// NewCachedTrafficLimiter wraps a TrafficLimiter with an in-memory cache.
+// Cached limiters are refreshed after the configured refresh interval.
+// Returns nil if the inner limiter is nil.
 func NewCachedTrafficLimiter(limiter traffic.TrafficLimiter, opts ...Option) traffic.TrafficLimiter {
 	if limiter == nil {
 		return nil

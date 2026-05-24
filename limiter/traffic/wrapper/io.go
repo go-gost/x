@@ -9,7 +9,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 )
 
-// readWriter is an io.ReadWriter with traffic limiter supported.
+// readWriter wraps an io.ReadWriter with traffic rate limiting applied to reads and writes.
 type readWriter struct {
 	io.ReadWriter
 	rbuf    bytes.Buffer
@@ -18,6 +18,8 @@ type readWriter struct {
 	key     string
 }
 
+// WrapReadWriter wraps an io.ReadWriter with traffic rate limiting. If limiter
+// is nil, the original ReadWriter is returned unchanged.
 func WrapReadWriter(limiter traffic.TrafficLimiter, rw io.ReadWriter, key string, opts ...limiter.Option) io.ReadWriter {
 	if limiter == nil {
 		return rw

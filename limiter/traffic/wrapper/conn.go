@@ -1,3 +1,5 @@
+// Package wrapper provides net.Conn, net.PacketConn, and io.ReadWriter
+// wrappers that apply traffic rate limiting to reads and writes.
 package wrapper
 
 import (
@@ -21,7 +23,7 @@ var (
 	errRateLimited = errors.New("rate limited")
 )
 
-// limitConn is a Conn with traffic limiter supported.
+// limitConn wraps a net.Conn with traffic rate limiting applied to reads and writes.
 type limitConn struct {
 	net.Conn
 	rbuf    bytes.Buffer
@@ -30,6 +32,8 @@ type limitConn struct {
 	key     string
 }
 
+// WrapConn wraps a net.Conn with traffic rate limiting. If tlimiter is nil,
+// the original conn is returned unchanged.
 func WrapConn(c net.Conn, tlimiter traffic.TrafficLimiter, key string, opts ...limiter.Option) net.Conn {
 	if tlimiter == nil {
 		return c
@@ -133,6 +137,8 @@ type packetConn struct {
 	key     string
 }
 
+// WrapPacketConn wraps a net.PacketConn with traffic rate limiting. Packets
+// exceeding the rate limit are discarded on read or rejected with an error on write.
 func WrapPacketConn(pc net.PacketConn, lim traffic.TrafficLimiter, key string, opts ...limiter.Option) net.PacketConn {
 	if lim == nil {
 		return pc
@@ -190,6 +196,7 @@ type udpConn struct {
 	key     string
 }
 
+// WrapUDPConn wraps a net.PacketConn as a udp.Conn with traffic rate limiting.
 func WrapUDPConn(pc net.PacketConn, limiter traffic.TrafficLimiter, key string, opts ...limiter.Option) udp.Conn {
 	return &udpConn{
 		PacketConn: pc,
