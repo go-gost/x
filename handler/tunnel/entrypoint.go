@@ -147,8 +147,9 @@ func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.
 		return nil, fmt.Errorf("%w %s", ErrTunnelRoute, addr)
 	}
 
-	ro := ictx.RecorderObjectFromContext(ctx)
-	ro.ClientID = tunnelID.String()
+	if ro := ictx.RecorderObjectFromContext(ctx); ro != nil {
+		ro.ClientID = tunnelID.String()
+	}
 
 	if tunnelID.IsPrivate() {
 		return nil, fmt.Errorf("%w: tunnel %s is private for host %s", ErrPrivateTunnel, tunnelID, addr)
@@ -172,8 +173,11 @@ func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.
 	}
 	log.Debugf("dial: connected to host %s, tunnel: %s, connector: %s", addr, tunnelID, cid)
 
+	ro := ictx.RecorderObjectFromContext(ctx)
 	if node == ep.node {
-		ro.Redirect = ""
+		if ro != nil {
+			ro.Redirect = ""
+		}
 
 		var clientAddr string
 		if addr := xctx.SrcAddrFromContext(ctx); addr != nil {
@@ -197,7 +201,9 @@ func (ep *entrypoint) dial(ctx context.Context, network, addr string) (conn net.
 			return nil, err
 		}
 	} else {
-		ro.Redirect = node
+		if ro != nil {
+			ro.Redirect = node
+		}
 	}
 
 	return conn, nil
