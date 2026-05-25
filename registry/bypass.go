@@ -6,14 +6,18 @@ import (
 	"github.com/go-gost/core/bypass"
 )
 
+// bypassRegistry implements a hot-reload-safe registry for bypass.Bypass.
 type bypassRegistry struct {
 	registry[bypass.Bypass]
 }
 
+// Register stores a Bypass under the given name.
 func (r *bypassRegistry) Register(name string, v bypass.Bypass) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered Bypass.
+// Returns nil if name is empty.
 func (r *bypassRegistry) Get(name string) bypass.Bypass {
 	if name != "" {
 		return &bypassWrapper{name: name, r: r}

@@ -8,14 +8,18 @@ import (
 	"github.com/go-gost/core/selector"
 )
 
+// chainRegistry implements a hot-reload-safe registry for chain.Chainer.
 type chainRegistry struct {
 	registry[chain.Chainer]
 }
 
+// Register stores a Chainer under the given name.
 func (r *chainRegistry) Register(name string, v chain.Chainer) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered Chainer.
+// Returns nil if name is empty.
 func (r *chainRegistry) Get(name string) chain.Chainer {
 	if name != "" {
 		return &chainWrapper{name: name, r: r}

@@ -7,14 +7,18 @@ import (
 	"github.com/go-gost/core/hosts"
 )
 
+// hostsRegistry implements a hot-reload-safe registry for hosts.HostMapper.
 type hostsRegistry struct {
 	registry[hosts.HostMapper]
 }
 
+// Register stores a HostMapper under the given name.
 func (r *hostsRegistry) Register(name string, v hosts.HostMapper) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered HostMapper.
+// Returns nil if name is empty.
 func (r *hostsRegistry) Get(name string) hosts.HostMapper {
 	if name != "" {
 		return &hostsWrapper{name: name, r: r}

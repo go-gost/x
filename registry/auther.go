@@ -6,14 +6,18 @@ import (
 	"github.com/go-gost/core/auth"
 )
 
+// autherRegistry implements a hot-reload-safe registry for auth.Authenticator.
 type autherRegistry struct {
 	registry[auth.Authenticator]
 }
 
+// Register stores an Authenticator under the given name.
 func (r *autherRegistry) Register(name string, v auth.Authenticator) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered Authenticator.
+// Returns nil if name is empty.
 func (r *autherRegistry) Get(name string) auth.Authenticator {
 	if name != "" {
 		return &autherWrapper{name: name, r: r}

@@ -6,14 +6,18 @@ import (
 	"github.com/go-gost/core/sd"
 )
 
+// sdRegistry implements a hot-reload-safe registry for sd.SD.
 type sdRegistry struct {
 	registry[sd.SD]
 }
 
+// Register stores an SD under the given name.
 func (r *sdRegistry) Register(name string, v sd.SD) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered SD.
+// Returns nil if name is empty.
 func (r *sdRegistry) Get(name string) sd.SD {
 	if name != "" {
 		return &sdWrapper{name: name, r: r}

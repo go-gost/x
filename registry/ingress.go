@@ -6,14 +6,18 @@ import (
 	"github.com/go-gost/core/ingress"
 )
 
+// ingressRegistry implements a hot-reload-safe registry for ingress.Ingress.
 type ingressRegistry struct {
 	registry[ingress.Ingress]
 }
 
+// Register stores an Ingress under the given name.
 func (r *ingressRegistry) Register(name string, v ingress.Ingress) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered Ingress.
+// Returns nil if name is empty.
 func (r *ingressRegistry) Get(name string) ingress.Ingress {
 	if name != "" {
 		return &ingressWrapper{name: name, r: r}

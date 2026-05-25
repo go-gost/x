@@ -7,14 +7,18 @@ import (
 	"github.com/go-gost/core/observer"
 )
 
+// observerRegistry implements a hot-reload-safe registry for observer.Observer.
 type observerRegistry struct {
 	registry[observer.Observer]
 }
 
+// Register stores an Observer under the given name.
 func (r *observerRegistry) Register(name string, v observer.Observer) error {
 	return r.registry.Register(name, v)
 }
 
+// Get returns a wrapper that delegates to the currently registered Observer.
+// Returns nil if name is empty.
 func (r *observerRegistry) Get(name string) observer.Observer {
 	if name != "" {
 		return &observerWrapper{name: name, r: r}
