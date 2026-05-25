@@ -1,3 +1,6 @@
+// Package service implements the core [service.Service] interface, binding a
+// [listener.Listener] and a [handler.Handler] into a runnable proxy service
+// that accepts inbound connections and forwards traffic through a proxy chain.
 package service
 
 import (
@@ -22,6 +25,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	xctx "github.com/go-gost/x/ctx"
+	xlogger "github.com/go-gost/x/logger"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/google/shlex"
@@ -41,62 +45,76 @@ type options struct {
 	logger         logger.Logger
 }
 
+// Option is a functional option for configuring a service.
 type Option func(opts *options)
 
+// AdmissionOption sets the admission controller that filters connections by
+// source address.
 func AdmissionOption(admission admission.Admission) Option {
 	return func(opts *options) {
 		opts.admission = admission
 	}
 }
 
+// RecordersOption sets the traffic recorders for the service.
 func RecordersOption(recorders ...recorder.RecorderObject) Option {
 	return func(opts *options) {
 		opts.recorders = recorders
 	}
 }
 
+// PreUpOption sets shell commands to run before the service starts.
 func PreUpOption(cmds []string) Option {
 	return func(opts *options) {
 		opts.preUp = cmds
 	}
 }
 
+// PreDownOption sets shell commands to run before the service stops.
 func PreDownOption(cmds []string) Option {
 	return func(opts *options) {
 		opts.preDown = cmds
 	}
 }
 
+// PostUpOption sets shell commands to run after the service starts listening.
 func PostUpOption(cmds []string) Option {
 	return func(opts *options) {
 		opts.postUp = cmds
 	}
 }
 
+// PostDownOption sets shell commands to run after the service stops.
 func PostDownOption(cmds []string) Option {
 	return func(opts *options) {
 		opts.postDown = cmds
 	}
 }
 
+// StatsOption sets the traffic statistics collector for the service.
 func StatsOption(stats stats.Stats) Option {
 	return func(opts *options) {
 		opts.stats = stats
 	}
 }
 
+// ObserverOption sets the observer that receives service state and stats events.
 func ObserverOption(observer observer.Observer) Option {
 	return func(opts *options) {
 		opts.observer = observer
 	}
 }
 
+// ObserverPeriodOption sets the interval at which stats are reported to the
+// observer. Defaults to 5 seconds with a minimum of 1 second.
 func ObserverPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.observerPeriod = period
 	}
 }
 
+// LoggerOption sets the logger for the service. If not provided, a no-op
+// logger is used.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
@@ -111,10 +129,16 @@ type defaultService struct {
 	options  options
 }
 
+// NewService creates a new service that binds the given listener and handler.
+// The service is registered in the running state and pre-up commands are
+// executed immediately. Call [Serve] to start accepting connections.
 func NewService(name string, ln listener.Listener, h handler.Handler, opts ...Option) service.Service {
 	var options options
 	for _, opt := range opts {
 		opt(&options)
+	}
+	if options.logger == nil {
+		options.logger = xlogger.Nop()
 	}
 	s := &defaultService{
 		name:     name,
@@ -134,10 +158,14 @@ func NewService(name string, ln listener.Listener, h handler.Handler, opts ...Op
 	return s
 }
 
+// Addr returns the network address the service is listening on.
 func (s *defaultService) Addr() net.Addr {
 	return s.listener.Addr()
 }
 
+// Serve starts the accept loop. It blocks until the listener is closed or a
+// fatal accept error occurs. Each accepted connection is handled in its own
+// goroutine by the service's handler.
 func (s *defaultService) Serve() error {
 	s.execCmds("post-up", s.options.postUp)
 	s.setState(StateReady)
@@ -291,28 +319,39 @@ func (s *defaultService) Serve() error {
 	}
 }
 
+// Status returns the runtime status of the service.
 func (s *defaultService) Status() *Status {
 	return s.status
 }
 
+// Close shuts down the service by closing the handler, observer, and listener
+// in order. All errors are collected and returned as a joined error.
 func (s *defaultService) Close() error {
 	s.execCmds("pre-down", s.options.preDown)
 	defer s.execCmds("post-down", s.options.postDown)
 
+	var errs []error
 	if closer, ok := s.handler.(io.Closer); ok {
-		closer.Close()
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	if s.options.observer != nil {
 		if closer, ok := s.options.observer.(io.Closer); ok {
-			closer.Close()
+			if err := closer.Close(); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
-	return s.listener.Close()
+	if err := s.listener.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 func (s *defaultService) execCmds(phase string, cmds []string) {
-	for _, cmd := range cmds {
-		cmd := strings.TrimSpace(cmd)
+	for _, raw := range cmds {
+		cmd := strings.TrimSpace(raw)
 		if cmd == "" {
 			continue
 		}
@@ -411,6 +450,7 @@ func (s *defaultService) observeStats(ctx context.Context) {
 	}
 }
 
+// ServiceEvent is an observer event representing a service state change.
 type ServiceEvent struct {
 	Kind    string
 	Service string
@@ -418,6 +458,7 @@ type ServiceEvent struct {
 	Msg     string
 }
 
+// Type returns the observer event type for service events.
 func (ServiceEvent) Type() observer.EventType {
 	return observer.EventStatus
 }
