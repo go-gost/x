@@ -10,24 +10,30 @@ type randomWeightedItem[T any] struct {
 	weight int
 }
 
+// RandomWeighted is a weighted random selector.
+// Items are selected randomly with probability proportional to their weight.
 type RandomWeighted[T any] struct {
 	items []*randomWeightedItem[T]
 	sum   int
 	r     *rand.Rand
 }
 
+// NewRandomWeighted creates a new RandomWeighted selector.
 func NewRandomWeighted[T any]() *RandomWeighted[T] {
 	return &RandomWeighted[T]{
 		r: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
+// Add adds an item with the given weight to the selector.
 func (rw *RandomWeighted[T]) Add(item T, weight int) {
 	ri := &randomWeightedItem[T]{item: item, weight: weight}
 	rw.items = append(rw.items, ri)
 	rw.sum += weight
 }
 
+// Next selects an item randomly based on weights.
+// Returns the zero value if no items are added.
 func (rw *RandomWeighted[T]) Next() (v T) {
 	if len(rw.items) == 0 {
 		return
@@ -46,6 +52,7 @@ func (rw *RandomWeighted[T]) Next() (v T) {
 	return rw.items[len(rw.items)-1].item
 }
 
+// Reset clears all items and weights.
 func (rw *RandomWeighted[T]) Reset() {
 	rw.items = nil
 	rw.sum = 0

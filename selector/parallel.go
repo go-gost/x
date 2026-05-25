@@ -15,6 +15,8 @@ import (
 
 type parallelStrategy[T any] struct{}
 
+// ParallelStrategy is a strategy for node selector.
+// It dials all nodes concurrently and uses the first successful connection.
 func ParallelStrategy[T any]() selector.Strategy[T] {
 	return &parallelStrategy[T]{}
 }
@@ -29,7 +31,11 @@ func (s *parallelStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 
 	nodes := make([]*chain.Node, 0, len(vs))
 	for _, node := range vs {
-		nodes = append(nodes, any(node).(*chain.Node))
+		n, ok := any(node).(*chain.Node)
+		if !ok {
+			return
+		}
+		nodes = append(nodes, n)
 	}
 
 	vn := chain.NewNode("parallel", "", chain.TransportNodeOption(&parallelTransporter{nodes: nodes}))
@@ -160,6 +166,7 @@ func (tr *parallelTransporter) Options() *chain.TransportOptions {
 	return &chain.TransportOptions{}
 }
 
+// Copy implements chain.Transporter.Copy.
 func (tr *parallelTransporter) Copy() chain.Transporter {
 	return &parallelTransporter{
 		nodes: append([]*chain.Node(nil), tr.nodes...),

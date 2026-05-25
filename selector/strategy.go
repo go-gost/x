@@ -93,6 +93,9 @@ type hashStrategy[T any] struct {
 	mu sync.Mutex
 }
 
+// HashStrategy is a strategy for node selector.
+// The node will be selected by hashing the client ID or hash source
+// from the context. Falls back to random selection when neither is available.
 func HashStrategy[T any]() selector.Strategy[T] {
 	return &hashStrategy[T]{
 		r: rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -104,11 +107,9 @@ func (s *hashStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 		return
 	}
 
-	// 打印 基于用户 id 进行 hash  选择最终出口
 	if clientID := xctx.ClientIDFromContext(ctx); clientID != "" {
-		idStr := string(clientID)
-		value := uint64(crc32.ChecksumIEEE([]byte(idStr)))
-		logger.Default().Infof("【命中】从 xctx 拿到 ID: %s, Hash: %d", idStr, value)
+		value := uint64(crc32.ChecksumIEEE([]byte(string(clientID))))
+		logger.Default().Tracef("hash client %s %d", clientID, value)
 		return vs[value%uint64(len(vs))]
 	}
 
