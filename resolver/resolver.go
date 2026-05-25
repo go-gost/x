@@ -4,6 +4,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	resolver_util "github.com/go-gost/x/internal/util/resolver"
 	"github.com/go-gost/x/resolver/exchanger"
 	"github.com/miekg/dns"
+	"golang.org/x/sync/singleflight"
 )
 
 // NameServer describes a DNS nameserver configuration including its address,
@@ -54,11 +56,15 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
+const maxAsyncRefresh = 32 // max concurrent background refresh goroutines
+
 // localResolver resolves hostnames via DNS using configured nameservers and a cache.
 type localResolver struct {
-	servers []NameServer
-	cache   *resolver_util.Cache
-	options options
+	servers    []NameServer
+	cache      *resolver_util.Cache
+	options    options
+	refreshSem chan struct{}   // bounds concurrent async refresh goroutines
+	sfGroup    singleflight.Group
 }
 
 // NewResolver creates a Resolver that queries the given nameservers in order,
@@ -94,8 +100,12 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 		server.exchanger = ex
 
 		switch server.Only {
-		case "ip4", "ipv4", "ip6", "ipv6":
-			server.Prefer = server.Only
+		case "ip4", "ipv4":
+			server.Only = "ipv4"
+			server.Prefer = "ipv4"
+		case "ip6", "ipv6":
+			server.Only = "ipv6"
+			server.Prefer = "ipv6"
 		default:
 			server.Only = ""
 		}
@@ -108,10 +118,24 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 		WithLogger(options.logger)
 
 	return &localResolver{
-		servers: servers,
-		cache:   cache,
-		options: options,
+		servers:    servers,
+		cache:      cache,
+		options:    options,
+		refreshSem: make(chan struct{}, maxAsyncRefresh),
 	}, nil
+}
+
+// callerNetworkPref maps the caller's network hint to a DNS query preference.
+// Returns "ipv4" for "ip4", "ipv6" for "ip6", or "" for no preference.
+func callerNetworkPref(network string) string {
+	switch network {
+	case "ip4":
+		return "ipv4"
+	case "ip6":
+		return "ipv6"
+	default:
+		return ""
+	}
 }
 
 func (r *localResolver) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) (ips []net.IP, err error) {
@@ -124,11 +148,13 @@ func (r *localResolver) Resolve(ctx context.Context, network, host string, opts 
 		host = host + "." + r.options.domain
 	}
 
+	callerPref := callerNetworkPref(network)
+
 	for _, server := range r.servers {
 		if server.Async {
-			ips, err = r.resolveAsync(ctx, &server, host)
+			ips, err = r.resolveAsync(ctx, &server, host, callerPref)
 		} else {
-			ips, err = r.resolve(ctx, &server, host)
+			ips, err = r.resolve(ctx, &server, host, callerPref)
 		}
 		if err != nil {
 			r.options.logger.Error(err)
@@ -145,38 +171,63 @@ func (r *localResolver) Resolve(ctx context.Context, network, host string, opts 
 	return
 }
 
-func (r *localResolver) resolve(ctx context.Context, server *NameServer, host string) (ips []net.IP, err error) {
+// resolvePreference determines the effective IP preference.
+// Precedence: server.Only (hard constraint) > callerPref > server.Prefer > default (ipv4-first).
+func resolvePreference(server *NameServer, callerPref string) string {
+	if server.Only != "" {
+		return server.Only
+	}
+	if callerPref != "" {
+		return callerPref
+	}
+	if server.Prefer != "" {
+		return server.Prefer
+	}
+	return "" // default: ipv4-first
+}
+
+func (r *localResolver) resolve(ctx context.Context, server *NameServer, host string, callerPref string) (ips []net.IP, err error) {
 	if server == nil {
 		return
 	}
 
-	if server.Prefer == "ipv6" { // prefer ipv6
-		if ips, err = r.resolve6(ctx, server, host); len(ips) > 0 || server.Only == "ipv6" {
+	pref := resolvePreference(server, callerPref)
+
+	if pref == "ipv6" {
+		if ips, err = r.resolve6(ctx, server, host); len(ips) > 0 || server.Only == "ipv6" || callerPref == "ipv6" {
 			return
 		}
 		return r.resolve4(ctx, server, host)
 	}
 
-	if ips, err = r.resolve4(ctx, server, host); len(ips) > 0 || server.Only == "ipv4" {
+	if ips, err = r.resolve4(ctx, server, host); len(ips) > 0 || server.Only == "ipv4" || callerPref == "ipv4" {
 		return
 	}
 	return r.resolve6(ctx, server, host)
 }
 
-func (r *localResolver) resolveAsync(ctx context.Context, server *NameServer, host string) (ips []net.IP, err error) {
-	ips, ttl, ok := r.lookupCache(ctx, server, host)
+func (r *localResolver) resolveAsync(ctx context.Context, server *NameServer, host string, callerPref string) (ips []net.IP, err error) {
+	ips, ttl, ok := r.lookupCache(ctx, server, host, callerPref)
 	if !ok {
-		return r.resolve(ctx, server, host)
+		return r.resolve(ctx, server, host, callerPref)
 	}
 
 	if ttl <= 0 {
 		r.options.logger.Debugf("async resolve %s via %s", host, server.exchanger.String())
-		go r.resolve(context.WithoutCancel(ctx), server, host)
+		select {
+		case r.refreshSem <- struct{}{}:
+			go func() {
+				defer func() { <-r.refreshSem }()
+				r.resolve(context.WithoutCancel(ctx), server, host, callerPref)
+			}()
+		default:
+			r.options.logger.Debugf("async refresh skipped: semaphore full for %s", host)
+		}
 	}
 	return
 }
 
-func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, host string) (ips []net.IP, ttl time.Duration, ok bool) {
+func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, host string, callerPref string) (ips []net.IP, ttl time.Duration, ok bool) {
 	lookup := func(t uint16, host string) (ips []net.IP, ttl time.Duration, ok bool) {
 		mq := dns.Msg{}
 		mq.SetQuestion(dns.Fqdn(host), t)
@@ -184,32 +235,24 @@ func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, hos
 		if mr == nil {
 			return
 		}
-
 		ok = true
-
-		for _, ans := range mr.Answer {
-			if ar, _ := ans.(*dns.AAAA); ar != nil {
-				ips = append(ips, ar.AAAA)
-			}
-			if ar, _ := ans.(*dns.A); ar != nil {
-				ips = append(ips, ar.A)
-			}
-		}
+		ips = extractIPs(mr)
 		return
 	}
 
-	if server.Prefer == "ipv6" {
+	pref := resolvePreference(server, callerPref)
+
+	if pref == "ipv6" {
 		ips, ttl, ok = lookup(dns.TypeAAAA, host)
-		if len(ips) > 0 || server.Only == "ipv6" {
+		if len(ips) > 0 || server.Only == "ipv6" || callerPref == "ipv6" {
 			return
 		}
-
 		ips, ttl, ok = lookup(dns.TypeA, host)
 		return
 	}
 
 	ips, ttl, ok = lookup(dns.TypeA, host)
-	if len(ips) > 0 || server.Only == "ipv4" {
+	if len(ips) > 0 || server.Only == "ipv4" || callerPref == "ipv4" {
 		return
 	}
 	return lookup(dns.TypeAAAA, host)
@@ -233,30 +276,50 @@ func (r *localResolver) resolveIPs(ctx context.Context, server *NameServer, mq *
 	}
 
 	key := resolver_util.NewCacheKey(&mq.Question[0])
-	mr, ttl := r.cache.Load(ctx, key)
-	if ttl <= 0 {
+
+	result, err, _ := r.sfGroup.Do(string(key), func() (any, error) {
+		// Double-check cache after winning the singleflight race.
+		mr, ttl := r.cache.Load(ctx, key)
+		if ttl > 0 {
+			return mr, nil
+		}
+
+		// Apply EDNS0 subnet option before exchange. mq is fresh per resolve4/resolve6
+		// call, so mutation is safe — it will not be shared across singleflight callers.
 		resolver_util.AddSubnetOpt(mq, server.ClientIP)
-		mr, err = r.exchange(ctx, server.exchanger, mq)
+		mr, err := r.exchange(ctx, server.exchanger, mq)
 		if err != nil {
-			return
+			return nil, err
 		}
 		r.cache.Store(ctx, key, mr, server.TTL)
 
 		if r.options.logger.IsLevelEnabled(logger.TraceLevel) {
 			r.options.logger.Trace(mr.String())
 		}
+		return mr, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
+	return extractIPs(result.(*dns.Msg)), nil
+}
+
+// extractIPs returns all A and AAAA records from a DNS message.
+func extractIPs(mr *dns.Msg) []net.IP {
+	if mr == nil {
+		return nil
+	}
+	ips := make([]net.IP, 0, len(mr.Answer))
 	for _, ans := range mr.Answer {
-		if ar, _ := ans.(*dns.AAAA); ar != nil {
-			ips = append(ips, ar.AAAA)
-		}
-		if ar, _ := ans.(*dns.A); ar != nil {
+		if ar, ok := ans.(*dns.A); ok {
 			ips = append(ips, ar.A)
 		}
+		if ar, ok := ans.(*dns.AAAA); ok {
+			ips = append(ips, ar.AAAA)
+		}
 	}
-
-	return
+	return ips
 }
 
 func (r *localResolver) exchange(ctx context.Context, ex exchanger.Exchanger, mq *dns.Msg) (mr *dns.Msg, err error) {
@@ -270,7 +333,13 @@ func (r *localResolver) exchange(ctx context.Context, ex exchanger.Exchanger, mq
 	}
 
 	mr = &dns.Msg{}
-	err = mr.Unpack(reply)
+	if err = mr.Unpack(reply); err != nil {
+		return
+	}
+
+	if mr.Rcode != dns.RcodeSuccess {
+		return nil, fmt.Errorf("DNS %s for %s", dns.RcodeToString[mr.Rcode], mq.Question[0].Name)
+	}
 
 	return
 }

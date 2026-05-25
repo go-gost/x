@@ -204,7 +204,7 @@ func (ex *exchanger) exchange(ctx context.Context, msg []byte) ([]byte, error) {
 	}
 
 	conn := &dns.Conn{
-		UDPSize: 1024,
+		UDPSize: 4096,
 		Conn:    c,
 	}
 

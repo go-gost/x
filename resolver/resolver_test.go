@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -79,9 +80,10 @@ func newTestResolver(servers []NameServer, opts ...Option) *localResolver {
 	}
 	cache := resolver_util.NewCache().WithLogger(xlogger.Nop())
 	return &localResolver{
-		servers: servers,
-		cache:   cache,
-		options: o,
+		servers:    servers,
+		cache:      cache,
+		options:    o,
+		refreshSem: make(chan struct{}, maxAsyncRefresh),
 	}
 }
 
@@ -259,7 +261,7 @@ func TestResolve_CacheHit(t *testing.T) {
 func TestResolve_NilServer(t *testing.T) {
 	r := &localResolver{options: nopLog()}
 
-	ips, err := r.resolve(context.Background(), nil, "example.com")
+	ips, err := r.resolve(context.Background(), nil, "example.com", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -417,3 +419,157 @@ func TestLoggerOption(t *testing.T) {
 		t.Error("logger option not applied")
 	}
 }
+
+func TestExchange_DNSRcodeError(t *testing.T) {
+	// Return a message with NXDOMAIN rcode
+	mr := new(dns.Msg)
+	mr.SetRcode(&dns.Msg{MsgHdr: dns.MsgHdr{Id: 1}}, dns.RcodeNameError)
+	packed, err := mr.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ex := &rcodeMockExchanger{response: packed}
+	r := newTestResolver([]NameServer{{exchanger: ex, TTL: time.Minute}})
+
+	ips, err := r.Resolve(context.Background(), "ip", "nonexistent.example.com")
+	if err == nil {
+		t.Fatal("expected error for NXDOMAIN")
+	}
+	if len(ips) != 0 {
+		t.Fatalf("expected no IPs for NXDOMAIN, got %v", ips)
+	}
+}
+
+func TestExchange_DNSRcodeServfail_Fallback(t *testing.T) {
+	// First server returns SERVFAIL, second returns success
+	servfailMr := new(dns.Msg)
+	servfailMr.SetRcode(&dns.Msg{MsgHdr: dns.MsgHdr{Id: 1}}, dns.RcodeServerFailure)
+	packed, err := servfailMr.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	okEx := &mockExchanger{response: newDNSMsgWithA("10.0.0.1")}
+	servfailEx := &rcodeMockExchanger{response: packed}
+
+	r := newTestResolver([]NameServer{
+		{exchanger: servfailEx, TTL: time.Minute},
+		{exchanger: okEx, TTL: time.Minute},
+	})
+
+	ips, err := r.Resolve(context.Background(), "ip", "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ips) == 0 {
+		t.Fatal("expected fallback to second server")
+	}
+}
+
+func TestResolve_NetworkIP4(t *testing.T) {
+	// When caller asks for ip4, only A queries should be made (no AAAA fallback).
+	// Use a mock that returns empty response for A queries.
+	ex := &mockExchanger{response: new(dns.Msg)} // empty response, no records
+	r := newTestResolver([]NameServer{{exchanger: ex, TTL: time.Minute}})
+
+	ips, err := r.Resolve(context.Background(), "ip4", "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should get empty result (no A records), and NOT fall back to IPv6
+	if len(ips) != 0 {
+		t.Errorf("expected no IPs when only ip4 requested and no A records, got %v", ips)
+	}
+}
+
+func TestResolve_NetworkIP6(t *testing.T) {
+	ex := &mockExchanger{response: newDNSMsgWithAAAA("2001:db8::1")}
+	r := newTestResolver([]NameServer{{exchanger: ex, TTL: time.Minute}})
+
+	ips, err := r.Resolve(context.Background(), "ip6", "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ips) == 0 {
+		t.Fatal("expected IPv6 result for ip6 network")
+	}
+}
+
+func TestResolve_NetworkIP4_ServerOnlyOverrides(t *testing.T) {
+	// Server configured with Only="ipv6", caller asks for "ip4" → server wins
+	ex := &mockExchanger{response: newDNSMsgWithAAAA("2001:db8::1")}
+	r := newTestResolver([]NameServer{{exchanger: ex, Only: "ipv6", Prefer: "ipv6", TTL: time.Minute}})
+
+	ips, err := r.Resolve(context.Background(), "ip4", "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Server Only=ipv6 should override caller's ip4 request
+	if len(ips) == 0 {
+		t.Fatal("expected IPv6 result (server Only overrides caller)")
+	}
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			t.Errorf("expected only IPv6 from server Only constraint, got %v", ip)
+		}
+	}
+}
+
+func TestResolve_ConcurrentDedup(t *testing.T) {
+	ex := &mockExchanger{response: newDNSMsgWithA("10.0.0.1")}
+	r := newTestResolver([]NameServer{{exchanger: ex, TTL: time.Minute}})
+
+	const n = 10
+	var wg sync.WaitGroup
+	results := make([][]net.IP, n)
+	errs := make([]error, n)
+
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = r.Resolve(context.Background(), "ip", "example.com")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: unexpected error: %v", i, err)
+		}
+		if len(results[i]) == 0 {
+			t.Fatalf("goroutine %d: expected IPs", i)
+		}
+	}
+
+	// singleflight should have deduplicated the exchange calls
+	calls := ex.calls.Load()
+	if calls > 2 { // allow small margin for race, but not 10
+		t.Errorf("expected ~1 exchange call from singleflight, got %d", calls)
+	}
+}
+
+func TestResolve_IP_UnchangedBehavior(t *testing.T) {
+	ex := &mockExchanger{response: newDNSMsgWithA("10.0.0.1")}
+	r := newTestResolver([]NameServer{{exchanger: ex, TTL: time.Minute}})
+
+	ips, err := r.Resolve(context.Background(), "ip", "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ips) == 0 {
+		t.Fatal("expected result for network=ip (default behavior)")
+	}
+}
+
+// rcodeMockExchanger returns a pre-packed response, used for DNS rcode testing.
+type rcodeMockExchanger struct {
+	response []byte
+}
+
+func (m *rcodeMockExchanger) Exchange(_ context.Context, _ []byte) ([]byte, error) {
+	return m.response, nil
+}
+
+func (m *rcodeMockExchanger) String() string { return "mock://rcode" }
