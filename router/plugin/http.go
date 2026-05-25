@@ -11,17 +11,20 @@ import (
 	xrouter "github.com/go-gost/x/router"
 )
 
+// httpPluginGetRouteRequest is the request body for the HTTP route plugin.
 type httpPluginGetRouteRequest struct {
 	Dst string `json:"dst"`
 	ID  string `json:"id"`
 }
 
+// httpPluginGetRouteResponse is the response body from the HTTP route plugin.
 type httpPluginGetRouteResponse struct {
 	Net     string `json:"net"`
 	Dst     string `json:"dst"`
 	Gateway string `json:"gateway"`
 }
 
+// httpPlugin implements router.Router via an HTTP plugin endpoint.
 type httpPlugin struct {
 	url    string
 	client *http.Client
@@ -47,6 +50,7 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) router.Router
 	}
 }
 
+// GetRoute queries the HTTP plugin for the route to the given destination.
 func (p *httpPlugin) GetRoute(ctx context.Context, dst string, opts ...router.Option) *router.Route {
 	if p.client == nil {
 		return nil

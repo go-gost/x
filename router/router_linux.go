@@ -8,6 +8,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// setSysRoutes applies the given routes as system-level network routes using netlink.
 func (p *localRouter) setSysRoutes(routes ...*router.Route) error {
 	for _, route := range routes {
 		if route.Net == nil {

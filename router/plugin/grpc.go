@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 )
 
+// grpcPlugin implements router.Router via a gRPC plugin connection.
 type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.RouterClient
@@ -44,6 +45,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) router.Route
 	return p
 }
 
+// GetRoute queries the gRPC plugin for the route to the given destination.
 func (p *grpcPlugin) GetRoute(ctx context.Context, dst string, opts ...router.Option) *router.Route {
 	if p.client == nil {
 		return nil
@@ -67,6 +69,7 @@ func (p *grpcPlugin) GetRoute(ctx context.Context, dst string, opts ...router.Op
 	return xrouter.ParseRoute(r.Dst, r.Gateway)
 }
 
+// Close closes the underlying gRPC connection.
 func (p *grpcPlugin) Close() error {
 	if p.conn == nil {
 		return nil

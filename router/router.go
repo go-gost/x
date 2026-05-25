@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/router"
+	xlogger "github.com/go-gost/x/logger"
+
 	"github.com/go-gost/x/internal/loader"
 )
 
@@ -23,44 +25,54 @@ type options struct {
 	logger      logger.Logger
 }
 
+// Option is a functional option for configuring a Router.
 type Option func(opts *options)
 
+// RoutesOption sets the static routes for the router.
 func RoutesOption(routes []*router.Route) Option {
 	return func(opts *options) {
 		opts.routes = routes
 	}
 }
 
+// ReloadPeriodOption sets the interval for periodic route reloading.
 func ReloadPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.period = period
 	}
 }
 
+// FileLoaderOption sets the file-based loader for route data.
 func FileLoaderOption(fileLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.fileLoader = fileLoader
 	}
 }
 
+// RedisLoaderOption sets the Redis-based loader for route data.
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
 	}
 }
 
+// HTTPLoaderOption sets the HTTP-based loader for route data.
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
 	}
 }
 
+// LoggerOption sets the logger for the router.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
 	}
 }
 
+// localRouter is the built-in Router implementation. It manages static routes
+// loaded from config and dynamic routes loaded from external sources (file,
+// Redis, HTTP), with support for periodic hot-reload.
 type localRouter struct {
 	routes     []*router.Route
 	cancelFunc context.CancelFunc
@@ -74,8 +86,11 @@ func NewRouter(opts ...Option) router.Router {
 	for _, opt := range opts {
 		opt(&options)
 	}
+	if options.logger == nil {
+		options.logger = xlogger.Nop()
+	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 
 	r := &localRouter{
 		cancelFunc: cancel,
@@ -92,6 +107,8 @@ func NewRouter(opts ...Option) router.Router {
 	return r
 }
 
+// periodReload periodically reloads routes from external sources until the
+// context is cancelled.
 func (p *localRouter) periodReload(ctx context.Context) error {
 	period := p.options.period
 	if period < time.Second {
@@ -105,7 +122,6 @@ func (p *localRouter) periodReload(ctx context.Context) error {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
 				p.options.logger.Warnf("reload: %v", err)
-				// return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -113,6 +129,7 @@ func (p *localRouter) periodReload(ctx context.Context) error {
 	}
 }
 
+// reload loads routes from all configured sources and updates the local state.
 func (p *localRouter) reload(ctx context.Context) error {
 	routes := p.options.routes
 
@@ -136,6 +153,7 @@ func (p *localRouter) reload(ctx context.Context) error {
 	return nil
 }
 
+// load reads routes from all configured external loaders (file, Redis, HTTP).
 func (p *localRouter) load(ctx context.Context) (routes []*router.Route, err error) {
 	if p.options.fileLoader != nil {
 		if lister, ok := p.options.fileLoader.(loader.Lister); ok {
@@ -151,8 +169,12 @@ func (p *localRouter) load(ctx context.Context) (routes []*router.Route, err err
 			if er != nil {
 				p.options.logger.Warnf("file loader: %v", er)
 			}
-			if v, _ := p.parseRoutes(fr); v != nil {
-				routes = append(routes, v...)
+			if fr != nil {
+				if v, er := p.parseRoutes(fr); er != nil {
+					p.options.logger.Warnf("file loader parse: %v", er)
+				} else if v != nil {
+					routes = append(routes, v...)
+				}
 			}
 		}
 	}
@@ -170,8 +192,13 @@ func (p *localRouter) load(ctx context.Context) (routes []*router.Route, err err
 			if er != nil {
 				p.options.logger.Warnf("redis loader: %v", er)
 			}
-			v, _ := p.parseRoutes(r)
-			routes = append(routes, v...)
+			if r != nil {
+				if v, er := p.parseRoutes(r); er != nil {
+					p.options.logger.Warnf("redis loader parse: %v", er)
+				} else {
+					routes = append(routes, v...)
+				}
+			}
 		}
 	}
 	if p.options.httpLoader != nil {
@@ -179,13 +206,19 @@ func (p *localRouter) load(ctx context.Context) (routes []*router.Route, err err
 		if er != nil {
 			p.options.logger.Warnf("http loader: %v", er)
 		}
-		v, _ := p.parseRoutes(r)
-		routes = append(routes, v...)
+		if r != nil {
+			if v, er := p.parseRoutes(r); er != nil {
+				p.options.logger.Warnf("http loader parse: %v", er)
+			} else {
+				routes = append(routes, v...)
+			}
+		}
 	}
 
 	return
 }
 
+// parseRoutes reads routes from an io.Reader, one route per line.
 func (p *localRouter) parseRoutes(r io.Reader) (routes []*router.Route, err error) {
 	if r == nil {
 		return
@@ -202,6 +235,8 @@ func (p *localRouter) parseRoutes(r io.Reader) (routes []*router.Route, err erro
 	return
 }
 
+// GetRoute returns the route matching the given destination address. It matches
+// by exact destination string or by CIDR network containment.
 func (p *localRouter) GetRoute(ctx context.Context, dst string, opts ...router.Option) *router.Route {
 	if dst == "" || p == nil {
 		return nil
@@ -221,8 +256,10 @@ func (p *localRouter) GetRoute(ctx context.Context, dst string, opts ...router.O
 	return nil
 }
 
+// parseLine parses a single route line in "destination gateway" format.
+// Comments (prefixed with #) and blank lines are ignored.
 func (*localRouter) parseLine(s string) (route *router.Route) {
-	line := strings.Replace(s, "\t", " ", -1)
+	line := strings.ReplaceAll(s, "\t", " ")
 	line = strings.TrimSpace(line)
 	if n := strings.IndexByte(line, '#'); n >= 0 {
 		line = line[:n]
@@ -234,12 +271,13 @@ func (*localRouter) parseLine(s string) (route *router.Route) {
 		}
 	}
 	if len(sp) < 2 {
-		return // invalid lines are ignored
+		return
 	}
 
 	return ParseRoute(sp[0], sp[1])
 }
 
+// Close stops the periodic reload goroutine and closes all configured loaders.
 func (p *localRouter) Close() error {
 	p.cancelFunc()
 	if p.options.fileLoader != nil {
@@ -248,9 +286,15 @@ func (p *localRouter) Close() error {
 	if p.options.redisLoader != nil {
 		p.options.redisLoader.Close()
 	}
+	if p.options.httpLoader != nil {
+		p.options.httpLoader.Close()
+	}
 	return nil
 }
 
+// ParseRoute parses a destination/gateway pair into a Route. The destination
+// may be a CIDR notation network (e.g. "10.0.0.0/8") or a plain address. If dst
+// is empty, nil is returned.
 func ParseRoute(dst string, gateway string) *router.Route {
 	if dst == "" {
 		return nil
