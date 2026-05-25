@@ -27,19 +27,17 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) (resolver.Re
 	}
 
 	log := logger.Default().WithFields(map[string]any{
-		"kind":      "resolver",
-		"resolover": name,
+		"kind":     "resolver",
+		"resolver": name,
 	})
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
 	p := &grpcPlugin{
-		conn: conn,
-		log:  log,
-	}
-	if conn != nil {
-		p.client = proto.NewResolverClient(conn)
+		conn:   conn,
+		client: proto.NewResolverClient(conn),
+		log:    log,
 	}
 	return p, nil
 }

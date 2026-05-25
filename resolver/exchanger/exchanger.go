@@ -18,6 +18,7 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Options holds configuration for an Exchanger.
 type Options struct {
 	router    chain.Router
 	tlsConfig *tls.Config
@@ -62,6 +63,7 @@ type Exchanger interface {
 	String() string
 }
 
+// exchanger implements DNS queries over UDP, TCP, TLS (DoT), or HTTPS (DoH).
 type exchanger struct {
 	network string
 	addr    string

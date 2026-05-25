@@ -15,17 +15,20 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 )
 
+// httpPluginRequest is the JSON body sent to an HTTP resolver plugin.
 type httpPluginRequest struct {
 	Network string `json:"network"`
 	Host    string `json:"host"`
 	Client  string `json:"client"`
 }
 
+// httpPluginResponse is the JSON response from an HTTP resolver plugin.
 type httpPluginResponse struct {
 	IPs []string `json:"ips"`
 	OK  bool     `json:"ok"`
 }
 
+// httpPlugin is a Resolver implementation that delegates to an external HTTP service.
 type httpPlugin struct {
 	url    string
 	client *http.Client

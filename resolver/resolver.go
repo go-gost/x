@@ -1,3 +1,5 @@
+// Package resolver implements DNS resolution via configurable nameservers
+// with caching, async lookup, and IPv4/IPv6 preference support.
 package resolver
 
 import (
@@ -15,6 +17,8 @@ import (
 	"github.com/miekg/dns"
 )
 
+// NameServer describes a DNS nameserver configuration including its address,
+// optional upstream chain, TTL, timeout, EDNS0 client subnet, and IP preference.
 type NameServer struct {
 	Addr      string
 	Chain     chain.Chainer
@@ -33,26 +37,32 @@ type options struct {
 	logger logger.Logger
 }
 
+// Option is a functional option for the resolver.
 type Option func(opts *options)
 
+// DomainOption sets the default domain suffix appended to single-label hostnames.
 func DomainOption(domain string) Option {
 	return func(opts *options) {
 		opts.domain = domain
 	}
 }
 
+// LoggerOption sets the logger for the resolver.
 func LoggerOption(logger logger.Logger) Option {
 	return func(opts *options) {
 		opts.logger = logger
 	}
 }
 
+// localResolver resolves hostnames via DNS using configured nameservers and a cache.
 type localResolver struct {
 	servers []NameServer
 	cache   *resolver_util.Cache
 	options options
 }
 
+// NewResolver creates a Resolver that queries the given nameservers in order,
+// with DNS caching and optional async background refresh.
 func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, error) {
 	options := options{}
 	for _, opt := range opts {
@@ -161,7 +171,7 @@ func (r *localResolver) resolveAsync(ctx context.Context, server *NameServer, ho
 
 	if ttl <= 0 {
 		r.options.logger.Debugf("async resolve %s via %s", host, server.exchanger.String())
-		go r.resolve(ctx, server, host)
+		go r.resolve(context.WithoutCancel(ctx), server, host)
 	}
 	return
 }
