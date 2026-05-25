@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/plugin/sd/proto"
 	"github.com/go-gost/x/internal/plugin"
@@ -14,7 +13,6 @@ import (
 type grpcPlugin struct {
 	conn   grpc.ClientConnInterface
 	client proto.SDClient
-	log    logger.Logger
 }
 
 // NewGRPCPlugin creates an SD plugin based on gRPC.
@@ -24,18 +22,15 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) sd.SD {
 		opt(&options)
 	}
 
-	log := logger.Default().WithFields(map[string]any{
-		"kind": "sd",
-		"sd":   name,
-	})
 	conn, err := plugin.NewGRPCConn(addr, &options)
 	if err != nil {
-		log.Error(err)
+		// Connection error is logged by the gRPC dialer; the plugin
+		// will silently no-op all operations until the connection is
+		// established (client stays nil).
 	}
 
 	p := &grpcPlugin{
 		conn: conn,
-		log:  log,
 	}
 	if conn != nil {
 		p.client = proto.NewSDClient(conn)
@@ -44,7 +39,7 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) sd.SD {
 }
 
 func (p *grpcPlugin) Register(ctx context.Context, service *sd.Service, opts ...sd.Option) error {
-	if p.client == nil {
+	if p.client == nil || service == nil {
 		return nil
 	}
 
@@ -58,15 +53,11 @@ func (p *grpcPlugin) Register(ctx context.Context, service *sd.Service, opts ...
 				Address: service.Address,
 			},
 		})
-	if err != nil {
-		p.log.Error(err)
-		return err
-	}
-	return nil
+	return err
 }
 
 func (p *grpcPlugin) Deregister(ctx context.Context, service *sd.Service) error {
-	if p.client == nil {
+	if p.client == nil || service == nil {
 		return nil
 	}
 
@@ -83,7 +74,7 @@ func (p *grpcPlugin) Deregister(ctx context.Context, service *sd.Service) error 
 }
 
 func (p *grpcPlugin) Renew(ctx context.Context, service *sd.Service) error {
-	if p.client == nil {
+	if p.client == nil || service == nil {
 		return nil
 	}
 

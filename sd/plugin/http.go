@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/x/internal/plugin"
 )
@@ -29,7 +27,6 @@ type httpPlugin struct {
 	url    string
 	client *http.Client
 	header http.Header
-	log    logger.Logger
 }
 
 // NewHTTPPlugin creates an SD plugin based on HTTP.
@@ -43,10 +40,6 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) sd.SD {
 		url:    url,
 		client: plugin.NewHTTPClient(&options),
 		header: options.Header,
-		log: logger.Default().WithFields(map[string]any{
-			"kind": "sd",
-			"sd":   name,
-		}),
 	}
 }
 
@@ -82,7 +75,7 @@ func (p *httpPlugin) Register(ctx context.Context, service *sd.Service, opts ...
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New(resp.Status)
+		return fmt.Errorf("sd register: %s", resp.Status)
 	}
 
 	return nil
@@ -120,14 +113,14 @@ func (p *httpPlugin) Deregister(ctx context.Context, service *sd.Service) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New(resp.Status)
+		return fmt.Errorf("sd deregister: %s", resp.Status)
 	}
 
 	return nil
 }
 
 func (p *httpPlugin) Renew(ctx context.Context, service *sd.Service) error {
-	if p.client == nil {
+	if p.client == nil || service == nil {
 		return nil
 	}
 
@@ -158,7 +151,7 @@ func (p *httpPlugin) Renew(ctx context.Context, service *sd.Service) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf(resp.Status)
+		return fmt.Errorf("sd renew: %s", resp.Status)
 	}
 
 	return nil
@@ -190,7 +183,7 @@ func (p *httpPlugin) Get(ctx context.Context, name string) (services []*sd.Servi
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf(resp.Status)
+		return nil, fmt.Errorf("sd get: %s", resp.Status)
 	}
 
 	res := &httpGetResponse{}
