@@ -56,7 +56,12 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
-const maxAsyncRefresh = 32 // max concurrent background refresh goroutines
+const (
+	maxAsyncRefresh = 32 // max concurrent background refresh goroutines
+
+	preferIPv4 = "ipv4"
+	preferIPv6 = "ipv6"
+)
 
 // localResolver resolves hostnames via DNS using configured nameservers and a cache.
 type localResolver struct {
@@ -101,11 +106,11 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 
 		switch server.Only {
 		case "ip4", "ipv4":
-			server.Only = "ipv4"
-			server.Prefer = "ipv4"
+			server.Only = preferIPv4
+			server.Prefer = preferIPv4
 		case "ip6", "ipv6":
-			server.Only = "ipv6"
-			server.Prefer = "ipv6"
+			server.Only = preferIPv6
+			server.Prefer = preferIPv6
 		default:
 			server.Only = ""
 		}
@@ -130,9 +135,9 @@ func NewResolver(nameservers []NameServer, opts ...Option) (resolver.Resolver, e
 func callerNetworkPref(network string) string {
 	switch network {
 	case "ip4":
-		return "ipv4"
+		return preferIPv4
 	case "ip6":
-		return "ipv6"
+		return preferIPv6
 	default:
 		return ""
 	}
@@ -183,7 +188,14 @@ func resolvePreference(server *NameServer, callerPref string) string {
 	if server.Prefer != "" {
 		return server.Prefer
 	}
-	return "" // default: ipv4-first
+	return ""
+}
+
+// shouldReturn reports whether results from the given address family should be
+// accepted without falling back to the other family. Returns true when results
+// were found, or when a hard constraint (Only or caller network) pins to this family.
+func shouldReturn(ips []net.IP, server *NameServer, callerPref, family string) bool {
+	return len(ips) > 0 || server.Only == family || callerPref == family
 }
 
 func (r *localResolver) resolve(ctx context.Context, server *NameServer, host string, callerPref string) (ips []net.IP, err error) {
@@ -193,14 +205,14 @@ func (r *localResolver) resolve(ctx context.Context, server *NameServer, host st
 
 	pref := resolvePreference(server, callerPref)
 
-	if pref == "ipv6" {
-		if ips, err = r.resolve6(ctx, server, host); len(ips) > 0 || server.Only == "ipv6" || callerPref == "ipv6" {
+	if pref == preferIPv6 {
+		if ips, err = r.resolve6(ctx, server, host); shouldReturn(ips, server, callerPref, preferIPv6) {
 			return
 		}
 		return r.resolve4(ctx, server, host)
 	}
 
-	if ips, err = r.resolve4(ctx, server, host); len(ips) > 0 || server.Only == "ipv4" || callerPref == "ipv4" {
+	if ips, err = r.resolve4(ctx, server, host); shouldReturn(ips, server, callerPref, preferIPv4) {
 		return
 	}
 	return r.resolve6(ctx, server, host)
@@ -242,9 +254,9 @@ func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, hos
 
 	pref := resolvePreference(server, callerPref)
 
-	if pref == "ipv6" {
+	if pref == preferIPv6 {
 		ips, ttl, ok = lookup(dns.TypeAAAA, host)
-		if len(ips) > 0 || server.Only == "ipv6" || callerPref == "ipv6" {
+		if shouldReturn(ips, server, callerPref, preferIPv6) {
 			return
 		}
 		ips, ttl, ok = lookup(dns.TypeA, host)
@@ -252,7 +264,7 @@ func (r *localResolver) lookupCache(ctx context.Context, server *NameServer, hos
 	}
 
 	ips, ttl, ok = lookup(dns.TypeA, host)
-	if len(ips) > 0 || server.Only == "ipv4" || callerPref == "ipv4" {
+	if shouldReturn(ips, server, callerPref, preferIPv4) {
 		return
 	}
 	return lookup(dns.TypeAAAA, host)
