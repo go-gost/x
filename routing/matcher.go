@@ -38,6 +38,10 @@ type matcher struct {
 	tree matchersTree
 }
 
+// NewMatcher parses a routing rule string and returns a routing.Matcher.
+// The rule syntax supports boolean expressions with matchers like
+// Host(`example.com`), Path(`/api`), Method(`GET`), etc., combined
+// with &&, ||, and ! operators.
 func NewMatcher(rule string) (routing.Matcher, error) {
 	parse, err := defaultParser.Parse(rule)
 	if err != nil {
@@ -239,7 +243,7 @@ func host(tree *matchersTree, hosts ...string) error {
 			return true
 		}
 
-		if host[0] == '.' && strings.HasSuffix(reqHost, host[1:]) {
+		if host[0] == '.' && strings.HasSuffix(reqHost, host) {
 			return true
 		}
 
@@ -288,7 +292,7 @@ func pathRegexp(tree *matchersTree, paths ...string) error {
 
 	re, err := regexp.Compile(path)
 	if err != nil {
-		return fmt.Errorf("compiling PathPrefix matcher: %w", err)
+		return fmt.Errorf("compiling PathRegexp matcher: %w", err)
 	}
 
 	tree.matcher = func(req *routing.Request) bool {

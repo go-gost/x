@@ -14,12 +14,15 @@ const (
 	or  = "or"
 )
 
+// Parser is an alias for the predicate parser used to parse routing rules.
 type Parser = predicate.Parser
 
 // TreeBuilder defines the type for a Tree builder.
 type TreeBuilder func() *Tree
 
-// Tree represents the rules' tree structure.
+// Tree represents the rules' tree structure used for routing matchers.
+// Leaf nodes hold a Matcher name, optional negation, and string values.
+// Internal nodes hold an "and"/"or" operator with left and right children.
 type Tree struct {
 	Matcher   string
 	Not       bool
