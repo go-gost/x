@@ -13,7 +13,7 @@ const (
 	// defaultTimeout is the fallback timeout for DNS exchanges.
 	defaultTimeout = 5 * time.Second
 	// defaultBufferSize is the fallback buffer size for DNS message I/O.
-	defaultBufferSize = 1024
+	defaultBufferSize = 4096
 )
 
 // metadata holds parsed DNS handler configuration.

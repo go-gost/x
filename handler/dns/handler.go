@@ -132,6 +132,18 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 	return
 }
 
+// packResponse serializes a DNS message using a pooled buffer.
+// The buffer is returned to the pool if serialization fails.
+func (h *dnsHandler) packResponse(mr *dns.Msg) ([]byte, error) {
+	b := bufpool.Get(h.md.bufferSize)
+	reply, err := mr.PackBuffer(b)
+	if err != nil {
+		bufpool.Put(b)
+		return nil, err
+	}
+	return reply, nil
+}
+
 // Forward implements handler.Forwarder.
 func (h *dnsHandler) Forward(hop hop.Hop) {
 	h.hop = hop
@@ -214,6 +226,9 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 	defer bufpool.Put(reply)
 
+	if h.md.readTimeout > 0 {
+		conn.SetWriteDeadline(time.Now().Add(h.md.readTimeout))
+	}
 	if _, err = conn.Write(reply); err != nil {
 		log.Error(err)
 		return err
@@ -273,15 +288,13 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 		if h.options.Bypass.Contains(context.Background(), "udp", strings.Trim(mq.Question[0].Name, "."), bypass.WithService(h.options.Service)) {
 			log.Debug("bypass: ", mq.Question[0].Name)
 			mr = (&dns.Msg{}).SetReply(&mq)
-			b := bufpool.Get(h.md.bufferSize)
-			return mr.PackBuffer(b)
+			return h.packResponse(mr)
 		}
 	}
 
 	mr = h.lookupHosts(ctx, &mq, log)
 	if mr != nil {
-		b := bufpool.Get(h.md.bufferSize)
-		return mr.PackBuffer(b)
+		return h.packResponse(mr)
 	}
 
 	// only cache for single question message.
@@ -294,8 +307,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 				ro.DNS.Cached = true
 
 				log.Debugf("message %d (cached): %s", mq.Id, mq.Question[0].String())
-				b := bufpool.Get(h.md.bufferSize)
-				return mr.PackBuffer(b)
+				return h.packResponse(mr)
 			}
 		}
 	}
@@ -307,15 +319,18 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 	ro.Host = ex.String()
 
 	if mr != nil && h.md.async {
-		b := bufpool.Get(h.md.bufferSize)
-		reply, err := mr.PackBuffer(b)
+		reply, err := h.packResponse(mr)
 		if err != nil {
 			return nil, err
 		}
 		h.cache.RefreshTTL(resolver_util.NewCacheKey(&mq.Question[0]))
 
 		log.Debugf("exchange message %d (async): %s", mq.Id, mq.Question[0].String())
-		go h.exchange(context.WithoutCancel(ctx), ex, &mq)
+		go func() {
+			if _, err := h.exchange(context.WithoutCancel(ctx), ex, &mq); err != nil {
+				log.Debugf("async exchange for %s: %v", mq.Question[0].Name, err)
+			}
+		}()
 		return reply, nil
 	}
 
@@ -328,8 +343,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 		return nil, err
 	}
 
-	b := bufpool.Get(h.md.bufferSize)
-	return mr.PackBuffer(b)
+	return h.packResponse(mr)
 }
 
 func (h *dnsHandler) exchange(ctx context.Context, ex exchanger.Exchanger, mq *dns.Msg) (*dns.Msg, error) {
@@ -358,7 +372,7 @@ func (h *dnsHandler) exchange(ctx context.Context, ex exchanger.Exchanger, mq *d
 	return mr, nil
 }
 
-// lookup host mapper
+// lookupHosts checks the host mapper for A/AAAA records matching the query.
 func (h *dnsHandler) lookupHosts(ctx context.Context, r *dns.Msg, log logger.Logger) (m *dns.Msg) {
 	if h.hostMapper == nil ||
 		r.Question[0].Qclass != dns.ClassINET ||
@@ -366,45 +380,31 @@ func (h *dnsHandler) lookupHosts(ctx context.Context, r *dns.Msg, log logger.Log
 		return nil
 	}
 
-	m = &dns.Msg{}
-	m.SetReply(r)
-
-	host := strings.TrimSuffix(r.Question[0].Name, ".")
-
+	var network, rrType string
 	switch r.Question[0].Qtype {
 	case dns.TypeA:
-		ips, _ := h.hostMapper.Lookup(ctx, "ip4", host)
-		if len(ips) == 0 {
-			return nil
-		}
-		log.Debugf("hit host mapper: %s -> %s", host, ips)
-
-		for _, ip := range ips {
-			rr, err := dns.NewRR(fmt.Sprintf("%s IN A %s\n", r.Question[0].Name, ip.String()))
-			if err != nil {
-				log.Error(err)
-				return nil
-			}
-			m.Answer = append(m.Answer, rr)
-		}
-
+		network, rrType = "ip4", "IN A"
 	case dns.TypeAAAA:
-		ips, _ := h.hostMapper.Lookup(ctx, "ip6", host)
-		if len(ips) == 0 {
-			return nil
-		}
-		log.Debugf("hit host mapper: %s -> %s", host, ips)
-
-		for _, ip := range ips {
-			rr, err := dns.NewRR(fmt.Sprintf("%s IN AAAA %s\n", r.Question[0].Name, ip.String()))
-			if err != nil {
-				log.Error(err)
-				return nil
-			}
-			m.Answer = append(m.Answer, rr)
-		}
+		network, rrType = "ip6", "IN AAAA"
 	}
 
+	host := strings.TrimSuffix(r.Question[0].Name, ".")
+	ips, _ := h.hostMapper.Lookup(ctx, network, host)
+	if len(ips) == 0 {
+		return nil
+	}
+	log.Debugf("hit host mapper: %s -> %s", host, ips)
+
+	m = new(dns.Msg)
+	m.SetReply(r)
+	for _, ip := range ips {
+		rr, err := dns.NewRR(fmt.Sprintf("%s %s %s\n", r.Question[0].Name, rrType, ip.String()))
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
+		m.Answer = append(m.Answer, rr)
+	}
 	return
 }
 

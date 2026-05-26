@@ -916,9 +916,8 @@ func TestHandle_ReadTimeout(t *testing.T) {
 
 func TestRequest_AsyncRefresh(t *testing.T) {
 	var (
-		mu         sync.Mutex
-		exchanged  bool
-		answerRR   = mustNewRR("async.example.com. 300 IN A 10.0.0.1")
+		answerRR = mustNewRR("async.example.com. 300 IN A 10.0.0.1")
+		done     = make(chan struct{})
 	)
 
 	h := newInitdHandler()
@@ -938,9 +937,7 @@ func TestRequest_AsyncRefresh(t *testing.T) {
 	// Set up exchanger for async refresh
 	mockEx := &mockExchanger{
 		exchangeFn: func(ctx context.Context, msg []byte) ([]byte, error) {
-			mu.Lock()
-			exchanged = true
-			mu.Unlock()
+			defer close(done)
 
 			mq := new(dns.Msg)
 			_ = mq.Unpack(msg)
@@ -970,13 +967,11 @@ func TestRequest_AsyncRefresh(t *testing.T) {
 		t.Errorf("len(Answer) = %d, want 1 (cached)", len(mr.Answer))
 	}
 
-	// Wait for async goroutine
-	time.Sleep(100 * time.Millisecond)
-	mu.Lock()
-	wasExchanged := exchanged
-	mu.Unlock()
-	if !wasExchanged {
-		t.Error("expected async exchange to occur")
+	// Wait for async goroutine via channel synchronization.
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("async exchange did not occur within timeout")
 	}
 }
 
@@ -1019,3 +1014,110 @@ func TestHandle_ConcurrentRequests(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// ---------------------------------------------------------------------------
+// Tests: async error handling
+// ---------------------------------------------------------------------------
+
+func TestRequest_AsyncExchangeError(t *testing.T) {
+	answerRR := mustNewRR("async-err.example.com. 300 IN A 10.0.0.1")
+
+	h := newInitdHandler()
+	h.md.async = true
+	h.md.ttl = 30 * time.Second
+
+	// Pre-populate cache with expired entry.
+	q := new(dns.Msg)
+	q.SetQuestion("async-err.example.com.", dns.TypeA)
+	respMsg := q.Copy()
+	respMsg.Answer = []dns.RR{answerRR}
+	key := resolver_util.NewCacheKey(&q.Question[0])
+	h.cache.Store(context.Background(), key, respMsg, time.Nanosecond)
+	time.Sleep(5 * time.Millisecond)
+
+	done := make(chan struct{})
+	mockEx := &mockExchanger{
+		exchangeFn: func(ctx context.Context, msg []byte) ([]byte, error) {
+			defer close(done)
+			return nil, errors.New("upstream unreachable")
+		},
+		addr: "udp://8.8.8.8:53",
+	}
+
+	h.hop = &mockHop{
+		selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
+			return chain.NewNode("ns1", "udp://8.8.8.8:53")
+		},
+	}
+	h.exchangers["ns1"] = mockEx
+
+	// The stale response should still be returned despite async error.
+	reply, err := h.request(context.Background(), packDNSQuery("async-err.example.com.", dns.TypeA), newRecObj(), nopLog())
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	mr := new(dns.Msg)
+	if err := mr.Unpack(reply); err != nil {
+		t.Fatalf("unpack: %v", err)
+	}
+	if len(mr.Answer) != 1 {
+		t.Errorf("len(Answer) = %d, want 1 (stale cached)", len(mr.Answer))
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("async exchange did not complete within timeout")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests: write deadline
+// ---------------------------------------------------------------------------
+
+func TestHandle_WriteDeadline(t *testing.T) {
+	answerRR := mustNewRR("timeout.example.com. 60 IN A 10.0.0.1")
+	mockEx := &mockExchanger{
+		exchangeFn: func(ctx context.Context, msg []byte) ([]byte, error) {
+			mq := new(dns.Msg)
+			_ = mq.Unpack(msg)
+			resp := mq.Copy()
+			resp.Answer = []dns.RR{answerRR}
+			return resp.Pack()
+		},
+		addr: "udp://8.8.8.8:53",
+	}
+
+	h := newTestHandler()
+	h.md.readTimeout = 50 * time.Millisecond
+	h.md.timeout = defaultTimeout
+	h.md.bufferSize = defaultBufferSize
+	h.cache = resolver_util.NewCache().WithLogger(nopLog())
+	h.hop = &mockHop{
+		selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
+			return chain.NewNode("ns1", "udp://8.8.8.8:53")
+		},
+	}
+	h.exchangers["ns1"] = mockEx
+
+	conn := &blockingWriteConn{
+		readBuf: bytes.NewBuffer(packDNSQuery("timeout.example.com.", dns.TypeA)),
+	}
+	if err := h.Handle(context.Background(), conn); err == nil {
+		t.Fatal("expected error from blocked write")
+	}
+}
+
+// blockingWriteConn is a net.Conn where Write blocks forever.
+type blockingWriteConn struct {
+	readBuf *bytes.Buffer
+}
+
+func (c *blockingWriteConn) Read(b []byte) (int, error)  { return c.readBuf.Read(b) }
+func (c *blockingWriteConn) Write(b []byte) (int, error) { time.Sleep(200 * time.Millisecond); return 0, errors.New("write deadline exceeded") }
+func (c *blockingWriteConn) Close() error                             { return nil }
+func (c *blockingWriteConn) LocalAddr() net.Addr                      { return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 53} }
+func (c *blockingWriteConn) RemoteAddr() net.Addr                     { return &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 12345} }
+func (c *blockingWriteConn) SetDeadline(t time.Time) error            { return nil }
+func (c *blockingWriteConn) SetReadDeadline(t time.Time) error        { return nil }
+func (c *blockingWriteConn) SetWriteDeadline(t time.Time) error       { return nil }
