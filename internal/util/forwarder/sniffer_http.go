@@ -83,7 +83,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 	defer cc.Close()
 
-	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	ho.log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	log = ho.log
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
 	ro.SrcAddr = cc.LocalAddr().String()
@@ -117,55 +118,31 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 }
 
-// dial selects a node and establishes a connection for an HTTP request.
-func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
-	dial := ho.dial
-	if dial == nil {
-		dial = (&net.Dialer{}).DialContext
-	}
-
-	if node = ho.node; node != nil {
-		cc, err = dial(ctx, "tcp", node.Addr)
-		return
-	}
-
-	ro := ho.recorderObject
-
-	res := &http.Response{
+// resolveHTTPNode selects a node for an HTTP request by applying bypass rules
+// and hop selection. It returns the selected node or an error response.
+func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *HandleOptions) (node *chain.Node, res *http.Response, err error) {
+	res = &http.Response{
 		ProtoMajor: req.ProtoMajor,
 		ProtoMinor: req.ProtoMinor,
 		Header:     http.Header{},
 		StatusCode: http.StatusServiceUnavailable,
 	}
 
-	host := normalizeHost(req.Host, "80")
-	if host != "" {
-		ro.Host = host
-		ho.log = ho.log.WithFields(map[string]any{
-			"host": host,
-		})
-
-		if ho.bypass != nil &&
-			ho.bypass.Contains(ctx, "tcp", host,
-				bypass.WithService(ho.service),
-				bypass.WithPathOption(req.RequestURI)) {
-			ho.log.Debugf("bypass: %s %s", host, req.RequestURI)
-			res.StatusCode = http.StatusForbidden
-			ro.HTTP.StatusCode = res.StatusCode
-			if werr := res.Write(conn); werr != nil {
-				ho.log.Warnf("write bypass response: %v", werr)
-			}
-			return nil, nil, xbypass.ErrBypass
-		}
+	if ho.bypass != nil &&
+		ho.bypass.Contains(ctx, "tcp", host,
+			bypass.WithService(ho.service),
+			bypass.WithPathOption(req.RequestURI)) {
+		ho.log.Debugf("bypass: %s %s", host, req.RequestURI)
+		res.StatusCode = http.StatusForbidden
+		return nil, res, xbypass.ErrBypass
 	}
 
 	node = &chain.Node{}
 	if ho.hop != nil {
 		var clientIP net.IP
-		if clientAddr, _ := net.ResolveTCPAddr("tcp", ro.ClientAddr); clientAddr != nil {
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
 			clientIP = clientAddr.IP
 		}
-
 		node = ho.hop.Select(ctx,
 			hop.ClientIPSelectOption(clientIP),
 			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
@@ -179,17 +156,53 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 	if node == nil {
 		ho.log.Warnf("node for %s not found", host)
 		res.StatusCode = http.StatusBadGateway
-		ro.HTTP.StatusCode = res.StatusCode
-		if werr := res.Write(conn); werr != nil {
-			ho.log.Warnf("write error response: %v", werr)
-		}
-		return nil, nil, errors.New("node not available")
+		return nil, res, errors.New("node not available")
 	}
 	if node.Addr == "" {
 		node = &chain.Node{
 			Name: node.Name,
 			Addr: host,
 		}
+	}
+	return node, nil, nil
+}
+
+// dial selects a node, establishes a connection, and sends the request upstream.
+func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
+	dial := ho.dial
+	if dial == nil {
+		dial = (&net.Dialer{}).DialContext
+	}
+
+	if node = ho.node; node != nil {
+		cc, err = dial(ctx, "tcp", node.Addr)
+		return
+	}
+
+	ro := ho.recorderObject
+	host := normalizeHost(req.Host, "80")
+	if host != "" {
+		ro.Host = host
+		ho.log = ho.log.WithFields(map[string]any{
+			"host": host,
+		})
+	}
+
+	node, res, resolveErr := resolveHTTPNode(ctx, host, req, ho)
+	if resolveErr != nil {
+		ro.HTTP.StatusCode = res.StatusCode
+		if werr := res.Write(conn); werr != nil {
+			ho.log.Warnf("write error response: %v", werr)
+		}
+		return nil, nil, resolveErr
+	}
+
+	// Prepare an error response for potential connection failures.
+	res = &http.Response{
+		ProtoMajor: req.ProtoMajor,
+		ProtoMinor: req.ProtoMinor,
+		Header:     http.Header{},
+		StatusCode: http.StatusServiceUnavailable,
 	}
 
 	ro.Host = node.Addr
@@ -411,4 +424,3 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	return
 }
-

@@ -11,6 +11,7 @@ import (
 	"net"
 	"time"
 
+	"crypto/x509"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
@@ -21,7 +22,6 @@ import (
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	xrecorder "github.com/go-gost/x/recorder"
-	"crypto/x509"
 )
 
 // HandleTLS sniffs and proxies a TLS connection. It parses the ClientHello
@@ -121,6 +121,32 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	return nil
 }
 
+// resolveTLSNode selects a node for a TLS connection by applying hop selection.
+func resolveTLSNode(ctx context.Context, host string, ho *HandleOptions) (node *chain.Node, err error) {
+	node = &chain.Node{}
+	if ho.hop != nil {
+		var clientIP net.IP
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
+			clientIP = clientAddr.IP
+		}
+		node = ho.hop.Select(ctx,
+			hop.ClientIPSelectOption(clientIP),
+			hop.HostSelectOption(host),
+			hop.ProtocolSelectOption(sniffing.ProtoTLS),
+		)
+	}
+	if node == nil {
+		return nil, errors.New("node not available")
+	}
+	if node.Addr == "" {
+		node = &chain.Node{
+			Name: node.Name,
+			Addr: host,
+		}
+	}
+	return node, nil
+}
+
 // dialTLS selects a node and establishes a TLS connection.
 func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
 	dial := ho.dial
@@ -133,32 +159,12 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 		return
 	}
 
-	node = &chain.Node{}
-
-	ro := ho.recorderObject
-	if ho.hop != nil {
-		var clientIP net.IP
-		if clientAddr, _ := net.ResolveTCPAddr("tcp", ro.ClientAddr); clientAddr != nil {
-			clientIP = clientAddr.IP
-		}
-
-		node = ho.hop.Select(ctx,
-			hop.ClientIPSelectOption(clientIP),
-			hop.HostSelectOption(host),
-			hop.ProtocolSelectOption(sniffing.ProtoTLS),
-		)
-	}
-	if node == nil {
-		err = errors.New("node not available")
+	node, err = resolveTLSNode(ctx, host, ho)
+	if err != nil {
 		return
 	}
-	if node.Addr == "" {
-		node = &chain.Node{
-			Name: node.Name,
-			Addr: host,
-		}
-	}
 
+	ro := ho.recorderObject
 	addr := node.Addr
 	network := "tcp"
 	if opts := node.Options(); opts != nil {
@@ -171,7 +177,6 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 			}
 		}
 	} else {
-		// No options — ensure port is present.
 		if _, _, splitErr := net.SplitHostPort(addr); splitErr != nil {
 			addr += ":443"
 		}
@@ -317,4 +322,3 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 	}
 	return h.HandleHTTP(ctx, serverConn, opts...)
 }
-

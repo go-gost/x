@@ -671,7 +671,7 @@ func TestCopyWebsocketFrame_WithBodyRecording(t *testing.T) {
 	payload := []byte("hello ws")
 	// Build a server frame (unmasked) with FIN + text opcode.
 	var frame bytes.Buffer
-	frame.WriteByte(0x81)                   // FIN + text
+	frame.WriteByte(0x81)               // FIN + text
 	frame.WriteByte(byte(len(payload))) // MASK=0, len
 	// No mask for server frames
 	frame.Write(payload)
@@ -717,3 +717,542 @@ func TestNormalizeHost_EdgeCases(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// resolveHTTPNode Tests
+// =============================================================================
+
+type configurableHop struct {
+	node *chain.Node
+}
+
+func (h *configurableHop) Select(_ context.Context, _ ...hop.SelectOption) *chain.Node {
+	return h.node
+}
+
+var _ hop.Hop = (*configurableHop)(nil)
+
+func TestResolveHTTPNode_Bypass(t *testing.T) {
+	ho := &HandleOptions{
+		service:        "test-svc",
+		bypass:         &mockBypass{contains: true},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+
+	node, res, err := resolveHTTPNode(context.Background(), "example.com:80", req, ho)
+	if err == nil {
+		t.Fatal("expected bypass error, got nil")
+	}
+	if node != nil {
+		t.Error("node should be nil on bypass")
+	}
+	if res == nil {
+		t.Fatal("res should not be nil on bypass")
+	}
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestResolveHTTPNode_NoHop(t *testing.T) {
+	ho := &HandleOptions{
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+
+	node, res, err := resolveHTTPNode(context.Background(), "example.com:80", req, ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res != nil {
+		t.Error("res should be nil on success")
+	}
+	if node == nil {
+		t.Fatal("node should not be nil")
+	}
+	if node.Addr != "example.com:80" {
+		t.Errorf("node.Addr = %q, want %q", node.Addr, "example.com:80")
+	}
+}
+
+func TestResolveHTTPNode_HopReturnsNil(t *testing.T) {
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: nil},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+
+	node, res, err := resolveHTTPNode(context.Background(), "example.com:80", req, ho)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err.Error() != "node not available" {
+		t.Errorf("err = %q, want %q", err.Error(), "node not available")
+	}
+	if node != nil {
+		t.Error("node should be nil on error")
+	}
+	if res == nil {
+		t.Fatal("res should not be nil")
+	}
+	if res.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", res.StatusCode, http.StatusBadGateway)
+	}
+}
+
+func TestResolveHTTPNode_HopReturnsValidNode(t *testing.T) {
+	expectedNode := &chain.Node{Name: "backend", Addr: "10.0.0.1:8080"}
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: expectedNode},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+
+	node, res, err := resolveHTTPNode(context.Background(), "example.com:80", req, ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res != nil {
+		t.Error("res should be nil on success")
+	}
+	if node != expectedNode {
+		t.Errorf("node = %v, want %v", node, expectedNode)
+	}
+}
+
+func TestResolveHTTPNode_HopReturnsNodeWithoutAddr(t *testing.T) {
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+
+	node, res, err := resolveHTTPNode(context.Background(), "example.com:80", req, ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res != nil {
+		t.Error("res should be nil on success")
+	}
+	if node == nil {
+		t.Fatal("node should not be nil")
+	}
+	if node.Addr != "example.com:80" {
+		t.Errorf("node.Addr = %q, want %q (host fallback)", node.Addr, "example.com:80")
+	}
+	if node.Name != "backend" {
+		t.Errorf("node.Name = %q, want %q", node.Name, "backend")
+	}
+}
+
+// =============================================================================
+// resolveTLSNode Tests
+// =============================================================================
+
+func TestResolveTLSNode_NoHop(t *testing.T) {
+	ho := &HandleOptions{
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	node, err := resolveTLSNode(context.Background(), "example.com", ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node == nil {
+		t.Fatal("node should not be nil")
+	}
+	if node.Addr != "example.com" {
+		t.Errorf("node.Addr = %q, want %q", node.Addr, "example.com")
+	}
+}
+
+func TestResolveTLSNode_HopReturnsNil(t *testing.T) {
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: nil},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	node, err := resolveTLSNode(context.Background(), "example.com", ho)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err.Error() != "node not available" {
+		t.Errorf("err = %q, want %q", err.Error(), "node not available")
+	}
+	if node != nil {
+		t.Error("node should be nil on error")
+	}
+}
+
+func TestResolveTLSNode_HopReturnsValidNode(t *testing.T) {
+	expectedNode := &chain.Node{Name: "backend", Addr: "10.0.0.1:443"}
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: expectedNode},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	node, err := resolveTLSNode(context.Background(), "example.com", ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node != expectedNode {
+		t.Errorf("node = %v, want %v", node, expectedNode)
+	}
+}
+
+func TestResolveTLSNode_HopReturnsNodeWithoutAddr(t *testing.T) {
+	ho := &HandleOptions{
+		hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	node, err := resolveTLSNode(context.Background(), "example.com", ho)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node == nil {
+		t.Fatal("node should not be nil")
+	}
+	if node.Addr != "example.com" {
+		t.Errorf("node.Addr = %q, want %q (host fallback)", node.Addr, "example.com")
+	}
+	if node.Name != "backend" {
+		t.Errorf("node.Name = %q, want %q", node.Name, "backend")
+	}
+}
+
+// =============================================================================
+// handleUpgradeResponse Tests
+// =============================================================================
+
+func TestHandleUpgradeResponse_TypeMismatch(t *testing.T) {
+	h := &Sniffer{}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+
+	res := &http.Response{
+		Header: http.Header{
+			"Connection": {"Upgrade"},
+			"Upgrade":    {"h2c"},
+		},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	err := h.handleUpgradeResponse(context.Background(), serverConn, clientConn, req, res,
+		&xrecorder.HandlerRecorderObject{}, xlogger.Nop())
+	if err == nil {
+		t.Fatal("expected type mismatch error, got nil")
+	}
+}
+
+func TestHandleUpgradeResponse_NonWebsocket(t *testing.T) {
+	h := &Sniffer{Websocket: false}
+
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "h2c")
+
+	res := &http.Response{
+		StatusCode: http.StatusSwitchingProtocols,
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header: http.Header{
+			"Connection": {"Upgrade"},
+			"Upgrade":    {"h2c"},
+		},
+	}
+
+	errCh := make(chan error, 1)
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		errCh <- h.handleUpgradeResponse(context.Background(), serverConn, clientConn, req, res,
+			&xrecorder.HandlerRecorderObject{}, xlogger.Nop())
+	}()
+
+	br := bufio.NewReader(clientConn)
+	readResp, readErr := http.ReadResponse(br, req)
+	if readErr != nil {
+		t.Fatalf("reading upgrade response: %v", readErr)
+	}
+	if readResp.StatusCode != http.StatusSwitchingProtocols {
+		t.Errorf("status = %d, want %d", readResp.StatusCode, http.StatusSwitchingProtocols)
+	}
+
+	clientConn.Close()
+	serverConn.Close()
+	<-errCh
+}
+
+// =============================================================================
+// rewriteRespBody Additional Tests
+// =============================================================================
+
+func TestRewriteRespBody_PatternReplacement(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("<title>Old Title</title>")),
+	}
+	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		Pattern:     regexp.MustCompile("Old"),
+		Type:        "text/html",
+		Replacement: []byte("New"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "<title>New Title</title>" {
+		t.Errorf("body = %q, want %q", string(got), "<title>New Title</title>")
+	}
+	if resp.ContentLength != int64(len("<title>New Title</title>")) {
+		t.Errorf("ContentLength = %d, want %d", resp.ContentLength, len("<title>New Title</title>"))
+	}
+}
+
+func TestRewriteRespBody_MultipleRewrites(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("hello")),
+	}
+	err := rewriteRespBody(resp,
+		chain.HTTPBodyRewriteSettings{
+			Pattern:     regexp.MustCompile("h.*o"),
+			Type:        "text/html",
+			Replacement: []byte("first"),
+		},
+		chain.HTTPBodyRewriteSettings{
+			Pattern:     regexp.MustCompile("first"),
+			Type:        "text/html",
+			Replacement: []byte("second"),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "second" {
+		t.Errorf("body = %q, want %q", string(got), "second")
+	}
+}
+
+func TestRewriteRespBody_NilPattern(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("original")),
+	}
+	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		Pattern:     nil,
+		Type:        "*",
+		Replacement: []byte("replaced"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "original" {
+		t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
+	}
+}
+
+func TestRewriteRespBody_EmptyContentTypeUsesDefault(t *testing.T) {
+	resp := &http.Response{
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("original")),
+	}
+	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		Pattern:     regexp.MustCompile(".*"),
+		Type:        "",
+		Replacement: []byte("rewritten"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "rewritten" {
+		t.Errorf("body = %q, want %q", string(got), "rewritten")
+	}
+}
+
+func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: -1,
+		Body:          io.NopCloser(strings.NewReader("original")),
+	}
+	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		Pattern:     regexp.MustCompile(".*"),
+		Type:        "*",
+		Replacement: []byte("replaced"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "original" {
+		t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
+	}
+}
+
+// =============================================================================
+// copyWebsocketFrame Additional Tests
+// =============================================================================
+
+func TestCopyWebsocketFrame_EmptyPayload(t *testing.T) {
+	h := &Sniffer{
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: true, MaxBodySize: 1024},
+	}
+
+	var frame bytes.Buffer
+	frame.WriteByte(0x81) // FIN + text
+	frame.WriteByte(0x00) // MASK=0, len=0
+
+	w := &bytes.Buffer{}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.copyWebsocketFrame(w, &frame, &bytes.Buffer{}, "server", ro)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ro.Websocket == nil {
+		t.Fatal("Websocket recorder object should be populated")
+	}
+	if ro.Websocket.Length != 0 {
+		t.Errorf("payload length = %d, want 0", ro.Websocket.Length)
+	}
+	if len(ro.Websocket.Payload) != 0 {
+		t.Errorf("payload = %q, want empty", ro.Websocket.Payload)
+	}
+}
+
+func TestCopyWebsocketFrame_ServerWithoutBodyRecording(t *testing.T) {
+	h := &Sniffer{
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: false},
+	}
+
+	payload := []byte("data")
+	var frame bytes.Buffer
+	frame.WriteByte(0x82)               // FIN + binary
+	frame.WriteByte(byte(len(payload))) // MASK=0, len=4
+	frame.Write(payload)
+
+	w := &bytes.Buffer{}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.copyWebsocketFrame(w, &frame, &bytes.Buffer{}, "server", ro)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ro.Websocket == nil {
+		t.Fatal("Websocket recorder object should be populated")
+	}
+	if ro.Websocket.Payload != nil {
+		t.Error("payload should be nil when body recording is disabled")
+	}
+	if ro.Websocket.OpCode != 2 {
+		t.Errorf("opcode = %d, want 2 (binary)", ro.Websocket.OpCode)
+	}
+	if ro.OutputBytes == 0 {
+		t.Error("OutputBytes should be non-zero for server direction")
+	}
+	if ro.InputBytes != 0 {
+		t.Error("InputBytes should be zero for server direction")
+	}
+}
+
+func TestCopyWebsocketFrame_MaskedFrame(t *testing.T) {
+	h := &Sniffer{
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: false},
+	}
+
+	payload := []byte("secret")
+	mask := []byte{0x12, 0x34, 0x56, 0x78}
+	maskedPayload := make([]byte, len(payload))
+	for i := range payload {
+		maskedPayload[i] = payload[i] ^ mask[i%4]
+	}
+
+	var frame bytes.Buffer
+	frame.WriteByte(0x81)                      // FIN + text
+	frame.WriteByte(0x80 | byte(len(payload))) // MASK=1, len
+	frame.Write(mask)
+	frame.Write(maskedPayload)
+
+	w := &bytes.Buffer{}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.copyWebsocketFrame(w, &frame, &bytes.Buffer{}, "client", ro)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ro.Websocket == nil {
+		t.Fatal("Websocket recorder object should be populated")
+	}
+	if !ro.Websocket.Masked {
+		t.Error("client frame should be masked")
+	}
+	written := w.Bytes()
+	if len(written) < 2+len(payload) {
+		t.Fatalf("written frame too short: %d bytes", len(written))
+	}
+	if written[0] != 0x81 {
+		t.Errorf("first byte = 0x%02x, want 0x81", written[0])
+	}
+	if written[1]&0x80 != 0x80 {
+		t.Error("mask bit should be preserved")
+	}
+}
+
+// =============================================================================
+// serveH2 unit test (client preface)
+// =============================================================================
+
+func TestServeH2_InvalidPreface(t *testing.T) {
+	h := &Sniffer{
+		ReadTimeout: 5 * time.Second,
+		Recorder:    &noopRecorder{},
+	}
+	ho := &HandleOptions{
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	// net.Pipe is synchronous: Write blocks until the other side Reads.
+	// Write exactly 6 bytes (size of "SM\r\n\r\n" preface) then return.
+	go func() {
+		clientConn.Write([]byte("XXXXXX"))
+	}()
+
+	err := h.serveH2(context.Background(), serverConn, ho)
+	if err == nil {
+		t.Error("expected error from invalid h2 preface, got nil")
+	}
+}
