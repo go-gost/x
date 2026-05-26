@@ -34,6 +34,7 @@ func ParseHostMapper(cfg *config.HostsConfig) hosts.HostMapper {
 		case "http":
 			return hosts_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)

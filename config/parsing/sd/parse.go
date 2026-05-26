@@ -28,6 +28,7 @@ func ParseSD(cfg *config.SDConfig) sd.SD {
 	case "http":
 		return sd_plugin.NewHTTPPlugin(
 			cfg.Name, cfg.Plugin.Addr,
+			plugin.TokenOption(cfg.Plugin.Token),
 			plugin.TLSConfigOption(tlsCfg),
 			plugin.TimeoutOption(cfg.Plugin.Timeout),
 		)

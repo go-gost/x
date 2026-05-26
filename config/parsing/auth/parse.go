@@ -38,6 +38,7 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		case "http":
 			return auth_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
