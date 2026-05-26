@@ -82,7 +82,7 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 		h.limiter = cache_limiter.NewCachedTrafficLimiter(h.options.Limiter,
 			cache_limiter.RefreshIntervalOption(h.md.limiterRefreshInterval),
 			cache_limiter.CleanupIntervalOption(h.md.limiterCleanupInterval),
-			cache_limiter.ScopeOption(limiter.ScopeClient),
+			cache_limiter.ScopeOption(limiter.ScopeService),
 		)
 	}
 

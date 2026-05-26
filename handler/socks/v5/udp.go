@@ -107,7 +107,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 			h.limiter,
 			string(clientID),
 			limiter.ServiceOption(h.options.Service),
-			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ScopeOption(limiter.ScopeService),
 			limiter.NetworkOption(network),
 			limiter.ClientOption(string(clientID)),
 			limiter.SrcOption(conn.RemoteAddr().String()),
