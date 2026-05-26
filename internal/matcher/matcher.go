@@ -10,7 +10,6 @@ import (
 
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/gobwas/glob"
-	"github.com/yl2chen/cidranger"
 )
 
 // Matcher is a generic pattern matcher that tests whether a given value
@@ -19,17 +18,35 @@ type Matcher interface {
 	Match(v string) bool
 }
 
+// splitHostPort splits addr into host and port without allocating when
+// addr contains no colon (i.e. no port). For inputs with a colon,
+// net.SplitHostPort is used as normal.
+func splitHostPort(addr string) (host, port string) {
+	if !strings.Contains(addr, ":") {
+		return addr, ""
+	}
+	host, port, _ = net.SplitHostPort(addr)
+	if host == "" {
+		host = addr
+	}
+	return
+}
+
 type ipMatcher struct {
-	ips map[string]struct{}
+	ips map[netip.Addr]struct{}
 }
 
 // IPMatcher creates a Matcher for a list of IP addresses.
 func IPMatcher(ips []net.IP) Matcher {
 	matcher := &ipMatcher{
-		ips: make(map[string]struct{}),
+		ips: make(map[netip.Addr]struct{}),
 	}
 	for _, ip := range ips {
-		matcher.ips[ip.String()] = struct{}{}
+		addr, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			continue
+		}
+		matcher.ips[addr.Unmap()] = struct{}{}
 	}
 	return matcher
 }
@@ -42,7 +59,7 @@ func (m *ipMatcher) Match(ip string) bool {
 	if err != nil {
 		return false
 	}
-	_, ok := m.ips[addr.String()]
+	_, ok := m.ips[addr.Unmap()]
 	return ok
 }
 
@@ -61,7 +78,7 @@ func AddrMatcher(addrs []string) Matcher {
 		addrs: make(map[string][]*xnet.PortRange),
 	}
 	for _, addr := range addrs {
-		host, port, _ := net.SplitHostPort(addr)
+		host, port := splitHostPort(addr)
 		if host == "" {
 			host = strings.ToLower(addr)
 			matcher.addrs[host] = append(matcher.addrs[host], nil)
@@ -81,10 +98,7 @@ func (m *addrMatcher) Match(addr string) bool {
 	if m == nil || len(m.addrs) == 0 {
 		return false
 	}
-	host, sp, _ := net.SplitHostPort(addr)
-	if host == "" {
-		host = addr
-	}
+	host, sp := splitHostPort(addr)
 	host = strings.ToLower(host)
 	port, _ := strconv.Atoi(sp)
 
@@ -128,27 +142,29 @@ func portRangeMatch(prs []*xnet.PortRange, port int) bool {
 }
 
 type cidrMatcher struct {
-	ranger cidranger.Ranger
+	trie *cidrTrie
 }
 
 // CIDRMatcher creates a Matcher for a list of CIDR notation IP addresses.
 func CIDRMatcher(inets []*net.IPNet) Matcher {
-	ranger := cidranger.NewPCTrieRanger()
+	trie := newCIDRTrie()
 	for _, inet := range inets {
-		ranger.Insert(cidranger.NewBasicRangerEntry(*inet))
+		if prefix, ok := ipNetToPrefix(inet); ok {
+			trie.insert(prefix)
+		}
 	}
-	return &cidrMatcher{ranger: ranger}
+	return &cidrMatcher{trie: trie}
 }
 
 func (m *cidrMatcher) Match(ip string) bool {
-	if m == nil || m.ranger == nil {
+	if m == nil || m.trie == nil {
 		return false
 	}
-	if netIP := net.ParseIP(ip); netIP != nil {
-		b, _ := m.ranger.Contains(netIP)
-		return b
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
 	}
-	return false
+	return m.trie.contains(addr.Unmap())
 }
 
 type domainMatcher struct {
@@ -212,7 +228,7 @@ type wildcardMatcher struct {
 func WildcardMatcher(patterns []string) Matcher {
 	matcher := &wildcardMatcher{}
 	for _, pattern := range patterns {
-		host, port, _ := net.SplitHostPort(pattern)
+		host, port := splitHostPort(pattern)
 		if host == "" {
 			host = pattern
 		}
@@ -239,10 +255,7 @@ func (m *wildcardMatcher) Match(addr string) bool {
 		return false
 	}
 
-	host, sp, _ := net.SplitHostPort(addr)
-	if host == "" {
-		host = addr
-	}
+	host, sp := splitHostPort(addr)
 	host = strings.ToLower(host)
 	port, _ := strconv.Atoi(sp)
 	for _, pattern := range m.patterns {
@@ -273,10 +286,7 @@ func (m *ipRangeMatcher) Match(addr string) bool {
 		return false
 	}
 
-	host, _, _ := net.SplitHostPort(addr)
-	if host == "" {
-		host = addr
-	}
+	host, _ := splitHostPort(addr)
 	adr, err := netip.ParseAddr(host)
 	if err != nil {
 		return false
