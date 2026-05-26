@@ -43,18 +43,18 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const (
-	DefaultReadTimeout = 30 * time.Second
-)
+// DefaultReadTimeout is the default timeout for reading data from connections.
+const DefaultReadTimeout = 30 * time.Second
 
-var (
-	DefaultCertPool = tls_util.NewMemoryCertPool()
-)
+// DefaultCertPool is the default in-memory certificate pool used for TLS MITM.
+var DefaultCertPool = tls_util.NewMemoryCertPool()
 
+// HandleOptions holds configuration options for sniffing handlers.
 type HandleOptions struct {
 	service        string
 	dial           func(ctx context.Context, network, address string) (net.Conn, error)
 	httpKeepalive  bool
+	readTimeout    time.Duration
 	node           *chain.Node
 	hop            hop.Hop
 	bypass         bypass.Bypass
@@ -62,56 +62,69 @@ type HandleOptions struct {
 	log            logger.Logger
 }
 
+// HandleOption configures HandleOptions for sniffing handlers.
 type HandleOption func(opts *HandleOptions)
 
+// WithService sets the service name for bypass and selection lookups.
 func WithService(service string) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.service = service
 	}
 }
 
+// WithDial sets the dial function used to establish upstream connections.
 func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.dial = dial
 	}
 }
 
+// WithHTTPKeepalive enables or disables HTTP keep-alive on the upstream connection.
 func WithHTTPKeepalive(keepalive bool) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.httpKeepalive = keepalive
 	}
 }
 
+// WithNode sets a pre-resolved chain node to connect to, bypassing hop selection.
 func WithNode(node *chain.Node) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.node = node
 	}
 }
 
+// WithHop sets the hop used for node selection when routing requests.
 func WithHop(hop hop.Hop) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.hop = hop
 	}
 }
 
+// WithBypass sets the bypass rules for filtering requests by host.
 func WithBypass(bypass bypass.Bypass) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.bypass = bypass
 	}
 }
 
+// WithRecorderObject sets the recorder object for capturing traffic metadata.
 func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.recorderObject = ro
 	}
 }
 
+// WithLog sets the logger for the handler.
 func WithLog(log logger.Logger) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.log = log
 	}
 }
 
+// Sniffer handles HTTP and TLS traffic sniffing, recording, and MITM TLS
+// termination for protocol-aware forwarding. It can intercept HTTP requests,
+// perform hop/node selection, apply bypass rules, rewrite URLs and response
+// bodies, and terminate TLS for content inspection.
 type Sniffer struct {
 	Websocket           bool
 	WebsocketSampleRate float64
@@ -129,14 +142,18 @@ type Sniffer struct {
 	ReadTimeout time.Duration
 }
 
+// HandleHTTP sniffs and proxies an HTTP connection. It reads the initial
+// request, performs node selection via the configured hop, and forwards the
+// request with HTTP keep-alive support.
 func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
 	}
 
-	if h.ReadTimeout <= 0 {
-		h.ReadTimeout = DefaultReadTimeout
+	ho.readTimeout = h.ReadTimeout
+	if ho.readTimeout <= 0 {
+		ho.readTimeout = DefaultReadTimeout
 	}
 
 	pStats := xstats.Stats{}
@@ -255,7 +272,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 			ho.log.Debugf("bypass: %s %s", host, req.RequestURI)
 			res.StatusCode = http.StatusForbidden
 			ro.HTTP.StatusCode = res.StatusCode
-			res.Write(conn)
+			if err := res.Write(conn); err != nil {
+				ho.log.Warnf("write bypass response: %v", err)
+			}
 			return nil, nil, xbypass.ErrBypass
 		}
 	}
@@ -281,7 +300,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 		ho.log.Warnf("node for %s not found", host)
 		res.StatusCode = http.StatusBadGateway
 		ro.HTTP.StatusCode = res.StatusCode
-		res.Write(conn)
+		if err := res.Write(conn); err != nil {
+			ho.log.Warnf("write error response: %v", err)
+		}
 		return nil, nil, errors.New("node not available")
 	}
 	if node.Addr == "" {
@@ -306,7 +327,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 			marker.Mark()
 		}
 		ho.log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
-		res.Write(conn)
+		if werr := res.Write(conn); werr != nil {
+			ho.log.Warnf("write error response: %v", werr)
+		}
 		return
 	}
 	if marker := node.Marker(); marker != nil {
@@ -499,7 +522,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	br := bufio.NewReader(cc)
 	var resp *http.Response
 	for {
-		xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
+		xio.SetReadDeadline(cc, time.Now().Add(ho.readTimeout))
 		resp, err = http.ReadResponse(br, req)
 		if err != nil {
 			log.Errorf("read response: %v", err)
@@ -617,8 +640,8 @@ func (h *Sniffer) handleUpgradeResponse(ctx context.Context, rw, cc io.ReadWrite
 	return xnet.Pipe(ctx, rw, cc)
 }
 
-func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	errc := make(chan error, 1)
+func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	errc := make(chan error, 2)
 
 	sampleRate := h.WebsocketSampleRate
 	if sampleRate == 0 {
@@ -680,8 +703,12 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 		}
 	}()
 
-	<-errc
-	return nil
+	err := <-errc
+	// Close both connections to unblock the other goroutine.
+	rw.Close()
+	cc.Close()
+	<-errc // wait for the other goroutine to finish
+	return err
 }
 
 func (h *Sniffer) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
@@ -783,14 +810,18 @@ func drainBody(b io.ReadCloser) (body []byte, err error) {
 	return buf.Bytes(), nil
 }
 
+// HandleTLS sniffs and proxies a TLS connection. It parses the ClientHello
+// for SNI-based routing, optionally performs MITM TLS termination for HTTP
+// content inspection, and records TLS handshake metadata.
 func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOption) error {
 	var ho HandleOptions
 	for _, opt := range opts {
 		opt(&ho)
 	}
 
-	if h.ReadTimeout <= 0 {
-		h.ReadTimeout = DefaultReadTimeout
+	ho.readTimeout = h.ReadTimeout
+	if ho.readTimeout <= 0 {
+		ho.readTimeout = DefaultReadTimeout
 	}
 
 	buf := new(bytes.Buffer)
@@ -849,8 +880,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		return err
 	}
 
-	xio.SetReadDeadline(cc, time.Now().Add(h.ReadTimeout))
-	serverHello, err := dissector.ParseServerHello(io.TeeReader(cc, buf))
+	xio.SetReadDeadline(cc, time.Now().Add(ho.readTimeout))
+	serverHello, _ := dissector.ParseServerHello(io.TeeReader(cc, buf))
 	xio.SetReadDeadline(cc, time.Time{})
 
 	if serverHello != nil {
@@ -999,7 +1030,10 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 
 	host := cfg.ServerName
 	if host == "" {
-		if host = cs.PeerCertificates[0].Subject.CommonName; host == "" {
+		if len(cs.PeerCertificates) > 0 {
+			host = cs.PeerCertificates[0].Subject.CommonName
+		}
+		if host == "" {
 			host = ro.Host
 		}
 	}
@@ -1079,6 +1113,8 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 	return h.HandleHTTP(ctx, serverConn, opts...)
 }
 
+// h2Handler is an http.Handler that proxies HTTP/2 requests through an
+// http2.Transport while recording request and response metadata.
 type h2Handler struct {
 	transport       http.RoundTripper
 	recorder        recorder.Recorder
