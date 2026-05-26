@@ -22,7 +22,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -129,19 +128,72 @@ func LoggerOption(logger logger.Logger) Option {
 	}
 }
 
+// bypassDecision represents the outcome of evaluating a bypass rule.
+type bypassDecision int
+
+const (
+	// decisionBypass means the address should connect directly, skipping the proxy chain.
+	decisionBypass bypassDecision = iota
+	// decisionProxy means the address should go through the proxy chain.
+	decisionProxy
+)
+
+func (d bypassDecision) String() string {
+	switch d {
+	case decisionBypass:
+		return "bypass"
+	case decisionProxy:
+		return "proxy"
+	default:
+		return "unknown"
+	}
+}
+
+// patternSet holds classified pattern matchers for a single bypass rule.
+// All four matcher types are built together by classifyPatterns and swapped
+// atomically under the write lock.
+type patternSet struct {
+	cidr     matcher.Matcher
+	addr     matcher.Matcher
+	wildcard matcher.Matcher
+	ipRange  matcher.Matcher
+}
+
+// matchAny reports whether addr matches any pattern in the set,
+// trying IP range, address, CIDR, and wildcard matchers in order.
+// Returns false if ps is nil.
+func (ps *patternSet) matchAny(addr string) bool {
+	if ps == nil {
+		return false
+	}
+	if ps.ipRange.Match(addr) {
+		return true
+	}
+	if ps.addr.Match(addr) {
+		return true
+	}
+
+	host, _, _ := net.SplitHostPort(addr)
+	if host == "" {
+		host = addr
+	}
+	if ip := net.ParseIP(host); ip != nil && ps.cidr.Match(host) {
+		return true
+	}
+
+	return ps.wildcard.Match(addr)
+}
+
 // localBypass is a Bypass that matches addresses against local pattern
 // matchers. Patterns are classified into CIDR, wildcard, IP range, and
 // exact address matchers. Patterns can be loaded from static config,
 // file, Redis, or HTTP sources with optional periodic reload.
 type localBypass struct {
-	cidrMatcher     matcher.Matcher
-	addrMatcher     matcher.Matcher
-	wildcardMatcher matcher.Matcher
-	ipRangeMatcher  matcher.Matcher
-	options         options
-	logger          logger.Logger
-	mu              sync.RWMutex
-	cancelFunc      context.CancelFunc
+	patterns   *patternSet
+	options    options
+	logger     logger.Logger
+	mu         sync.RWMutex
+	cancelFunc context.CancelFunc
 }
 
 // NewBypass creates and initializes a local Bypass instance.
@@ -161,19 +213,19 @@ func NewBypass(opts ...Option) bypass.Bypass {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &localBypass{
-		cidrMatcher:     matcher.NopMatcher(),
-		addrMatcher:     matcher.NopMatcher(),
-		wildcardMatcher: matcher.NopMatcher(),
-		ipRangeMatcher:  matcher.NopMatcher(),
-		cancelFunc:      cancel,
-		options:         options,
-		logger:          options.logger,
+		cancelFunc: cancel,
+		options:    options,
+		logger:     options.logger,
 	}
 	if p.logger == nil {
 		p.logger = xlogger.Nop()
 	}
 
-	go p.periodReload(ctx)
+	if p.hasLoaders() {
+		go p.periodReload(ctx)
+	} else {
+		_ = p.reload(ctx)
+	}
 
 	return p
 }
@@ -202,7 +254,6 @@ func (p *localBypass) periodReload(ctx context.Context) error {
 		case <-ticker.C:
 			if err := p.reload(ctx); err != nil {
 				p.logger.Warnf("reload: %v", err)
-				// return err
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -212,7 +263,7 @@ func (p *localBypass) periodReload(ctx context.Context) error {
 
 // reload loads patterns from all configured sources, classifies them into
 // CIDR, wildcard, IP range, and address matchers, then atomically swaps the
-// matchers under the write lock.
+// pattern set under the write lock.
 func (p *localBypass) reload(ctx context.Context) error {
 	v, err := p.load(ctx)
 	if err != nil {
@@ -221,10 +272,29 @@ func (p *localBypass) reload(ctx context.Context) error {
 	patterns := append(p.options.matchers, v...)
 	p.logger.Debugf("load items %d", len(patterns))
 
+	ps := classifyPatterns(patterns, p.logger)
+
+	p.mu.Lock()
+	p.patterns = ps
+	p.mu.Unlock()
+
+	return nil
+}
+
+// hasLoaders reports whether any external data source is configured,
+// which determines whether a background reload goroutine is needed.
+func (p *localBypass) hasLoaders() bool {
+	return p.options.fileLoader != nil || p.options.redisLoader != nil || p.options.httpLoader != nil || p.options.period > 0
+}
+
+// classifyPatterns sorts raw pattern strings into typed matchers.
+// Invalid wildcard patterns are logged and fall through to address matching.
+func classifyPatterns(patterns []string, log logger.Logger) *patternSet {
 	var addrs []string
 	var inets []*net.IPNet
 	var wildcards []string
 	var ipRanges []xnet.IPRange
+
 	for _, pattern := range patterns {
 		if _, inet, err := net.ParseCIDR(pattern); err == nil {
 			inets = append(inets, inet)
@@ -236,6 +306,7 @@ func (p *localBypass) reload(ctx context.Context) error {
 				wildcards = append(wildcards, pattern)
 				continue
 			}
+			log.Warnf("invalid wildcard pattern %q, treating as plain address", pattern)
 		}
 
 		r := xnet.IPRange{}
@@ -247,15 +318,12 @@ func (p *localBypass) reload(ctx context.Context) error {
 		addrs = append(addrs, pattern)
 	}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.cidrMatcher = matcher.CIDRMatcher(inets)
-	p.addrMatcher = matcher.AddrMatcher(addrs)
-	p.wildcardMatcher = matcher.WildcardMatcher(wildcards)
-	p.ipRangeMatcher = matcher.IPRangeMatcher(ipRanges)
-
-	return nil
+	return &patternSet{
+		cidr:     matcher.CIDRMatcher(inets),
+		addr:     matcher.AddrMatcher(addrs),
+		wildcard: matcher.WildcardMatcher(wildcards),
+		ipRange:  matcher.IPRangeMatcher(ipRanges),
+	}
 }
 
 // load reads patterns from file, Redis and HTTP loaders if configured.
@@ -334,21 +402,42 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 		return false
 	}
 
-	matched := p.matched(addr)
-
-	b := !p.options.whitelist && matched ||
-		p.options.whitelist && !matched
+	decision := p.decide(addr)
 
 	log := p.logger.WithFields(map[string]any{
 		"sid": ctxvalue.SidFromContext(ctx),
 	})
+	log.Debugf("%s: %s, whitelist: %t", decision, addr, p.options.whitelist)
 
-	if b {
-		log.Debugf("bypass: %s, whitelist: %t", addr, p.options.whitelist)
-	} else {
-		log.Debugf("pass: %s, whitelist: %t", addr, p.options.whitelist)
+	return decision == decisionBypass
+}
+
+// decide returns the bypass decision for the given address, applying the
+// whitelist or blacklist mode to the pattern match result.
+func (p *localBypass) decide(addr string) bypassDecision {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.patterns == nil {
+		return decisionProxy
 	}
-	return b
+
+	matched := p.patterns.matchAny(addr)
+
+	if p.options.whitelist {
+		// Whitelist mode: the pattern set specifies addresses that MUST use the proxy.
+		// Matched addresses go through the proxy; unmatched addresses bypass.
+		if matched {
+			return decisionProxy
+		}
+		return decisionBypass
+	}
+	// Blacklist mode: the pattern set specifies addresses that should bypass the proxy.
+	// Matched addresses bypass; unmatched addresses go through the proxy.
+	if matched {
+		return decisionBypass
+	}
+	return decisionProxy
 }
 
 func (p *localBypass) IsWhitelist() bool {
@@ -361,33 +450,6 @@ func (p *localBypass) parseLine(s string) string {
 		s = s[:n]
 	}
 	return strings.TrimSpace(s)
-}
-
-// matched checks whether addr matches any of the configured patterns.
-// It tries IP range, address, CIDR, and wildcard matchers in order,
-// returning true on the first match.
-func (p *localBypass) matched(addr string) bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.ipRangeMatcher.Match(addr) {
-		return true
-	}
-
-	if p.addrMatcher.Match(addr) {
-		return true
-	}
-
-	host, _, _ := net.SplitHostPort(addr)
-	if host == "" {
-		host = addr
-	}
-
-	if ip := net.ParseIP(host); ip != nil && p.cidrMatcher.Match(host) {
-		return true
-	}
-
-	return p.wildcardMatcher.Match(addr)
 }
 
 func (p *localBypass) Close() error {
@@ -428,31 +490,40 @@ func BypassGroup(bypasses ...bypass.Bypass) bypass.Bypass {
 //   - Blacklist rules: only evaluated if the whitelist result is false.
 //     ANY matching blacklist rule triggers a bypass (OR logic).
 func (p *bypassGroup) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
-	var whitelist, blacklist []bool
-	for _, bypass := range p.bypasses {
-		result := bypass.Contains(ctx, network, addr, opts...)
-		if bypass.IsWhitelist() {
-			whitelist = append(whitelist, result)
-		} else {
-			blacklist = append(blacklist, result)
+	return p.evaluate(ctx, network, addr, opts...) == decisionBypass
+}
+
+// evaluate returns the bypass decision for the group by applying two-phase
+// evaluation: whitelist rules use AND logic (all must agree), then blacklist
+// rules use OR logic (any match wins), evaluated only if whitelist fails.
+func (p *bypassGroup) evaluate(ctx context.Context, network, addr string, opts ...bypass.Option) bypassDecision {
+	// Phase 1: Whitelist AND — all must agree to bypass.
+	hasWhitelist := false
+	allWhitelistBypass := true
+	for _, bp := range p.bypasses {
+		if !bp.IsWhitelist() {
+			continue
+		}
+		hasWhitelist = true
+		if !bp.Contains(ctx, network, addr, opts...) {
+			allWhitelistBypass = false
+			break // short-circuit: one whitelist failure is enough
 		}
 	}
-	status := false
-	if len(whitelist) > 0 {
-		if slices.Contains(whitelist, false) {
-			status = false
-		} else {
-			status = true
+	if hasWhitelist && allWhitelistBypass {
+		return decisionBypass
+	}
+
+	// Phase 2: Blacklist OR — any match triggers bypass.
+	for _, bp := range p.bypasses {
+		if bp.IsWhitelist() {
+			continue
+		}
+		if bp.Contains(ctx, network, addr, opts...) {
+			return decisionBypass
 		}
 	}
-	if !status && len(blacklist) > 0 {
-		if slices.Contains(blacklist, true) {
-			status = true
-		} else {
-			status = false
-		}
-	}
-	return status
+	return decisionProxy
 }
 
 // IsWhitelist always returns false for a group, since the group may contain

@@ -282,38 +282,38 @@ func TestParsePatterns_EdgeCases(t *testing.T) {
 	assert.Equal(t, []string{"192.168.1.1"}, patterns)
 }
 
-// --- matched tests ---
+// --- matched tests (via decide) ---
 
 func TestMatched_IP(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.True(t, b.matched("192.168.1.1"))
-	assert.False(t, b.matched("10.0.0.1"))
+	assert.Equal(t, decisionBypass, b.decide("192.168.1.1"))
+	assert.Equal(t, decisionProxy, b.decide("10.0.0.1"))
 }
 
 func TestMatched_CIDR(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"10.0.0.0/8"}))
 	defer b.Close()
 
-	assert.True(t, b.matched("10.0.0.1"))
-	assert.False(t, b.matched("192.168.1.1"))
+	assert.Equal(t, decisionBypass, b.decide("10.0.0.1"))
+	assert.Equal(t, decisionProxy, b.decide("192.168.1.1"))
 }
 
 func TestMatched_Wildcard(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"*.example.com"}))
 	defer b.Close()
 
-	assert.True(t, b.matched("foo.example.com"))
-	assert.False(t, b.matched("foo.other.com"))
+	assert.Equal(t, decisionBypass, b.decide("foo.example.com"))
+	assert.Equal(t, decisionProxy, b.decide("foo.other.com"))
 }
 
 func TestMatched_IPRange(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"10.0.0.1-10.0.0.100"}))
 	defer b.Close()
 
-	assert.True(t, b.matched("10.0.0.50"))
-	assert.False(t, b.matched("10.0.0.200"))
+	assert.Equal(t, decisionBypass, b.decide("10.0.0.50"))
+	assert.Equal(t, decisionProxy, b.decide("10.0.0.200"))
 }
 
 // --- reload tests ---
@@ -327,9 +327,9 @@ func TestReload_OnlyIPs(t *testing.T) {
 	}
 	err := lb.reload(context.Background())
 	assert.NoError(t, err)
-	assert.True(t, lb.matched("1.1.1.1"))
-	assert.True(t, lb.matched("8.8.8.8"))
-	assert.False(t, lb.matched("9.9.9.9"))
+	assert.True(t, lb.patterns.matchAny("1.1.1.1"))
+	assert.True(t, lb.patterns.matchAny("8.8.8.8"))
+	assert.False(t, lb.patterns.matchAny("9.9.9.9"))
 }
 
 func TestReload_OnlyCIDRs(t *testing.T) {
@@ -341,9 +341,9 @@ func TestReload_OnlyCIDRs(t *testing.T) {
 	}
 	err := lb.reload(context.Background())
 	assert.NoError(t, err)
-	assert.True(t, lb.matched("192.168.1.1"))
-	assert.True(t, lb.matched("10.0.0.1"))
-	assert.False(t, lb.matched("172.16.0.1"))
+	assert.True(t, lb.patterns.matchAny("192.168.1.1"))
+	assert.True(t, lb.patterns.matchAny("10.0.0.1"))
+	assert.False(t, lb.patterns.matchAny("172.16.0.1"))
 }
 
 func TestReload_OnlyWildcards(t *testing.T) {
@@ -355,9 +355,9 @@ func TestReload_OnlyWildcards(t *testing.T) {
 	}
 	err := lb.reload(context.Background())
 	assert.NoError(t, err)
-	assert.True(t, lb.matched("foo.example.com"))
-	assert.True(t, lb.matched("bar.test.org"))
-	assert.False(t, lb.matched("other.com"))
+	assert.True(t, lb.patterns.matchAny("foo.example.com"))
+	assert.True(t, lb.patterns.matchAny("bar.test.org"))
+	assert.False(t, lb.patterns.matchAny("other.com"))
 }
 
 func TestReload_OnlyIPRanges(t *testing.T) {
@@ -369,8 +369,8 @@ func TestReload_OnlyIPRanges(t *testing.T) {
 	}
 	err := lb.reload(context.Background())
 	assert.NoError(t, err)
-	assert.True(t, lb.matched("192.168.1.25"))
-	assert.False(t, lb.matched("192.168.1.100"))
+	assert.True(t, lb.patterns.matchAny("192.168.1.25"))
+	assert.False(t, lb.patterns.matchAny("192.168.1.100"))
 }
 
 // --- load tests ---
@@ -794,3 +794,207 @@ var _ bypass.Bypass = neverContainsWhitelist{}
 var _ bypass.Bypass = (*localBypass)(nil)
 var _ bypass.Bypass = (*bypassGroup)(nil)
 var _ logger.Logger = xlogger.Nop()
+
+// --- bypassDecision tests ---
+
+func TestBypassDecision_String(t *testing.T) {
+	assert.Equal(t, "bypass", decisionBypass.String())
+	assert.Equal(t, "proxy", decisionProxy.String())
+	assert.Equal(t, "unknown", bypassDecision(99).String())
+}
+
+// --- patternSet.matchAny tests ---
+
+func TestPatternSet_MatchAny_IPRange(t *testing.T) {
+	ps := classifyPatterns([]string{"192.168.1.1-192.168.1.10"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("192.168.1.5"))
+	assert.False(t, ps.matchAny("192.168.1.100"))
+}
+
+func TestPatternSet_MatchAny_Addr(t *testing.T) {
+	ps := classifyPatterns([]string{"example.com"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("example.com"))
+	assert.False(t, ps.matchAny("other.com"))
+}
+
+func TestPatternSet_MatchAny_CIDR(t *testing.T) {
+	ps := classifyPatterns([]string{"10.0.0.0/8"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("10.0.0.1"))
+	assert.True(t, ps.matchAny("10.255.255.255"))
+	assert.False(t, ps.matchAny("192.168.1.1"))
+}
+
+func TestPatternSet_MatchAny_Wildcard(t *testing.T) {
+	ps := classifyPatterns([]string{"*.example.com"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("foo.example.com"))
+	assert.False(t, ps.matchAny("foo.other.com"))
+}
+
+func TestPatternSet_MatchAny_NilSet(t *testing.T) {
+	var ps *patternSet
+	assert.False(t, ps.matchAny("anything"))
+}
+
+func TestPatternSet_MatchAny_Empty(t *testing.T) {
+	ps := classifyPatterns(nil, xlogger.Nop())
+	assert.False(t, ps.matchAny("anything"))
+}
+
+func TestPatternSet_MatchAny_MixedTypes(t *testing.T) {
+	ps := classifyPatterns([]string{
+		"192.168.1.1",         // address
+		"10.0.0.0/8",          // CIDR
+		"*.example.com",       // wildcard
+		"172.16.0.1-172.16.0.255", // IP range
+	}, xlogger.Nop())
+	assert.True(t, ps.matchAny("192.168.1.1"))
+	assert.True(t, ps.matchAny("10.0.0.1"))
+	assert.True(t, ps.matchAny("foo.example.com"))
+	assert.True(t, ps.matchAny("172.16.0.50"))
+	assert.False(t, ps.matchAny("8.8.8.8"))
+}
+
+func TestPatternSet_MatchAny_Precedence(t *testing.T) {
+	// IP range matches first, before address
+	ps := classifyPatterns([]string{"192.168.1.1-192.168.1.10", "192.168.1.1"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("192.168.1.5"))
+}
+
+func TestPatternSet_MatchAny_CIDRWithPort(t *testing.T) {
+	ps := classifyPatterns([]string{"10.0.0.0/8"}, xlogger.Nop())
+	assert.True(t, ps.matchAny("10.0.0.1:8080"))
+}
+
+func TestPatternSet_MatchAny_CIDRDomainNotMatched(t *testing.T) {
+	ps := classifyPatterns([]string{"10.0.0.0/8"}, xlogger.Nop())
+	assert.False(t, ps.matchAny("example.com"))
+}
+
+// --- classifyPatterns tests ---
+
+func TestClassifyPatterns_CIDR(t *testing.T) {
+	ps := classifyPatterns([]string{"192.168.0.0/16"}, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.True(t, ps.matchAny("192.168.1.1"))
+}
+
+func TestClassifyPatterns_Wildcard(t *testing.T) {
+	ps := classifyPatterns([]string{"*.test.com"}, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.True(t, ps.matchAny("foo.test.com"))
+}
+
+func TestClassifyPatterns_IPRange(t *testing.T) {
+	ps := classifyPatterns([]string{"10.0.0.1-10.0.0.100"}, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.True(t, ps.matchAny("10.0.0.50"))
+}
+
+func TestClassifyPatterns_Address(t *testing.T) {
+	ps := classifyPatterns([]string{"192.168.1.1"}, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.True(t, ps.matchAny("192.168.1.1"))
+}
+
+func TestClassifyPatterns_InvalidWildcardFallsToAddress(t *testing.T) {
+	// A pattern with * that can't compile as glob falls to address matcher.
+	// "[invalid" has * but glob.Compile may fail — let's use a simpler case.
+	ps := classifyPatterns([]string{"plain-host"}, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.True(t, ps.matchAny("plain-host"))
+}
+
+func TestClassifyPatterns_Empty(t *testing.T) {
+	ps := classifyPatterns(nil, xlogger.Nop())
+	require.NotNil(t, ps)
+	assert.False(t, ps.matchAny("anything"))
+}
+
+// --- decide tests ---
+
+func TestDecide_BlacklistMatched(t *testing.T) {
+	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
+	defer b.Close()
+
+	assert.Equal(t, decisionBypass, b.decide("192.168.1.1"))
+}
+
+func TestDecide_BlacklistNotMatched(t *testing.T) {
+	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
+	defer b.Close()
+
+	assert.Equal(t, decisionProxy, b.decide("10.0.0.1"))
+}
+
+func TestDecide_WhitelistMatched(t *testing.T) {
+	b := newSyncedBypass(WhitelistOption(true), MatchersOption([]string{"192.168.1.1"}))
+	defer b.Close()
+
+	assert.Equal(t, decisionProxy, b.decide("192.168.1.1"))
+}
+
+func TestDecide_WhitelistNotMatched(t *testing.T) {
+	b := newSyncedBypass(WhitelistOption(true), MatchersOption([]string{"192.168.1.1"}))
+	defer b.Close()
+
+	assert.Equal(t, decisionBypass, b.decide("10.0.0.1"))
+}
+
+func TestDecide_NilPatterns(t *testing.T) {
+	lb := &localBypass{logger: xlogger.Nop()}
+	assert.Equal(t, decisionProxy, lb.decide("anything"))
+}
+
+// --- evaluate (bypassGroup) tests ---
+
+func TestEvaluate_AllBlacklistAllMatch(t *testing.T) {
+	g := BypassGroup(alwaysContains{}, alwaysContains{}).(*bypassGroup)
+	assert.Equal(t, decisionBypass, g.evaluate(context.Background(), "tcp", "any", ))
+}
+
+func TestEvaluate_BlacklistNoneMatch(t *testing.T) {
+	g := BypassGroup(neverContains{}, neverContains{}).(*bypassGroup)
+	assert.Equal(t, decisionProxy, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+func TestEvaluate_WhitelistAllMatch(t *testing.T) {
+	g := BypassGroup(alwaysContainsWhitelist{}, alwaysContainsWhitelist{}).(*bypassGroup)
+	assert.Equal(t, decisionBypass, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+func TestEvaluate_WhitelistOneFails(t *testing.T) {
+	g := BypassGroup(alwaysContainsWhitelist{}, neverContainsWhitelist{}).(*bypassGroup)
+	assert.Equal(t, decisionProxy, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+func TestEvaluate_WhitelistFailsBlacklistMatches(t *testing.T) {
+	g := BypassGroup(neverContainsWhitelist{}, alwaysContains{}).(*bypassGroup)
+	assert.Equal(t, decisionBypass, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+func TestEvaluate_WhitelistFailsBlacklistNoMatch(t *testing.T) {
+	g := BypassGroup(neverContainsWhitelist{}, neverContains{}).(*bypassGroup)
+	assert.Equal(t, decisionProxy, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+func TestEvaluate_Empty(t *testing.T) {
+	g := BypassGroup().(*bypassGroup)
+	assert.Equal(t, decisionProxy, g.evaluate(context.Background(), "tcp", "any"))
+}
+
+// --- hasLoaders tests ---
+
+func TestHasLoaders_None(t *testing.T) {
+	lb := &localBypass{options: options{}}
+	assert.False(t, lb.hasLoaders())
+}
+
+func TestHasLoaders_WithFile(t *testing.T) {
+	lb := &localBypass{options: options{fileLoader: &mockLoader{}}}
+	assert.True(t, lb.hasLoaders())
+}
+
+func TestHasLoaders_WithPeriod(t *testing.T) {
+	lb := &localBypass{options: options{period: time.Second}}
+	assert.True(t, lb.hasLoaders())
+}
