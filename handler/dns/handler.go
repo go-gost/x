@@ -32,9 +32,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-const (
-	defaultNameserver = "udp://127.0.0.1:53"
-)
+// defaultNameserver is the fallback DNS resolver address used when no exchangers are configured.
+const defaultNameserver = "udp://127.0.0.1:53"
 
 func init() {
 	registry.HandlerRegistry().Register("dns", NewHandler)
@@ -50,6 +49,8 @@ type dnsHandler struct {
 	recorder   recorder.RecorderObject
 }
 
+// NewHandler creates a DNS handler that resolves DNS queries using configured
+// nameserver exchangers, with optional host mapper, caching, and async refresh.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -62,6 +63,8 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init initializes the handler from metadata, building exchangers from the
+// configured nameservers or hop nodes.
 func (h *dnsHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
@@ -134,6 +137,8 @@ func (h *dnsHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
+// Handle processes a DNS query connection: reads the query, resolves it through
+// cache/host-mapper/exchanger, and writes the response back.
 func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -188,6 +193,10 @@ func (h *dnsHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
 		return rate_limiter.ErrRateLimit
+	}
+
+	if h.md.readTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 	}
 
 	b := bufpool.Get(h.md.bufferSize)
@@ -306,7 +315,7 @@ func (h *dnsHandler) request(ctx context.Context, msg []byte, ro *xrecorder.Hand
 		h.cache.RefreshTTL(resolver_util.NewCacheKey(&mq.Question[0]))
 
 		log.Debugf("exchange message %d (async): %s", mq.Id, mq.Question[0].String())
-		go h.exchange(ctx, ex, &mq)
+		go h.exchange(context.WithoutCancel(ctx), ex, &mq)
 		return reply, nil
 	}
 

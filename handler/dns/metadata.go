@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	defaultTimeout    = 5 * time.Second
+	// defaultTimeout is the fallback timeout for DNS exchanges.
+	defaultTimeout = 5 * time.Second
+	// defaultBufferSize is the fallback buffer size for DNS message I/O.
 	defaultBufferSize = 1024
 )
 
+// metadata holds parsed DNS handler configuration.
 type metadata struct {
 	readTimeout time.Duration
 	ttl         time.Duration
