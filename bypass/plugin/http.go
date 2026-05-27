@@ -117,7 +117,9 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 
 func (p *httpPlugin) Close() error {
 	if p.client != nil {
-		p.client.CloseIdleConnections()
+		if tr := plugin.HTTPClientTransport(p.client); tr != nil {
+			tr.CloseIdleConnections()
+		}
 	}
 	return nil
 }

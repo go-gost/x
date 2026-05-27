@@ -34,6 +34,7 @@ func ParseRouter(cfg *config.RouterConfig) router.Router {
 		case "http":
 			return router_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)

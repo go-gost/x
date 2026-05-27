@@ -34,6 +34,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 		case "http":
 			return bypass_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)

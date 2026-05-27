@@ -29,6 +29,7 @@ func ParseObserver(cfg *config.ObserverConfig) observer.Observer {
 	case "http":
 		return observer_plugin.NewHTTPPlugin(
 			cfg.Name, cfg.Plugin.Addr,
+			plugin.TokenOption(cfg.Plugin.Token),
 			plugin.TLSConfigOption(tlsCfg),
 			plugin.TimeoutOption(cfg.Plugin.Timeout),
 		)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/go-gost/core/chain"
@@ -121,9 +120,8 @@ func (p *httpPlugin) Close() error {
 	if p.client == nil {
 		return nil
 	}
-	p.client.CloseIdleConnections()
-	if tr, ok := p.client.Transport.(io.Closer); ok {
-		return tr.Close()
+	if tr := plugin.HTTPClientTransport(p.client); tr != nil {
+		tr.CloseIdleConnections()
 	}
 	return nil
 }

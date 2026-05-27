@@ -104,29 +104,73 @@ func (c *rpcCredentials) RequireTransportSecurity() bool {
 }
 
 // NewHTTPClient creates an http.Client from opts. If opts is nil, a default
-// client with no timeout is returned. Use HTTPClientTransport to access the
-// underlying transport and close idle connections when the client is no longer
-// needed.
+// client with no timeout is returned. When opts.Token is set, the returned
+// client's transport is wrapped so that each outgoing request carries an
+// "Authorization: Bearer <token>" header (unless the caller has already set
+// its own Authorization header). Use HTTPClientTransport to access the
+// underlying *http.Transport and close idle connections when the client is no
+// longer needed.
 func NewHTTPClient(opts *Options) *http.Client {
 	if opts == nil {
 		return &http.Client{}
 	}
+	var transport http.RoundTripper = &http.Transport{
+		TLSClientConfig: opts.TLSConfig,
+	}
+	if opts.Token != "" {
+		transport = &tokenTransport{base: transport, token: opts.Token}
+	}
 	return &http.Client{
-		Timeout: opts.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: opts.TLSConfig,
-		},
+		Timeout:   opts.Timeout,
+		Transport: transport,
+	}
+}
+
+// tokenTransport is an http.RoundTripper that injects a bearer token into the
+// "Authorization" header of every outgoing request. It does not overwrite an
+// Authorization header that the caller has already set.
+type tokenTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+// RoundTrip injects the bearer token when the request has no Authorization
+// header. It clones the request before mutating its headers so that the
+// caller's request value is not modified.
+func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Authorization") != "" {
+		return t.base.RoundTrip(req)
+	}
+	r := req.Clone(req.Context())
+	r.Header.Set("Authorization", "Bearer "+t.token)
+	return t.base.RoundTrip(r)
+}
+
+// CloseIdleConnections delegates to the underlying transport so that
+// http.Client.CloseIdleConnections() works through the tokenTransport
+// wrapper instead of silently becoming a no-op.
+func (t *tokenTransport) CloseIdleConnections() {
+	type closeIdler interface {
+		CloseIdleConnections()
+	}
+	if tr, ok := t.base.(closeIdler); ok {
+		tr.CloseIdleConnections()
 	}
 }
 
 // HTTPClientTransport returns the *http.Transport underlying c, or nil if c's
-// transport is not an *http.Transport. Callers that hold the client for a
-// long time should call tr.CloseIdleConnections() when the client is no longer
-// needed.
+// transport is not an *http.Transport. When the client was created with a
+// non-empty Token, the *http.Transport is unwrapped from the tokenTransport
+// wrapper. Callers that hold the client for a long time should call
+// tr.CloseIdleConnections() when the client is no longer needed.
 func HTTPClientTransport(c *http.Client) *http.Transport {
 	if c == nil {
 		return nil
 	}
-	tr, _ := c.Transport.(*http.Transport)
+	rt := c.Transport
+	if tt, ok := rt.(*tokenTransport); ok {
+		rt = tt.base
+	}
+	tr, _ := rt.(*http.Transport)
 	return tr
 }

@@ -37,6 +37,7 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 		case "http":
 			return traffic_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)

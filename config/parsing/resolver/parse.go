@@ -35,6 +35,7 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 		case "http":
 			return resolver_plugin.NewHTTPPlugin(
 				cfg.Name, cfg.Plugin.Addr,
+				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			), nil

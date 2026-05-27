@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -109,4 +110,108 @@ func TestNewHTTPClient_TransportTLSConfig(t *testing.T) {
 	if tr.TLSClientConfig != nil {
 		t.Error("expected nil TLSClientConfig")
 	}
+}
+
+func TestNewHTTPClient_WithToken_SetsAuthorizationHeader(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(&Options{Token: "secret-token"})
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if want := "Bearer secret-token"; gotAuth != want {
+		t.Errorf("Authorization header: got %q, want %q", gotAuth, want)
+	}
+}
+
+func TestNewHTTPClient_NoToken_NoAuthorizationHeader(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(&Options{})
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if gotAuth != "" {
+		t.Errorf("Authorization header: got %q, want empty", gotAuth)
+	}
+}
+
+func TestNewHTTPClient_Token_DoesNotOverrideExistingAuthorization(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(&Options{Token: "from-options"})
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer caller-set")
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if want := "Bearer caller-set"; gotAuth != want {
+		t.Errorf("Authorization header: got %q, want %q (caller's value must be preserved)", gotAuth, want)
+	}
+}
+
+func TestNewHTTPClient_Token_DoesNotMutateCallerRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(&Options{Token: "secret-token"})
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Errorf("caller's request Authorization header was mutated to %q; expected empty", got)
+	}
+}
+
+func TestHTTPClientTransport_UnwrapsTokenTransport(t *testing.T) {
+	c := NewHTTPClient(&Options{Token: "tok"})
+	tr := HTTPClientTransport(c)
+	if tr == nil {
+		t.Fatal("expected non-nil *http.Transport unwrapped from tokenTransport")
+	}
+	tr.CloseIdleConnections()
 }

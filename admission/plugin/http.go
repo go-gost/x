@@ -121,7 +121,9 @@ func (p *httpPlugin) Admit(ctx context.Context, network, addr string, opts ...ad
 // It does not shut down the client itself.
 func (p *httpPlugin) Close() error {
 	if p.client != nil {
-		p.client.CloseIdleConnections()
+		if tr := plugin.HTTPClientTransport(p.client); tr != nil {
+			tr.CloseIdleConnections()
+		}
 	}
 	return nil
 }
