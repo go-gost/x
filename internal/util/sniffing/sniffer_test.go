@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -678,5 +679,559 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 	err := h.serveH2(context.Background(), "tcp", serverConn, ho)
 	if err == nil {
 		t.Error("expected error from invalid h2 preface, got nil")
+	}
+}
+
+// =============================================================================
+// serveH2 — short read (EOF before 6 bytes)
+// =============================================================================
+
+func TestServeH2_ShortRead(t *testing.T) {
+	h := &Sniffer{
+		ReadTimeout: 5 * time.Second,
+		Recorder:    &noopRecorder{},
+	}
+	ho := &HandleOptions{
+		log:            xlogger.Nop(),
+		recorderObject: &xrecorder.HandlerRecorderObject{},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte("SHORT")) // only 5 bytes, then close
+		clientConn.Close()
+	}()
+
+	err := h.serveH2(context.Background(), "tcp", serverConn, ho)
+	if err == nil {
+		t.Error("expected error from short h2 preface read, got nil")
+	}
+	if !strings.Contains(err.Error(), "error reading client preface") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// =============================================================================
+// setHeader Tests
+// =============================================================================
+
+func TestSetHeader(t *testing.T) {
+	h := &h2Handler{}
+	w := httptest.NewRecorder()
+	h.setHeader(w, http.Header{
+		"Content-Type": {"text/html"},
+		"X-Custom":     {"a", "b"},
+	})
+	if w.Header().Get("Content-Type") != "text/html" {
+		t.Errorf("Content-Type = %q, want %q", w.Header().Get("Content-Type"), "text/html")
+	}
+	vals := w.Header()["X-Custom"]
+	if len(vals) != 2 || vals[0] != "a" || vals[1] != "b" {
+		t.Errorf("X-Custom = %v, want [a b]", vals)
+	}
+}
+
+// =============================================================================
+// h2Handler.ServeHTTP Tests
+// =============================================================================
+
+type mockRoundTripper struct {
+	resp *http.Response
+	err  error
+}
+
+func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.resp, m.err
+}
+
+func TestH2HandlerServeHTTP_Success(t *testing.T) {
+	handler := &h2Handler{
+		transport: &mockRoundTripper{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/plain"}},
+				Body:       io.NopCloser(strings.NewReader("h2 body")),
+			},
+		},
+		recorder:        &noopRecorder{},
+		recorderOptions: &recorder.Options{HTTPBody: false},
+		recorderObject:  &xrecorder.HandlerRecorderObject{},
+		log:             xlogger.Nop(),
+	}
+
+	req := httptest.NewRequest("GET", "https://example.com/path", nil)
+	req.RequestURI = "/path"
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "h2 body" {
+		t.Errorf("body = %q, want %q", w.Body.String(), "h2 body")
+	}
+}
+
+func TestH2HandlerServeHTTP_RoundTripError(t *testing.T) {
+	handler := &h2Handler{
+		transport: &mockRoundTripper{
+			err: errors.New("connection refused"),
+		},
+		recorder:        &noopRecorder{},
+		recorderOptions: &recorder.Options{HTTPBody: false},
+		recorderObject:  &xrecorder.HandlerRecorderObject{},
+		log:             xlogger.Nop(),
+	}
+
+	req := httptest.NewRequest("GET", "https://example.com/path", nil)
+	req.RequestURI = "/path"
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestH2HandlerServeHTTP_WithBodyRecording(t *testing.T) {
+	handler := &h2Handler{
+		transport: &mockRoundTripper{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"key":"value"}`)),
+			},
+		},
+		recorder:        &noopRecorder{},
+		recorderOptions: &recorder.Options{HTTPBody: true, MaxBodySize: 1024},
+		recorderObject:  &xrecorder.HandlerRecorderObject{},
+		log:             xlogger.Nop(),
+	}
+
+	req := httptest.NewRequest("POST", "https://example.com/api", strings.NewReader("hello"))
+	req.RequestURI = "/api"
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+// =============================================================================
+// Sniff / isHTTP Tests
+// =============================================================================
+
+func TestSniff_TLS(t *testing.T) {
+	// Build a minimal TLS ClientHello record:
+	// ContentType=Handshake(0x16), Version=TLS1.2(0x0303), Length=0x0001, data=0x01
+	hdr := []byte{0x16, 0x03, 0x03, 0x00, 0x01, 0x01}
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoTLS {
+		t.Errorf("proto = %q, want %q", proto, ProtoTLS)
+	}
+}
+
+func TestSniff_TLSv10(t *testing.T) {
+	// TLS 1.0 = 0x0301
+	hdr := []byte{0x16, 0x03, 0x01, 0x00, 0x01, 0x01}
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoTLS {
+		t.Errorf("proto = %q, want %q", proto, ProtoTLS)
+	}
+}
+
+func TestSniff_TLSv13(t *testing.T) {
+	// TLS 1.3 = 0x0304
+	hdr := []byte{0x16, 0x03, 0x04, 0x00, 0x01, 0x01}
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoTLS {
+		t.Errorf("proto = %q, want %q", proto, ProtoTLS)
+	}
+}
+
+func TestSniff_HTTP_GET(t *testing.T) {
+	hdr := []byte("GET / HTTP/1.1\r\n")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoHTTP {
+		t.Errorf("proto = %q, want %q", proto, ProtoHTTP)
+	}
+}
+
+func TestSniff_HTTP_POST(t *testing.T) {
+	hdr := []byte("POST /api HTTP/1.1\r\n")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoHTTP {
+		t.Errorf("proto = %q, want %q", proto, ProtoHTTP)
+	}
+}
+
+func TestSniff_HTTP_CONNECT(t *testing.T) {
+	hdr := []byte("CONNECT example.com:443 HTTP/1.1\r\n")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoHTTP {
+		t.Errorf("proto = %q, want %q", proto, ProtoHTTP)
+	}
+}
+
+func TestSniff_HTTP_H2Preface(t *testing.T) {
+	hdr := []byte("PRI * HTTP/2.0\r\n")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoHTTP {
+		t.Errorf("proto = %q, want %q", proto, ProtoHTTP)
+	}
+}
+
+func TestSniff_HTTP_OPTIONS(t *testing.T) {
+	hdr := []byte("OPTIONS * HTTP/1.1\r\n")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoHTTP {
+		t.Errorf("proto = %q, want %q", proto, ProtoHTTP)
+	}
+}
+
+func TestSniff_SSH(t *testing.T) {
+	hdr := []byte("SSH-2.0-OpenSSH_8.9")
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != ProtoSSH {
+		t.Errorf("proto = %q, want %q", proto, ProtoSSH)
+	}
+}
+
+func TestSniff_Unknown(t *testing.T) {
+	// bytes that don't match TLS, HTTP, or SSH
+	hdr := []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	r := bufio.NewReader(bytes.NewReader(hdr))
+	proto, err := Sniff(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != "" {
+		t.Errorf("proto = %q, want empty", proto)
+	}
+}
+
+func TestIsHTTP_AllMethods(t *testing.T) {
+	// isHTTP receives a 5-byte peek from the buffered reader.
+	// For most methods it checks if the method name starts with s (or s[:N]).
+	// So the test strings must be exactly 5 bytes (or the method prefix).
+	tests := []string{
+		"GET /", // s[:3] = "GET", HasPrefix("GET", "GET") = true
+		"POST ", // s[:4] = "POST", HasPrefix("POST", "POST") = true
+		"PUT /", // s[:3] = "PUT", HasPrefix("PUT", "PUT") = true
+		"DELET", // HasPrefix("DELETE", "DELET") = true
+		"OPTIO", // HasPrefix("OPTIONS", "OPTIO") = true
+		"PATCH", // HasPrefix("PATCH", "PATCH") = true
+		"HEAD ", // s[:4] = "HEAD", HasPrefix("HEAD", "HEAD") = true
+		"CONNE", // HasPrefix("CONNECT", "CONNE") = true
+		"TRACE", // HasPrefix("TRACE", "TRACE") = true
+		"PRI *", // HasPrefix(s, "PRI *") = true
+	}
+	for _, s := range tests {
+		if !isHTTP(s) {
+			t.Errorf("isHTTP(%q) = false, want true", s)
+		}
+	}
+}
+
+func TestIsHTTP_NoPrefixMatch(t *testing.T) {
+	if isHTTP("GEX /") {
+		t.Error("isHTTP(GEX) should be false")
+	}
+	if isHTTP("XXXXX") {
+		t.Error("isHTTP(XXXXX) should be false")
+	}
+}
+
+// =============================================================================
+// HandleHTTP Bypass Test
+// =============================================================================
+
+func TestHandleHTTP_Bypass(t *testing.T) {
+	h := &Sniffer{
+		ReadTimeout: 5 * time.Second,
+		Recorder:    &noopRecorder{},
+	}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleHTTP(context.Background(), "tcp", serverConn,
+			WithBypass(&mockBypass{contains: true}),
+			WithRecorderObject(ro),
+			WithLog(xlogger.Nop()),
+		)
+	}()
+
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	req.Write(clientConn)
+	clientConn.Close()
+
+	err := <-errCh
+	if err == nil {
+		t.Fatal("expected bypass error, got nil")
+	}
+}
+
+// =============================================================================
+// HandleTLS Error Path Tests
+// =============================================================================
+
+func TestHandleTLS_NonTLSData(t *testing.T) {
+	h := &Sniffer{
+		ReadTimeout: 5 * time.Second,
+		Recorder:    &noopRecorder{},
+	}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleTLS(context.Background(), "tcp", serverConn,
+			WithRecorderObject(ro),
+			WithLog(xlogger.Nop()),
+		)
+	}()
+
+	// Write non-TLS data that won't parse as ClientHello
+	clientConn.Write([]byte("NOT A TLS CLIENT HELLO"))
+	clientConn.Close()
+
+	err := <-errCh
+	if err == nil {
+		t.Fatal("expected error from non-TLS data, got nil")
+	}
+}
+
+// =============================================================================
+// handleUpgradeResponse Websocket Path Test
+// =============================================================================
+
+func TestHandleUpgradeResponse_WebsocketEnabled(t *testing.T) {
+	h := &Sniffer{
+		Websocket:    true,
+		ReadTimeout:  5 * time.Second,
+		Recorder:     &noopRecorder{},
+	}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+
+	res := &http.Response{
+		StatusCode: http.StatusSwitchingProtocols,
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header: http.Header{
+			"Connection": {"Upgrade"},
+			"Upgrade":    {"websocket"},
+		},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.handleUpgradeResponse(context.Background(), serverConn, clientConn, req, res, ro, xlogger.Nop())
+	}()
+
+	br := bufio.NewReader(clientConn)
+	readResp, readErr := http.ReadResponse(br, req)
+	if readErr != nil {
+		t.Fatalf("reading upgrade response: %v", readErr)
+	}
+	if readResp.StatusCode != http.StatusSwitchingProtocols {
+		t.Errorf("status = %d, want %d", readResp.StatusCode, http.StatusSwitchingProtocols)
+	}
+
+	// sniffingWebsocketFrame goroutines are waiting for WS frames.
+	// Close to unblock them; use a timeout since sniffingWebsocketFrame
+	// has a goroutine leak (single-buffered errc with 2 goroutines).
+	clientConn.Close()
+	serverConn.Close()
+
+	select {
+	case <-errCh:
+	case <-time.After(time.Second):
+		// sniffingWebsocketFrame leaked a goroutine; test that the 101
+		// response was written correctly (verified above) and move on.
+	}
+}
+
+// =============================================================================
+// httpRoundTrip with Response Body Recording
+// =============================================================================
+
+func TestHandleHTTP_ResponseBodyRecording(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("response body content"))
+	}))
+	defer upstream.Close()
+
+	h := &Sniffer{
+		ReadTimeout:     5 * time.Second,
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: true, MaxBodySize: 1024},
+	}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleHTTP(context.Background(), "tcp", serverConn,
+			WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+				return net.Dial("tcp", upstream.Listener.Addr().String())
+			}),
+			WithRecorderObject(ro),
+			WithLog(xlogger.Nop()),
+		)
+	}()
+
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	if err := req.Write(clientConn); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(clientConn), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	clientConn.Close()
+	<-errCh
+}
+
+// =============================================================================
+// HandleHTTP Request Body Recording
+// =============================================================================
+
+func TestHandleHTTP_RequestBodyRecording(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
+	}))
+	defer upstream.Close()
+
+	h := &Sniffer{
+		ReadTimeout:     5 * time.Second,
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: true, MaxBodySize: 1024},
+	}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleHTTP(context.Background(), "tcp", serverConn,
+			WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+				return net.Dial("tcp", upstream.Listener.Addr().String())
+			}),
+			WithRecorderObject(ro),
+			WithLog(xlogger.Nop()),
+		)
+	}()
+
+	req, _ := http.NewRequest("POST", "http://example.com/upload", strings.NewReader("my request body"))
+	if err := req.Write(clientConn); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(clientConn), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	clientConn.Close()
+	<-errCh
+}
+
+// =============================================================================
+// copyWebsocketFrame read error test
+// =============================================================================
+
+func TestCopyWebsocketFrame_ReadError(t *testing.T) {
+	h := &Sniffer{
+		Recorder:        &noopRecorder{},
+		RecorderOptions: &recorder.Options{HTTPBody: false},
+	}
+
+	// Empty reader will cause Frame.ReadFrom to get io.EOF
+	r := bytes.NewReader(nil)
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.copyWebsocketFrame(io.Discard, r, &bytes.Buffer{}, "client", ro)
+	if err == nil {
+		t.Error("expected error from empty WS frame reader, got nil")
 	}
 }
