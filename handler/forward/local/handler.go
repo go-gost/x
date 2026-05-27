@@ -42,6 +42,8 @@ type forwardHandler struct {
 	certPool tls_util.CertPool
 }
 
+// NewHandler creates a local forwarding handler with the given options.
+// The handler registers for "tcp", "udp", and "forward" protocols.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -77,6 +79,10 @@ func (h *forwardHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
+// Handle forwards the accepted connection to a node selected from the hop.
+// When sniffing is enabled it inspects the initial bytes to detect HTTP or TLS
+// traffic and delegates to the protocol-specific sniffer; otherwise it pipes the
+// raw stream through the router.
 func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -135,6 +141,12 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return rate_limiter.ErrRateLimit
 	}
 
+	if h.options.Router == nil {
+		err := errors.New("router not available")
+		log.Error(err)
+		return err
+	}
+
 	var proto string
 	if network == "tcp" && h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
@@ -142,52 +154,52 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 
 		br := bufio.NewReader(conn)
-		proto, _ = sniffing.Sniff(ctx, br)
+		proto, err = sniffing.Sniff(ctx, br)
 		ro.Proto = proto
+		if err != nil {
+			log.Debugf("sniff: %v", err)
+		}
 
 		if h.md.sniffingTimeout > 0 {
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			var buf bytes.Buffer
-			cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
-			ro.Route = buf.String()
-
-			cc = proxyproto.WrapClientConn(
-				h.md.proxyProtocol,
-				xctx.SrcAddrFromContext(ctx),
-				xctx.DstAddrFromContext(ctx),
-				cc)
-
-			return cc, err
-		}
-		sniffer := &forwarder.Sniffer{
-			Websocket:           h.md.sniffingWebsocket,
-			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
-			Recorder:            h.recorder.Recorder,
-			RecorderOptions:     h.recorder.Options,
-			Certificate:         h.md.certificate,
-			PrivateKey:          h.md.privateKey,
-			NegotiatedProtocol:  h.md.alpn,
-			CertPool:            h.certPool,
-			MitmBypass:          h.md.mitmBypass,
-			ReadTimeout:         h.md.readTimeout,
-		}
-
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
-		case sniffing.ProtoHTTP:
-			return sniffer.HandleHTTP(ctx, conn,
-				forwarder.WithService(h.options.Service),
-				forwarder.WithDial(dial),
-				forwarder.WithHop(h.hop),
-				forwarder.WithBypass(h.options.Bypass),
-				forwarder.WithHTTPKeepalive(h.md.httpKeepalive),
-				forwarder.WithRecorderObject(ro),
-				forwarder.WithLog(log),
-			)
-		case sniffing.ProtoTLS:
+		case sniffing.ProtoHTTP, sniffing.ProtoTLS:
+			dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+				var buf bytes.Buffer
+				cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+				ro.Route = buf.String()
+				return proxyproto.WrapClientConn(
+					h.md.proxyProtocol,
+					xctx.SrcAddrFromContext(ctx),
+					xctx.DstAddrFromContext(ctx),
+					cc), err
+			}
+			sniffer := &forwarder.Sniffer{
+				Websocket:           h.md.sniffingWebsocket,
+				WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+				Recorder:            h.recorder.Recorder,
+				RecorderOptions:     h.recorder.Options,
+				Certificate:         h.md.certificate,
+				PrivateKey:          h.md.privateKey,
+				NegotiatedProtocol:  h.md.alpn,
+				CertPool:            h.certPool,
+				MitmBypass:          h.md.mitmBypass,
+				ReadTimeout:         h.md.readTimeout,
+			}
+			if proto == sniffing.ProtoHTTP {
+				return sniffer.HandleHTTP(ctx, conn,
+					forwarder.WithService(h.options.Service),
+					forwarder.WithDial(dial),
+					forwarder.WithHop(h.hop),
+					forwarder.WithBypass(h.options.Bypass),
+					forwarder.WithHTTPKeepalive(h.md.httpKeepalive),
+					forwarder.WithRecorderObject(ro),
+					forwarder.WithLog(log),
+				)
+			}
 			return sniffer.HandleTLS(ctx, conn,
 				forwarder.WithService(h.options.Service),
 				forwarder.WithDial(dial),
@@ -199,6 +211,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		}
 	}
 
+	// h.hop may be nil when no forwarder is configured — this is valid.
+	// The sniffer and Select() both guard against nil hop internally.
 	target := &chain.Node{}
 	if h.hop != nil {
 		target = h.hop.Select(ctx,
@@ -210,7 +224,6 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		log.Error(err)
 		return err
 	}
-
 	addr := target.Addr
 	if opts := target.Options(); opts != nil {
 		switch opts.Network {
@@ -264,7 +277,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
 	// xnet.Transport(conn, cc)
-	xnet.Pipe(ctx, conn, cc)
+	if err := xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.readTimeout)); err != nil {
+		log.Debugf("pipe: %v", err)
+	}
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
