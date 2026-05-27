@@ -14,7 +14,6 @@ import (
 	icmp_pkg "github.com/go-gost/x/internal/util/icmp"
 	"github.com/go-gost/x/registry"
 	"github.com/quic-go/quic-go"
-	"golang.org/x/net/icmp"
 )
 
 func init() {
@@ -87,9 +86,9 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 
 		var pc net.PacketConn
 		if d.ip6 {
-			pc, err = icmp.ListenPacket("ip6:ipv6-icmp", "")
+			pc, err = icmp_pkg.ListenPacket("ip6:ipv6-icmp", "")
 		} else {
-			pc, err = icmp.ListenPacket("ip4:icmp", "")
+			pc, err = icmp_pkg.ListenPacket("ip4:icmp", "")
 		}
 		if err != nil {
 			return

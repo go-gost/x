@@ -16,7 +16,6 @@ import (
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
 	"github.com/quic-go/quic-go"
-	"golang.org/x/net/icmp"
 )
 
 func init() {
@@ -69,9 +68,9 @@ func (l *icmpListener) Init(md md.Metadata) (err error) {
 
 	var conn net.PacketConn
 	if l.ip6 {
-		conn, err = icmp.ListenPacket("ip6:ipv6-icmp", addr)
+		conn, err = icmp_pkg.ListenPacket("ip6:ipv6-icmp", addr)
 	} else {
-		conn, err = icmp.ListenPacket("ip4:icmp", addr)
+		conn, err = icmp_pkg.ListenPacket("ip4:icmp", addr)
 	}
 	if err != nil {
 		return
