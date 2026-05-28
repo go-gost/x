@@ -62,8 +62,8 @@ func TestClampBodySize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := clampBodySize(tt.opts); got != tt.want {
-				t.Errorf("clampBodySize() = %d, want %d", got, tt.want)
+			if got := ClampBodySize(tt.opts); got != tt.want {
+				t.Errorf("ClampBodySize() = %d, want %d", got, tt.want)
 			}
 		})
 	}

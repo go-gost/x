@@ -106,10 +106,10 @@ type Sniffer struct {
 	ReadTimeout time.Duration
 }
 
-// clampBodySize returns the effective body capture size from recorder options,
+// ClampBodySize returns the effective body capture size from recorder options,
 // bounded by [DefaultBodySize, MaxBodySize]. Returns 0 if body recording is
 // disabled.
-func clampBodySize(opts *recorder.Options) int {
+func ClampBodySize(opts *recorder.Options) int {
 	if opts == nil || !opts.HTTPBody {
 		return 0
 	}

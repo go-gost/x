@@ -101,15 +101,7 @@ func (h *httpHandler) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Bu
 		MaskKey: fr.Header.MaskKey,
 		Length:  fr.Header.PayloadLength,
 	}
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		bodySize := opts.MaxBodySize
-		if bodySize <= 0 {
-			bodySize = sniffing.DefaultBodySize
-		}
-		if bodySize > sniffing.MaxBodySize {
-			bodySize = sniffing.MaxBodySize
-		}
-
+	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 {
 		buf.Reset()
 		if _, err := io.Copy(buf, io.LimitReader(fr.Data, int64(bodySize))); err != nil {
 			return err

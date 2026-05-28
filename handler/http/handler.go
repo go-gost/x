@@ -196,7 +196,6 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/asaskevich/govalidator"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
@@ -230,6 +229,8 @@ func init() {
 type httpHandler struct {
 	md        metadata                // parsed configuration
 	options   handler.Options         // handler options from the service config
+	auth      *Authenticator          // auth + probe resistance (constructed in Init)
+	sniffer   *SnifferBuilder         // builds sniffing.Sniffer per connection
 	stats     *stats_util.HandlerStats // per-client stats, created when Observer is set
 	limiter   traffic.TrafficLimiter  // per-client traffic shaper (cached)
 	cancel    context.CancelFunc      // cancels the observeStats goroutine
@@ -280,6 +281,27 @@ func (h *httpHandler) Init(md md.Metadata) error {
 			h.recorder = ro
 			break
 		}
+	}
+
+	h.auth = &Authenticator{
+		Auther:  h.options.Auther,
+		PR:      h.md.probeResistance,
+		Realm:   h.md.authBasicRealm,
+		Service: h.options.Service,
+		Log:     h.options.Logger,
+	}
+
+	h.sniffer = &SnifferBuilder{
+		Websocket:           h.md.sniffingWebsocket,
+		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+		Recorder:            h.recorder.Recorder,
+		RecorderOptions:     h.recorder.Options,
+		Certificate:         h.md.certificate,
+		PrivateKey:          h.md.privateKey,
+		ALPN:                h.md.alpn,
+		CertPool:            h.certPool,
+		MitmBypass:          h.md.mitmBypass,
+		ReadTimeout:         h.md.readTimeout,
 	}
 
 	if h.md.certificate != nil && h.md.privateKey != nil {
@@ -382,39 +404,10 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 //   - HTTP forward proxy (GET/POST/…): handleProxy
 //   - HTTP CONNECT tunnel: handleConnect
 func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	// If the URL is not absolute (typical for plain HTTP proxy requests),
-	// attempt to infer the scheme by validating the Host header. A valid
-	// DNS name or IP address implies http://.
-	if !req.URL.IsAbs() {
-		host := req.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
-		}
-		if govalidator.IsDNSName(host) || net.ParseIP(host) != nil {
-			req.URL.Scheme = "http"
-		}
-	}
-
-	network := req.Header.Get("X-Gost-Protocol")
-	if network != "udp" {
-		network = "tcp"
-	}
+	nr := normalizeRequest(req)
+	network := nr.Network
+	addr := nr.Addr
 	ro.Network = network
-
-	// GOST v2 sent the actual target host in Gost-Target / X-Gost-Target
-	// headers using a base64+CRC32 encoding. Decode them for compatibility.
-	if v := req.Header.Get("Gost-Target"); v != "" {
-		if h, err := decodeServerName(v); err == nil {
-			req.Host = h
-		}
-	}
-	if v := req.Header.Get("X-Gost-Target"); v != "" {
-		if h, err := decodeServerName(v); err == nil {
-			req.Host = h
-		}
-	}
-
-	addr := normalizeHostPort(req.Host, "80")
 	ro.Host = addr
 
 	fields := map[string]any{
@@ -446,17 +439,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		resp.Header = http.Header{}
 	}
 
-	ro.HTTP = &xrecorder.HTTPRecorderObject{
-		Host:   req.Host,
-		Proto:  req.Proto,
-		Scheme: req.URL.Scheme,
-		Method: req.Method,
-		URI:    req.RequestURI,
-		Request: xrecorder.HTTPRequestRecorderObject{
-			ContentLength: req.ContentLength,
-			Header:        req.Header.Clone(),
-		},
-	}
+	ro.HTTP = buildHTTPRecorder(req)
 	defer func() {
 		ro.HTTP.StatusCode = resp.StatusCode
 		ro.HTTP.Response.Header = resp.Header
@@ -476,19 +459,32 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return resp.Write(conn)
 	}
 
-	clientID, ok := h.authenticate(ctx, conn, req, resp, log)
-	if !ok {
+	result := h.auth.Authenticate(ctx, req)
+	if !result.OK {
+		if result.PipeTo != "" {
+			return h.handleProbeResistanceHost(ctx, conn, req, result.PipeTo, log, resp)
+		}
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpResponse(result.Response, false)
+			log.Trace(string(dump))
+		}
+		if result.Response.Body != nil {
+			defer result.Response.Body.Close()
+		}
+		if err := result.Response.Write(conn); err != nil {
+			log.Error("write auth response: ", err)
+		}
 		return errors.New("authentication failed")
 	}
 
-	log = log.WithFields(map[string]any{"clientID": clientID})
-	ro.ClientID = clientID
+	log = log.WithFields(map[string]any{"clientID": result.ClientID})
+	ro.ClientID = result.ClientID
 
 	if resp.Header.Get("Proxy-Agent") == "" {
 		resp.Header.Set("Proxy-Agent", h.md.proxyAgent)
 	}
 
-	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
+	ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(result.ClientID))
 
 	if h.options.Bypass != nil &&
 		h.options.Bypass.Contains(ctx, network, addr, bypass.WithService(h.options.Service)) {
@@ -506,10 +502,10 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 
 	if network == "udp" {
-		return h.handleUDP(ctx, conn, ro, log)
+		return h.handleUDP(ctx, conn, result.ClientID, ro, log)
 	}
 
-	conn, done := h.setupTrafficLimiter(conn, clientID, network, addr)
+	conn, done := h.setupTrafficLimiter(conn, result.ClientID, network, addr)
 	if done != nil {
 		defer done()
 	}
@@ -528,6 +524,23 @@ func (h *httpHandler) Close() error {
 		h.cancel()
 	}
 	return nil
+}
+
+// buildHTTPRecorder creates an HTTPRecorderObject from the request metadata.
+// The deferred status-code and response-header capture closure is set up by
+// the caller (handleRequest) since it references the local resp variable.
+func buildHTTPRecorder(req *http.Request) *xrecorder.HTTPRecorderObject {
+	return &xrecorder.HTTPRecorderObject{
+		Host:   req.Host,
+		Proto:  req.Proto,
+		Scheme: req.URL.Scheme,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		Request: xrecorder.HTTPRequestRecorderObject{
+			ContentLength: req.ContentLength,
+			Header:        req.Header.Clone(),
+		},
+	}
 }
 
 // observeStats periodically publishes per-client traffic stats to the

@@ -4,20 +4,25 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"time"
 
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/limiter"
+	"github.com/go-gost/core/recorder"
 	stats "github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/logger"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -118,18 +123,7 @@ func (h *httpHandler) sniffAndHandle(ctx context.Context, conn net.Conn, cc net.
 	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
 		return cc, nil
 	}
-	sniffer := &sniffing.Sniffer{
-		Websocket:           h.md.sniffingWebsocket,
-		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
-		Recorder:            h.recorder.Recorder,
-		RecorderOptions:     h.recorder.Options,
-		Certificate:         h.md.certificate,
-		PrivateKey:          h.md.privateKey,
-		NegotiatedProtocol:  h.md.alpn,
-		CertPool:            h.certPool,
-		MitmBypass:          h.md.mitmBypass,
-		ReadTimeout:         h.md.readTimeout,
-	}
+	sniffer := h.sniffer.Build()
 
 	conn = xnet.NewReadWriteConn(br, conn, conn)
 	switch proto {
@@ -222,4 +216,35 @@ func (h *httpHandler) setupTrafficLimiter(conn net.Conn, clientID, network, addr
 	}
 
 	return xnet.NewReadWriteConn(rw, rw, conn), cleanup
+}
+
+// SnifferBuilder holds all configuration needed to construct a sniffing.Sniffer.
+// It is populated once during Init and reused for each sniffed connection.
+type SnifferBuilder struct {
+	Websocket           bool
+	WebsocketSampleRate float64
+	Recorder            recorder.Recorder
+	RecorderOptions     *recorder.Options
+	Certificate         *x509.Certificate
+	PrivateKey          crypto.PrivateKey
+	ALPN                string
+	CertPool            tls_util.CertPool
+	MitmBypass          bypass.Bypass
+	ReadTimeout         time.Duration
+}
+
+// Build creates a new sniffing.Sniffer from the builder's configuration.
+func (b *SnifferBuilder) Build() *sniffing.Sniffer {
+	return &sniffing.Sniffer{
+		Websocket:           b.Websocket,
+		WebsocketSampleRate: b.WebsocketSampleRate,
+		Recorder:            b.Recorder,
+		RecorderOptions:     b.RecorderOptions,
+		Certificate:         b.Certificate,
+		PrivateKey:          b.PrivateKey,
+		NegotiatedProtocol:  b.ALPN,
+		CertPool:            b.CertPool,
+		MitmBypass:          b.MitmBypass,
+		ReadTimeout:         b.ReadTimeout,
+	}
 }

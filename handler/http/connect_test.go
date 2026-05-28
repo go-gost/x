@@ -18,6 +18,7 @@ func TestSniffAndHandle_NoMatch(t *testing.T) {
 		},
 	}
 	h.md.sniffing = true
+		h.sniffer = &SnifferBuilder{}
 
 	client, server := net.Pipe()
 	defer client.Close()
@@ -59,6 +60,7 @@ func TestSniffAndHandle_TLS(t *testing.T) {
 		},
 	}
 	h.md.sniffing = true
+		h.sniffer = &SnifferBuilder{}
 
 	client, server := net.Pipe()
 	defer client.Close()
@@ -115,6 +117,7 @@ func TestHandleConnect_SniffingEnabled(t *testing.T) {
 	h.md.proxyAgent = defaultProxyAgent
 	h.md.readTimeout = 15
 	h.md.sniffing = true
+		h.sniffer = &SnifferBuilder{}
 
 	client, server := net.Pipe()
 	defer client.Close()

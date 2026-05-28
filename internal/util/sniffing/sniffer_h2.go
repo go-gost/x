@@ -139,7 +139,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var reqBody *xhttp.Body
-	if bodySize := clampBodySize(h.recorderOptions); bodySize > 0 && req.Body != nil {
+	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && req.Body != nil {
 		reqBody = xhttp.NewBody(req.Body, bodySize)
 		req.Body = reqBody
 	}
@@ -169,7 +169,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.setHeader(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
-	if bodySize := clampBodySize(h.recorderOptions); bodySize > 0 {
+	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 		io.Copy(w, resp.Body)

@@ -103,7 +103,7 @@ func (h *Sniffer) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer
 		Length:  fr.Header.PayloadLength,
 	}
 
-	if bodySize := clampBodySize(h.RecorderOptions); bodySize > 0 {
+	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 {
 		buf.Reset()
 		if _, err := io.Copy(buf, io.LimitReader(fr.Data, int64(bodySize))); err != nil {
 			return err

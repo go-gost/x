@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/asaskevich/govalidator"
 	"golang.org/x/net/http/httpguts"
 )
 
@@ -83,4 +84,51 @@ func normalizeHostPort(host, defaultPort string) string {
 func buildConnectResponse(proxyAgent string) []byte {
 	return []byte("HTTP/1.1 200 Connection established\r\n" +
 		"Proxy-Agent: " + proxyAgent + "\r\n\r\n")
+}
+
+// NormalizedRequest holds the parsed target address and network from an
+// HTTP proxy request after URL inference, GOST v2 compatibility decoding,
+// and host normalisation.
+type NormalizedRequest struct {
+	Network string // "tcp" or "udp"
+	Addr    string // host:port (default port appended when absent)
+}
+
+// normalizeRequest extracts the target address and network from an HTTP
+// request. It infers the URL scheme when absent, decodes GOST v2
+// compatibility headers (Gost-Target, X-Gost-Target), detects the
+// transport protocol from X-Gost-Protocol, and normalises the host to
+// include a port.
+//
+// The function mutates req.URL.Scheme and req.Host as side effects so
+// that the caller's request reflects the inferred target.
+func normalizeRequest(req *http.Request) *NormalizedRequest {
+	if !req.URL.IsAbs() {
+		host := req.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if govalidator.IsDNSName(host) || net.ParseIP(host) != nil {
+			req.URL.Scheme = "http"
+		}
+	}
+
+	network := req.Header.Get("X-Gost-Protocol")
+	if network != "udp" {
+		network = "tcp"
+	}
+
+	if v := req.Header.Get("Gost-Target"); v != "" {
+		if h, err := decodeServerName(v); err == nil {
+			req.Host = h
+		}
+	}
+	if v := req.Header.Get("X-Gost-Target"); v != "" {
+		if h, err := decodeServerName(v); err == nil {
+			req.Host = h
+		}
+	}
+
+	addr := normalizeHostPort(req.Host, "80")
+	return &NormalizedRequest{Network: network, Addr: addr}
 }

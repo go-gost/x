@@ -8,14 +8,8 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
-	cmdata "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/observer"
-	xmetadata "github.com/go-gost/x/metadata"
 )
 
-func testMD(m map[string]any) cmdata.Metadata {
-	return xmetadata.NewMetadata(m)
-}
 
 func TestNewHandler(t *testing.T) {
 	h := NewHandler()
@@ -212,9 +206,3 @@ func TestSetupTrafficLimiter_NoObserver(t *testing.T) {
 	}
 }
 
-// testObserver implements observer.Observer for testing.
-type testObserver struct{}
-
-func (o *testObserver) Observe(ctx context.Context, events []observer.Event, opts ...observer.Option) error {
-	return nil
-}

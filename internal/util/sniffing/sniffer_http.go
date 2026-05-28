@@ -179,7 +179,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	var reqBody *xhttp.Body
-	if bodySize := clampBodySize(h.RecorderOptions); bodySize > 0 && req.Body != nil {
+	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 && req.Body != nil {
 		reqBody = xhttp.NewBody(req.Body, bodySize)
 		req.Body = reqBody
 	}
@@ -239,7 +239,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	var respBody *xhttp.Body
-	if bodySize := clampBodySize(h.RecorderOptions); bodySize > 0 {
+	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 {
 		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}

@@ -339,3 +339,142 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+func TestNormalizeRequest_AbsoluteURL(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://example.com:8080/path", nil)
+	nr := normalizeRequest(req)
+	if nr.Network != "tcp" {
+		t.Errorf("got network %q, want tcp", nr.Network)
+	}
+	if nr.Addr != "example.com:8080" {
+		t.Errorf("got addr %q, want example.com:8080", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_AbsoluteURL_DefaultPort(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+	nr := normalizeRequest(req)
+	if nr.Addr != "example.com:80" {
+		t.Errorf("got addr %q, want example.com:80", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_NonAbsolute_ValidHost(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/path", nil)
+	req.Host = "example.com"
+	nr := normalizeRequest(req)
+	if req.URL.Scheme != "http" {
+		t.Errorf("got scheme %q, want http", req.URL.Scheme)
+	}
+	if nr.Addr != "example.com:80" {
+		t.Errorf("got addr %q, want example.com:80", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_NonAbsolute_ValidIP(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/path", nil)
+	req.Host = "1.2.3.4"
+	nr := normalizeRequest(req)
+	if req.URL.Scheme != "http" {
+		t.Errorf("got scheme %q, want http", req.URL.Scheme)
+	}
+	if nr.Addr != "1.2.3.4:80" {
+		t.Errorf("got addr %q, want 1.2.3.4:80", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_NonAbsolute_InvalidHost(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/path", nil)
+	req.Host = "!!!invalid!!!"
+	nr := normalizeRequest(req)
+	if req.URL.Scheme != "" {
+		t.Errorf("scheme should remain empty for invalid host, got %q", req.URL.Scheme)
+	}
+	if nr.Addr != "!!!invalid!!!:80" {
+		t.Errorf("got addr %q, want !!!invalid!!!:80", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_UDPProtocol(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://example.com:8080/path", nil)
+	req.Header.Set("X-Gost-Protocol", "udp")
+	nr := normalizeRequest(req)
+	if nr.Network != "udp" {
+		t.Errorf("got network %q, want udp", nr.Network)
+	}
+}
+
+func TestNormalizeRequest_GostTarget(t *testing.T) {
+	// Encode a hostname using the GOST v2 encoding scheme
+	encodeName := func(name string) string {
+		v := []byte(name)
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, crc32.ChecksumIEEE(v))
+		inner := base64.RawURLEncoding.EncodeToString(v)
+		return base64.RawURLEncoding.EncodeToString(append(b, []byte(inner)...))
+	}
+
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+	req.Header.Set("Gost-Target", encodeName("real-target.com:443"))
+	nr := normalizeRequest(req)
+	if nr.Addr != "real-target.com:443" {
+		t.Errorf("got addr %q, want real-target.com:443", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_XGostTarget(t *testing.T) {
+	encodeName := func(name string) string {
+		v := []byte(name)
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, crc32.ChecksumIEEE(v))
+		inner := base64.RawURLEncoding.EncodeToString(v)
+		return base64.RawURLEncoding.EncodeToString(append(b, []byte(inner)...))
+	}
+
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+	req.Header.Set("X-Gost-Target", encodeName("alternate-target.com:443"))
+	nr := normalizeRequest(req)
+	if nr.Addr != "alternate-target.com:443" {
+		t.Errorf("got addr %q, want alternate-target.com:443", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_IPv6Bracket(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://[::1]:8080/path", nil)
+	nr := normalizeRequest(req)
+	if nr.Addr != "[::1]:8080" {
+		t.Errorf("got addr %q, want [::1]:8080", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_NonAbsolute_IPv6(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/path", nil)
+	req.Host = "[::1]:9090"
+	nr := normalizeRequest(req)
+	if nr.Addr != "[::1]:9090" {
+		t.Errorf("got addr %q, want [::1]:9090", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_HostWithPortInURL(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://example.com:8080/path", nil)
+	req.Host = "example.com:9090"
+	// URL is absolute, so host is taken from req.URL via req.Host
+	// normalizeHostPort uses req.Host which is set from req.URL
+	nr := normalizeRequest(req)
+	// The Host comes from req.Host, which for absolute URLs is set from req.URL.Host
+	if nr.Addr != "example.com:9090" {
+		t.Errorf("got addr %q, want example.com:9090", nr.Addr)
+	}
+}
+
+func TestNormalizeRequest_NoPort(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
+	nr := normalizeRequest(req)
+	if nr.Addr != "example.com:80" {
+		t.Errorf("got addr %q, want example.com:80", nr.Addr)
+	}
+	if nr.Network != "tcp" {
+		t.Errorf("got network %q, want tcp", nr.Network)
+	}
+}

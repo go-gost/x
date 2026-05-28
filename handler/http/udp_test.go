@@ -27,7 +27,7 @@ func TestHandleUDP_Disabled_WritesForbidden(t *testing.T) {
 	ro := &xrecorder.HandlerRecorderObject{}
 
 	go func() {
-		h.handleUDP(context.Background(), server, ro, &testLogger{})
+		h.handleUDP(context.Background(), server, "", ro, &testLogger{})
 	}()
 
 	br := bufio.NewReader(client)
@@ -59,7 +59,7 @@ func TestHandleUDP_Enabled_NilRouter(t *testing.T) {
 
 	go func() {
 		// OK response sent, then nil router causes error
-		err := h.handleUDP(context.Background(), server, ro, &testLogger{})
+		err := h.handleUDP(context.Background(), server, "", ro, &testLogger{})
 		if err == nil {
 			t.Log("expected error with nil router for UDP")
 		}

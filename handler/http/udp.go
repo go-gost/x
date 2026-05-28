@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	stats "github.com/go-gost/core/observer/stats"
 	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
@@ -23,7 +24,7 @@ import (
 // through the UDP tunnel.
 //
 // If UDP relay is disabled (enableUDP=false), a 403 Forbidden is returned.
-func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, clientID string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"cmd": "udp",
 	})
@@ -58,6 +59,13 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorde
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)
 		return err
+	}
+
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(clientID)
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
 	}
 
 	// Dial a UDP association through the proxy chain router. The empty

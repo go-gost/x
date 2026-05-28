@@ -177,18 +177,9 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	// Optionally intercept the request body for recording. The original
 	// body is replaced with a tee reader so the transport still sees it.
 	var reqBody *xhttp.Body
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		if req.Body != nil {
-			bodySize := opts.MaxBodySize
-			if bodySize <= 0 {
-				bodySize = sniffing.DefaultBodySize
-			}
-			if bodySize > sniffing.MaxBodySize {
-				bodySize = sniffing.MaxBodySize
-			}
-			reqBody = xhttp.NewBody(req.Body, bodySize)
-			req.Body = reqBody
-		}
+	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 && req.Body != nil {
+		reqBody = xhttp.NewBody(req.Body, bodySize)
+		req.Body = reqBody
 	}
 
 	ctx = ictx.ContextWithRecorderObject(ctx, ro)
@@ -235,14 +226,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 
 	// Optionally intercept the response body for recording.
 	var respBody *xhttp.Body
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		bodySize := opts.MaxBodySize
-		if bodySize <= 0 {
-			bodySize = sniffing.DefaultBodySize
-		}
-		if bodySize > sniffing.MaxBodySize {
-			bodySize = sniffing.MaxBodySize
-		}
+	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 {
 		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}
