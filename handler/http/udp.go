@@ -16,6 +16,13 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+// handleUDP implements UDP over HTTP (UDP relay). When the client sets the
+// X-Gost-Protocol header to "udp", the handler responds with 200 OK and
+// establishes a UDP association through the proxy chain. Client data sent
+// over the HTTP connection is wrapped as SOCKS5 UDP packets and relayed
+// through the UDP tunnel.
+//
+// If UDP relay is disabled (enableUDP=false), a 403 Forbidden is returned.
 func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"cmd": "udp",
@@ -53,9 +60,14 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorde
 		return err
 	}
 
-	// obtain a udp connection
+	// Dial a UDP association through the proxy chain router. The empty
+	// address signals that the router should create a UDP socket rather
+	// than connect to a specific target.
+	if h.options.Router == nil {
+		return errors.New("nil router")
+	}
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "") // UDP association
+	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "")
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -73,6 +85,8 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, ro *xrecorde
 		return err
 	}
 
+	// Wrap the HTTP connection as a SOCKS5 UDP tunnel server conn so
+	// that the relay can read/write SOCKS5-encapsulated UDP datagrams.
 	relay := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
 		WithService(h.options.Service).
 		WithBypass(h.options.Bypass).

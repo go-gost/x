@@ -19,36 +19,45 @@ const (
 	defaultProxyAgent = "gost/3.0"
 )
 
+// metadata holds all configuration parsed from the handler's metadata map.
+// Fields are populated by parseMetadata and read throughout the handler's
+// request-processing methods.
 type metadata struct {
-	readTimeout     time.Duration
-	idleTimeout     time.Duration
-	keepalive       bool
-	compression     bool
-	probeResistance *probeResistance
-	enableUDP       bool
-	udpBufferSize   int
-	header          http.Header
-	hash            string
-	authBasicRealm  string
-	proxyAgent      string
+	readTimeout time.Duration // read timeout for upstream responses; default 15s, negative disables
+	idleTimeout time.Duration // idle timeout for pipe forwarding; 0 means disabled
+	keepalive   bool          // enable HTTP keep-alive on the upstream transport
+	compression bool          // enable HTTP compression on the upstream transport
 
-	observerPeriod       time.Duration
-	observerResetTraffic bool
+	probeResistance *probeResistance // decoy response config for auth failures (nil = disabled)
+	enableUDP       bool             // allow UDP relay over HTTP
+	udpBufferSize   int              // UDP relay buffer size in bytes
 
-	sniffing                    bool
-	sniffingTimeout             time.Duration
-	sniffingWebsocket           bool
-	sniffingWebsocketSampleRate float64
+	header         http.Header // additional response headers added to every proxy response
+	hash           string      // hash strategy for hop selection ("host" or empty)
+	authBasicRealm string      // custom realm for Basic auth 407 responses
+	proxyAgent     string      // Proxy-Agent header value; default "gost/3.0"
 
-	certificate *x509.Certificate
-	privateKey  crypto.PrivateKey
-	alpn        string
-	mitmBypass  bypass.Bypass
+	observerPeriod       time.Duration // stats reporting interval; default 5s, min 1s
+	observerResetTraffic bool          // reset traffic counters after each observation
 
-	limiterRefreshInterval time.Duration
-	limiterCleanupInterval time.Duration
+	sniffing                    bool          // enable protocol sniffing on CONNECT tunnels
+	sniffingTimeout             time.Duration // deadline for the initial sniff read
+	sniffingWebsocket           bool          // enable WebSocket frame recording
+	sniffingWebsocketSampleRate float64       // max frames recorded per second
+
+	certificate *x509.Certificate  // MITM CA certificate (for TLS decryption)
+	privateKey  crypto.PrivateKey  // MITM CA private key
+	alpn        string             // ALPN protocol to negotiate during MITM
+	mitmBypass  bypass.Bypass      // bypass rules that skip MITM decryption
+
+	limiterRefreshInterval time.Duration // traffic limiter cache refresh interval
+	limiterCleanupInterval time.Duration // traffic limiter cache cleanup interval
 }
 
+// parseMetadata reads all configuration values from the metadata map into
+// the handler's metadata struct. It applies defaults for readTimeout (15s),
+// observerPeriod (5s, min 1s), and proxyAgent ("gost/3.0"). MITM TLS is
+// enabled when both mitm.certFile and mitm.keyFile are provided.
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout == 0 {
@@ -74,6 +83,8 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	h.md.keepalive = mdutil.GetBool(md, "http.keepalive", "keepalive")
 	h.md.compression = mdutil.GetBool(md, "http.compression", "compression")
 
+	// probeResist format: "type:value" (e.g. "code:404", "web:example.com",
+	// "host:192.168.1.1:80", "file:/var/www/index.html").
 	if pr := mdutil.GetString(md, "probeResist", "probe_resist"); pr != "" {
 		if ss := strings.SplitN(pr, ":", 2); len(ss) == 2 {
 			h.md.probeResistance = &probeResistance{
@@ -130,8 +141,12 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 	return nil
 }
 
+// probeResistance configures a decoy response that hides the proxy from
+// unauthorised clients. When authentication fails, instead of returning
+// 407 Proxy-Auth-Required, the handler returns a fake response that makes
+// the port appear to run a different service.
 type probeResistance struct {
-	Type  string
-	Value string
-	Knock string
+	Type  string // strategy: "code", "web", "host", or "file"
+	Value string // strategy-specific parameter (status code, URL, address, path)
+	Knock string // optional hostname; when set, probe resistance only fires for non-matching hosts
 }

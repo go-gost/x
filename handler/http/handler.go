@@ -1,27 +1,202 @@
+// Package http implements an HTTP/HTTPS proxy handler. It supports both
+// forward proxy (GET/POST/CONNECT) and tunnel modes with optional TLS
+// sniffing, MITM decryption, WebSocket frame recording, probe resistance,
+// and UDP relay.
+//
+// The handler is registered under the name "http" and created via
+// NewHandler in init().
+//
+// # Request processing flow
+//
+// Each inbound net.Conn is handled by Handle, which reads exactly one
+// HTTP request and delegates to handleRequest for routing. The flow
+// through the handler proceeds as follows:
+//
+//	Handle()
+//	  ├─ stats.WrapConn (per-connection I/O counters)
+//	  ├─ checkRateLimit (connection rate limiter, if configured)
+//	  ├─ http.ReadRequest
+//	  ├─ xhttp.GetClientIP (extract client IP from headers)
+//	  └─ handleRequest()
+//
+// # Request dispatch (handleRequest)
+//
+// handleRequest is the central dispatcher. It normalises the request
+// and routes to one of three code paths:
+//
+//  1. URL scheme inference — if the URL is not absolute (plain HTTP
+//     proxy request), the Host header is validated with govalidator.
+//     A valid DNS name or IP address implies the scheme is "http".
+//
+//  2. Network detection — reads the X-Gost-Protocol header. If the
+//     value is "udp" the request is treated as a UDP relay; otherwise
+//     it defaults to "tcp".
+//
+//  3. GOST v2 compatibility — decodes Gost-Target and X-Gost-Target
+//     headers (base64+CRC32 encoding) to recover the actual target host
+//     from older GOST clients.
+//
+//  4. Host normalisation — appends ":80" if no port is present.
+//
+//  5. Authentication — see "Authentication and probe resistance" below.
+//
+//  6. Bypass check — if a bypass matcher is configured and the target
+//     address matches, a 403 Forbidden is returned.
+//
+//  7. Routing:
+//     • X-Gost-Protocol: udp → handleUDP
+//     • setupTrafficLimiter wraps the conn (per-client shaping + observer stats)
+//     • Method != CONNECT → handleProxy (forward proxy)
+//     • Method == CONNECT → handleConnect (tunnel)
+//
+// # Forward proxy path (handleProxy → proxyRoundTrip)
+//
+// handleProxy wraps the connection with per-request stats, performs the
+// first round-trip via proxyRoundTrip, then enters a keep-alive loop
+// reading and proxying subsequent requests on the same connection until
+// the client or upstream closes.
+//
+// proxyRoundTrip performs a single HTTP round-trip:
+//   - Clones the recorder object for per-request isolation.
+//   - Normalises the host (adds default port if missing).
+//   - Handles HTTP/1.0 compatibility (Connection: keep-alive / close).
+//   - Strips proxy-specific headers: Proxy-Authorization, Proxy-Connection,
+//     Gost-Target, X-Gost-Target.
+//   - Checks bypass rules (403 Forbidden on match).
+//   - Optionally intercepts the request body for recording (tee reader).
+//   - Sends the request through the upstream http.Transport (which dials
+//     through the proxy chain router via h.dial).
+//   - Optionally intercepts the response body for recording.
+//   - Handles 101 Switching Protocols (see "WebSocket upgrade" below).
+//   - Writes the response to the client.
+//
+// # CONNECT tunnel path (handleConnect → sniffAndHandle)
+//
+// handleConnect implements the HTTP CONNECT tunnel:
+//  1. Dials the target address through the proxy chain router (h.dial).
+//  2. On dial failure, writes a 503 Service Unavailable to the client.
+//  3. Writes "200 Connection established" to the client.
+//  4. If sniffing is enabled, calls sniffAndHandle to inspect the
+//     initial bytes from the client.
+//  5. If sniffAndHandle does not claim the connection, falls back to
+//     raw bidirectional pipe forwarding (xnet.Pipe).
+//
+// sniffAndHandle peeks at the client's initial bytes:
+//   - Sets a read deadline (sniffing.timeout) to bound the peek.
+//   - Calls sniffing.Sniff to classify the protocol.
+//   - For HTTP traffic: delegates to sniffer.HandleHTTP (HTTP request
+//     routing through the tunnel).
+//   - For TLS traffic: delegates to sniffer.HandleTLS (MITM decryption
+//     if certificates are configured, or blind forwarding).
+//   - For unrecognised protocols: returns (false, nil), and the caller
+//     falls back to raw pipe forwarding.
+//   - Both sniff handlers receive dial closures that return the
+//     already-established upstream connection, so the sniffer uses the
+//     same tunnel rather than opening a new one.
+//
+// # WebSocket upgrade (handleUpgradeResponse)
+//
+// When proxyRoundTrip receives a 101 Switching Protocols response:
+//  1. Validates that the request and response upgrade types match.
+//  2. Extracts the backend connection from the response body
+//     (the HTTP transport upgrades the connection on 101).
+//  3. Writes the 101 response to the client.
+//  4. If the upgrade is "websocket" and sniffing.websocket is enabled,
+//     starts frame-level recording via sniffingWebsocketFrame.
+//  5. Otherwise, falls back to raw bidirectional pipe forwarding.
+//
+// sniffingWebsocketFrame runs two goroutines (one per direction) that
+// read WebSocket frames, record metadata and optionally the payload
+// (subject to a rate limiter with sniffing.websocket.sampleRate), and
+// forward the frames to the peer. The first direction to encounter an
+// error terminates the relay.
+//
+// # Authentication and probe resistance (authenticate)
+//
+// authenticate extracts credentials from the Proxy-Authorization header
+// (HTTP Basic auth) and validates them against the configured Auther.
+//
+// When no Auther is configured, all requests are anonymous (id="", ok=true).
+//
+// When authentication fails and probeResistance is configured, the handler
+// returns a decoy response instead of the normal 407 Proxy-Auth-Required,
+// making the port appear to run a different service. Four strategies are
+// supported:
+//
+//	code:  respond with a custom HTTP status code  (e.g. "code:404")
+//	web:   fetch a URL and replay its response       (e.g. "web:example.com")
+//	host:  forward the raw request to a decoy host   (e.g. "host:1.2.3.4:80")
+//	file:  serve a local file with Content-Type: text/html
+//
+// The knock feature (pr.Knock) restricts probe resistance to clients
+// that don't know a secret hostname. When pr.Knock is set and the request
+// hostname matches, probe resistance is bypassed and the normal 407 is
+// returned — revealing the proxy only to clients that know the knock
+// address.
+//
+// # UDP relay (handleUDP)
+//
+// When X-Gost-Protocol is "udp":
+//   - If enableUDP is false, a 403 Forbidden is returned.
+//   - Otherwise a 200 OK is written, a UDP association is dialled through
+//     the proxy chain router, and the HTTP connection is wrapped as a
+//     SOCKS5 UDP tunnel. Client data is read as SOCKS5-encapsulated UDP
+//     datagrams and relayed through the chain.
+//
+// # Upstream dialing (dial)
+//
+// dial establishes upstream connections through the proxy chain router.
+// It attaches the recorder object and logger from the context and, when
+// h.md.hash is "host", sets the target address as the hash source for
+// consistent hop selection. The route taken is written to the recorder
+// object via the context buffer.
+//
+// # Initialisation (Init)
+//
+// Init parses metadata, creates a cached traffic limiter, starts the
+// background stats observer goroutine, picks the first service-handler
+// recorder, initialises the MITM certificate pool (if mitm.certFile and
+// mitm.keyFile are both provided), and builds the upstream http.Transport.
+// The transport dials through the proxy chain via h.dial.
+//
+// # Observability
+//
+// Per-connection stats are tracked via stats_wrapper.WrapConn in Handle.
+// Per-client stats (KindTotalConns, KindCurrentConns) are tracked in
+// setupTrafficLimiter and published to the configured Observer on a
+// periodic ticker (observerPeriod, default 5s, min 1s). The observeStats
+// goroutine retries previously failed events before sending new ones.
+//
+// # Key configuration (metadata)
+//
+//	readTimeout:      upstream response header timeout (default 15s, negative disables)
+//	idleTimeout:      pipe forwarding idle timeout (0 = disabled)
+//	keepalive:        enable HTTP keep-alive on the upstream transport
+//	compression:      enable HTTP compression on the upstream transport
+//	probeResist:      decoy response on auth failure (format "type:value")
+//	knock:            secret hostname that bypasses probe resistance
+//	udp:              enable UDP relay
+//	sniffing:         enable protocol sniffing on CONNECT tunnels
+//	sniffing.timeout: read deadline for the initial sniff peek
+//	sniffing.websocket: enable WebSocket frame recording
+//	sniffing.websocket.sampleRate: max frames recorded per second
+//	mitm.certFile / mitm.keyFile: CA certificate pair for TLS decryption
+//	mitm.bypass:      named bypass matcher to skip MITM decryption
+//	hash:             hop selection strategy ("host" for consistent hashing)
+//	observerPeriod:   stats reporting interval (default 5s, min 1s)
+//	proxyAgent:       Proxy-Agent header value (default "gost/3.0")
 package http
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"crypto/tls"
-	"encoding/base64"
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"hash/crc32"
-	"io"
-	"math"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/limiter"
@@ -29,44 +204,42 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
-	"github.com/go-gost/core/observer/stats"
+	stats "github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
-	ictx "github.com/go-gost/x/internal/ctx"
-	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
-	"github.com/go-gost/x/internal/util/sniffing"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tls_util "github.com/go-gost/x/internal/util/tls"
-	ws_util "github.com/go-gost/x/internal/util/ws"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
-	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
 	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
-	"golang.org/x/net/http/httpguts"
-	"golang.org/x/time/rate"
 )
 
 func init() {
 	registry.HandlerRegistry().Register("http", NewHandler)
 }
 
+// httpHandler is the HTTP/HTTPS proxy handler implementation. It holds the
+// parsed metadata, handler options, and runtime state such as the traffic
+// limiter, recorder, certificate pool, and the upstream HTTP transport.
 type httpHandler struct {
-	md        metadata
-	options   handler.Options
-	stats     *stats_util.HandlerStats
-	limiter   traffic.TrafficLimiter
-	cancel    context.CancelFunc
-	recorder  recorder.RecorderObject
-	certPool  tls_util.CertPool
-	transport http.RoundTripper
+	md        metadata                // parsed configuration
+	options   handler.Options         // handler options from the service config
+	stats     *stats_util.HandlerStats // per-client stats, created when Observer is set
+	limiter   traffic.TrafficLimiter  // per-client traffic shaper (cached)
+	cancel    context.CancelFunc      // cancels the observeStats goroutine
+	recorder  recorder.RecorderObject // first matching service-handler recorder
+	certPool  tls_util.CertPool       // in-memory cert pool for MITM TLS termination
+	transport http.RoundTripper       // upstream HTTP transport (injectable for tests)
 }
 
+// NewHandler creates a new HTTP handler and applies the given options.
+// It is called by the registry when a service references the "http" handler.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -78,6 +251,9 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init parses metadata, creates the traffic limiter and stats tracker,
+// picks the first matching recorder, initialises the MITM cert pool if
+// a certificate is configured, and builds the upstream http.Transport.
 func (h *httpHandler) Init(md md.Metadata) error {
 	if err := h.parseMetadata(md); err != nil {
 		return err
@@ -110,6 +286,8 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
+	// Build the upstream transport that routes through the proxy chain.
+	// DialContext uses h.dial which goes through h.options.Router.
 	h.transport = &http.Transport{
 		DialContext:           h.dial,
 		IdleConnTimeout:       30 * time.Second,
@@ -121,6 +299,11 @@ func (h *httpHandler) Init(md md.Metadata) error {
 	return nil
 }
 
+// Handle processes an inbound connection. It reads one HTTP request,
+// wraps the connection for stats, applies rate limiting, extracts the
+// client IP, and delegates to handleRequest for routing.
+//
+// The connection is always closed when Handle returns.
 func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -190,14 +373,18 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	return h.handleRequest(ctx, conn, req, ro, log)
 }
 
-func (h *httpHandler) Close() error {
-	if h.cancel != nil {
-		h.cancel()
-	}
-	return nil
-}
-
+// handleRequest is the central request dispatcher. It normalises the request
+// URL and host, extracts the target from GOST-compatible headers, validates
+// the method, authenticates the client, applies bypass rules, and routes
+// to one of three code paths:
+//
+//   - UDP: handleUDP
+//   - HTTP forward proxy (GET/POST/…): handleProxy
+//   - HTTP CONNECT tunnel: handleConnect
 func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	// If the URL is not absolute (typical for plain HTTP proxy requests),
+	// attempt to infer the scheme by validating the Host header. A valid
+	// DNS name or IP address implies http://.
 	if !req.URL.IsAbs() {
 		host := req.Host
 		if h, _, err := net.SplitHostPort(host); err == nil {
@@ -214,23 +401,20 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	ro.Network = network
 
-	// Try to get the actual host.
-	// Compatible with GOST 2.x.
+	// GOST v2 sent the actual target host in Gost-Target / X-Gost-Target
+	// headers using a base64+CRC32 encoding. Decode them for compatibility.
 	if v := req.Header.Get("Gost-Target"); v != "" {
-		if h, err := h.decodeServerName(v); err == nil {
+		if h, err := decodeServerName(v); err == nil {
 			req.Host = h
 		}
 	}
 	if v := req.Header.Get("X-Gost-Target"); v != "" {
-		if h, err := h.decodeServerName(v); err == nil {
+		if h, err := decodeServerName(v); err == nil {
 			req.Host = h
 		}
 	}
 
-	addr := req.Host
-	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr = net.JoinHostPort(strings.Trim(addr, "[]"), "80")
-	}
+	addr := normalizeHostPort(req.Host, "80")
 	ro.Host = addr
 
 	fields := map[string]any{
@@ -239,7 +423,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		"network": network,
 	}
 
-	if u, _, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
+	if u, _, _ := basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
 		ro.ClientID = u
 	}
@@ -251,6 +435,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 	}
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
+	// Build a skeleton response reused across error/auth/bypass writes.
 	resp := &http.Response{
 		ProtoMajor:    1,
 		ProtoMinor:    1,
@@ -277,6 +462,8 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		ro.HTTP.Response.Header = resp.Header
 	}()
 
+	// HTTP/2 connection preface "PRI * HTTP/2.0" is rejected, as are
+	// non-CONNECT requests without an http:// scheme.
 	if req.Method == "PRI" ||
 		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
 		resp.StatusCode = http.StatusBadRequest
@@ -322,675 +509,30 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		return h.handleUDP(ctx, conn, ro, log)
 	}
 
-	{
-		rw := traffic_wrapper.WrapReadWriter(
-			h.limiter,
-			conn,
-			clientID,
-			limiter.ScopeOption(limiter.ScopeClient),
-			limiter.ServiceOption(h.options.Service),
-			limiter.NetworkOption(network),
-			limiter.AddrOption(addr),
-			limiter.ClientOption(clientID),
-			limiter.SrcOption(conn.RemoteAddr().String()),
-		)
-		if h.options.Observer != nil {
-			pstats := h.stats.Stats(clientID)
-			pstats.Add(stats.KindTotalConns, 1)
-			pstats.Add(stats.KindCurrentConns, 1)
-			defer pstats.Add(stats.KindCurrentConns, -1)
-			rw = stats_wrapper.WrapReadWriter(rw, pstats)
-		}
-
-		conn = xnet.NewReadWriteConn(rw, rw, conn)
+	conn, done := h.setupTrafficLimiter(conn, clientID, network, addr)
+	if done != nil {
+		defer done()
 	}
 
 	if req.Method != http.MethodConnect {
 		return h.handleProxy(ctx, conn, req, ro, log)
 	}
 
-	ctx = ictx.ContextWithRecorderObject(ctx, ro)
-	ctx = ictx.ContextWithLogger(ctx, log)
-	cc, err := h.dial(ctx, "tcp", addr)
+	return h.handleConnect(ctx, conn, ro, log, addr, resp)
+}
 
-	if err != nil {
-		resp.StatusCode = http.StatusServiceUnavailable
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpResponse(resp, false)
-			log.Trace(string(dump))
-		}
-		if err := resp.Write(conn); err != nil {
-			log.Error("write error response: ", err)
-		}
-		return err
+// Close cancels the background stats goroutine started in Init.
+// It is safe to call on a handler that was never initialised.
+func (h *httpHandler) Close() error {
+	if h.cancel != nil {
+		h.cancel()
 	}
-	snifferHandled := false
-	defer func() {
-		if !snifferHandled {
-			cc.Close()
-		}
-	}()
-
-	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.SrcAddr = cc.LocalAddr().String()
-	ro.DstAddr = cc.RemoteAddr().String()
-
-	b := []byte("HTTP/1.1 200 Connection established\r\n" +
-		"Proxy-Agent: " + h.md.proxyAgent + "\r\n\r\n")
-
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		log.Trace(string(b))
-	}
-	if _, err = conn.Write(b); err != nil {
-		log.Error(err)
-		return err
-	}
-
-	if h.md.sniffing {
-		if h.md.sniffingTimeout > 0 {
-			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
-		}
-
-		br := bufio.NewReader(conn)
-		proto, _ := sniffing.Sniff(ctx, br)
-		ro.Proto = proto
-
-		if h.md.sniffingTimeout > 0 {
-			conn.SetReadDeadline(time.Time{})
-		}
-
-		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			return cc, nil
-		}
-		dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-			return cc, nil
-		}
-		sniffer := &sniffing.Sniffer{
-			Websocket:           h.md.sniffingWebsocket,
-			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
-			Recorder:            h.recorder.Recorder,
-			RecorderOptions:     h.recorder.Options,
-			Certificate:         h.md.certificate,
-			PrivateKey:          h.md.privateKey,
-			NegotiatedProtocol:  h.md.alpn,
-			CertPool:            h.certPool,
-			MitmBypass:          h.md.mitmBypass,
-			ReadTimeout:         h.md.readTimeout,
-		}
-
-		conn = xnet.NewReadWriteConn(br, conn, conn)
-		switch proto {
-		case sniffing.ProtoHTTP:
-			snifferHandled = true
-			return sniffer.HandleHTTP(ctx, "tcp", conn,
-				sniffing.WithService(h.options.Service),
-				sniffing.WithDial(dial),
-				sniffing.WithDialTLS(dialTLS),
-				sniffing.WithRecorderObject(ro),
-				sniffing.WithLog(log),
-			)
-		case sniffing.ProtoTLS:
-			snifferHandled = true
-			return sniffer.HandleTLS(ctx, "tcp", conn,
-				sniffing.WithService(h.options.Service),
-				sniffing.WithDial(dial),
-				sniffing.WithDialTLS(dialTLS),
-				sniffing.WithRecorderObject(ro),
-				sniffing.WithLog(log),
-			)
-		}
-	}
-
-	start := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
-	// xnet.Transport(conn, cc)
-	xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.idleTimeout))
-	log.WithFields(map[string]any{
-		"duration": time.Since(start),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), addr)
-
 	return nil
 }
 
-func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	pStats := xstats.Stats{}
-	conn = stats_wrapper.WrapConn(conn, &pStats)
-
-	ro.Time = time.Time{}
-
-	if close, err := h.proxyRoundTrip(ctx, conn, req, ro, &pStats, log); err != nil || close {
-		return err
-	}
-
-	br := bufio.NewReader(conn)
-	for {
-		pStats.Reset()
-
-		req, err := http.ReadRequest(br)
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			return err
-		}
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpRequest(req, false)
-			log.Trace(string(dump))
-		}
-
-		if close, err := h.proxyRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), req, ro, &pStats, log); err != nil || close {
-			req.Body.Close()
-			return err
-		}
-		req.Body.Close()
-	}
-}
-
-func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (close bool, err error) {
-	close = true
-
-	ro2 := &xrecorder.HandlerRecorderObject{}
-	*ro2 = *ro
-	ro = ro2
-
-	host := req.Host
-	if _, port, _ := net.SplitHostPort(host); port == "" {
-		host = net.JoinHostPort(strings.Trim(host, "[]"), "80")
-	}
-	ro.Host = host
-	ro.Time = time.Now()
-
-	log = log.WithFields(map[string]any{
-		"host": host,
-	})
-
-	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
-	defer func() {
-		if err != nil {
-			ro.Err = err.Error()
-		}
-		ro.InputBytes = pStats.Get(stats.KindInputBytes)
-		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
-		ro.Duration = time.Since(ro.Time)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
-			log.Errorf("record: %v", err)
-		}
-
-		log.WithFields(map[string]any{
-			"duration":    time.Since(ro.Time),
-			"inputBytes":  ro.InputBytes,
-			"outputBytes": ro.OutputBytes,
-		}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
-	}()
-
-	ro.HTTP = &xrecorder.HTTPRecorderObject{
-		Host:   req.Host,
-		Proto:  req.Proto,
-		Scheme: req.URL.Scheme,
-		Method: req.Method,
-		URI:    req.RequestURI,
-		Request: xrecorder.HTTPRequestRecorderObject{
-			ContentLength: req.ContentLength,
-			Header:        req.Header.Clone(),
-		},
-	}
-
-	// HTTP/1.0
-	http10 := req.ProtoMajor == 1 && req.ProtoMinor == 0
-	if http10 {
-		if strings.ToLower(req.Header.Get("Connection")) == "keep-alive" {
-			req.Header.Del("Connection")
-		} else {
-			req.Header.Set("Connection", "close")
-		}
-	}
-
-	req.Header.Del("Proxy-Authorization")
-	req.Header.Del("Proxy-Connection")
-	req.Header.Del("Gost-Target")
-	req.Header.Del("X-Gost-Target")
-
-	res := &http.Response{
-		ProtoMajor: req.ProtoMajor,
-		ProtoMinor: req.ProtoMinor,
-		Header:     http.Header{},
-		StatusCode: http.StatusServiceUnavailable,
-	}
-	ro.HTTP.StatusCode = res.StatusCode
-
-	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, "tcp", host, bypass.WithService(h.options.Service)) {
-		res.StatusCode = http.StatusForbidden
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpResponse(res, false)
-			log.Trace(string(dump))
-		}
-		log.Debug("bypass: ", host)
-		if werr := res.Write(rw); werr != nil {
-			log.Error("write bypass response: ", werr)
-		}
-		err = xbypass.ErrBypass
-		return
-	}
-
-	var reqBody *xhttp.Body
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		if req.Body != nil {
-			bodySize := opts.MaxBodySize
-			if bodySize <= 0 {
-				bodySize = sniffing.DefaultBodySize
-			}
-			if bodySize > sniffing.MaxBodySize {
-				bodySize = sniffing.MaxBodySize
-			}
-			reqBody = xhttp.NewBody(req.Body, bodySize)
-			req.Body = reqBody
-		}
-	}
-
-	ctx = ictx.ContextWithRecorderObject(ctx, ro)
-	ctx = ictx.ContextWithLogger(ctx, log)
-
-	resp, err := h.transport.RoundTrip(req.WithContext(ctx))
-
-	if reqBody != nil {
-		ro.HTTP.Request.Body = reqBody.Content()
-		ro.HTTP.Request.ContentLength = reqBody.Length()
-	}
-
-	if err != nil {
-		if werr := res.Write(rw); werr != nil {
-			log.Error("write error response: ", werr)
-		}
-		return
-	}
-	defer resp.Body.Close()
-
-	ro.HTTP.StatusCode = resp.StatusCode
-	ro.HTTP.Response.Header = resp.Header.Clone()
-	ro.HTTP.Response.ContentLength = resp.ContentLength
-
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		dump, _ := httputil.DumpResponse(resp, false)
-		log.Trace(string(dump))
-	}
-
-	// HTTP/1.0
-	if http10 {
-		if !resp.Close {
-			resp.Header.Set("Connection", "keep-alive")
-		}
-		resp.ProtoMajor = 1
-		resp.ProtoMinor = 0
-	}
-
-	if resp.StatusCode == http.StatusSwitchingProtocols {
-		err = h.handleUpgradeResponse(ctx, rw, req, resp, ro, log)
-		return
-	}
-
-	var respBody *xhttp.Body
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		bodySize := opts.MaxBodySize
-		if bodySize <= 0 {
-			bodySize = sniffing.DefaultBodySize
-		}
-		if bodySize > sniffing.MaxBodySize {
-			bodySize = sniffing.MaxBodySize
-		}
-		respBody = xhttp.NewBody(resp.Body, bodySize)
-		resp.Body = respBody
-	}
-
-	err = resp.Write(rw)
-
-	if respBody != nil {
-		ro.HTTP.Response.Body = respBody.Content()
-		ro.HTTP.Response.ContentLength = respBody.Length()
-	}
-
-	if err != nil {
-		err = fmt.Errorf("write response: %v", err)
-		return
-	}
-
-	close = resp.Close
-
-	return
-}
-
-func (h *httpHandler) dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
-	switch h.md.hash {
-	case "host":
-		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: addr})
-	}
-
-	if log := ictx.LoggerFromContext(ctx); log != nil {
-		log.Debugf("dial: new connection to host %s", addr)
-	}
-
-	var buf bytes.Buffer
-	conn, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
-	if ro := ictx.RecorderObjectFromContext(ctx); ro != nil {
-		ro.Route = buf.String()
-
-		if conn != nil {
-			ro.SrcAddr = conn.LocalAddr().String()
-			ro.DstAddr = conn.RemoteAddr().String()
-		}
-	}
-
-	return
-}
-
-func upgradeType(h http.Header) string {
-	if !httpguts.HeaderValuesContainsToken(h["Connection"], "Upgrade") {
-		return ""
-	}
-	return h.Get("Upgrade")
-}
-
-func (h *httpHandler) handleUpgradeResponse(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	reqUpType := upgradeType(req.Header)
-	resUpType := upgradeType(res.Header)
-	if !strings.EqualFold(reqUpType, resUpType) {
-		return fmt.Errorf("backend tried to switch protocol %q when %q was requested", resUpType, reqUpType)
-	}
-
-	backConn, ok := res.Body.(io.ReadWriteCloser)
-	if !ok {
-		return fmt.Errorf("internal error: 101 switching protocols response with non-writable body")
-	}
-
-	res.Body = nil
-	if err := res.Write(rw); err != nil {
-		return fmt.Errorf("response write: %v", err)
-	}
-
-	if reqUpType == "websocket" && h.md.sniffingWebsocket {
-		return h.sniffingWebsocketFrame(ctx, rw, backConn, ro, log)
-	}
-
-	// return xnet.Transport(rw, backConn)
-	return xnet.Pipe(ctx, rw, backConn, xnet.WithReadTimeout(h.md.idleTimeout))
-}
-
-func (h *httpHandler) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriter, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	errc := make(chan error, 1)
-
-	sampleRate := h.md.sniffingWebsocketSampleRate
-	if sampleRate == 0 {
-		sampleRate = sniffing.DefaultSampleRate
-	}
-	if sampleRate < 0 {
-		sampleRate = math.MaxFloat64
-	}
-
-	go func() {
-		ro2 := &xrecorder.HandlerRecorderObject{}
-		*ro2 = *ro
-		ro := ro2
-
-		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
-
-		buf := &bytes.Buffer{}
-		for {
-			start := time.Now()
-
-			if err := h.copyWebsocketFrame(cc, rw, buf, "client", ro); err != nil {
-				errc <- err
-				return
-			}
-
-			if limiter.Allow() {
-				ro.Duration = time.Since(start)
-				ro.Time = time.Now()
-				if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
-					log.Errorf("record: %v", err)
-				}
-			}
-		}
-	}()
-
-	go func() {
-		ro2 := &xrecorder.HandlerRecorderObject{}
-		*ro2 = *ro
-		ro := ro2
-
-		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
-
-		buf := &bytes.Buffer{}
-		for {
-			start := time.Now()
-
-			if err := h.copyWebsocketFrame(rw, cc, buf, "server", ro); err != nil {
-				errc <- err
-				return
-			}
-
-			if limiter.Allow() {
-				ro.Duration = time.Since(start)
-				ro.Time = time.Now()
-				if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
-					log.Errorf("record: %v", err)
-				}
-			}
-		}
-	}()
-
-	<-errc
-	return nil
-}
-
-func (h *httpHandler) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
-	fr := ws_util.Frame{}
-	if _, err = fr.ReadFrom(r); err != nil {
-		return err
-	}
-
-	ws := &xrecorder.WebsocketRecorderObject{
-		From:    from,
-		Fin:     fr.Header.Fin,
-		Rsv1:    fr.Header.Rsv1,
-		Rsv2:    fr.Header.Rsv2,
-		Rsv3:    fr.Header.Rsv3,
-		OpCode:  int(fr.Header.OpCode),
-		Masked:  fr.Header.Masked,
-		MaskKey: fr.Header.MaskKey,
-		Length:  fr.Header.PayloadLength,
-	}
-	if opts := h.recorder.Options; opts != nil && opts.HTTPBody {
-		bodySize := opts.MaxBodySize
-		if bodySize <= 0 {
-			bodySize = sniffing.DefaultBodySize
-		}
-		if bodySize > sniffing.MaxBodySize {
-			bodySize = sniffing.MaxBodySize
-		}
-
-		buf.Reset()
-		if _, err := io.Copy(buf, io.LimitReader(fr.Data, int64(bodySize))); err != nil {
-			return err
-		}
-		ws.Payload = buf.Bytes()
-	}
-
-	ro.Websocket = ws
-	length := uint64(fr.Header.Length()) + uint64(fr.Header.PayloadLength)
-	if from == "client" {
-		ro.InputBytes = length
-		ro.OutputBytes = 0
-	} else {
-		ro.InputBytes = 0
-		ro.OutputBytes = length
-	}
-
-	fr.Data = io.MultiReader(bytes.NewReader(buf.Bytes()), fr.Data)
-	if _, err := fr.WriteTo(w); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h *httpHandler) decodeServerName(s string) (string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return "", err
-	}
-	if len(b) < 4 {
-		return "", errors.New("invalid name")
-	}
-	v, err := base64.RawURLEncoding.DecodeString(string(b[4:]))
-	if err != nil {
-		return "", err
-	}
-	if crc32.ChecksumIEEE(v) != binary.BigEndian.Uint32(b[:4]) {
-		return "", errors.New("invalid name")
-	}
-	return string(v), nil
-}
-
-func (h *httpHandler) basicProxyAuth(proxyAuth string) (username, password string, ok bool) {
-	if proxyAuth == "" {
-		return
-	}
-
-	if !strings.HasPrefix(proxyAuth, "Basic ") {
-		return
-	}
-	c, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(proxyAuth, "Basic "))
-	if err != nil {
-		return
-	}
-	cs := string(c)
-	s := strings.IndexByte(cs, ':')
-	if s < 0 {
-		return
-	}
-
-	return cs[:s], cs[s+1:], true
-}
-
-func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http.Request, resp *http.Response, log logger.Logger) (id string, ok bool) {
-	u, p, _ := h.basicProxyAuth(req.Header.Get("Proxy-Authorization"))
-	if h.options.Auther == nil {
-		return "", true
-	}
-	if id, ok = h.options.Auther.Authenticate(ctx, u, p, auth.WithService(h.options.Service)); ok {
-		return
-	}
-
-	pr := h.md.probeResistance
-	// Probe resistance activates on auth failure in two cases:
-	//   1. pr.Knock is empty — no specific knock host; always hide the proxy.
-	//   2. pr.Knock is set but the request hostname does not match — the client
-	//      didn't "knock" on the right host, so a fake response is returned.
-	// When the request hostname matches a non-empty pr.Knock, probe resistance
-	// is bypassed and falls through to the normal 407 Proxy-Auth-Required below,
-	// revealing the proxy only to clients that know the knock address.
-	if pr != nil && (pr.Knock == "" || !strings.EqualFold(req.URL.Hostname(), pr.Knock)) {
-		resp.StatusCode = http.StatusServiceUnavailable // default status code
-
-		switch pr.Type {
-		case "code":
-			if code, err := strconv.Atoi(pr.Value); err == nil {
-				resp.StatusCode = code
-			} else {
-				log.Warnf("invalid probe resistance code: %s", pr.Value)
-			}
-		case "web":
-			url := pr.Value
-			if !strings.HasPrefix(url, "http") {
-				url = "http://" + url
-			}
-			client := &http.Client{Timeout: 15 * time.Second}
-			r, err := client.Get(url)
-			if err != nil {
-				log.Error(err)
-				break
-			}
-			resp = r
-			defer resp.Body.Close()
-		case "host":
-			cc, err := net.Dial("tcp", pr.Value)
-			if err != nil {
-				log.Error(err)
-				break
-			}
-			defer cc.Close()
-
-			req.Write(cc)
-			// xnet.Transport(conn, cc)
-			xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.idleTimeout))
-			return
-		case "file":
-			f, _ := os.Open(pr.Value)
-			if f != nil {
-				defer f.Close()
-
-				resp.StatusCode = http.StatusOK
-				if finfo, _ := f.Stat(); finfo != nil {
-					resp.ContentLength = finfo.Size()
-				}
-				resp.Header.Set("Content-Type", "text/html")
-				resp.Body = f
-			}
-		}
-	}
-
-	if resp.Header == nil {
-		resp.Header = http.Header{}
-	}
-	if resp.StatusCode == 0 {
-		realm := defaultRealm
-		if h.md.authBasicRealm != "" {
-			realm = h.md.authBasicRealm
-		}
-		resp.StatusCode = http.StatusProxyAuthRequired
-		resp.Header.Add("Proxy-Authenticate", fmt.Sprintf("Basic realm=\"%s\"", realm))
-		if strings.ToLower(req.Header.Get("Proxy-Connection")) == "keep-alive" {
-			// XXX libcurl will keep sending auth request in same conn
-			// which we don't supported yet.
-			resp.Header.Set("Connection", "close")
-			resp.Header.Set("Proxy-Connection", "close")
-		}
-
-		log.Debug("proxy authentication required")
-	} else {
-		// resp.Header.Set("Server", "nginx/1.20.1")
-		// resp.Header.Set("Date", time.Now().Format(http.TimeFormat))
-		if resp.StatusCode == http.StatusOK {
-			resp.Header.Set("Connection", "keep-alive")
-		}
-	}
-
-	if log.IsLevelEnabled(logger.TraceLevel) {
-		dump, _ := httputil.DumpResponse(resp, false)
-		log.Trace(string(dump))
-	}
-
-	if err := resp.Write(conn); err != nil {
-		log.Error("write auth response: ", err)
-	}
-	return
-}
-
-func (h *httpHandler) checkRateLimit(addr net.Addr) bool {
-	if h.options.RateLimiter == nil {
-		return true
-	}
-	host, _, _ := net.SplitHostPort(addr.String())
-	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
-		return limiter.Allow(1)
-	}
-
-	return true
-}
-
+// observeStats periodically publishes per-client traffic stats to the
+// configured Observer. It runs in a background goroutine started by Init.
+// Events that fail to send are retried on the next tick.
 func (h *httpHandler) observeStats(ctx context.Context) {
 	if h.options.Observer == nil {
 		return
@@ -1004,6 +546,7 @@ func (h *httpHandler) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			// Retry previously failed events first to preserve ordering.
 			if len(events) > 0 {
 				if err := h.options.Observer.Observe(ctx, events); err == nil {
 					events = nil
