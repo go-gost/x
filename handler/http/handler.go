@@ -198,8 +198,14 @@ func (h *httpHandler) Close() error {
 }
 
 func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	if !req.URL.IsAbs() && govalidator.IsDNSName(req.Host) {
-		req.URL.Scheme = "http"
+	if !req.URL.IsAbs() {
+		host := req.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if govalidator.IsDNSName(host) || net.ParseIP(host) != nil {
+			req.URL.Scheme = "http"
+		}
 	}
 
 	network := req.Header.Get("X-Gost-Protocol")
@@ -306,7 +312,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			log.Trace(string(dump))
 		}
 		log.Debug("bypass: ", addr)
-		resp.Write(conn)
+		if err := resp.Write(conn); err != nil {
+			log.Error("write bypass response: ", err)
+		}
 		return xbypass.ErrBypass
 	}
 
@@ -352,10 +360,17 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			dump, _ := httputil.DumpResponse(resp, false)
 			log.Trace(string(dump))
 		}
-		resp.Write(conn)
+		if err := resp.Write(conn); err != nil {
+			log.Error("write error response: ", err)
+		}
 		return err
 	}
-	defer cc.Close()
+	snifferHandled := false
+	defer func() {
+		if !snifferHandled {
+			cc.Close()
+		}
+	}()
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	ro.SrcAddr = cc.LocalAddr().String()
@@ -407,6 +422,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
+			snifferHandled = true
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
@@ -415,6 +431,7 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 				sniffing.WithLog(log),
 			)
 		case sniffing.ProtoTLS:
+			snifferHandled = true
 			return sniffer.HandleTLS(ctx, "tcp", conn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
@@ -464,8 +481,10 @@ func (h *httpHandler) handleProxy(ctx context.Context, conn net.Conn, req *http.
 		}
 
 		if close, err := h.proxyRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), req, ro, &pStats, log); err != nil || close {
+			req.Body.Close()
 			return err
 		}
+		req.Body.Close()
 	}
 }
 
@@ -550,7 +569,9 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 			log.Trace(string(dump))
 		}
 		log.Debug("bypass: ", host)
-		res.Write(rw)
+		if werr := res.Write(rw); werr != nil {
+			log.Error("write bypass response: ", werr)
+		}
 		err = xbypass.ErrBypass
 		return
 	}
@@ -581,7 +602,9 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	}
 
 	if err != nil {
-		res.Write(rw)
+		if werr := res.Write(rw); werr != nil {
+			log.Error("write error response: ", werr)
+		}
 		return
 	}
 	defer resp.Body.Close()
@@ -634,9 +657,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 		return
 	}
 
-	if resp.ContentLength >= 0 {
-		close = resp.Close
-	}
+	close = resp.Close
 
 	return
 }
@@ -864,19 +885,30 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 	}
 
 	pr := h.md.probeResistance
-	// probing resistance is enabled, and knocking host is mismatch.
+	// Probe resistance activates on auth failure in two cases:
+	//   1. pr.Knock is empty — no specific knock host; always hide the proxy.
+	//   2. pr.Knock is set but the request hostname does not match — the client
+	//      didn't "knock" on the right host, so a fake response is returned.
+	// When the request hostname matches a non-empty pr.Knock, probe resistance
+	// is bypassed and falls through to the normal 407 Proxy-Auth-Required below,
+	// revealing the proxy only to clients that know the knock address.
 	if pr != nil && (pr.Knock == "" || !strings.EqualFold(req.URL.Hostname(), pr.Knock)) {
 		resp.StatusCode = http.StatusServiceUnavailable // default status code
 
 		switch pr.Type {
 		case "code":
-			resp.StatusCode, _ = strconv.Atoi(pr.Value)
+			if code, err := strconv.Atoi(pr.Value); err == nil {
+				resp.StatusCode = code
+			} else {
+				log.Warnf("invalid probe resistance code: %s", pr.Value)
+			}
 		case "web":
 			url := pr.Value
 			if !strings.HasPrefix(url, "http") {
 				url = "http://" + url
 			}
-			r, err := http.Get(url)
+			client := &http.Client{Timeout: 15 * time.Second}
+			r, err := client.Get(url)
 			if err != nil {
 				log.Error(err)
 				break
@@ -941,7 +973,9 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 		log.Trace(string(dump))
 	}
 
-	resp.Write(conn)
+	if err := resp.Write(conn); err != nil {
+		log.Error("write auth response: ", err)
+	}
 	return
 }
 
