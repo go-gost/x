@@ -391,7 +391,7 @@ func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, 
 
 	pr := h.md.probeResistance
 	// probing resistance is enabled, and knocking host is mismatch.
-	if pr != nil && (pr.Knock == "" || !strings.EqualFold(r.URL.Hostname(), pr.Knock)) {
+	if pr != nil && (pr.Knock == "" || !knockMatch(r.URL.Hostname(), pr.Knock)) {
 		resp.StatusCode = http.StatusServiceUnavailable // default status code
 		switch pr.Type {
 		case "code":
@@ -535,4 +535,19 @@ func (h *http2Handler) observeStats(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// knockMatch reports whether hostname matches any entry in the
+// comma-separated knock list. Matching is case-insensitive. An empty
+// knock string returns false (no match).
+func knockMatch(hostname, knock string) bool {
+	if knock == "" {
+		return false
+	}
+	for _, h := range strings.Split(knock, ",") {
+		if strings.EqualFold(hostname, strings.TrimSpace(h)) {
+			return true
+		}
+	}
+	return false
 }

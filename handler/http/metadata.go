@@ -148,5 +148,5 @@ func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
 type probeResistance struct {
 	Type  string // strategy: "code", "web", "host", or "file"
 	Value string // strategy-specific parameter (status code, URL, address, path)
-	Knock string // optional hostname; when set, probe resistance only fires for non-matching hosts
+	Knock string // optional comma-separated hostnames; probe resistance only fires when the request hostname matches none of them
 }

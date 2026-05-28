@@ -117,6 +117,22 @@ func TestParseMetadata_ProbeResistance(t *testing.T) {
 	}
 }
 
+func TestParseMetadata_ProbeResistance_KnockMulti(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{
+		"probeResist": "code:404",
+		"knock":       " a.example.com , b.example.com ",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.probeResistance == nil {
+		t.Fatal("expected probeResistance to be set")
+	}
+	if h.md.probeResistance.Knock != " a.example.com , b.example.com " {
+		t.Errorf("got knock %q, want raw comma-separated string", h.md.probeResistance.Knock)
+	}
+}
+
 func TestParseMetadata_ProbeResistance_InvalidFormat(t *testing.T) {
 	h := &httpHandler{}
 	if err := h.parseMetadata(testMD(map[string]any{"probeResist": "invalid"})); err != nil {

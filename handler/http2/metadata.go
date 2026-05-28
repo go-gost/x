@@ -64,5 +64,5 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 type probeResistance struct {
 	Type  string
 	Value string
-	Knock string
+	Knock string // optional comma-separated hostnames; probe resistance only fires when the request hostname matches none of them
 }

@@ -279,6 +279,116 @@ func TestAuthenticate_ProbeResistanceKnockMismatch(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_ProbeResistanceKnockMultiMatch(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Auther: &stubAuther{accept: false},
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	// Third entry matches — probe resistance should be bypassed, return 407
+	h.md.probeResistance = &probeResistance{
+		Type:  "code",
+		Value: "404",
+		Knock: "a.example.com, b.example.com, secret.example.com",
+	}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	req, _ := http.NewRequest("GET", "http://secret.example.com/", nil)
+	resp := &http.Response{
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{},
+		ContentLength: -1,
+	}
+
+	go func() {
+		h.authenticate(context.Background(), server, req, resp, &testLogger{})
+	}()
+
+	br := bufio.NewReader(client)
+	r, err := http.ReadResponse(br, req)
+	if err != nil {
+		t.Fatalf("failed to read response: %v", err)
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != http.StatusProxyAuthRequired {
+		t.Errorf("got status %d, want %d (knock matched, should bypass probe resistance)", r.StatusCode, http.StatusProxyAuthRequired)
+	}
+}
+
+func TestAuthenticate_ProbeResistanceKnockMultiMismatch(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Auther: &stubAuther{accept: false},
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	// No entry matches — probe resistance should activate
+	h.md.probeResistance = &probeResistance{
+		Type:  "code",
+		Value: "503",
+		Knock: "a.example.com, b.example.com",
+	}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	req, _ := http.NewRequest("GET", "http://other.example.com/", nil)
+	resp := &http.Response{
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{},
+		ContentLength: -1,
+	}
+
+	go func() {
+		h.authenticate(context.Background(), server, req, resp, &testLogger{})
+	}()
+
+	br := bufio.NewReader(client)
+	r, err := http.ReadResponse(br, req)
+	if err != nil {
+		t.Fatalf("failed to read response: %v", err)
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != 503 {
+		t.Errorf("got status %d, want 503", r.StatusCode)
+	}
+}
+
+func TestKnockMatch(t *testing.T) {
+	tests := []struct {
+		hostname string
+		knock    string
+		want     bool
+	}{
+		{"", "", false},
+		{"example.com", "", false},
+		{"example.com", "example.com", true},
+		{"EXAMPLE.COM", "example.com", true}, // case-insensitive
+		{"example.com", "other.com", false},
+		{"example.com", " one.example.com , example.com , two.example.com ", true},
+		{"example.com", " one.example.com, two.example.com ", false},
+		{"", "example.com", false},
+		{"example.com", " example.com , , two.example.com ", true}, // empty entry between commas
+	}
+	for _, tt := range tests {
+		got := knockMatch(tt.hostname, tt.knock)
+		if got != tt.want {
+			t.Errorf("knockMatch(%q, %q) = %v, want %v", tt.hostname, tt.knock, got, tt.want)
+		}
+	}
+}
+
 func TestCheckRateLimit_NoLimiter(t *testing.T) {
 	h := &httpHandler{
 		options: handler.Options{},

@@ -26,9 +26,9 @@ import (
 //   - "web": fetch a URL and replay its response as the decoy.
 //   - "host": forward the raw request to a decoy host and relay the reply.
 //   - "file": serve a local file with Content-Type: text/html.
-//   - knock: when pr.Knock is set, probe resistance only activates if the
-//     request hostname does NOT match the knock address. Clients that know
-//     the knock hostname get the normal 407 Proxy-Auth-Required.
+//   - knock: when pr.Knock is set (comma-separated hostnames), probe resistance
+//     only activates if the request hostname matches NONE of the knock addresses.
+//     Clients that know any knock hostname get the normal 407 Proxy-Auth-Required.
 //
 // On success it returns the authenticated client ID. On failure it writes
 // the response (407 or probe-resistance decoy) to conn and returns ok=false.
@@ -49,7 +49,7 @@ func (h *httpHandler) authenticate(ctx context.Context, conn net.Conn, req *http
 	// When pr.Knock matches the hostname, probe resistance is bypassed and
 	// the normal 407 Proxy-Auth-Required is returned, revealing the proxy
 	// only to clients that know the knock address.
-	if pr != nil && (pr.Knock == "" || !strings.EqualFold(req.URL.Hostname(), pr.Knock)) {
+	if pr != nil && (pr.Knock == "" || !knockMatch(req.URL.Hostname(), pr.Knock)) {
 		resp.StatusCode = http.StatusServiceUnavailable
 
 		switch pr.Type {
@@ -158,4 +158,19 @@ func (h *httpHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+// knockMatch reports whether hostname matches any entry in the
+// comma-separated knock list. Matching is case-insensitive. An empty
+// knock string returns false (no match).
+func knockMatch(hostname, knock string) bool {
+	if knock == "" {
+		return false
+	}
+	for _, h := range strings.Split(knock, ",") {
+		if strings.EqualFold(hostname, strings.TrimSpace(h)) {
+			return true
+		}
+	}
+	return false
 }
