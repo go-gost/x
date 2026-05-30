@@ -49,10 +49,7 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 		if err != nil {
 			return err
 		}
-		h.md.certificate, err = x509.ParseCertificate(tlsCert.Certificate[0])
-		if err != nil {
-			return err
-		}
+		h.md.certificate = tlsCert.Leaf
 		h.md.privateKey = tlsCert.PrivateKey
 	}
 	h.md.alpn = mdutil.GetString(md, "mitm.alpn")

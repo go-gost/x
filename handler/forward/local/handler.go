@@ -1,25 +1,78 @@
+// Package local implements a low-level forwarding handler for raw TCP and UDP
+// connections. It serves as the fallback handler for protocols that cannot be
+// matched to a dedicated handler, and supports optional protocol sniffing to
+// detect HTTP and TLS traffic for deep inspection (MITM, WebSocket recording).
+//
+// The handler is registered under the names "tcp", "udp", and "forward" via
+// NewHandler in init().
+//
+// # Connection processing flow
+//
+// Each inbound net.Conn is processed by Handle, which wraps the connection
+// with I/O stats, checks the rate limiter, and dispatches to one of two
+// forwarding paths:
+//
+//	Handle()
+//	  ├─ stats_wrapper.WrapConn (per-connection I/O counters)
+//	  ├─ newRecorderObject (session metadata: service, SID, addresses)
+//	  ├─ checkRateLimit (connection rate limiter, if configured)
+//	  ├─ Router nil check → errRouterNotAvailable
+//	  ├─ [sniffing enabled] sniffing.Sniff (peek buffer, detect protocol)
+//	  │     └─ handleSniffedProtocol()
+//	  │           ├─ sniffing.ProtoHTTP → SnifferBuilder.Build().HandleHTTP()
+//	  │           ├─ sniffing.ProtoTLS  → SnifferBuilder.Build().HandleTLS()
+//	  │           └─ default → fall through to raw forwarding
+//	  └─ [sniffing disabled / unrecognised] handleRawForwarding()
+//
+// # Protocol sniffing dispatch (handleSniffedProtocol)
+//
+// When sniffing is enabled and the initial bytes match HTTP or TLS, the
+// connection is delegated to the forwarder package for protocol-aware
+// handling:
+//
+//   - HTTP: parses the request, applies MITM if configured, forwards to
+//     the upstream, and records WebSocket frames when enabled.
+//   - TLS: parses the ClientHello to extract the server name, applies
+//     MITM or SNI-based routing through the hop, and records the TLS
+//     handshake.
+//
+// SnifferBuilder is populated once during Init and reused via Build()
+// to create per-connection forwarder.Sniffer instances.
+//
+// # Raw forwarding (handleRawForwarding)
+//
+// The default path for unrecognised traffic. It selects a target node
+// from the hop, dials the upstream through the router, wraps the
+// connection with proxy protocol (HAProxy) when enabled, and pipes
+// data bidirectionally:
+//
+//  1. Node selection — getHop().Select() with optional protocol hint.
+//  2. Router dial — Router.Dial() through the configured chain.
+//  3. Proxy protocol — proxyproto.WrapClientConn() prepends HAProxy
+//     header when metadata proxyProtocol is set.
+//  4. Bidirectional pipe — xnet.Pipe(ctx, conn, cc) with read timeout.
+//
+// # Hop management
+//
+// The handler implements handler.Forwarder. Forward() is called during
+// service startup (and on reload) to install or update the hop. The hop
+// is protected by a mutex because Forward() runs on the loader goroutine
+// while Handle() reads it from per-connection goroutines.
 package local
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"errors"
 	"net"
+	"sync"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
-	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	xctx "github.com/go-gost/x/ctx"
-	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
-	"github.com/go-gost/x/internal/net/proxyproto"
-	"github.com/go-gost/x/internal/util/forwarder"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -37,10 +90,12 @@ func init() {
 
 type forwardHandler struct {
 	hop      hop.Hop
+	hopMu    sync.Mutex
 	md       metadata
 	options  handler.Options
 	recorder recorder.RecorderObject
 	certPool tls_util.CertPool
+	sniffer  *SnifferBuilder
 }
 
 // NewHandler creates a local forwarding handler with the given options.
@@ -72,12 +127,33 @@ func (h *forwardHandler) Init(md md.Metadata) (err error) {
 		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
+	h.sniffer = &SnifferBuilder{
+		Websocket:           h.md.sniffingWebsocket,
+		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+		Recorder:            h.recorder.Recorder,
+		RecorderOptions:     h.recorder.Options,
+		Certificate:         h.md.certificate,
+		PrivateKey:          h.md.privateKey,
+		ALPN:                h.md.alpn,
+		CertPool:            h.certPool,
+		MitmBypass:          h.md.mitmBypass,
+		ReadTimeout:         h.md.readTimeout,
+	}
+
 	return
 }
 
 // Forward implements handler.Forwarder.
 func (h *forwardHandler) Forward(hop hop.Hop) {
+	h.hopMu.Lock()
 	h.hop = hop
+	h.hopMu.Unlock()
+}
+
+func (h *forwardHandler) getHop() hop.Hop {
+	h.hopMu.Lock()
+	defer h.hopMu.Unlock()
+	return h.hop
 }
 
 // Handle forwards the accepted connection to a node selected from the hop.
@@ -126,9 +202,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	if h.options.Router == nil {
-		err := errors.New("router not available")
-		log.Error(err)
-		return err
+		log.Error(errRouterNotAvailable)
+		return errRouterNotAvailable
 	}
 
 	var proto string
@@ -156,177 +231,4 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	return h.handleRawForwarding(ctx, conn, ro, log, network, proto)
-}
-
-// handleRawForwarding performs node selection, dials the target through the
-// router, and pipes the raw connection. It is used when sniffing is disabled
-// or the protocol was not HTTP/TLS.
-func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, network, proto string) error {
-	target := &chain.Node{}
-	if h.hop != nil {
-		target = h.hop.Select(ctx,
-			hop.ProtocolSelectOption(proto),
-		)
-	}
-	if target == nil {
-		err := errors.New("node not available")
-		log.Error(err)
-		return err
-	}
-	addr := target.Addr
-	if opts := target.Options(); opts != nil {
-		switch opts.Network {
-		case "unix":
-			network = opts.Network
-		default:
-			if _, _, err := net.SplitHostPort(addr); err != nil {
-				addr += ":0"
-			}
-		}
-	}
-
-	ro.Network = network
-	ro.Host = addr
-
-	log = log.WithFields(map[string]any{
-		"node":    target.Name,
-		"dst":     addr,
-		"network": network,
-	})
-
-	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
-
-	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
-	ro.Route = buf.String()
-	if err != nil {
-		log.Error(err)
-		// TODO: the router itself may be failed due to the failed node in the router,
-		// the dead marker may be a wrong operation.
-		if marker := target.Marker(); marker != nil {
-			marker.Mark()
-		}
-		return err
-	}
-	if marker := target.Marker(); marker != nil {
-		marker.Reset()
-	}
-	defer cc.Close()
-
-	cc = proxyproto.WrapClientConn(
-		h.md.proxyProtocol,
-		xctx.SrcAddrFromContext(ctx),
-		xctx.DstAddrFromContext(ctx),
-		cc)
-
-	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	ro.SrcAddr = cc.LocalAddr().String()
-	ro.DstAddr = cc.RemoteAddr().String()
-
-	t := time.Now()
-	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	// xnet.Transport(conn, cc)
-	if err := xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.readTimeout)); err != nil {
-		log.Debugf("pipe: %v", err)
-	}
-	log.WithFields(map[string]any{
-		"duration": time.Since(t),
-	}).Infof("%s >-< %s", conn.RemoteAddr(), target.Addr)
-
-	return nil
-}
-
-// newRecorderObject creates a HandlerRecorderObject populated with connection
-// metadata (service, addresses, network type, session ID, client address).
-func (h *forwardHandler) newRecorderObject(ctx context.Context, conn net.Conn, start time.Time) *xrecorder.HandlerRecorderObject {
-	ro := &xrecorder.HandlerRecorderObject{
-		Service:    h.options.Service,
-		RemoteAddr: conn.RemoteAddr().String(),
-		LocalAddr:  conn.LocalAddr().String(),
-		Network:    "tcp",
-		Time:       start,
-		SID:        xctx.SidFromContext(ctx).String(),
-	}
-	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientAddr = srcAddr.String()
-	}
-	if _, ok := conn.(net.PacketConn); ok {
-		ro.Network = "udp"
-	}
-	return ro
-}
-
-// sniffingDial creates a dial function for the sniffing branch that wraps
-// Router.Dial with route recording and proxy protocol encapsulation.
-func (h *forwardHandler) sniffingDial(ctx context.Context, network, address string, ro *xrecorder.HandlerRecorderObject) (net.Conn, error) {
-	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
-	ro.Route = buf.String()
-	return proxyproto.WrapClientConn(
-		h.md.proxyProtocol,
-		xctx.SrcAddrFromContext(ctx),
-		xctx.DstAddrFromContext(ctx),
-		cc), err
-}
-
-// buildSniffer creates a forwarder.Sniffer configured from handler metadata.
-func (h *forwardHandler) buildSniffer() *forwarder.Sniffer {
-	return &forwarder.Sniffer{
-		Websocket:           h.md.sniffingWebsocket,
-		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
-		Recorder:            h.recorder.Recorder,
-		RecorderOptions:     h.recorder.Options,
-		Certificate:         h.md.certificate,
-		PrivateKey:          h.md.privateKey,
-		NegotiatedProtocol:  h.md.alpn,
-		CertPool:            h.certPool,
-		MitmBypass:          h.md.mitmBypass,
-		ReadTimeout:         h.md.readTimeout,
-	}
-}
-
-// handleSniffedProtocol dispatches a sniffed connection to the protocol-specific
-// sniffer (HandleHTTP or HandleTLS). It returns (true, err) when the protocol was
-// handled and (false, nil) when the caller should fall through to raw forwarding.
-func (h *forwardHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, proto string) (handled bool, err error) {
-	switch proto {
-	case sniffing.ProtoHTTP, sniffing.ProtoTLS:
-		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			return h.sniffingDial(ctx, network, address, ro)
-		}
-		sniffer := h.buildSniffer()
-		if proto == sniffing.ProtoHTTP {
-			return true, sniffer.HandleHTTP(ctx, conn,
-				forwarder.WithService(h.options.Service),
-				forwarder.WithDial(dial),
-				forwarder.WithHop(h.hop),
-				forwarder.WithBypass(h.options.Bypass),
-				forwarder.WithHTTPKeepalive(h.md.httpKeepalive),
-				forwarder.WithRecorderObject(ro),
-				forwarder.WithLog(log),
-			)
-		}
-		return true, sniffer.HandleTLS(ctx, conn,
-			forwarder.WithService(h.options.Service),
-			forwarder.WithDial(dial),
-			forwarder.WithHop(h.hop),
-			forwarder.WithBypass(h.options.Bypass),
-			forwarder.WithRecorderObject(ro),
-			forwarder.WithLog(log),
-		)
-	default:
-		return false, nil
-	}
-}
-
-func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
-	if h.options.RateLimiter == nil {
-		return true
-	}
-	host, _, _ := net.SplitHostPort(addr.String())
-	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
-		return limiter.Allow(1)
-	}
-
-	return true
 }
