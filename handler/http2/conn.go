@@ -2,6 +2,7 @@ package http2
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -13,11 +14,14 @@ type flushWriter struct {
 func (fw flushWriter) Write(p []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if s, ok := r.(string); ok {
-				err = errors.New(s)
-				return
+			switch v := r.(type) {
+			case string:
+				err = errors.New(v)
+			case error:
+				err = v
+			default:
+				err = fmt.Errorf("%v", v)
 			}
-			err = r.(error)
 		}
 	}()
 

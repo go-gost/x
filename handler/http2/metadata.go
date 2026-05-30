@@ -25,7 +25,7 @@ type metadata struct {
 	limiterCleanupInterval time.Duration
 }
 
-func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
+func (h *http2Handler) parseMetadata(md mdata.Metadata) {
 	if m := mdutil.GetStringMapString(md, "http.header", "header"); len(m) > 0 {
 		hd := http.Header{}
 		for k, v := range m {
@@ -57,8 +57,6 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) error {
 
 	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
 	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
-
-	return nil
 }
 
 type probeResistance struct {
