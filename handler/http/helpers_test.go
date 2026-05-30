@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
@@ -100,8 +101,8 @@ func (c *stringConn) Close() error {
 }
 func (c *stringConn) LocalAddr() net.Addr                { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080} }
 func (c *stringConn) RemoteAddr() net.Addr               { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345} }
-func (c *stringConn) SetDeadline(t any) error             { return nil }
-func (c *stringConn) SetReadDeadline(t any) error         { return nil }
-func (c *stringConn) SetWriteDeadline(t any) error        { return nil }
+func (c *stringConn) SetDeadline(t time.Time) error      { return nil }
+func (c *stringConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *stringConn) SetWriteDeadline(t time.Time) error { return nil }
 func (c *stringConn) Bytes() []byte                       { return []byte(c.writeBuf.String()) }
 func (c *stringConn) String() string                      { return c.writeBuf.String() }

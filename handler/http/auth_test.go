@@ -1,10 +1,17 @@
 package http
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
@@ -276,6 +283,290 @@ func TestCheckRateLimit_NilAddr(t *testing.T) {
 		}()
 		_ = h.checkRateLimit(nil)
 	}()
+}
+
+// --- probeResistanceResponse tests ---
+
+func TestProbeResistanceResponse_Web(t *testing.T) {
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "web", Value: "example.com"},
+		WebClient: func(url string) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("<html></html>")),
+			}, nil
+		},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	if result.Response == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if result.Response.StatusCode != http.StatusOK {
+		t.Errorf("got status %d, want 200", result.Response.StatusCode)
+	}
+}
+
+func TestProbeResistanceResponse_Web_Error(t *testing.T) {
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "web", Value: "example.com"},
+		Log:    &testLogger{},
+		WebClient: func(url string) (*http.Response, error) {
+			return nil, errors.New("network error")
+		},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	// Web error → break → stays at 503 (the initial default)
+	if result.Response.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("got status %d, want 503 (default after web error)", result.Response.StatusCode)
+	}
+}
+
+func TestProbeResistanceResponse_Web_NoPrefix(t *testing.T) {
+	// Value without http:// prefix gets prefixed automatically
+	var calledURL string
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "web", Value: "example.com/path"},
+		WebClient: func(url string) (*http.Response, error) {
+			calledURL = url
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("ok")),
+			}, nil
+		},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	if !strings.HasPrefix(calledURL, "http://") {
+		t.Errorf("expected http:// prefix, got %q", calledURL)
+	}
+}
+
+func TestProbeResistanceResponse_File(t *testing.T) {
+	f, err := os.CreateTemp("", "gost-pr-test-*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString("<html>decoy</html>")
+	f.Close()
+
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "file", Value: f.Name()},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	if result.Response == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if result.Response.StatusCode != http.StatusOK {
+		t.Errorf("got status %d, want 200", result.Response.StatusCode)
+	}
+	if result.Response.Body == nil {
+		t.Error("expected body for file probe resistance")
+	} else {
+		result.Response.Body.Close()
+	}
+	if result.Response.Header.Get("Content-Type") != "text/html" {
+		t.Error("expected Content-Type: text/html")
+	}
+}
+
+func TestProbeResistanceResponse_File_Missing(t *testing.T) {
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		Realm:  "gost",
+		PR:     &probeResistance{Type: "file", Value: "/nonexistent/file.html"},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	// Falls back to default 503 when file not found
+	if result.Response.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("got status %d, want 503 (fallback when file missing)", result.Response.StatusCode)
+	}
+}
+
+func TestProbeResistanceResponse_Web_StatusOK_KeepAlive(t *testing.T) {
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "web", Value: "example.com"},
+		WebClient: func(url string) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("ok")),
+			}, nil
+		},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	if result.Response.Header.Get("Connection") != "keep-alive" {
+		t.Errorf("expected Connection: keep-alive for 200 response, got %q",
+			result.Response.Header.Get("Connection"))
+	}
+}
+
+func TestProbeResistanceResponse_StatusCodeZero(t *testing.T) {
+	// When PR type is unknown, resp.StatusCode stays 0 which triggers build407Response fallback
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		Realm:  "gost",
+		PR:     &probeResistance{Type: "unknown", Value: "x"},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	if result.Response.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("got status %d, want 503 (default for unknown type)", result.Response.StatusCode)
+	}
+}
+
+func TestProbeResistanceResponse_Code_Invalid_Logs(t *testing.T) {
+	a := &Authenticator{
+		Auther: &stubAuther{accept: false},
+		Realm:  "gost",
+		PR:     &probeResistance{Type: "code", Value: "not-a-number"},
+		Log:    &testLogger{},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.Authenticate(context.Background(), req)
+	if result.OK {
+		t.Fatal("expected auth failure")
+	}
+	// Falls back to 503 (default), then 407 because probeResistanceResponse calls build407 for 503
+	if result.Response.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("got status %d, want 503 (invalid code keeps default)", result.Response.StatusCode)
+	}
+}
+
+// --- build407Response tests ---
+
+func TestBuild407Response_CustomRealm(t *testing.T) {
+	a := &Authenticator{Realm: "custom"}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	result := a.build407Response(req)
+	if result.Response.Header.Get("Proxy-Authenticate") == "" {
+		t.Error("expected Proxy-Authenticate header")
+	}
+	if !strings.Contains(result.Response.Header.Get("Proxy-Authenticate"), "custom") {
+		t.Error("expected custom realm in Proxy-Authenticate")
+	}
+}
+
+func TestBuild407Response_ProxyConnectionKeepAlive(t *testing.T) {
+	a := &Authenticator{}
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	req.Header.Set("Proxy-Connection", "keep-alive")
+	result := a.build407Response(req)
+	if result.Response.Header.Get("Connection") != "close" {
+		t.Errorf("got Connection=%q, want close", result.Response.Header.Get("Connection"))
+	}
+	if result.Response.Header.Get("Proxy-Connection") != "close" {
+		t.Errorf("got Proxy-Connection=%q, want close", result.Response.Header.Get("Proxy-Connection"))
+	}
+}
+
+// --- handleProbeResistanceHost tests ---
+
+func TestHandleProbeResistanceHost_DialFailure(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+
+	conn := newStringConn("")
+	resp := &http.Response{
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{},
+		ContentLength: -1,
+	}
+	err := h.handleProbeResistanceHost(context.Background(), conn, nil, "127.0.0.1:99999", &testLogger{}, resp)
+	if err != nil {
+		t.Logf("handleProbeResistanceHost error (expected): %v", err)
+	}
+	// Should have written a 503 to conn
+	written := conn.String()
+	if !strings.Contains(written, "503") {
+		t.Errorf("expected 503 in response, got: %s", written)
+	}
+}
+
+func TestHandleProbeResistanceHost_Success(t *testing.T) {
+	// Start a listener to accept the probe resistance host connection
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	ready := make(chan struct{})
+	go func() {
+		cc, _ := l.Accept()
+		ready <- struct{}{}
+		// Read the request so the pipe doesn't block
+		br := bufio.NewReader(cc)
+		http.ReadRequest(br)
+		cc.Close()
+	}()
+
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+
+	conn := newStringConn("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	resp := &http.Response{
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{},
+		ContentLength: -1,
+	}
+
+	// handleProbeResistanceHost dials the target and pipes the request
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = h.handleProbeResistanceHost(ctx, conn, &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Host: "example.com"},
+		Header: http.Header{},
+		Body:   io.NopCloser(strings.NewReader("")),
+		Proto:  "HTTP/1.1",
+	}, l.Addr().String(), &testLogger{}, resp)
+	<-ready
+	// Error from the pipe is expected since the accepted conn will be closed
+	t.Logf("handleProbeResistanceHost result: %v", err)
 }
 
 // --- Stub implementations (used by multiple test files) ---

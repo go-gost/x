@@ -249,3 +249,81 @@ func TestParseMetadata_LimiterIntervals(t *testing.T) {
 		t.Errorf("got cleanupInterval %v, want 60s", h.md.limiterCleanupInterval)
 	}
 }
+
+func TestParseMetadata_ObserverResetTraffic(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{"observer.resetTraffic": "true"})); err != nil {
+		t.Fatal(err)
+	}
+	if !h.md.observerResetTraffic {
+		t.Error("expected observer.resetTraffic to be true")
+	}
+}
+
+func TestParseMetadata_MITM_Config(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{
+		"mitm.certFile": "/nonexistent.pem",
+		"mitm.keyFile":  "/nonexistent.key",
+	})); err == nil {
+		t.Error("expected error for nonexistent cert/key files")
+	}
+}
+
+func TestParseMetadata_MITM_ALPN(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{
+		"mitm.alpn": "h2",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.alpn != "h2" {
+		t.Errorf("got alpn %q, want h2", h.md.alpn)
+	}
+}
+
+func TestParseMetadata_MITM_Bypass(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{
+		"mitm.bypass": "",
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.mitmBypass != nil {
+		t.Error("expected nil mitmBypass for empty bypass name")
+	}
+}
+
+func TestParseMetadata_ObserverPeriod_Zero(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{"observePeriod": "0"})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.observerPeriod != 5*time.Second {
+		t.Errorf("got observerPeriod %v, want 5s (default for zero)", h.md.observerPeriod)
+	}
+}
+
+func TestParseMetadata_Headers_AltKey(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{
+		"header": map[string]any{
+			"X-Custom": "value-from-alt-key",
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.header.Get("X-Custom") != "value-from-alt-key" {
+		t.Errorf("got header X-Custom=%q, want value-from-alt-key", h.md.header.Get("X-Custom"))
+	}
+}
+
+func TestParseMetadata_ProxyAgent_AltKey(t *testing.T) {
+	h := &httpHandler{}
+	if err := h.parseMetadata(testMD(map[string]any{"http.proxyAgent": "gost-alt/1.0"})); err != nil {
+		t.Fatal(err)
+	}
+	if h.md.proxyAgent != "gost-alt/1.0" {
+		t.Errorf("got proxyAgent %q, want gost-alt/1.0", h.md.proxyAgent)
+	}
+}

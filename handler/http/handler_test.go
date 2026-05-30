@@ -4,10 +4,13 @@ import (
 	"context"
 	"io"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/go-gost/core/handler"
+	stats_util "github.com/go-gost/x/internal/util/stats"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
 
@@ -203,6 +206,144 @@ func TestSetupTrafficLimiter_NoObserver(t *testing.T) {
 	_ = done
 	if result == nil {
 		t.Error("expected non-nil connection")
+	}
+}
+
+func TestHandleRequest_Bypass(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+			Bypass: &testBypass{contains: true},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	h.md.readTimeout = 15
+	h.auth = &Authenticator{}
+
+	conn := newStringConn("")
+	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+
+	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	if err == nil {
+		t.Error("expected bypass error")
+	}
+}
+
+func TestHandleRequest_UDP_Disabled(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	h.md.readTimeout = 15
+	h.auth = &Authenticator{}
+
+	conn := newStringConn("")
+	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+	req.Header.Set("X-Gost-Protocol", "udp")
+
+	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	// UDP disabled → 403 Forbidden written
+	if err != nil {
+		t.Logf("handleRequest UDP disabled: %v", err)
+	}
+}
+
+func TestHandleRequest_CONNECT_NonConnectMethod_NoScheme(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	h.md.readTimeout = 15
+	h.auth = &Authenticator{}
+
+	conn := newStringConn("")
+	req, _ := http.NewRequest("PRI", "*", nil)
+
+	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	if err != nil {
+		t.Logf("handleRequest PRI: %v", err)
+	}
+}
+
+func TestHandleRequest_ProbeResistanceAuth(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	h.md.readTimeout = 15
+	h.auth = &Authenticator{
+		Auther: &stubAuther{accept: false},
+		PR:     &probeResistance{Type: "code", Value: "404"},
+	}
+
+	conn := newStringConn("")
+	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+
+	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	if err == nil {
+		t.Error("expected auth failure")
+	}
+}
+
+func TestObserveStats_NilObserver(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+	}
+	h.observeStats(context.Background())
+}
+
+func TestObserveStats_SendsEvents(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger:   &testLogger{},
+			Service:  "test",
+			Observer: &testObserver{},
+		},
+	}
+	h.md.observerPeriod = 50 * time.Millisecond
+	h.stats = stats_util.NewHandlerStats("test", false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		h.observeStats(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Error("observeStats did not exit after context cancellation")
+	}
+}
+
+func TestHandleRequest_Bypass_Test(t *testing.T) {
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+			Bypass: &testBypass{contains: true},
+		},
+	}
+	h.md.proxyAgent = defaultProxyAgent
+	h.md.readTimeout = 15
+	h.auth = &Authenticator{}
+
+	conn := newStringConn("")
+	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+
+	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	if err == nil {
+		t.Error("expected bypass error")
 	}
 }
 

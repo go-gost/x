@@ -162,6 +162,7 @@ func TestProxyRoundTrip_HTTP10(t *testing.T) {
 	}
 }
 
+
 func TestHandleUpgradeResponse_Mismatch(t *testing.T) {
 	h := &httpHandler{}
 	h.md.proxyAgent = defaultProxyAgent
@@ -344,6 +345,39 @@ type testError struct {
 func (e *testError) Error() string   { return e.msg }
 func (e *testError) Timeout() bool   { return false }
 func (e *testError) Temporary() bool { return true }
+
+func TestProxyRoundTrip_HTTP10_KeepAlive(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// For HTTP/1.0 keep-alive, client sends Connection: keep-alive
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+		transport: ts.Client().Transport,
+	}
+	h.md.readTimeout = 15
+
+	req, _ := http.NewRequest("GET", ts.URL, nil)
+	req.ProtoMajor = 1
+	req.ProtoMinor = 0
+	req.Header.Set("Connection", "keep-alive") // client wants keep-alive
+
+	ro := &xrecorder.HandlerRecorderObject{
+		RemoteAddr: "127.0.0.1:12345",
+	}
+	pStats := xstats.Stats{}
+	rw := &testReadWriteCloser{buf: new(strings.Builder)}
+
+	_, err := h.proxyRoundTrip(context.Background(), rw, req, ro, &pStats, &testLogger{})
+	if err != nil {
+		t.Fatalf("proxyRoundTrip error: %v", err)
+	}
+}
+
 
 // testReadWriteCloser implements io.ReadWriteCloser for testing.
 type testReadWriteCloser struct {
