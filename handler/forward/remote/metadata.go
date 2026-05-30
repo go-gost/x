@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/bypass"
-	md "github.com/go-gost/core/metadata"
+	mdata "github.com/go-gost/core/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 )
@@ -28,7 +28,7 @@ type metadata struct {
 	mitmBypass  bypass.Bypass
 }
 
-func (h *forwardHandler) parseMetadata(md md.Metadata) (err error) {
+func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {
 		h.md.readTimeout = 15 * time.Second
