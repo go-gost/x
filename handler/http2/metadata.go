@@ -20,6 +20,7 @@ type metadata struct {
 	authBasicRealm       string
 	observerPeriod       time.Duration
 	observerResetTraffic bool
+	idleTimeout          time.Duration
 
 	limiterRefreshInterval time.Duration
 	limiterCleanupInterval time.Duration
@@ -54,6 +55,8 @@ func (h *http2Handler) parseMetadata(md mdata.Metadata) {
 		h.md.observerPeriod = time.Second
 	}
 	h.md.observerResetTraffic = mdutil.GetBool(md, "observer.resetTraffic")
+
+	h.md.idleTimeout = mdutil.GetDuration(md, "readTimeout", "read.timeout")
 
 	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
 	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")

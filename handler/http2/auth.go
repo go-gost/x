@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -36,10 +35,10 @@ func (h *http2Handler) basicProxyAuth(proxyAuth string) (username, password stri
 	return cs[:s], cs[s+1:], true
 }
 
-func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (id string, ok bool) {
+func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, resp *http.Response, log logger.Logger) (id string, ok bool, pipeTo string) {
 	u, p, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization"))
 	if h.options.Auther == nil {
-		return "", true
+		return "", true, ""
 	}
 	if id, ok = h.options.Auther.Authenticate(ctx, u, p, auth.WithService(h.options.Service)); ok {
 		return
@@ -70,17 +69,7 @@ func (h *http2Handler) authenticate(ctx context.Context, w http.ResponseWriter, 
 			resp = r
 			defer resp.Body.Close()
 		case "host":
-			cc, err := net.Dial("tcp", pr.Value)
-			if err != nil {
-				log.Error(err)
-				break
-			}
-			defer cc.Close()
-
-			if err := h.forwardRequest(w, r, cc); err != nil {
-				log.Error(err)
-			}
-			return
+			return "", false, pr.Value
 		case "file":
 			f, _ := os.Open(pr.Value)
 			if f != nil {

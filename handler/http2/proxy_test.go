@@ -156,3 +156,50 @@ func TestRoundTrip_AuthFailed(t *testing.T) {
 		t.Errorf("err = %v, want ErrAuthFailed", err)
 	}
 }
+
+func TestRoundTrip_ProbeResistanceHost(t *testing.T) {
+	decoy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("decoy response"))
+	}))
+	defer decoy.Close()
+
+	h := newTestHandler(handler.AutherOption(&testAuther{ok: false}))
+	decoyAddr := strings.TrimPrefix(decoy.URL, "http://")
+	h.md.probeResistance = &probeResistance{Type: "host", Value: decoyAddr}
+	h.Init(testMD(map[string]any{}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	w := httptest.NewRecorder()
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.roundTrip(context.Background(), w, req, ro, &testLogger{})
+	if err != ErrAuthFailed {
+		t.Errorf("err = %v, want ErrAuthFailed", err)
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("decoy status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "decoy response" {
+		t.Errorf("decoy body = %q, want %q", w.Body.String(), "decoy response")
+	}
+}
+
+func TestRoundTrip_ProbeResistanceHostDialError(t *testing.T) {
+	h := newTestHandler(handler.AutherOption(&testAuther{ok: false}))
+	h.md.probeResistance = &probeResistance{Type: "host", Value: "127.0.0.1:1"} // unreachable
+	h.Init(testMD(map[string]any{}))
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	w := httptest.NewRecorder()
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.roundTrip(context.Background(), w, req, ro, &testLogger{})
+	if err != ErrAuthFailed {
+		t.Errorf("err = %v, want ErrAuthFailed", err)
+	}
+	// Should get a 503 on dial failure.
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}

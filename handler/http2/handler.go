@@ -17,9 +17,10 @@
 //	    ├─ decodeServerName (GOST 2.x compatibility headers)
 //	    ├─ authenticate (basic proxy auth + probe resistance)
 //	    ├─ bypass check
+//	    ├─ set metadata response headers
 //	    ├─ Router.Dial (connect to upstream)
-//	    ├─ forwardRequest (non-CONNECT: proxy a single request)
-//	    └─ CONNECT tunnel (bi-directional pipe)
+//	    ├─ forwardRequest (non-CONNECT: wrap with traffic limiter + stats, proxy request + error response on failure)
+//	    └─ CONNECT tunnel (bi-directional pipe with idle timeout)
 package http2
 
 import (

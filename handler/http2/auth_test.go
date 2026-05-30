@@ -86,7 +86,7 @@ func TestAuthenticate(t *testing.T) {
 		w := httptest.NewRecorder()
 		resp := &http.Response{Header: w.Header(), Body: io.NopCloser(strings.NewReader(""))}
 
-		id, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+		id, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 		if !ok {
 			t.Error("expected ok without auther")
 		}
@@ -102,7 +102,7 @@ func TestAuthenticate(t *testing.T) {
 		w := httptest.NewRecorder()
 		resp := &http.Response{Header: w.Header(), Body: io.NopCloser(strings.NewReader(""))}
 
-		id, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+		id, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 		if !ok {
 			t.Error("expected ok with valid auth")
 		}
@@ -117,7 +117,7 @@ func TestAuthenticate(t *testing.T) {
 		w := httptest.NewRecorder()
 		resp := &http.Response{Header: w.Header(), Body: io.NopCloser(strings.NewReader(""))}
 
-		_, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+		_, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 		if ok {
 			t.Error("expected !ok with failed auth")
 		}
@@ -138,7 +138,7 @@ func TestAuthenticate_ProbeResistanceCode(t *testing.T) {
 	w := httptest.NewRecorder()
 	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}
 
-	_, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+	_, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 	if ok {
 		t.Error("expected !ok")
 	}
@@ -155,12 +155,49 @@ func TestAuthenticate_ProbeResistanceKnockBypass(t *testing.T) {
 	w := httptest.NewRecorder()
 	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}
 
-	_, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+	_, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 	if ok {
 		t.Error("expected !ok")
 	}
 	if resp.StatusCode != http.StatusProxyAuthRequired {
 		t.Errorf("status = %d, want %d (knock matched, probe resistance skipped)", resp.StatusCode, http.StatusProxyAuthRequired)
+	}
+}
+
+func TestAuthenticate_ProbeResistanceHost(t *testing.T) {
+	h := newTestHandler(handler.AutherOption(&testAuther{ok: false}))
+	h.md.probeResistance = &probeResistance{Type: "host", Value: "127.0.0.1:9999"}
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	w := httptest.NewRecorder()
+	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}
+
+	_, ok, pipeTo := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+	if ok {
+		t.Error("expected !ok")
+	}
+	if pipeTo != "127.0.0.1:9999" {
+		t.Errorf("pipeTo = %q, want %q", pipeTo, "127.0.0.1:9999")
+	}
+}
+
+func TestAuthenticate_ProbeResistanceHostKnockMatch(t *testing.T) {
+	h := newTestHandler(handler.AutherOption(&testAuther{ok: false}))
+	h.md.probeResistance = &probeResistance{Type: "host", Value: "127.0.0.1:9999", Knock: "example.com"}
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	w := httptest.NewRecorder()
+	resp := &http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}
+
+	_, ok, pipeTo := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+	if ok {
+		t.Error("expected !ok")
+	}
+	if pipeTo != "" {
+		t.Errorf("pipeTo = %q, want empty (knock matched, probe resistance bypassed)", pipeTo)
+	}
+	if resp.StatusCode != http.StatusProxyAuthRequired {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusProxyAuthRequired)
 	}
 }
 
@@ -172,7 +209,7 @@ func TestAuthenticate_CustomRealm(t *testing.T) {
 	w := httptest.NewRecorder()
 	resp := &http.Response{Header: w.Header(), Body: io.NopCloser(strings.NewReader(""))}
 
-	_, ok := h.authenticate(context.Background(), w, req, resp, &testLogger{})
+	_, ok, _ := h.authenticate(context.Background(), w, req, resp, &testLogger{})
 	if ok {
 		t.Error("expected !ok")
 	}

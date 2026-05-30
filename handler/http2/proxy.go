@@ -81,14 +81,10 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 	log.Debugf("%s >> %s", req.RemoteAddr, host)
 
-	for k := range h.md.header {
-		w.Header().Set(k, h.md.header.Get(k))
-	}
-
 	resp := &http.Response{
 		ProtoMajor: 2,
 		ProtoMinor: 0,
-		Header:     w.Header(),
+		Header:     http.Header{},
 		Body:       io.NopCloser(bytes.NewReader([]byte{})),
 	}
 
@@ -108,8 +104,20 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 		ro.HTTP.Response.Header = resp.Header
 	}()
 
-	clientID, ok := h.authenticate(ctx, w, req, resp, log)
+	clientID, ok, pipeTo := h.authenticate(ctx, w, req, resp, log)
 	if !ok {
+		if pipeTo != "" {
+			cc, err := net.Dial("tcp", pipeTo)
+			if err != nil {
+				log.Error(err)
+				resp.StatusCode = http.StatusServiceUnavailable
+				h.writeResponse(w, resp)
+				return ErrAuthFailed
+			}
+			defer cc.Close()
+			h.forwardRequest(w, req, cc)
+			return ErrAuthFailed
+		}
 		return ErrAuthFailed
 	}
 
@@ -130,6 +138,10 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	req.Header.Del("Proxy-Connection")
 	req.Header.Del("Gost-Target")
 	req.Header.Del("X-Gost-Target")
+
+	for k := range h.md.header {
+		w.Header().Set(k, h.md.header.Get(k))
+	}
 
 	switch h.md.hash {
 	case "host":
@@ -152,9 +164,34 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	ro.DstAddr = cc.RemoteAddr().String()
 
 	if req.Method != http.MethodConnect {
+		rw := traffic_wrapper.WrapReadWriter(
+			h.limiter,
+			cc,
+			clientID,
+			limiter.ScopeOption(limiter.ScopeClient),
+			limiter.ServiceOption(h.options.Service),
+			limiter.NetworkOption("tcp"),
+			limiter.AddrOption(host),
+			limiter.ClientOption(clientID),
+			limiter.SrcOption(req.RemoteAddr),
+		)
+		if h.options.Observer != nil {
+			pstats := h.stats.Stats(clientID)
+			pstats.Add(stats.KindTotalConns, 1)
+			pstats.Add(stats.KindCurrentConns, 1)
+			defer pstats.Add(stats.KindCurrentConns, -1)
+			rw = stats_wrapper.WrapReadWriter(rw, pstats)
+		}
+
 		start := time.Now()
 		log.Infof("%s <-> %s", req.RemoteAddr, host)
-		err = h.forwardRequest(w, req, cc)
+		err = h.forwardRequest(w, req, rw)
+		if err != nil {
+			resp.StatusCode = http.StatusServiceUnavailable
+			if werr := h.writeResponse(w, resp); werr != nil {
+				log.Error("write error response: ", werr)
+			}
+		}
 		log.WithFields(map[string]any{
 			"duration": time.Since(start),
 		}).Infof("%s >-< %s", req.RemoteAddr, host)
@@ -207,7 +244,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	start := time.Now()
 	log.Infof("%s <-> %s", req.RemoteAddr, host)
 	// xnet.Transport(rw, cc)
-	xnet.Pipe(ctx, xio.NewReadWriteCloser(rw, rw, req.Body), cc)
+	xnet.Pipe(ctx, xio.NewReadWriteCloser(rw, rw, req.Body), cc, xnet.WithReadTimeout(h.md.idleTimeout))
 	log.WithFields(map[string]any{
 		"duration": time.Since(start),
 	}).Infof("%s >-< %s", req.RemoteAddr, host)
