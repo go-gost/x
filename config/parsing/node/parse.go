@@ -231,6 +231,24 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 				})
 			}
 		}
+		for _, v := range cfg.HTTP.RewriteResponseBody {
+			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
+				settings.RewriteResponseBody = append(settings.RewriteResponseBody, chain.HTTPBodyRewriteSettings{
+					Type:        v.Type,
+					Pattern:     pattern,
+					Replacement: []byte(v.Replacement),
+				})
+			}
+		}
+		for _, v := range cfg.HTTP.RewriteRequestBody {
+			if pattern, _ := regexp.Compile(v.Match); pattern != nil {
+				settings.RewriteRequestBody = append(settings.RewriteRequestBody, chain.HTTPBodyRewriteSettings{
+					Type:        v.Type,
+					Pattern:     pattern,
+					Replacement: []byte(v.Replacement),
+				})
+			}
+		}
 		opts = append(opts, chain.HTTPNodeOption(settings))
 	}
 

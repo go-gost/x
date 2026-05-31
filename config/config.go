@@ -417,8 +417,13 @@ type HTTPNodeConfig struct {
 	Rewrite []HTTPURLRewriteConfig `yaml:",omitempty" json:"rewrite,omitempty"`
 	// rewrite URL
 	RewriteURL []HTTPURLRewriteConfig `yaml:"rewriteURL,omitempty" json:"rewriteURL,omitempty"`
-	// rewrite response body
+	// Deprecated: use rewriteResponseBody instead
 	RewriteBody []HTTPBodyRewriteConfig `yaml:"rewriteBody,omitempty" json:"rewriteBody,omitempty"`
+	// rewrite request body
+	RewriteRequestBody []HTTPBodyRewriteConfig `yaml:"rewriteRequestBody,omitempty" json:"rewriteRequestBody,omitempty"`
+	// rewrite response body
+	RewriteResponseBody []HTTPBodyRewriteConfig `yaml:"rewriteResponseBody,omitempty" json:"rewriteResponseBody,omitempty"`
+
 	// HTTP basic auth
 	Auth *AuthConfig `yaml:",omitempty" json:"auth,omitempty"`
 }

@@ -47,6 +47,143 @@ func (m *mockBypass) IsWhitelist() bool { return m.whitelist }
 // Pure Function Tests
 // =============================================================================
 
+func TestRewriteReqBody(t *testing.T) {
+	hello := []byte("hello world")
+
+	tests := []struct {
+		name     string
+		req      *http.Request
+		rewrites []chain.HTTPBodyRewriteSettings
+		wantBody string
+		wantCL   int64
+	}{
+		{
+			name: "nil request",
+		},
+		{
+			name: "no rewrites",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+			},
+			wantBody: "hello world",
+			wantCL:   11,
+		},
+		{
+			name: "nil body skipped",
+			req: &http.Request{
+				Body:          nil,
+				ContentLength: 11,
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "",
+			wantCL:   11,
+		},
+		{
+			name: "zero content length skipped",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: 0,
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "hello world",
+			wantCL:   0,
+		},
+		{
+			name: "content-encoding skips rewrite",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+				Header:        http.Header{"Content-Encoding": {"gzip"}},
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "hello world",
+			wantCL:   11,
+		},
+		{
+			name: "content type does not match default text/html",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+				Header:        http.Header{"Content-Type": {"text/plain"}},
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "hello world",
+			wantCL:   11,
+		},
+		{
+			name: "content type match replacement",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+				Header:        http.Header{"Content-Type": {"text/html"}},
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Type: "text/html", Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "hi world",
+			wantCL:   8,
+		},
+		{
+			name: "wildcard type matches everything",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+				Header:        http.Header{"Content-Type": {"application/json"}},
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Type: "*", Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+			},
+			wantBody: "hi world",
+			wantCL:   8,
+		},
+		{
+			name: "multiple rewrites applied in order",
+			req: &http.Request{
+				Body:          io.NopCloser(bytes.NewReader(hello)),
+				ContentLength: int64(len(hello)),
+				Header:        http.Header{"Content-Type": {"text/html"}},
+			},
+			rewrites: []chain.HTTPBodyRewriteSettings{
+				{Type: "text/html", Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+				{Type: "text/html", Pattern: regexp.MustCompile("world"), Replacement: []byte("there")},
+			},
+			wantBody: "hi there",
+			wantCL:   8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.req != nil {
+				_ = rewriteReqBody(tt.req, tt.rewrites...)
+				if tt.req.Body != nil {
+					body, _ := io.ReadAll(tt.req.Body)
+					tt.req.Body.Close()
+					if string(body) != tt.wantBody {
+						t.Errorf("body = %q, want %q", string(body), tt.wantBody)
+					}
+				} else if tt.wantBody != "" {
+					t.Errorf("body = nil, want %q", tt.wantBody)
+				}
+				if tt.req.ContentLength != tt.wantCL {
+					t.Errorf("ContentLength = %d, want %d", tt.req.ContentLength, tt.wantCL)
+				}
+			} else {
+				_ = rewriteReqBody(nil) // should not panic
+			}
+		})
+	}
+}
+
 func TestClampBodySize(t *testing.T) {
 	tests := []struct {
 		name string

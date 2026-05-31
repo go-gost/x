@@ -90,3 +90,38 @@ func drainBody(b io.ReadCloser) (body []byte, err error) {
 	return buf.Bytes(), nil
 }
 
+func rewriteReqBody(req *http.Request, rewrites ...chain.HTTPBodyRewriteSettings) error {
+	if req == nil || len(rewrites) == 0 || req.Body == nil || req.ContentLength <= 0 {
+		return nil
+	}
+
+	if encoding := req.Header.Get("Content-Encoding"); encoding != "" {
+		return nil
+	}
+
+	body, err := drainBody(req.Body)
+	if err != nil || body == nil {
+		return err
+	}
+
+	contentType, _, _ := strings.Cut(req.Header.Get("Content-Type"), ";")
+	for _, rewrite := range rewrites {
+		rewriteType := rewrite.Type
+		if rewriteType == "" {
+			rewriteType = "text/html"
+		}
+		if rewriteType != "*" && !strings.Contains(rewriteType, contentType) {
+			continue
+		}
+
+		if rewrite.Pattern != nil {
+			body = rewrite.Pattern.ReplaceAll(body, rewrite.Replacement)
+		}
+	}
+
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	req.ContentLength = int64(len(body))
+
+	return nil
+}
+

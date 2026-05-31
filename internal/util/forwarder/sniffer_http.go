@@ -290,6 +290,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	var responseHeader map[string]string
 	var respBodyRewrites []chain.HTTPBodyRewriteSettings
+	var reqBodyRewrites []chain.HTTPBodyRewriteSettings
 	if httpSettings := node.Options().HTTP; httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
 			username, password, _ := req.BasicAuth()
@@ -325,6 +326,14 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 		responseHeader = httpSettings.ResponseHeader
 		respBodyRewrites = httpSettings.RewriteResponseBody
+		reqBodyRewrites = httpSettings.RewriteRequestBody
+	}
+
+	// Rewrite request body before wrapping for recording,
+	// so the recorder sees the rewritten content.
+	if err = rewriteReqBody(req, reqBodyRewrites...); err != nil {
+		log.Errorf("rewrite request body: %v", err)
+		return
 	}
 
 	if bodySize := clampBodySize(h.RecorderOptions); bodySize > 0 && req.Body != nil {
