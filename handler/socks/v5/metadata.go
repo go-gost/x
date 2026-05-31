@@ -15,6 +15,12 @@ import (
 
 type metadata struct {
 	publicAddr        string
+	// readTimeout is the deadline for reading the initial SOCKS5
+	// handshake (auth + connect/associate/udp request) from the client
+	// connection. The deadline is cleared after the handshake, so it
+	// does not affect subsequent data transfer. Also passed to
+	// SnifferBuilder for the upstream response header read timeout.
+	// 0 or negative defaults to 15s.
 	readTimeout       time.Duration
 	noTLS             bool
 	enableBind        bool

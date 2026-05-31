@@ -63,6 +63,9 @@ type entrypoint struct {
 	sniffingWebsocket   bool
 	websocketSampleRate float64
 
+	// readTimeout is applied as SetReadDeadline on the upstream connection
+	// before sniffing HTTP/TLS reads. It mirrors entryPointReadTimeout
+	// from the handler metadata.
 	readTimeout time.Duration
 }
 

@@ -23,8 +23,8 @@ const (
 // Fields are populated by parseMetadata and read throughout the handler's
 // request-processing methods.
 type metadata struct {
-	readTimeout time.Duration // read timeout for upstream responses; default 15s, negative disables
-	idleTimeout time.Duration // idle timeout for pipe forwarding; 0 means disabled
+	readTimeout time.Duration // deadline for upstream response headers (http.Transport.ResponseHeaderTimeout); 0=15s default, negative=disabled
+	idleTimeout time.Duration // idle read deadline per Pipe direction during CONNECT/forwarding; 0 or negative = disabled
 	keepalive   bool          // enable HTTP keep-alive on the upstream transport
 	compression bool          // enable HTTP compression on the upstream transport
 

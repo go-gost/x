@@ -13,6 +13,12 @@ import (
 )
 
 type metadata struct {
+	// readTimeout is the deadline for reading data from the upstream
+	// (the target Unix socket or pipe). It is set on the upstream conn
+	// via SetReadDeadline before each sniffing HTTP/TLS read. Also
+	// passed to SnifferBuilder for the upstream response header read
+	// timeout.
+	// 0 or negative defaults to 15s.
 	readTimeout time.Duration
 
 	sniffing        bool

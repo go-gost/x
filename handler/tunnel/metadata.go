@@ -21,6 +21,10 @@ const (
 )
 
 type metadata struct {
+	// readTimeout is the deadline for reading the initial relay protocol
+	// handshake from the client connection. The deadline is cleared
+	// after the handshake, so it does not affect subsequent data
+	// transfer. 0 or negative means no timeout is applied.
 	readTimeout time.Duration
 
 	entrypoints []entrypointConfig
@@ -30,7 +34,7 @@ type metadata struct {
 	entryPointProxyProtocol     int
 	entryPointKeepalive         bool
 	entryPointCompression       bool
-	entryPointReadTimeout       time.Duration
+	entryPointReadTimeout       time.Duration // deadline for reading upstream HTTP response headers in the entrypoint's http.Transport.ResponseHeaderTimeout. Also passed as readTimeout to entrypoint dialer for SetReadDeadline on upstream conn. 0 or negative defaults to 15s.
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
 

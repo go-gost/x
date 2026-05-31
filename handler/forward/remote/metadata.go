@@ -13,7 +13,17 @@ import (
 )
 
 type metadata struct {
+	// readTimeout is the deadline for the initial protocol sniffing phase
+	// (used by SnifferBuilder.ReadTimeout). After sniffing completes and
+	// raw forwarding begins, this timeout no longer applies.
+	// Default: 15s.
 	readTimeout   time.Duration
+	// idleTimeout is the idle read timeout applied to each direction of
+	// the bidirectional pipe (xnet.Pipe). A value of 0 or negative disables
+	// the timeout entirely, relying on TCP keepalives and context
+	// cancellation to detect dead connections.
+	// Default: 0 (disabled).
+	idleTimeout   time.Duration
 	httpKeepalive bool
 	proxyProtocol int
 
@@ -32,6 +42,11 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {
 		h.md.readTimeout = 15 * time.Second
+	}
+
+	h.md.idleTimeout = mdutil.GetDuration(md, "idleTimeout")
+	if h.md.idleTimeout < 0 {
+		h.md.idleTimeout = 0
 	}
 
 	h.md.httpKeepalive = mdutil.GetBool(md, "http.keepalive")

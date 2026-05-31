@@ -14,6 +14,11 @@ const (
 
 type metadata struct {
 	key           string
+	// readTimeout is the deadline for reading a single UDP datagram from
+	// the client. Since UDP is connectionless, this timeout applies to
+	// each individual datagram read. Default: 1 minute (longer than the
+	// typical 15s used by TCP handlers to accommodate the stateless
+	// nature of UDP).
 	readTimeout   time.Duration
 	udpBufferSize int
 

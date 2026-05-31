@@ -122,6 +122,13 @@ type Sniffer struct {
 	CertPool           tls_util.CertPool
 	MitmBypass         bypass.Bypass
 
+	// ReadTimeout is the deadline for reading the upstream response
+	// headers during HTTP sniffing (http.ReadResponse) and the TLS
+	// ServerHello during TLS sniffing. This timeout is applied once
+	// per request/response pair in the HTTP keep-alive loop and cleared
+	// after each response is received. It does NOT affect the client
+	// connection or the response body transfer.
+	// Default: DefaultReadTimeout (30s) if not set.
 	ReadTimeout time.Duration
 }
 

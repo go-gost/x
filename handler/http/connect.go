@@ -230,6 +230,9 @@ type SnifferBuilder struct {
 	ALPN                string
 	CertPool            tls_util.CertPool
 	MitmBypass          bypass.Bypass
+	// ReadTimeout is the timeout for reading upstream HTTP response headers
+	// and TLS ServerHello during sniffing. Passed through to sniffing.Sniffer.
+	// See sniffing.Sniffer.ReadTimeout for details.
 	ReadTimeout         time.Duration
 }
 

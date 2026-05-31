@@ -18,6 +18,11 @@ const (
 )
 
 type metadata struct {
+	// readTimeout is the deadline for reading the initial relay protocol
+	// handshake from the client connection. The deadline is cleared
+	// after the handshake, so it does not affect subsequent data
+	// transfer.
+	// 0 or negative means no timeout is applied.
 	readTimeout time.Duration
 	bufferSize  int
 

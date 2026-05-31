@@ -13,6 +13,12 @@ import (
 )
 
 type metadata struct {
+	// readTimeout is the deadline for reading the initial SOCKS4/4A
+	// handshake (connect/bind request) from the client connection. The
+	// deadline is cleared after the handshake, so it does not affect
+	// subsequent data transfer. Also passed to SnifferBuilder for the
+	// upstream response header read timeout.
+	// 0 or negative defaults to 15s.
 	readTimeout            time.Duration
 	hash                   string
 

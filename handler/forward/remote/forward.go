@@ -78,7 +78,7 @@ func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn,
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	if err := xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.readTimeout)); err != nil {
+	if err := xnet.Pipe(ctx, conn, cc, xnet.WithReadTimeout(h.md.idleTimeout)); err != nil {
 		log.Debugf("pipe: %v", err)
 	}
 	log.WithFields(map[string]any{

@@ -20,7 +20,7 @@ type metadata struct {
 	authBasicRealm       string
 	observerPeriod       time.Duration
 	observerResetTraffic bool
-	idleTimeout          time.Duration
+	idleTimeout time.Duration // idle read deadline per Pipe direction during forwarding; read from "readTimeout" or "read.timeout" metadata key. 0 = disabled.
 
 	limiterRefreshInterval time.Duration
 	limiterCleanupInterval time.Duration

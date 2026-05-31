@@ -13,6 +13,11 @@ import (
 )
 
 type metadata struct {
+	// readTimeout is passed to SnifferBuilder as the timeout for reading
+	// upstream response headers during HTTP/TLS sniffing. It is NOT used
+	// as a deadline on the initial client connection (unlike socks/ss
+	// handlers), because redirect/tcp has no protocol handshake.
+	// 0 or negative defaults to 15s.
 	readTimeout time.Duration
 	tproxy      bool
 
