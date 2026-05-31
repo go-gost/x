@@ -115,6 +115,9 @@ type TLSConfig struct {
 	Validity     time.Duration `yaml:",omitempty" json:"validity,omitempty"`
 	CommonName   string        `yaml:"commonName,omitempty" json:"commonName,omitempty"`
 	Organization string        `yaml:",omitempty" json:"organization,omitempty"`
+
+	RejectUnknownSNI bool     `yaml:"rejectUnknownSNI,omitempty" json:"rejectUnknownSNI,omitempty"`
+	ServerNames      []string `yaml:"serverNames,omitempty" json:"serverNames,omitempty"`
 }
 
 type TLSOptions struct {

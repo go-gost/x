@@ -84,6 +84,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if tlsConfig == nil {
 		tlsConfig = parsing.DefaultTLSConfig().Clone()
 		tls_util.SetTLSOptions(tlsConfig, tlsCfg.Options)
+		tls_util.RejectUnknownSNIConfig(tlsConfig, tlsCfg.RejectUnknownSNI, tlsCfg.ServerNames)
 	}
 
 	authers := auth_parser.List(cfg.Listener.Auther, cfg.Listener.Authers...)
@@ -252,6 +253,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if tlsConfig == nil {
 		tlsConfig = parsing.DefaultTLSConfig().Clone()
 		tls_util.SetTLSOptions(tlsConfig, tlsCfg.Options)
+		tls_util.RejectUnknownSNIConfig(tlsConfig, tlsCfg.RejectUnknownSNI, tlsCfg.ServerNames)
 	}
 
 	authers = auth_parser.List(cfg.Handler.Auther, cfg.Handler.Authers...)

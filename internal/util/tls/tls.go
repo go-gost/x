@@ -165,6 +165,8 @@ func LoadServerConfig(config *config.TLSConfig) (*tls.Config, error) {
 
 	SetTLSOptions(cfg, config.Options)
 
+	RejectUnknownSNIConfig(cfg, config.RejectUnknownSNI, config.ServerNames)
+
 	return cfg, nil
 }
 
@@ -452,6 +454,34 @@ func GenerateCertificate(serverName string, validity time.Duration, caCert *x509
 	}
 
 	return x509.ParseCertificate(raw)
+}
+
+// RejectUnknownSNIConfig sets a GetConfigForClient callback on cfg that rejects
+// TLS handshakes when the SNI is missing or not in the allowed list.
+// If allowList is empty, only missing/empty SNI is rejected (all named SNIs
+// are allowed). If allowList is populated, any SNI not in the list is rejected.
+func RejectUnknownSNIConfig(cfg *tls.Config, rejectUnknown bool, allowList []string) {
+	if !rejectUnknown {
+		return
+	}
+	cfg.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		if hello.ServerName == "" {
+			return nil, errors.New("SNI is required but not provided")
+		}
+		if len(allowList) > 0 {
+			found := false
+			for _, name := range allowList {
+				if strings.EqualFold(hello.ServerName, name) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("SNI %q is not allowed", hello.ServerName)
+			}
+		}
+		return cfg, nil
+	}
 }
 
 // https://pkg.go.dev/crypto#PrivateKey
