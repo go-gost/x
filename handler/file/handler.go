@@ -4,9 +4,14 @@ package file
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,7 +57,18 @@ func (h *fileHandler) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	h.handler = http.FileServer(http.Dir(h.md.dir))
+	fs := http.FileServer(http.Dir(h.md.dir))
+	h.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			if !h.md.put {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handlePUT(w, r)
+			return
+		}
+		fs.ServeHTTP(w, r)
+	})
 	h.server = &http.Server{
 		Handler: http.HandlerFunc(h.handleFunc),
 	}
@@ -99,6 +115,51 @@ func (h *fileHandler) Close() error {
 		h.ln.Close()
 	}
 	return h.server.Close()
+}
+
+func (h *fileHandler) handlePUT(w http.ResponseWriter, r *http.Request) {
+	// Reject path traversal attempts.
+	target := path.Clean(r.URL.Path)
+	if strings.Contains(target, "..") || !strings.HasPrefix(target, "/") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	dest := filepath.Join(h.md.dir, filepath.FromSlash(target))
+	// Verify the resolved path is within the base directory.
+	base, err := filepath.Abs(h.md.dir)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	absDest, err := filepath.Abs(dest)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !strings.HasPrefix(absDest, base) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(absDest), 0755); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	f, err := os.Create(absDest)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, r.Body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 func (h *fileHandler) handleFunc(w http.ResponseWriter, r *http.Request) {
