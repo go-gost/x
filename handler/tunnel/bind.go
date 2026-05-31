@@ -57,9 +57,12 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 			ID: connectorID,
 		},
 	)
-	resp.WriteTo(conn)
+	if _, err = resp.WriteTo(conn); err != nil {
+			log.Error(err)
+			return
+		}
 
-	// Upgrade connection to multiplex session.
+		// Upgrade connection to multiplex session.
 	session, err := mux.ClientSession(conn, h.md.muxCfg)
 	if err != nil {
 		return
