@@ -206,7 +206,15 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[i].Options().Priority > nodes[j].Options().Priority
 	})
 
-	if nodes[0].Options().Priority > 0 {
+	if nodes[0].Options().Priority > 0 &&
+		!anyBackupNode(nodes) {
+		// Priority short-circuit: highest-priority non-backup node wins.
+		// Conditions: (1) top priority > 0 means a matcher indicated routing
+		// specificity, so the top node is authoritative for this request;
+		// (2) no backup node is present, otherwise BackupFilter would be
+		// silently bypassed. When both hold the selector (FailFilter,
+		// BackupFilter, strategy) is skipped and the best node wins directly.
+		p.logger.Debugf("priority shortcut: node %s selected", nodes[0].Name)
 		return nodes[0]
 	}
 
@@ -412,4 +420,22 @@ func (p *chainHop) Close() error {
 		p.options.httpLoader.Close()
 	}
 	return nil
+}
+
+// anyBackupNode reports whether any node in the list has the backup metadata
+// flag set. Used to ensure that when backup nodes are in the candidate pool
+// the priority short-circuit is disabled, forcing selection through the
+// selector where BackupFilter can separate primary from failover nodes.
+// Without this gate, nodes with equal non-zero priority (auto-assigned from
+// matcher rule length) would skip BackupFilter entirely via the priority
+// short-circuit at Select, making backup metadata a no-op.
+func anyBackupNode(nodes []*chain.Node) bool {
+	for _, node := range nodes {
+		if md := node.Options().Metadata; md != nil && md.IsExists("backup") {
+			if md.Get("backup") == true {
+				return true
+			}
+		}
+	}
+	return false
 }
