@@ -311,6 +311,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		}
 		for k, v := range httpSettings.RequestHeader {
 			req.Header.Set(k, v)
+			ro.HTTP.Request.Header = req.Header.Clone()
 		}
 
 		for _, re := range httpSettings.RewriteURL {
@@ -372,7 +373,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	ro.HTTP.StatusCode = resp.StatusCode
-	ro.HTTP.Response.Header = resp.Header
+	ro.HTTP.Response.Header = resp.Header.Clone()
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
