@@ -15,7 +15,8 @@ const (
 type metadata struct {
 	hash           string
 	bufferSize     int
-	authBasicRealm string
+	authBasicRealm          string
+	idleTimeout             time.Duration
 
 	observerPeriod         time.Duration
 	observerResetTraffic   bool
@@ -42,6 +43,8 @@ func (h *masqueHandler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 
 	h.md.observerResetTraffic = mdutil.GetBool(md, "observer.resetTraffic")
+	h.md.idleTimeout = mdutil.GetDuration(md, "readTimeout", "read.timeout", "idleTimeout")
+
 	h.md.limiterRefreshInterval = mdutil.GetDuration(md, "limiter.refreshInterval")
 	h.md.limiterCleanupInterval = mdutil.GetDuration(md, "limiter.cleanupInterval")
 

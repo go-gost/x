@@ -44,9 +44,13 @@ func init() {
 }
 
 var (
+	// ErrBadRequest indicates the request was malformed or invalid.
 	ErrBadRequest         = errors.New("masque: bad request")
+	// ErrMethodNotAllowed indicates the request method is not CONNECT.
 	ErrMethodNotAllowed   = errors.New("masque: method not allowed")
+	// ErrCapsuleRequired indicates the Capsule-Protocol header is missing or invalid.
 	ErrCapsuleRequired    = errors.New("masque: capsule-protocol header required")
+	// ErrDatagramNotSupport indicates that the QUIC connection does not support HTTP/3 datagrams.
 	ErrDatagramNotSupport = errors.New("masque: datagrams not supported")
 )
 
@@ -59,6 +63,8 @@ type masqueHandler struct {
 	recorder recorder.RecorderObject
 }
 
+// NewHandler creates a MASQUE protocol handler that supports CONNECT-UDP
+// (RFC 9298) and CONNECT for TCP tunneling over HTTP/3.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -129,8 +135,7 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
-	pStats := xstats.Stats{}
-	conn = stats_wrapper.WrapConn(conn, &pStats)
+	pStats := &xstats.Stats{}
 
 	defer func() {
 		if err != nil {
@@ -167,7 +172,11 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	w, _ := ctxMd.Get("w").(http.ResponseWriter)
 	r, _ := ctxMd.Get("r").(*http.Request)
 
-	if w == nil || r == nil {
+	if w == nil {
+		return ErrBadRequest
+	}
+	if r == nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return ErrBadRequest
 	}
 
@@ -184,12 +193,12 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	case "connect-udp":
 		// Extended CONNECT for UDP (RFC 9298)
 		ro.Network = "udp"
-		return h.handleConnectUDP(ctx, w, r, conn.LocalAddr(), ro, log)
+		return h.handleConnectUDP(ctx, w, r, conn.LocalAddr(), ro, log, pStats)
 	case "HTTP/3.0", "":
 		// Standard CONNECT for TCP (RFC 9114)
 		// r.Proto is "HTTP/3.0" for standard HTTP/3 CONNECT (no :protocol header)
 		ro.Network = "tcp"
-		return h.handleConnectTCP(ctx, w, r, conn.LocalAddr(), ro, log)
+		return h.handleConnectTCP(ctx, w, r, conn.LocalAddr(), ro, log, pStats)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		log.Errorf("masque: unsupported protocol: %s", r.Proto)
@@ -204,14 +213,7 @@ func (h *masqueHandler) Close() error {
 	return nil
 }
 
-func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
-	// Validate capsule-protocol header (required for CONNECT-UDP per RFC 9298)
-	if r.Header.Get("Capsule-Protocol") != "?1" {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Error(ErrCapsuleRequired)
-		return ErrCapsuleRequired
-	}
-
+func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger, pStats *xstats.Stats) error {
 	// Extract user for logging
 	if u, _, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization")); u != "" {
 		log = log.WithFields(map[string]any{"user": u})
@@ -253,6 +255,20 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		return xbypass.ErrBypass
 	}
 
+	// Validate capsule-protocol header (required for CONNECT-UDP per RFC 9298)
+	if r.Header.Get("Capsule-Protocol") != "?1" {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Error(ErrCapsuleRequired)
+		return ErrCapsuleRequired
+	}
+
+	// Resolve target address
+	raddr, err := net.ResolveUDPAddr("udp", targetAddr)
+	if err != nil {
+		log.Error("masque: failed to resolve target address: ", err)
+		return err
+	}
+
 	// Get HTTP/3 stream for datagrams
 	streamer, ok := w.(http3.HTTPStreamer)
 	if !ok {
@@ -260,6 +276,9 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		log.Error(ErrDatagramNotSupport)
 		return ErrDatagramNotSupport
 	}
+
+	// Get the underlying HTTP/3 stream
+	stream := streamer.HTTPStream()
 
 	// Send success response with capsule-protocol header
 	w.Header().Set("Capsule-Protocol", "?1")
@@ -270,22 +289,13 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		flusher.Flush()
 	}
 
-	// Get the underlying HTTP/3 stream
-	stream := streamer.HTTPStream()
-
-	// Resolve target address
-	raddr, err := net.ResolveUDPAddr("udp", targetAddr)
-	if err != nil {
-		log.Error("masque: failed to resolve target address: ", err)
-		return err
-	}
-
 	// Create datagram connection wrapping the HTTP/3 stream (client side)
 	datagramConn := masque_util.NewDatagramConn(stream, laddr, raddr)
 	defer datagramConn.Close()
 
-	// Wrap with traffic limiter
+	// Wrap with recorder stats and traffic limiter
 	var clientPC net.PacketConn = datagramConn
+	clientPC = stats_wrapper.WrapPacketConn(clientPC, pStats)
 	clientPC = traffic_wrapper.WrapPacketConn(
 		clientPC,
 		h.limiter,
@@ -369,7 +379,7 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 	return relay.Run(ctx)
 }
 
-func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger, pStats *xstats.Stats) error {
 	// Extract user for logging
 	if u, _, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization")); u != "" {
 		log = log.WithFields(map[string]any{"user": u})
@@ -415,12 +425,11 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 		return xbypass.ErrBypass
 	}
 
-	// Get HTTP/3 stream
-	streamer, ok := w.(http3.HTTPStreamer)
-	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Error("masque: failed to get HTTP/3 streamer")
-		return errors.New("masque: HTTP/3 streamer not available")
+	// Resolve target address for StreamConn
+	raddr, err := net.ResolveTCPAddr("tcp", targetAddr)
+	if err != nil {
+		log.Error("masque: failed to resolve target address: ", err)
+		return err
 	}
 
 	// Dial target connection
@@ -430,7 +439,6 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 	}
 
 	var cc net.Conn
-	var err error
 	var buf bytes.Buffer
 
 	if h.options.Router != nil {
@@ -450,6 +458,17 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
+	// Get HTTP/3 stream
+	streamer, ok := w.(http3.HTTPStreamer)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Error("masque: failed to get HTTP/3 streamer")
+		return errors.New("masque: HTTP/3 streamer not available")
+	}
+
+	// Get the underlying HTTP/3 stream
+	stream := streamer.HTTPStream()
+
 	// Send 200 OK response
 	w.WriteHeader(http.StatusOK)
 
@@ -458,22 +477,13 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 		flusher.Flush()
 	}
 
-	// Get the underlying HTTP/3 stream
-	stream := streamer.HTTPStream()
-
-	// Resolve target address for StreamConn
-	raddr, err := net.ResolveTCPAddr("tcp", targetAddr)
-	if err != nil {
-		log.Error("masque: failed to resolve target address: ", err)
-		return err
-	}
-
 	// Create stream connection wrapping the HTTP/3 stream
 	streamConn := masque_util.NewStreamConn(stream, laddr, raddr)
 	defer streamConn.Close()
 
-	// Wrap with traffic limiter
+	// Wrap with recorder stats and traffic limiter
 	var clientConn net.Conn = streamConn
+	clientConn = stats_wrapper.WrapConn(clientConn, pStats)
 	clientConn = traffic_wrapper.WrapConn(
 		clientConn,
 		h.limiter,
@@ -501,7 +511,7 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 	log.Infof("%s <-> %s", ro.RemoteAddr, targetAddr)
 
 	// Bidirectional relay
-	xnet.Pipe(ctx, clientConn, cc)
+	xnet.Pipe(ctx, clientConn, cc, xnet.WithReadTimeout(h.md.idleTimeout))
 
 	log.WithFields(map[string]any{
 		"duration": time.Since(ro.Time),
@@ -575,7 +585,7 @@ func (h *masqueHandler) observeStats(ctx context.Context) {
 
 			evs := h.stats.Events()
 			if err := h.options.Observer.Observe(ctx, evs); err != nil {
-				events = evs
+				events = append(events, evs...)
 			}
 
 		case <-ctx.Done():
