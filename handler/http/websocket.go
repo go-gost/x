@@ -51,6 +51,7 @@ func (h *httpHandler) copyWebsocketDirection(ctx context.Context, r io.Reader, w
 	}
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
+	ro2.HTTP = nil
 	r2 := ro2
 
 	limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))

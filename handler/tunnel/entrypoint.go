@@ -278,6 +278,24 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	} else {
 		req.Header.Set(httpHeaderSID, ro.SID)
 	}
+
+	// Loop detection: if Gost-Forwarded-Node contains our own node ID,
+	// the request has already passed through this entrypoint and is looping.
+	for _, node := range strings.Split(req.Header.Get(httpHeaderForwardedNode), ",") {
+		if strings.TrimSpace(node) == ep.node {
+			log.Warn("forwarding loop detected, rejecting request")
+			res := &http.Response{
+				ProtoMajor: req.ProtoMajor,
+				ProtoMinor: req.ProtoMinor,
+				Header:     http.Header{},
+				StatusCode: http.StatusServiceUnavailable,
+			}
+			ro.HTTP.StatusCode = res.StatusCode
+			res.Write(rw)
+			return nil
+		}
+	}
+
 	req.Header.Set(httpHeaderForwardedNode, ro.Node)
 
 	host := req.Host

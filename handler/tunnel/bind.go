@@ -41,9 +41,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	if host == "" || h.md.ingress == nil {
 		host = endpoint
 	} else if host != endpoint {
-		if rule := h.md.ingress.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil && rule.Endpoint != tunnelID.String() {
-			host = endpoint
-		}
+		host = endpoint
 	}
 	addr := net.JoinHostPort(host, port)
 

@@ -31,6 +31,7 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
+		ro2.HTTP = nil
 		ro := ro2
 
 		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
@@ -57,6 +58,7 @@ func (h *Sniffer) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWrit
 	go func() {
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
+		ro2.HTTP = nil
 		ro := ro2
 
 		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
