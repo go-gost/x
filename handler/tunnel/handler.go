@@ -3,31 +3,24 @@ package tunnel
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
-	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
-	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/limiter/traffic"
-	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/relay"
 	xctx "github.com/go-gost/x/ctx"
-	xnet "github.com/go-gost/x/internal/net"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
-	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
-	xservice "github.com/go-gost/x/service"
 	"github.com/google/uuid"
 )
 
@@ -107,106 +100,6 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	return nil
 }
 
-func (h *tunnelHandler) initEntrypoints() (err error) {
-	if h.md.entryPoint != "" {
-		svc, err := h.createEntrypointService(h.md.entryPoint, h.md.ingress)
-		if err != nil {
-			return err
-		}
-		go svc.Serve()
-
-		h.entrypoints = append(h.entrypoints, svc)
-		h.log.Infof("entrypoint: %s", svc.Addr())
-	}
-
-	for _, ep := range h.md.entrypoints {
-		if ep.Addr == "" {
-			continue
-		}
-		svc, err := h.createEntrypointService(ep.Addr, ep.Ingress)
-		if err != nil {
-			return err
-		}
-		go svc.Serve()
-
-		h.entrypoints = append(h.entrypoints, svc)
-		h.log.Infof("entrypoint: %s %s", ep.Name, svc.Addr())
-	}
-
-	return
-}
-
-func (h *tunnelHandler) createEntrypointService(addr string, ingress ingress.Ingress) (service.Service, error) {
-	ep := &entrypoint{
-		node:    h.id,
-		service: h.options.Service,
-		pool:    h.pool,
-		ingress: ingress,
-		sd:      h.md.sd,
-		log: h.log.WithFields(map[string]any{
-			"kind": "entrypoint",
-		}),
-		sniffingWebsocket:   h.md.sniffingWebsocket,
-		websocketSampleRate: h.md.sniffingWebsocketSampleRate,
-		readTimeout:         h.md.entryPointReadTimeout,
-	}
-	ep.transport = &http.Transport{
-		DialContext:           ep.dial,
-		IdleConnTimeout:       30 * time.Second,
-		ResponseHeaderTimeout: h.md.entryPointReadTimeout,
-		DisableKeepAlives:     !h.md.entryPointKeepalive,
-		DisableCompression:    !h.md.entryPointCompression,
-	}
-
-	for _, ro := range h.options.Recorders {
-		if ro.Record == xrecorder.RecorderServiceHandler {
-			ep.recorder = ro
-			break
-		}
-	}
-
-	network := "tcp"
-	if xnet.IsIPv4(addr) {
-		network = "tcp4"
-	}
-
-	ln, err := net.Listen(network, addr)
-	if err != nil {
-		h.log.Error(err)
-		return nil, err
-	}
-
-	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
-	log := h.log.WithFields(map[string]any{
-		"service":  serviceName,
-		"listener": "tcp",
-		"handler":  "tunnel-ep",
-		"kind":     "service",
-	})
-	epListener := newTCPListener(ln,
-		listener.AddrOption(addr),
-		listener.ServiceOption(serviceName),
-		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
-		listener.LoggerOption(log.WithFields(map[string]any{
-			"kind": "listener",
-		})),
-	)
-	if err = epListener.Init(nil); err != nil {
-		return nil, err
-	}
-	epHandler := &entrypointHandler{
-		ep: ep,
-	}
-	if err = epHandler.Init(nil); err != nil {
-		return nil, err
-	}
-
-	return xservice.NewService(
-		serviceName, epListener, epHandler,
-		xservice.LoggerOption(log),
-	), nil
-}
-
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
 
@@ -255,7 +148,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	if req.Version != relay.Version1 {
 		resp.Status = relay.StatusBadRequest
-		resp.WriteTo(conn)
+		resp.WriteTo(conn) // write error ignored — conn is about to be closed
 		return ErrBadVersion
 	}
 
@@ -291,7 +184,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	if tunnelID.IsZero() {
 		resp.Status = relay.StatusBadRequest
-		resp.WriteTo(conn)
+		resp.WriteTo(conn) // write error ignored — conn is about to be closed
 		return ErrTunnelID
 	}
 
@@ -303,7 +196,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass, auth.WithService(h.options.Service))
 		if !ok {
 			resp.Status = relay.StatusUnauthorized
-			resp.WriteTo(conn)
+			resp.WriteTo(conn) // write error ignored — conn is about to be closed
 			return ErrUnauthorized
 		}
 		ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(clientID))
@@ -321,7 +214,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return h.handleBind(ctx, conn, network, dstAddr, tunnelID, log)
 	default:
 		resp.Status = relay.StatusBadRequest
-		resp.WriteTo(conn)
+		resp.WriteTo(conn) // write error ignored — conn is about to be closed
 		return ErrUnknownCmd
 	}
 }

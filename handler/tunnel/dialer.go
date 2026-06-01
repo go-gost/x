@@ -27,6 +27,7 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 	for i := 0; i < retry; i++ {
 		c := d.pool.Get(network, tid)
 		if c == nil {
+			err = nil // clear stale err so SD fallback is not masked
 			break
 		}
 

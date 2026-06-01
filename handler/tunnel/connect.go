@@ -111,9 +111,17 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		af.ParseFrom(dstAddr)
 		resp.Features = append(resp.Features, af) // dst address
 
-		resp.WriteTo(cc)
+		if _, err := resp.WriteTo(cc); err != nil {
+			log.Error(err)
+			cc.Close()
+			return err
+		}
 	} else {
-		req.WriteTo(cc)
+		if _, err := req.WriteTo(cc); err != nil {
+			log.Error(err)
+			cc.Close()
+			return err
+		}
 	}
 
 	t := time.Now()

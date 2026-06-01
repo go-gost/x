@@ -1,0 +1,26 @@
+package tunnel
+
+import (
+	"github.com/go-gost/relay"
+	"github.com/google/uuid"
+)
+
+// parseTunnelID parses a tunnel ID from a string.
+// If s is empty or contains an invalid UUID, the returned tunnel ID is zero
+// (callers must check IsZero). A leading '$' prefix marks the tunnel as private.
+func parseTunnelID(s string) (tid relay.TunnelID) {
+	if s == "" {
+		return
+	}
+	private := false
+	if s[0] == '$' {
+		private = true
+		s = s[1:]
+	}
+	u, _ := uuid.Parse(s) // zero ID on error — caller checks IsZero
+
+	if private {
+		return relay.NewPrivateTunnelID(u[:])
+	}
+	return relay.NewTunnelID(u[:])
+}
