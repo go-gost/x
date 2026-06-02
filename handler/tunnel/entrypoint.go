@@ -24,8 +24,23 @@ import (
 )
 
 // entrypoint is a public tunnel entry point that accepts external connections
-// and routes them through the tunnel network. It supports three protocols
-// determined by the first byte of the connection: relay (Version1), TLS, or HTTP.
+// and routes them through the tunnel network.
+//
+// Protocol dispatch is done by peeking at the first byte of the connection:
+//   - relay.Version1 (0x52 'R') → relay protocol  (handleConnect)
+//   - dissector.Handshake (0x16) → TLS passthrough (handleTLS)
+//   - otherwise                  → HTTP proxy      (handleHTTP)
+//
+// For HTTP/TLS paths, the dial flow is:
+//   ep.dial() → ingress lookup (host → tunnelID) → Dialer.Dial()
+//   → ConnectorPool.Get() → Connector.GetConn() → mux.OpenStream()
+//   → relay.Response{src, dst} written to mux stream (when local node)
+//
+// The relay protocol path handles its own tunnel ID extraction from the
+// relay request frame.
+//
+// When Dialer falls back to SD (no local connector), the mux layer is
+// bypassed and a raw TCP connection is established to the remote node.
 type entrypoint struct {
 	node      string
 	service   string

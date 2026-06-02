@@ -26,6 +26,21 @@ import (
 	"golang.org/x/net/http/httpguts"
 )
 
+// handleHTTP processes an HTTP request arriving at the entrypoint.
+//
+// Flow:
+//  1. Read HTTP request from the public connection.
+//  2. Record request metadata in ro.HTTP.
+//  3. httpRoundTrip: shallow-copy ro, check forwarding loop,
+//     build http.Request, call ep.transport.RoundTrip() which
+//     uses ep.dial() as DialContext — that resolves ingress rules
+//     to a tunnelID, calls Dialer.Dial(), and writes relay address
+//     features into the mux stream.
+//  4. Handle WebSocket upgrade via handleUpgradeResponse (sniffing).
+//  5. Continue in a loop for keep-alive: read next request, repeat.
+//
+// HTTP request body recording: if recorder options specify HTTPBody,
+// the request body is wrapped in a xhttp.Body for capture.
 func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)

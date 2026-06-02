@@ -9,6 +9,20 @@ import (
 	"github.com/go-gost/core/sd"
 )
 
+// Dialer resolves a tunnel connector and returns a stream to it.
+//
+// Dial strategy (two-phase):
+//  1. Local pool: try ConnectorPool.Get() up to retry times. Each attempt
+//     calls GetConn() (= mux.OpenStream) on the same connector — if the
+//     connector is dead, all retries fail until Tunnel.clean() removes it
+//     (up to TTL, default 15s).
+//  2. SD fallback: if pool returns nil AND sd is configured, query service
+//     discovery for remote nodes. Filter out self (d.node) and mismatched
+//     networks. Establish a raw TCP connection to the remote address,
+//     bypassing the mux layer entirely.
+//
+// The returned node and connector ID identify which node/hop the stream
+// is connected to — used by callers to decide the relay protocol framing.
 type Dialer struct {
 	node    string
 	pool    *ConnectorPool

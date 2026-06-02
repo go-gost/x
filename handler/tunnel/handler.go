@@ -1,3 +1,54 @@
+// Package tunnel implements a reverse proxy tunnel handler for NAT traversal.
+//
+// Architecture overview
+//
+// The tunnel handler is deployed on the public-facing (server) side. It acts as a
+// bridge between external clients and internal services behind NAT/firewall.
+//
+// There are two main roles:
+//
+//  1. Internal client (CmdBind) — connects to the tunnel handler and registers a
+//     multiplexed session (mux.Session via smux) as a Connector. Once bound, this
+//     client passively waits to receive streams from the public side.
+//
+//  2. Public entrypoints (CmdConnect + entrypoint) — accept incoming requests from
+//     the Internet and forward them through the tunnel to the internal client via
+//     mux streams (OpenStream).
+//
+// Data flow (normal direction: public → internal):
+//
+//	Public request → tunnelHandler.Handle() / entrypoint.Handle()
+//	  → Dialer.Dial()
+//	    → ConnectorPool.Get() → Tunnel.GetConnector() → Connector.GetConn()
+//	      → mux.Session.OpenStream()  ← creates stream to internal side
+//	  → Pipe(publicConn, muxStream)
+//
+// Internal client side:
+//
+//	mux.Session.AcceptStream()  ← receives the stream
+//	  → processes request, sends response back through the same stream
+//
+// Connector lifecycle (CmdBind):
+//
+//	Internal client sends CmdBind → handleBind() creates mux.ClientSession
+//	  → NewConnector (stores session, starts waitClose goroutine)
+//	  → ConnectorPool.Add() → Tunnel.AddConnector()
+//	  → ingress rules + SD service registered
+//
+// The waitClose goroutine (Connector.waitClose) discards unexpected inbound
+// streams on the Connector's mux session. This is a safety guard — normal
+// request streams arrive via OpenStream from the public side and are handled
+// by the internal client's Accept loop, NOT by waitClose.
+//
+// Entrypoint protocol dispatch (first-byte sniffing):
+//
+//	  relay.Version1 (0x52 'R') → handleConnect (relay protocol)
+//	  dissector.Handshake (0x16) → handleTLS (TLS passthrough)
+//	  otherwise                  → handleHTTP (HTTP forward proxy)
+//
+// SD fallback: when ConnectorPool.Get() returns nil (no local tunnel registered),
+// Dialer queries service discovery for a remote node address and establishes a
+// direct TCP connection, bypassing the mux session entirely.
 package tunnel
 
 import (
@@ -261,8 +312,12 @@ func (h *tunnelHandler) observeStats(ctx context.Context) {
 			if len(events) > 0 {
 				if err := h.options.Observer.Observe(ctx, events); err == nil {
 					events = nil
+					// Retry succeeded — also flush new events this tick.
+					// Fall through without break to reach the normal path.
+				} else {
+					// Retry still failing — skip new events, try again next tick.
+					break
 				}
-				break
 			}
 
 			evs := h.stats.Events()

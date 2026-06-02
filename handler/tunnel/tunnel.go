@@ -10,10 +10,30 @@ import (
 	"github.com/go-gost/x/selector"
 )
 
+// MaxWeight is the exclusive takeover weight (255). A connector at MaxWeight
+// triggers rw.Reset() in GetConnector, clearing all previously added connectors
+// so that only this one is selected. If that MaxWeight connector later dies
+// (IsClosed), GetConnector returns nil until Tunnel.clean() removes it.
 const (
 	MaxWeight uint8 = 0xff
 )
 
+// Tunnel groups Connectors that share the same tunnel ID.
+//
+// Connector selection (GetConnector):
+//   - Single connector: fast path, no weighted random.
+//   - Multiple connectors: weighted random selection by network type (tcp/udp).
+//   - MaxWeight (255): exclusive — triggers Reset() and only the MaxWeight
+//     connector is added. If the MaxWeight connector closes, selection returns
+//     nil until clean() removes it.
+//
+// Tunnel lifecycle:
+//   - NewTunnel starts a clean() goroutine that runs every TTL (default 15s).
+//     Each tick removes closed connectors and renews SD registrations.
+//     A tunnel with 0 connectors gets cleaned up.
+//   - CloseOnIdle closes the tunnel if it has 0 connectors (called by
+//     ConnectorPool.closeIdles on a 15-minute ticker).
+//   - Close() closes all connectors and signals shutdown.
 type Tunnel struct {
 	node       string
 	id         relay.TunnelID

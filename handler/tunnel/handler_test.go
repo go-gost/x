@@ -3,6 +3,7 @@ package tunnel
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -269,17 +270,57 @@ func TestHandler_observeStats(t *testing.T) {
 		h.observeStats(ctx)
 		// Should return without blocking
 	})
+
+	t.Run("retry after observer error flushes new events", func(t *testing.T) {
+		observeC := make(chan []observer.Event, 4)
+		callCount := 0
+		h := &tunnelHandler{
+			md: metadata{
+				observerPeriod:       50 * time.Millisecond,
+				observerResetTraffic: false,
+			},
+			stats: stats_util.NewHandlerStats("test", false),
+		}
+		h.options.Observer = &fakeObserver{
+			observeC: observeC,
+			errFunc: func() bool {
+				callCount++
+				// Fail on first call, succeed on subsequent calls
+				return callCount == 1
+			},
+		}
+
+		// Trigger stats events
+		s := h.stats.Stats("client1")
+		s.Add(stats.KindTotalConns, 1)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		go h.observeStats(ctx)
+
+		// First tick: Observe fails, events are stored as pending.
+		// Second tick: Observe succeeds on pending events, then also flushes new events.
+		<-observeC // first call (fails)
+		<-observeC // second call (pending retry succeeds)
+		<-observeC // third call (new events flushed in same tick)
+
+		cancel()
+	})
 }
 
 // fakeObserver implements the observer.Observer interface for testing.
 type fakeObserver struct {
 	observeC chan []observer.Event
 	err      error
+	errFunc  func() bool
 }
 
 func (o *fakeObserver) Observe(ctx context.Context, events []observer.Event, opts ...observer.Option) error {
 	if o.observeC != nil {
 		o.observeC <- events
+	}
+	if o.errFunc != nil && o.errFunc() {
+		return errors.New("simulated observer error")
 	}
 	return o.err
 }

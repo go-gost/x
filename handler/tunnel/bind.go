@@ -15,6 +15,23 @@ import (
 	"github.com/google/uuid"
 )
 
+// handleBind handles a CmdBind request from an internal client.
+//
+// Flow:
+//  1. Generate a random connector ID (copies weight from tunnelID).
+//  2. Compute an 8-hex-char endpoint from md5(tunnelID) for ingress routing.
+//  3. Send relay response with address + tunnel features back to client.
+//  4. Upgrade the TCP connection to a mux.ClientSession (smux).
+//  5. Create a Connector wrapping the mux session.
+//  6. Register:
+//     a. Add Connector to ConnectorPool (under tunnelID).
+//     b. If ingress is configured, set rules: endpoint → tunnelID, and
+//        the bind address host → tunnelID.
+//     c. If SD is configured, register the service (tunnelID, node, network).
+//
+// The mux session ownership is transferred to the Connector — conn is NOT
+// closed after this function returns (no defer conn.Close()). The Connector's
+// waitClose goroutine handles session lifecycle.
 func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, address string, tunnelID relay.TunnelID, log logger.Logger) (err error) {
 	resp := relay.Response{
 		Version: relay.Version1,

@@ -18,6 +18,16 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+// handleTLS processes a TLS connection arriving at the entrypoint.
+//
+// Flow:
+//  1. Parse ClientHello (tee-reads first bytes for recording).
+//  2. Extract SNI hostname → ingress lookup → tunnelID.
+//  3. ep.dial() → Dialer.Dial() → mux stream (or SD TCP connection).
+//  4. Write buffered ClientHello bytes to the mux stream.
+//  5. Parse ServerHello from the mux stream (for TLS recording).
+//  6. Write ServerHello bytes back to the public connection.
+//  7. Pipe(publicConn, muxStream) — bidirectional TLS passthrough.
 func (ep *entrypoint) handleTLS(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 	clientHello, err := dissector.ParseClientHello(io.TeeReader(conn, buf))

@@ -25,6 +25,24 @@ type ConnectorOptions struct {
 	limiter traffic.TrafficLimiter
 }
 
+// Connector represents one mux-session tunnel endpoint registered by an
+// internal client via CmdBind.
+//
+// Each Connector wraps a smux.Session created by mux.ClientSession. From the
+// server side, Connector.GetConn() calls OpenStream() to create a stream to
+// the internal client.
+//
+// Connector.waitClose is a background goroutine that accepts and discards
+// unexpected inbound streams. This is a safety guard: the Connector's mux
+// session is supposed to be used unidirectionally (server→client), and any
+// stream arriving from the client side is anomalous and is safely discarded.
+// Normal request streams are created by the server side via OpenStream and
+// consumed by the internal client's Accept loop — they never pass through
+// waitClose.
+//
+// When the mux session is closed (client disconnect or network error),
+// waitClose detects the Accept error, closes the Connector, and deregisters
+// from SD if configured.
 type Connector struct {
 	id   relay.ConnectorID
 	tid  relay.TunnelID
@@ -127,6 +145,18 @@ func (c *Connector) IsClosed() bool {
 	return c.s.IsClosed()
 }
 
+// ConnectorPool manages all Tunnel objects for this tunnel handler node.
+//
+// Hierarchy:
+//
+//	ConnectorPool (per node) → map[tunnelID]*Tunnel → []*Connector
+//	                                                    └── *mux.Session
+//
+// Each Tunnel holds Connectors sharing the same tunnel ID. Tunnels that have
+// no active connectors for 15 minutes are removed by closeIdles.
+//
+// Methods: Add (insert connector, creating Tunnel on demand), Get (select best
+// connector by network type), Close (stop idle ticker, remove all tunnels).
 type ConnectorPool struct {
 	node    string
 	tunnels map[string]*Tunnel

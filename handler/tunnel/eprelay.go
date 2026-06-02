@@ -12,6 +12,20 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+// handleConnect (entrypoint relay) processes a relay-protocol connection
+// arriving at the entrypoint.
+//
+// Flow:
+//  1. Read relay.Request (extracts src/dst address, tunnelID, network).
+//  2. Dialer.Dial() → pool.Get() → GetConn() → mux.OpenStream().
+//  3. Write StatusOK response to the public connection.
+//  4. Write relay.Response with src/dst address features to the mux stream.
+//  5. Pipe(publicConn, muxStream).
+//
+// Unlike tunnelHandler.handleConnect, this path does not use ingress routing
+// or bypass checks — the relay request already contains the tunnel ID.
+// Also unlike handleConnect, there is no local-vs-remote framing difference:
+// the entrypoint always writes StatusOK + address features regardless of node.
 func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	req := relay.Request{}
 	if _, err := req.ReadFrom(conn); err != nil {

@@ -1,3 +1,7 @@
+// Package tunnel implements the GOST relay tunnel handler for NAT traversal,
+// connecting public entrypoints to internal services behind NAT/firewall.
+//
+// See handler.go for a full architecture overview.
 package tunnel
 
 import (
