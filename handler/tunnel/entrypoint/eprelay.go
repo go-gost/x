@@ -1,7 +1,8 @@
-package tunnel
+package entrypoint
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -26,7 +27,7 @@ import (
 // or bypass checks — the relay request already contains the tunnel ID.
 // Also unlike handleConnect, there is no local-vs-remote framing difference:
 // the entrypoint always writes StatusOK + address features regardless of node.
-func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
+func (ep *Entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	req := relay.Request{}
 	if _, err := req.ReadFrom(conn); err != nil {
 		return err
@@ -65,18 +66,12 @@ func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 	if tunnelID.IsZero() {
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn)
-		return ErrTunnelID
+		return errBadTunnelID
 	}
 
 	ro.ClientID = tunnelID.String()
 
-	d := Dialer{
-		pool:    ep.pool,
-		retry:   3,
-		timeout: 15 * time.Second,
-		log:     log,
-	}
-	cc, _, cid, err := d.Dial(ctx, network, tunnelID.String())
+	cc, _, cid, err := ep.dialFn(ctx, network, tunnelID.String())
 	if err != nil {
 		log.Error(err)
 		resp.Status = relay.StatusServiceUnavailable
@@ -121,3 +116,7 @@ func (ep *entrypoint) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 
 	return nil
 }
+
+// errBadTunnelID is returned when a relay request arrives at the entrypoint
+// without a valid tunnel feature (zero tunnel ID).
+var errBadTunnelID = fmt.Errorf("invalid tunnel ID")

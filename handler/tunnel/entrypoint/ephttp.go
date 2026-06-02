@@ -1,4 +1,4 @@
-package tunnel
+package entrypoint
 
 import (
 	"bufio"
@@ -26,6 +26,18 @@ import (
 	"golang.org/x/net/http/httpguts"
 )
 
+// HTTP header names used for tunnel loop detection and session tracking.
+const (
+	// httpHeaderSID carries the session ID from the external request
+	// through the tunnel to the internal service.
+	httpHeaderSID = "Gost-Sid"
+	// httpHeaderForwardedNode carries the node ID chain from each
+	// entrypoint the request has traversed. Used for loop detection:
+	// if the header already contains our node, the request is looping
+	// and is rejected with 503.
+	httpHeaderForwardedNode = "Gost-Forwarded-Node"
+)
+
 // handleHTTP processes an HTTP request arriving at the entrypoint.
 //
 // Flow:
@@ -41,7 +53,7 @@ import (
 //
 // HTTP request body recording: if recorder options specify HTTPBody,
 // the request body is wrapped in a xhttp.Body for capture.
-func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
+func (ep *Entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
@@ -97,7 +109,7 @@ func (ep *entrypoint) handleHTTP(ctx context.Context, conn net.Conn, ro *xrecord
 	}
 }
 
-func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (err error) {
+func (ep *Entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) (err error) {
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
@@ -214,12 +226,12 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	}
 
 	if err != nil {
-		if errors.Is(err, ErrTunnelRoute) || errors.Is(err, ErrPrivateTunnel) {
+		if errors.Is(err, errNoRoute) || errors.Is(err, errPrivateTunnel) {
 			res.StatusCode = http.StatusBadGateway
 			ro.HTTP.StatusCode = http.StatusBadGateway
 		}
 		res.Write(rw)
-		return
+		return nil
 	}
 	defer resp.Body.Close()
 
@@ -263,6 +275,8 @@ func (ep *entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	return
 }
 
+// upgradeType returns the upgrade protocol from an HTTP header set,
+// or empty string if the request/response does not include an Upgrade.
 func upgradeType(h http.Header) string {
 	if !httpguts.HeaderValuesContainsToken(h["Connection"], "Upgrade") {
 		return ""
@@ -270,7 +284,13 @@ func upgradeType(h http.Header) string {
 	return h.Get("Upgrade")
 }
 
-func (ep *entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+// handleUpgradeResponse handles an HTTP upgrade (101 Switching Protocols).
+//
+// It validates that the upgrade protocol matches between request and response,
+// writes the response to the client, and then pipes the raw connection.
+// For WebSocket upgrades with sniffing enabled, it delegates to
+// sniffingWebsocketFrame for frame-level recording.
+func (ep *Entrypoint) handleUpgradeResponse(ctx context.Context, rw io.ReadWriteCloser, req *http.Request, res *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	reqUpType := upgradeType(req.Header)
 	resUpType := upgradeType(res.Header)
 	if !strings.EqualFold(reqUpType, resUpType) {

@@ -35,13 +35,17 @@ const (
 //     ConnectorPool.closeIdles on a 15-minute ticker).
 //   - Close() closes all connectors and signals shutdown.
 type Tunnel struct {
-	node       string
+	// node is the tunnel handler node ID that owns this tunnel.
+	node string
+	// id is the relay tunnel ID shared by all connectors in this group.
 	id         relay.TunnelID
 	connectors []*Connector
-	t          time.Time
-	close      chan struct{}
-	mu         sync.RWMutex
-	ttl        time.Duration
+	// t is the creation timestamp — used for debugging/lifecycle tracking.
+	t     time.Time
+	close chan struct{}
+	mu    sync.RWMutex
+	// ttl is the interval between clean() ticks. Defaults to defaultTTL.
+	ttl time.Duration
 }
 
 func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {

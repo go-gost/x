@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// parseTunnelID parses a tunnel ID from a string.
+// ParseTunnelID parses a tunnel ID from a string.
 // If s is empty or contains an invalid UUID, the returned tunnel ID is zero
 // (callers must check IsZero). A leading '$' prefix marks the tunnel as private.
-func parseTunnelID(s string) (tid relay.TunnelID) {
+func ParseTunnelID(s string) (tid relay.TunnelID) {
 	if s == "" {
 		return
 	}

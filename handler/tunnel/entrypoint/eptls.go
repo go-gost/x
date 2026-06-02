@@ -1,4 +1,4 @@
-package tunnel
+package entrypoint
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ import (
 //  5. Parse ServerHello from the mux stream (for TLS recording).
 //  6. Write ServerHello bytes back to the public connection.
 //  7. Pipe(publicConn, muxStream) — bidirectional TLS passthrough.
-func (ep *entrypoint) handleTLS(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+func (ep *Entrypoint) handleTLS(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	buf := new(bytes.Buffer)
 	clientHello, err := dissector.ParseClientHello(io.TeeReader(conn, buf))
 	if err != nil {

@@ -56,7 +56,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 		log.Debug("bypass: ", dstAddr)
 		resp.Status = relay.StatusForbidden
 		_, err := resp.WriteTo(conn)
-		return err
+		return fmt.Errorf("bypass blocked %s: %w", dstAddr, err)
 	}
 
 	host, _, _ := net.SplitHostPort(dstAddr)
@@ -64,7 +64,7 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	var tid relay.TunnelID
 	if ing := h.md.ingress; ing != nil && host != "" {
 		if rule := ing.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil {
-			tid = parseTunnelID(rule.Endpoint)
+			tid = ParseTunnelID(rule.Endpoint)
 		}
 	}
 
@@ -100,12 +100,12 @@ func (h *tunnelHandler) handleConnect(ctx context.Context, req *relay.Request, c
 	}
 
 	d := Dialer{
-		node:    h.id,
-		pool:    h.pool,
-		sd:      h.md.sd,
-		retry:   3,
-		timeout: 15 * time.Second,
-		log:     log,
+		Node:    h.id,
+		Pool:    h.pool,
+		SD:      h.md.sd,
+		Retry:   3,
+		Timeout: 15 * time.Second,
+		Log:     log,
 	}
 	cc, node, cid, err := d.Dial(ctx, network, tid.String())
 	if err != nil {

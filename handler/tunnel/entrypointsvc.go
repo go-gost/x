@@ -1,19 +1,29 @@
 package tunnel
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/go-gost/core/ingress"
 	"github.com/go-gost/core/listener"
+	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
 	xnet "github.com/go-gost/x/internal/net"
 	xrecorder "github.com/go-gost/x/recorder"
 	xservice "github.com/go-gost/x/service"
+
+	epkg "github.com/go-gost/x/handler/tunnel/entrypoint"
 )
 
+// initEntrypoints starts all configured entrypoint services.
+//
+// It starts the primary entrypoint (from the "entrypoint" metadata key) and
+// any additional entrypoints (from the "entrypoints" metadata array). Each
+// entrypoint is created via createEntrypointService and started in its own
+// goroutine. Services are tracked in h.entrypoints for later cleanup in
+// Close().
 func (h *tunnelHandler) initEntrypoints() (err error) {
 	if h.md.entryPoint != "" {
 		svc, err := h.createEntrypointService(h.md.entryPoint, h.md.ingress)
@@ -43,34 +53,54 @@ func (h *tunnelHandler) initEntrypoints() (err error) {
 	return
 }
 
-func (h *tunnelHandler) createEntrypointService(addr string, ingress ingress.Ingress) (service.Service, error) {
-	ep := &entrypoint{
-		node:    h.id,
-		service: h.options.Service,
-		pool:    h.pool,
-		ingress: ingress,
-		sd:      h.md.sd,
-		log: h.log.WithFields(map[string]any{
-			"kind": "entrypoint",
-		}),
-		sniffingWebsocket:   h.md.sniffingWebsocket,
-		websocketSampleRate: h.md.sniffingWebsocketSampleRate,
-		readTimeout:         h.md.entryPointReadTimeout,
-	}
-	ep.transport = &http.Transport{
-		DialContext:           ep.dial,
-		IdleConnTimeout:       30 * time.Second,
-		ResponseHeaderTimeout: h.md.entryPointReadTimeout,
-		DisableKeepAlives:     !h.md.entryPointKeepalive,
-		DisableCompression:    !h.md.entryPointCompression,
-	}
-
-	for _, ro := range h.options.Recorders {
-		if ro.Record == xrecorder.RecorderServiceHandler {
-			ep.recorder = ro
+// createEntrypointService creates a GOST service wrapping an entrypoint
+// listener and handler for the given address and ingress rule table.
+//
+// It constructs:
+//  1. A Dialer populated from the tunnel handler's state (node, pool, sd)
+//     wrapped in a closure that implements epkg.DialFunc.
+//  2. An epkg.Entrypoint via epkg.New() with all configured options.
+//  3. A TCP listener via net.Listen and epkg.NewTCPListener.
+//  4. An entrypoint handler via epkg.NewHandler.
+//  5. A GOST service via xservice.NewService.
+//
+// The recorder object is selected from h.options.Recorders by matching
+// RecorderServiceHandler record type.
+func (h *tunnelHandler) createEntrypointService(addr string, ing ingress.Ingress) (service.Service, error) {
+	var ro recorder.RecorderObject
+	for _, r := range h.options.Recorders {
+		if r.Record == xrecorder.RecorderServiceHandler {
+			ro = r
 			break
 		}
 	}
+
+	dialFn := func(ctx epkg.DialContext, network, tid string) (net.Conn, string, string, error) {
+		d := &Dialer{
+			Node:    h.id,
+			Pool:    h.pool,
+			SD:      h.md.sd,
+			Retry:   3,
+			Timeout: 15 * time.Second,
+			Log:     h.log,
+		}
+		return d.Dial(ctx.(context.Context), network, tid)
+	}
+
+	ep := epkg.New(&epkg.Config{
+		Node:                h.id,
+		Service:             h.options.Service,
+		Ingress:             ing,
+		SD:                  h.md.sd,
+		Logger:              h.log.WithFields(map[string]any{"kind": "entrypoint"}),
+		Recorder:            ro,
+		SniffingWebsocket:   h.md.sniffingWebsocket,
+		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+		ReadTimeout:         h.md.entryPointReadTimeout,
+		ProxyProtocol:       h.md.entryPointProxyProtocol,
+		KeepAlive:           h.md.entryPointKeepalive,
+		Compression:         h.md.entryPointCompression,
+	}, dialFn)
 
 	network := "tcp"
 	if xnet.IsIPv4(addr) {
@@ -90,7 +120,8 @@ func (h *tunnelHandler) createEntrypointService(addr string, ingress ingress.Ing
 		"handler":  "tunnel-ep",
 		"kind":     "service",
 	})
-	epListener := newTCPListener(ln,
+
+	epListener := epkg.NewTCPListener(ln,
 		listener.AddrOption(addr),
 		listener.ServiceOption(serviceName),
 		listener.ProxyProtocolOption(h.md.entryPointProxyProtocol),
@@ -101,9 +132,8 @@ func (h *tunnelHandler) createEntrypointService(addr string, ingress ingress.Ing
 	if err = epListener.Init(nil); err != nil {
 		return nil, err
 	}
-	epHandler := &entrypointHandler{
-		ep: ep,
-	}
+
+	epHandler := epkg.NewHandler(ep)
 	if err = epHandler.Init(nil); err != nil {
 		return nil, err
 	}

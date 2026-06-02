@@ -17,29 +17,29 @@ import (
 //     connector is dead, all retries fail until Tunnel.clean() removes it
 //     (up to TTL, default 15s).
 //  2. SD fallback: if pool returns nil AND sd is configured, query service
-//     discovery for remote nodes. Filter out self (d.node) and mismatched
+//     discovery for remote nodes. Filter out self (d.Node) and mismatched
 //     networks. Establish a raw TCP connection to the remote address,
 //     bypassing the mux layer entirely.
 //
 // The returned node and connector ID identify which node/hop the stream
 // is connected to — used by callers to decide the relay protocol framing.
 type Dialer struct {
-	node    string
-	pool    *ConnectorPool
-	sd      sd.SD
-	retry   int
-	timeout time.Duration
-	log     logger.Logger
+	Node    string
+	Pool    *ConnectorPool
+	SD      sd.SD
+	Retry   int
+	Timeout time.Duration
+	Log     logger.Logger
 }
 
 func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net.Conn, node string, cid string, err error) {
-	retry := d.retry
+	retry := d.Retry
 	if retry <= 0 {
 		retry = 1
 	}
 
 	for i := 0; i < retry; i++ {
-		c := d.pool.Get(network, tid)
+		c := d.Pool.Get(network, tid)
 		if c == nil {
 			err = nil // clear stale err so SD fallback is not masked
 			break
@@ -47,10 +47,10 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 
 		conn, err = c.GetConn()
 		if err != nil {
-			d.log.Error(err)
+			d.Log.Error(err)
 			continue
 		}
-		node = d.node
+		node = d.Node
 		cid = c.id.String()
 
 		break
@@ -59,20 +59,20 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 		return
 	}
 
-	if d.sd == nil {
+	if d.SD == nil {
 		err = ErrTunnelNotAvailable
 		return
 	}
 
-	ss, err := d.sd.Get(ctx, tid)
+	ss, err := d.SD.Get(ctx, tid)
 	if err != nil {
 		return
 	}
 
 	var service *sd.Service
 	for _, s := range ss {
-		d.log.Debugf("%+v", s)
-		if s.Node != d.node && s.Network == network {
+		d.Log.Debugf("%+v", s)
+		if s.Node != d.Node && s.Network == network {
 			service = s
 			break
 		}
@@ -86,7 +86,7 @@ func (d *Dialer) Dial(ctx context.Context, network string, tid string) (conn net
 	cid = service.ID
 
 	dialer := net.Dialer{
-		Timeout: d.timeout,
+		Timeout: d.Timeout,
 	}
 	conn, err = dialer.DialContext(ctx, "tcp", service.Address)
 	return

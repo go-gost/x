@@ -76,20 +76,39 @@ import (
 )
 
 var (
-	ErrBadVersion         = errors.New("bad version")
-	ErrUnknownCmd         = errors.New("unknown command")
-	ErrTunnelID           = errors.New("invalid tunnel ID")
+	// ErrBadVersion is returned when the relay request has an unsupported
+	// protocol version.
+	ErrBadVersion = errors.New("bad version")
+	// ErrUnknownCmd is returned when the relay request command is not
+	// CmdConnect or CmdBind.
+	ErrUnknownCmd = errors.New("unknown command")
+	// ErrTunnelID is returned when the relay request has a zero/invalid
+	// tunnel ID feature.
+	ErrTunnelID = errors.New("invalid tunnel ID")
+	// ErrTunnelNotAvailable is returned when no local connector or SD
+	// service is available for the requested tunnel.
 	ErrTunnelNotAvailable = errors.New("tunnel not available")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrTunnelRoute        = errors.New("no route to host")
-	ErrPrivateTunnel      = errors.New("private tunnel")
+	// ErrUnauthorized is returned when the relay request's user/pass
+	// authentication fails against the configured Auther.
+	ErrUnauthorized = errors.New("unauthorized")
+	// ErrTunnelRoute is returned when the tunnel route cannot be
+	// resolved (no ingress rule matches the host).
+	ErrTunnelRoute = errors.New("no route to host")
+	// ErrPrivateTunnel is returned when the resolved tunnel is private
+	// ($-prefixed) and the connection is from a public entrypoint.
+	ErrPrivateTunnel = errors.New("private tunnel")
 )
 
 func init() {
 	registry.HandlerRegistry().Register("tunnel", NewHandler)
 }
 
+// tunnelHandler is the relay-based tunnel handler. It accepts relay-protocol
+// connections from internal clients (CmdBind) and from public sources
+// (CmdConnect), bridging them through a mux-based multiplex session.
 type tunnelHandler struct {
+	// id is a UUID-generated unique identifier for this handler instance,
+	// used to distinguish this node in multi-node deployments.
 	id          string
 	options     handler.Options
 	pool        *ConnectorPool
@@ -101,6 +120,12 @@ type tunnelHandler struct {
 	cancel      context.CancelFunc
 }
 
+// NewHandler creates a new tunnel handler.
+//
+// Registered as "tunnel" in the handler registry (init()). The handler
+// processes relay-protocol requests and supports two commands:
+// CmdConnect (forward a public connection through a tunnel stream) and
+// CmdBind (register an internal client as a tunnel connector).
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -112,6 +137,11 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init initializes the tunnel handler.
+//
+// It parses metadata, generates a unique node ID, creates the connector pool,
+// starts all configured entrypoint services, sets up observer stats with a
+// background goroutine, and initializes the traffic limiter.
 func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err
@@ -151,6 +181,19 @@ func (h *tunnelHandler) Init(md md.Metadata) (err error) {
 	return nil
 }
 
+// Handle processes an incoming relay-protocol connection.
+//
+// The connection is expected to start with a relay.Request frame. The handler
+// parses the request, extracts authentication, addresses, network type, and
+// tunnel ID, then dispatches to handleConnect (CmdConnect) or handleBind
+// (CmdBind).
+//
+// Rate limiting is checked before reading the request. A read deadline is
+// applied during the initial relay frame read and cleared afterwards.
+//
+// On error, a relay.Response with the appropriate error status is written
+// before returning. The caller is responsible for closing conn on success
+// (the CmdConnect path defers conn.Close() internally).
 func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	start := time.Now()
 
@@ -270,7 +313,10 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 }
 
-// Close implements io.Closer interface.
+// Close implements io.Closer.
+//
+// It closes all entrypoint services, the connector pool (which closes all
+// tunnels and connectors), and cancels the observer stats goroutine.
 func (h *tunnelHandler) Close() error {
 	for _, ep := range h.entrypoints {
 		ep.Close()
@@ -284,6 +330,8 @@ func (h *tunnelHandler) Close() error {
 	return nil
 }
 
+// checkRateLimit returns false if the connection source IP exceeds the
+// configured rate limiter budget. Returns true if no rate limiter is set.
 func (h *tunnelHandler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
@@ -296,6 +344,13 @@ func (h *tunnelHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
+// observeStats is a background goroutine that periodically flushes connection
+// stats events to the configured observer.
+//
+// On observe failure, events are buffered and retried on the next tick.
+// On retry success, new events from the current tick are also flushed
+// (fall-through via the pending-events block). On persistent failure,
+// new events are skipped until the pending batch is accepted.
 func (h *tunnelHandler) observeStats(ctx context.Context) {
 	if h.options.Observer == nil {
 		return

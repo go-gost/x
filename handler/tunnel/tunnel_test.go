@@ -14,7 +14,7 @@ import (
 
 func newTestTunnelID(t *testing.T) relay.TunnelID {
 	t.Helper()
-	return parseTunnelID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	return ParseTunnelID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 }
 
 func newTestConnectorID(t *testing.T, udp bool, weight uint8) relay.ConnectorID {

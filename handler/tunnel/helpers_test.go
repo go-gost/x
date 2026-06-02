@@ -1,8 +1,17 @@
 package tunnel
 
 import (
+	"os"
+	"testing"
+
 	"github.com/go-gost/core/logger"
 )
+
+// TestMain sets up a non-nil default logger for all tests in this package.
+func TestMain(m *testing.M) {
+	logger.SetDefault(nopLogger{})
+	os.Exit(m.Run())
+}
 
 type nopLogger struct {
 	logger.Logger

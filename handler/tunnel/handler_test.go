@@ -10,12 +10,16 @@ import (
 	"time"
 
 	"github.com/go-gost/core/handler"
+	core_rate "github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/observer/stats"
 	coremeta "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	rate_limiter "github.com/go-gost/x/limiter/rate"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	mdx "github.com/go-gost/x/metadata"
+
+	epkg "github.com/go-gost/x/handler/tunnel/entrypoint"
 )
 
 func newTestMetadata() coremeta.Metadata {
@@ -59,31 +63,6 @@ func (c *fakeConn) LocalAddr() net.Addr {
 
 func (c *fakeConn) SetReadDeadline(t time.Time) error {
 	return nil
-}
-
-func buildRelayConnectRequest(t *testing.T, tid relay.TunnelID, src, dst string) []byte {
-	t.Helper()
-	req := relay.Request{
-		Version: relay.Version1,
-		Cmd:     relay.CmdConnect,
-	}
-	if src != "" {
-		af := &relay.AddrFeature{}
-		af.ParseFrom(src)
-		req.Features = append(req.Features, af)
-	}
-	if dst != "" {
-		af := &relay.AddrFeature{}
-		af.ParseFrom(dst)
-		req.Features = append(req.Features, af)
-	}
-	req.Features = append(req.Features, &relay.TunnelFeature{ID: tid})
-	var buf bytes.Buffer
-	_, err := req.WriteTo(&buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
 }
 
 func buildRelayBindRequest(t *testing.T, tid relay.TunnelID, network, addr string) []byte {
@@ -378,16 +357,104 @@ func TestHandler_initEntrypoints(t *testing.T) {
 // identifies the protocol (relay/TLS/HTTP) from the first byte of a connection.
 
 func TestEntrypoint_dial_NoIngress(t *testing.T) {
-	ep := &entrypoint{
-		node: "node1",
-		pool: NewConnectorPool("node1"),
-		log:  testLogger(),
-	}
-	defer ep.pool.Close()
+	conn := &fakeConn{buf: []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")}
+	pool := NewConnectorPool("node1")
+	defer pool.Close()
+	log := testLogger()
 
-	_, err := ep.dial(context.Background(), "tcp", "example.com")
-	if err == nil {
-		t.Error("expected error without ingress")
+	dialFn := func(ctx epkg.DialContext, network, tid string) (net.Conn, string, string, error) {
+		return nil, "", "", errors.New("should not be called")
+	}
+	ep := epkg.New(&epkg.Config{
+		Node:   "node1",
+		Logger: log,
+	}, dialFn)
+
+	err := ep.Handle(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !bytes.Contains(conn.writeBuf, []byte("502")) && !bytes.Contains(conn.writeBuf, []byte("Bad Gateway")) {
+		t.Errorf("expected 502 response, got: %s", conn.writeBuf)
+	}
+}
+
+// TestHandler_Handle_RateLimitExceeded tests that Handle returns ErrRateLimit
+// when the rate limiter rejects the connection.
+// fakeRateLimiter implements core_rate.RateLimiter for testing.
+type fakeRateLimiter struct {
+	allow bool
+}
+
+func (r *fakeRateLimiter) Limiter(key string) core_rate.Limiter {
+	return r
+}
+
+func (r *fakeRateLimiter) Allow(n int) bool { return r.allow }
+func (r *fakeRateLimiter) Limit() float64   { return 0 }
+
+// deadlineConn wraps fakeConn and tracks calls to SetReadDeadline.
+type deadlineConn struct {
+	*fakeConn
+	deadlineSet bool
+}
+
+func (c *deadlineConn) SetReadDeadline(t time.Time) error {
+	c.deadlineSet = true
+	return nil
+}
+
+// TestHandler_Handle_ReadTimeout tests that the read deadline is applied
+// before reading the relay request.
+func TestHandler_Handle_ReadTimeout(t *testing.T) {
+	req := relay.Request{
+		Version: relay.Version1,
+		Cmd:     relay.CmdConnect,
+	}
+	req.Features = append(req.Features, &relay.TunnelFeature{
+		ID: newTestTunnelID(t),
+	})
+	var buf bytes.Buffer
+	req.WriteTo(&buf)
+
+	dconn := &deadlineConn{
+		fakeConn: &fakeConn{buf: buf.Bytes()},
+	}
+
+	h := newHandlerWithLogger(t)
+	defer h.Close()
+	h.md.readTimeout = 5 * time.Second
+
+	_ = h.Handle(context.Background(), dconn)
+	if !dconn.deadlineSet {
+		t.Error("expected SetReadDeadline to be called")
+	}
+}
+
+// TestHandler_Handle_RateLimitExceeded tests that Handle returns ErrRateLimit
+// when the rate limiter rejects the connection.
+func TestHandler_Handle_RateLimitExceeded(t *testing.T) {
+	h := newHandlerWithLogger(t)
+	defer h.Close()
+
+	req := relay.Request{
+		Version: relay.Version1,
+		Cmd:     relay.CmdConnect,
+	}
+	req.Features = append(req.Features, &relay.TunnelFeature{
+		ID: newTestTunnelID(t),
+	})
+	var buf bytes.Buffer
+	req.WriteTo(&buf)
+
+	// Use a rate limiter that always rejects
+	rl := &fakeRateLimiter{allow: false}
+	h.options.RateLimiter = rl
+
+	conn := &fakeConn{buf: buf.Bytes()}
+	err := h.Handle(context.Background(), conn)
+	if err != rate_limiter.ErrRateLimit {
+		t.Errorf("expected ErrRateLimit, got %v", err)
 	}
 }
 

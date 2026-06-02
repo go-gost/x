@@ -17,9 +17,15 @@ import (
 )
 
 const (
+	// defaultTTL is the default time-to-live for a Tunnel's clean goroutine.
+	// Every tick removes closed connectors and renews SD registrations.
 	defaultTTL = 15 * time.Second
 )
 
+// metadata holds the parsed configuration for the tunnel handler.
+//
+// All fields are populated from the handler's metadata map in parseMetadata.
+// Most fields have matching "entrypoint.*" config keys.
 type metadata struct {
 	// readTimeout is the deadline for reading the initial relay protocol
 	// handshake from the client connection. The deadline is cleared
@@ -27,18 +33,35 @@ type metadata struct {
 	// transfer. 0 or negative means no timeout is applied.
 	readTimeout time.Duration
 
+	// entrypoints holds additional entrypoint configurations from the
+	// "entrypoints" metadata key (JSON array of {Addr, Ingress}).
 	entrypoints []entrypointConfig
 
-	entryPoint                  string
+	// entryPoint is the TCP address for the primary entrypoint listener
+	// (from the "entrypoint" metadata key).
+	entryPoint string
+	// entryPointID is the parsed tunnel ID that identifies public
+	// entrypoint visitors in handleConnect.
 	entryPointID                relay.TunnelID
 	entryPointProxyProtocol     int
 	entryPointKeepalive         bool
 	entryPointCompression       bool
-	entryPointReadTimeout       time.Duration // deadline for reading upstream HTTP response headers in the entrypoint's http.Transport.ResponseHeaderTimeout. Also passed as readTimeout to entrypoint dialer for SetReadDeadline on upstream conn. 0 or negative defaults to 15s.
+	// entryPointReadTimeout is the deadline for reading upstream HTTP
+	// response headers in the entrypoint's http.Transport.ResponseHeaderTimeout.
+	// Also passed as readTimeout to the entrypoint dialer for SetReadDeadline
+	// on the upstream connection. 0 or negative defaults to 15s.
+	entryPointReadTimeout       time.Duration
+	// sniffingWebsocket enables WebSocket frame-level recording in the
+	// entrypoint HTTP handler.
 	sniffingWebsocket           bool
+	// sniffingWebsocketSampleRate controls the rate for WebSocket frame
+	// recording. 0 defaults to DefaultSampleRate.
 	sniffingWebsocketSampleRate float64
 
+	// directTunnel when true allows direct tunnel connections without
+	// ingress routing (the tunnel ID from the relay request is used directly).
 	directTunnel bool
+	// tunnelTTL is the TTL for the Tunnel's clean goroutine. Defaults to defaultTTL.
 	tunnelTTL    time.Duration
 	ingress      ingress.Ingress
 	sd           sd.SD
@@ -55,7 +78,7 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 
 	h.md.entryPoint = mdutil.GetString(md, "entrypoint")
-	h.md.entryPointID = parseTunnelID(mdutil.GetString(md, "entrypoint.id"))
+	h.md.entryPointID = ParseTunnelID(mdutil.GetString(md, "entrypoint.id"))
 	h.md.entryPointProxyProtocol = mdutil.GetInt(md, "entrypoint.ProxyProtocol")
 
 	h.md.entryPointKeepalive = mdutil.GetBool(md, "entrypoint.keepalive")
@@ -164,8 +187,15 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 	return
 }
 
+// entrypointConfig holds the configuration for a single additional entrypoint
+// beyond the primary entryPoint. Multiple entrypoints are configured via the
+// "entrypoints" metadata key as a JSON array.
 type entrypointConfig struct {
+	// Name is an optional label for this entrypoint (used in logs).
 	Name    string
+	// Addr is the TCP address to listen on (e.g. "0.0.0.0:80").
 	Addr    string
+	// Ingress is the ingress rule table for this entrypoint. If nil,
+	// the handler's default ingress is used.
 	Ingress ingress.Ingress
 }

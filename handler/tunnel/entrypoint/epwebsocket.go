@@ -1,4 +1,4 @@
-package tunnel
+package entrypoint
 
 import (
 	"bytes"
@@ -14,7 +14,17 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+// sniffingWebsocketFrame copies WebSocket frames bidirectionally with
+// optional frame-level recording.
+//
+// Two goroutines run concurrently — one for client→server frames, one for
+// server→client frames. Each frame is recorded when the sample rate limiter
+// allows. HTTP metadata in ro is cleared (ro.HTTP = nil) to prevent leaking
+// HTTP request/response headers into WebSocket frame records.
+//
+// The function returns when either direction encounters an error (closing
+// both sides).
+func (ep *Entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.ReadWriteCloser, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	errc := make(chan error, 2)
 
 	sampleRate := ep.websocketSampleRate
@@ -29,6 +39,7 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
 		ro := ro2
+		ro.HTTP = nil // WebSocket frames — don't leak HTTP metadata into the record
 
 		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
@@ -55,6 +66,7 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 		ro2 := &xrecorder.HandlerRecorderObject{}
 		*ro2 = *ro
 		ro := ro2
+		ro.HTTP = nil // WebSocket frames — don't leak HTTP metadata into the record
 
 		limiter := rate.NewLimiter(rate.Limit(sampleRate), int(sampleRate))
 
@@ -84,7 +96,14 @@ func (ep *entrypoint) sniffingWebsocketFrame(ctx context.Context, rw, cc io.Read
 	return nil
 }
 
-func (ep *entrypoint) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
+// copyWebsocketFrame reads one WebSocket frame from r, records it in ro,
+// and writes it to w. The frame payload is optionally buffered for recording
+// when recorder options specify HTTPBody capture.
+//
+// The from parameter identifies the direction ("client" or "server") and
+// determines which byte-counter (InputBytes vs OutputBytes) is incremented
+// in the recorder object.
+func (ep *Entrypoint) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Buffer, from string, ro *xrecorder.HandlerRecorderObject) (err error) {
 	fr := ws_util.Frame{}
 	if _, err = fr.ReadFrom(r); err != nil {
 		return err

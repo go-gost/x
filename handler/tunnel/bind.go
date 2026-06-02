@@ -55,11 +55,11 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	endpoint := hex.EncodeToString(v[:8])
 
 	host, port, _ := net.SplitHostPort(address)
-	if host == "" || h.md.ingress == nil {
-		host = endpoint
-	} else if host != endpoint {
-		host = endpoint
-	}
+	// Always use the endpoint hash as the host — this provides a stable,
+	// deterministic ingress key regardless of what the internal client sends.
+	// The original host is ignored; the endpoint hash routes consistently
+	// across reconnects and multi-node deployments.
+	host = endpoint
 	addr := net.JoinHostPort(host, port)
 
 	af := &relay.AddrFeature{}

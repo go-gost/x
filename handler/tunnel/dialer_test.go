@@ -27,9 +27,11 @@ func (p *fakePool) Get(network, tid string) *Connector {
 }
 
 type fakeSD struct {
-	services  []*sd.Service
-	err       error
-	renewFunc func(context.Context, *sd.Service) error
+	services       []*sd.Service
+	err            error
+	renewFunc      func(context.Context, *sd.Service) error
+	registerFunc   func(ctx context.Context, service *sd.Service) error
+	deregisterFunc func(ctx context.Context, service *sd.Service) error
 }
 
 func (s *fakeSD) Get(ctx context.Context, name string) ([]*sd.Service, error) {
@@ -37,10 +39,16 @@ func (s *fakeSD) Get(ctx context.Context, name string) ([]*sd.Service, error) {
 }
 
 func (s *fakeSD) Register(ctx context.Context, service *sd.Service, opts ...sd.Option) error {
+	if s.registerFunc != nil {
+		return s.registerFunc(ctx, service)
+	}
 	return nil
 }
 
 func (s *fakeSD) Deregister(ctx context.Context, service *sd.Service) error {
+	if s.deregisterFunc != nil {
+		return s.deregisterFunc(ctx, service)
+	}
 	return nil
 }
 
@@ -56,10 +64,10 @@ func TestDialer_Dial(t *testing.T) {
 		p := NewConnectorPool("node1")
 		defer p.Close()
 		d := &Dialer{
-			node:  "node1",
-			pool:  p,
-			retry: 1,
-			log:   testLogger(),
+			Node:  "node1",
+			Pool:  p,
+			Retry: 1,
+			Log:   testLogger(),
 		}
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
 		if err != ErrTunnelNotAvailable {
@@ -72,12 +80,12 @@ func TestDialer_Dial(t *testing.T) {
 		defer p.Close()
 		sd := &fakeSD{services: nil}
 		d := &Dialer{
-			node:  "node1",
-			pool:  p,
-			sd:    sd,
-			retry: 1,
-			timeout: time.Second,
-			log:   testLogger(),
+			Node:    "node1",
+			Pool:    p,
+			SD:      sd,
+			Retry:   1,
+			Timeout: time.Second,
+			Log:     testLogger(),
 		}
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
 		if err != ErrTunnelNotAvailable {
@@ -107,12 +115,12 @@ func TestDialer_Dial(t *testing.T) {
 			},
 		}
 		d := &Dialer{
-			node:    "node1",
-			pool:    p,
-			sd:      sd,
-			retry:   1,
-			timeout: time.Second,
-			log:     testLogger(),
+			Node:    "node1",
+			Pool:    p,
+			SD:      sd,
+			Retry:   1,
+			Timeout: time.Second,
+			Log:     testLogger(),
 		}
 
 		go func() {
@@ -143,19 +151,19 @@ func TestDialer_Dial(t *testing.T) {
 				{
 					ID:      "cid1",
 					Name:    "testtid",
-					Node:    "node1", // same as d.node — must be filtered
+					Node:    "node1", // same as d.Node — must be filtered
 					Network: "tcp",
 					Address: "127.0.0.1:9999",
 				},
 			},
 		}
 		d := &Dialer{
-			node:    "node1",
-			pool:    p,
-			sd:      sd,
-			retry:   1,
-			timeout: time.Second,
-			log:     testLogger(),
+			Node:    "node1",
+			Pool:    p,
+			SD:      sd,
+			Retry:   1,
+			Timeout: time.Second,
+			Log:     testLogger(),
 		}
 
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
@@ -179,12 +187,12 @@ func TestDialer_Dial(t *testing.T) {
 			},
 		}
 		d := &Dialer{
-			node:    "node1",
-			pool:    p,
-			sd:      sd,
-			retry:   1,
-			timeout: time.Second,
-			log:     testLogger(),
+			Node:    "node1",
+			Pool:    p,
+			SD:      sd,
+			Retry:   1,
+			Timeout: time.Second,
+			Log:     testLogger(),
 		}
 
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
@@ -198,10 +206,10 @@ func TestDialer_RetryDefault(t *testing.T) {
 	p := NewConnectorPool("node1")
 	defer p.Close()
 	d := &Dialer{
-		node: "node1",
-		pool: p,
-		retry: 0, // should default to 1
-		log:  testLogger(),
+		Node:  "node1",
+		Pool:  p,
+		Retry: 0, // should default to 1
+		Log:   testLogger(),
 	}
 	_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
 	if err != ErrTunnelNotAvailable {
@@ -215,11 +223,11 @@ func TestDialer_SDError(t *testing.T) {
 		defer p.Close()
 		sd := &fakeSD{err: ErrTunnelNotAvailable}
 		d := &Dialer{
-			node: "node1",
-			pool: p,
-			sd:   sd,
-			retry: 1,
-			log:  testLogger(),
+			Node:  "node1",
+			Pool:  p,
+			SD:    sd,
+			Retry: 1,
+			Log:   testLogger(),
 		}
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
 		if err != ErrTunnelNotAvailable {
@@ -242,11 +250,11 @@ func TestDialer_SDError(t *testing.T) {
 			},
 		}
 		d := &Dialer{
-			node: "node1",
-			pool: p,
-			sd:   sd,
-			retry: 1,
-			log:  testLogger(),
+			Node:  "node1",
+			Pool:  p,
+			SD:    sd,
+			Retry: 1,
+			Log:   testLogger(),
 		}
 		_, _, _, err := d.Dial(context.Background(), "tcp", "testtid")
 		if err != ErrTunnelNotAvailable {
