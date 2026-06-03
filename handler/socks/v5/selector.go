@@ -29,7 +29,7 @@ func (s *serverSelector) Select(methods ...uint8) (method uint8) {
 	s.logger.Debugf("%d %d %v", gosocks5.Ver5, len(methods), methods)
 	method = gosocks5.MethodNoAuth
 	for _, m := range methods {
-		if m == socks.MethodTLS && !s.noTLS {
+		if m == socks.MethodTLS && !s.noTLS && s.TLSConfig != nil {
 			method = m
 			break
 		}

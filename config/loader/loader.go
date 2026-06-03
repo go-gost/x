@@ -78,11 +78,11 @@ func (l *loader) Load(cfg *config.Config) error {
 	}
 	logger.SetDefault(logger_parser.ParseLogger(&config.LoggerConfig{Log: logCfg}))
 
+	parsing.SetDefaultTLSConfig(tlsCfg)
+
 	if err := register(cfg); err != nil {
 		return err
 	}
-
-	parsing.SetDefaultTLSConfig(tlsCfg)
 
 	return nil
 }
