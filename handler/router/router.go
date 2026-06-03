@@ -142,6 +142,7 @@ func (r *Router) DelConnector(host string, cid relay.ConnectorID) {
 	for i, c := range connectors {
 		if c.id.Equal(cid) {
 			r.connectors[host] = append(connectors[:i], connectors[i+1:]...)
+			break
 		}
 	}
 }
