@@ -14,7 +14,6 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/observer"
 	"github.com/go-gost/relay"
 	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
@@ -248,50 +247,3 @@ func (h *routerHandler) Close() error {
 	return nil
 }
 
-func (h *routerHandler) checkRateLimit(addr net.Addr) bool {
-	if h.options.RateLimiter == nil {
-		return true
-	}
-	host, _, _ := net.SplitHostPort(addr.String())
-	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
-		return limiter.Allow(1)
-	}
-
-	return true
-}
-
-func (h *routerHandler) observeStats(ctx context.Context) {
-	if h.options.Observer == nil {
-		return
-	}
-
-	var events []observer.Event
-
-	ticker := time.NewTicker(h.md.observerPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// Try to flush any buffered events from a previous failed attempt.
-			if len(events) > 0 {
-				if err := h.options.Observer.Observe(ctx, events); err != nil {
-					continue
-				}
-			}
-
-			// Collect and send fresh events.
-			evs := h.stats.Events()
-			if len(evs) > 0 {
-				if err := h.options.Observer.Observe(ctx, evs); err != nil {
-					events = evs
-					continue
-				}
-			}
-			events = nil
-
-		case <-ctx.Done():
-			return
-		}
-	}
-}
