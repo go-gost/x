@@ -37,6 +37,42 @@ func init() {
 	registry.HandlerRegistry().Register("relay", NewHandler)
 }
 
+// relayHandler is the GOST relay protocol server handler.
+//
+// The GOST relay protocol is a custom multiplexed transport supporting three modes:
+//  1. Connect — the client requests a connection to a target address.
+//     The handler dials via the configured Router and pipes data bidirectionally.
+//     - Direct: handleConnect(), target address from the relay request.
+//     - Forward: handleForward(), target from hop selector (load balancing).
+//  2. Bind — the client asks the handler to listen on a local port and forward
+//     incoming connections back through a mux session. Used for reverse proxying.
+//  3. Forward — when a hop is set, the target is selected by the hop's strategy
+//     rather than specified by the client.
+//
+// Data flow:
+//
+//	┌─────────────────────────────────────────────────────────┐
+//	│ Handle() → parse relay.Request                          │
+//	│   ├─ extract auth (UserAuthFeature) → authenticate      │
+//	│   ├─ extract target address (AddrFeature)                │
+//	│   └─ extract network type (NetworkFeature)               │
+//	│                                                          │
+//	│ ┌── hop set? ──→ handleForward()                         │
+//	│ │   ├─ hop.Select() pick target node                     │
+//	│ │   └─ Router.Dial() → Pipe bidir copy                   │
+//	│                                                          │
+//	│ └── no hop, dispatch by command:                         │
+//	│   ├─ CmdConnect → handleConnect()                        │
+//	│   │   ├─ bypass check                                    │
+//	│   │   ├─ consistent-hashing                              │
+//	│   │   ├─ Router.Dial() / net.Dial() / serial.Open        │
+//	│   │   ├─ send response header (noDelay)                  │
+//	│   │   ├─ optional protocol sniffing (HTTP/TLS MITM)      │
+//	│   │   └─ Pipe bidir data copy                            │
+//	│   └─ CmdBind → handleBind()                              │
+//	│       ├─ bindTCP: net.Listen → mux session → tcpHandler │
+//	│       └─ bindUDP: net.ListenPacket → udp.Relay           │
+//	└─────────────────────────────────────────────────────────┘
 type relayHandler struct {
 	hop      hop.Hop
 	md       metadata
@@ -59,6 +95,14 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init 初始化 relay handler。在 handler 被注册到 service 后调用。
+//
+// 初始化流程：
+//  1. 解析元数据配置（超时、嗅探、mux、MITM 等）
+//  2. 如果配置了 Observer，创建 stats 统计器并启动后台轮询协程
+//  3. 如果配置了 TrafficLimiter，创建带缓存的流量限制器
+//  4. 从 Recorders 列表中选取 ServiceHandler 类型的 recorder
+//  5. 如果配置了 MITM 证书，创建内存证书池
 func (h *relayHandler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err
@@ -99,6 +143,22 @@ func (h *relayHandler) Forward(hop hop.Hop) {
 	h.hop = hop
 }
 
+// Handle is the main entry point for each inbound connection.
+//
+// Flow:
+//  1. Create a recorder object with connection metadata.
+//  2. Wrap the connection for stats collection (input/output bytes).
+//  3. Rate-limit check.
+//  4. Set read deadline, read the relay.Request.
+//  5. Clear the read deadline.
+//  6. Check the relay protocol version.
+//  7. Parse request features (auth, address, network type).
+//  8. Authenticate (if an Auther is configured).
+//  9. Dispatch:
+//     - If hop is set → handleForward.
+//     - CmdConnect → handleConnect.
+//     - CmdBind → handleBind.
+//  10. Deferred final stats recording.
 func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -220,7 +280,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	log = log.WithFields(map[string]any{"network": network})
 
 	if h.hop != nil {
-		// forward mode
+		// Forward mode: target is selected from the hop.
 		return h.handleForward(ctx, conn, network, ro, log)
 	}
 
@@ -243,4 +303,3 @@ func (h *relayHandler) Close() error {
 	}
 	return nil
 }
-

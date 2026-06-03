@@ -19,6 +19,31 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+// handleForward processes relay forward mode.
+//
+// When a hop is set on the relayHandler (via Forward()), this mode is used.
+// Unlike handleConnect, the target address is not specified by the client;
+// instead it is selected by the hop's load-balancing strategy (round-robin,
+// random, hash, etc.).
+//
+// Data flow:
+//
+//	handleForward()
+//	├─ 1. hop.Select() picks a target node from the hop
+//	│   └─ No node available → return ServiceUnavailable
+//	├─ 2. Wrap traffic limiter + stats
+//	├─ 3. Router.Dial() dials the target node
+//	│   └─ Dial fails → mark the node (Mark()) → return HostUnreachable
+//	├─ 4. On success, reset the node's failure marker
+//	├─ 5. Send response header (noDelay controls timing)
+//	├─ 6. Wrap connection by network type (tcpConn/udpConn)
+//	└─ 7. xnet.Pipe() bidir data copy (client ↔ target)
+//
+// Failure handling:
+//   - If Router.Dial fails and the target node has a Marker, the node is
+//     marked as failed. Marked nodes are skipped by FailFilter/BackupFilter
+//     in subsequent selections.
+//   - On successful dial, the marker is reset, indicating recovery.
 func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -40,6 +65,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
 
+	// --- Traffic limiter + stats wrapper ---
 	{
 		clientID := ctxvalue.ClientIDFromContext(ctx)
 		rw := wrapper.WrapReadWriter(
@@ -63,12 +89,13 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
+	// Dial the target node, recording the route path.
 	var buf bytes.Buffer
 	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, target.Addr)
 	ro.Route = buf.String()
 	if err != nil {
-		// TODO: the router itself may be failed due to the failed node in the router,
-		// the dead marker may be a wrong operation.
+		// TODO: the router itself may fail because of a failed node in the route.
+		// Marking the node here may be incorrect in that case.
 		if marker := target.Marker(); marker != nil {
 			marker.Mark()
 		}
@@ -85,10 +112,12 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
+	// Reset the failure marker on successful dial.
 	if marker := target.Marker(); marker != nil {
 		marker.Reset()
 	}
 
+	// --- Send response header ---
 	if h.md.noDelay {
 		if _, err := resp.WriteTo(conn); err != nil {
 			log.Error(err)
@@ -96,13 +125,14 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		}
 	}
 
+	// --- Wrap connection by network type ---
 	switch network {
 	case "udp", "udp4", "udp6":
 		rc := &udpConn{
 			Conn: conn,
 		}
 		if !h.md.noDelay {
-			// cache the header
+			// Buffer the response header, merged with the first data packet.
 			if _, err := resp.WriteTo(&rc.wbuf); err != nil {
 				return err
 			}
@@ -113,7 +143,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 			Conn: conn,
 		}
 		if !h.md.noDelay {
-			// cache the header
+			// Buffer the response header, merged with the first data packet.
 			if _, err := resp.WriteTo(&rc.wbuf); err != nil {
 				return err
 			}
@@ -123,7 +153,6 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), target.Addr)
-	// xnet.Transport(conn, cc)
 	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),

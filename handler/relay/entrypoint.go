@@ -16,6 +16,16 @@ import (
 	metrics "github.com/go-gost/x/metrics/wrapper"
 )
 
+// tcpListener is the internal TCP listener used in BIND mode.
+//
+// Wrapping layers (outermost first):
+//   - proxyproto.WrapListener — PROXY protocol support
+//   - metrics.WrapListener — connection metrics
+//   - admission.WrapListener — access control (allow/deny lists)
+//   - raw net.Listener
+//
+// This is a simplified version of the standard listener wrapping chain from
+// x/config/parsing/service/parse.go.
 type tcpListener struct {
 	ln      net.Listener
 	options listener.Options
@@ -33,7 +43,6 @@ func newTCPListener(ln net.Listener, opts ...listener.Option) listener.Listener 
 }
 
 func (l *tcpListener) Init(md md.Metadata) (err error) {
-	// l.logger.Debugf("pp: %d", l.options.ProxyProtocol)
 	ln := l.ln
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
@@ -55,6 +64,20 @@ func (l *tcpListener) Close() error {
 	return l.ln.Close()
 }
 
+// tcpHandler is the internal handler for BIND mode.
+//
+// When an inbound connection arrives at the listen port created by bindTCP,
+// this handler forwards it back to the requesting client over a mux stream.
+//
+// Flow:
+//  1. Gets a free stream from the mux session (session.GetConn()).
+//  2. Encodes the inbound peer address as a relay.AddrFeature on the stream.
+//  3. Writes a relay.Response (StatusOK).
+//  4. Bidirectional Pipe (inbound conn ↔ mux stream).
+//
+// This is the core mechanism for reverse-proxy / tunnel traversal:
+// the client that requested BIND receives forwarded connections as
+// streams on the mux session.
 type tcpHandler struct {
 	session *mux.Session
 	options handler.Options
@@ -92,6 +115,7 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
+	// 从 mux 会话获取一个流
 	cc, err := h.session.GetConn()
 	if err != nil {
 		log.Error(err)
@@ -99,6 +123,7 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 	defer cc.Close()
 
+	// 将入站连接地址编码为 AddrFeature，通过 relay 帧发送给客户端
 	af := &relay.AddrFeature{}
 	af.ParseFrom(conn.RemoteAddr().String())
 	resp := relay.Response{
@@ -113,7 +138,6 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	t := time.Now()
 	log.Debugf("%s <-> %s", conn.RemoteAddr(), cc.RemoteAddr())
-	// xnet.Transport(conn, cc)
 	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{"duration": time.Since(t)}).
 		Debugf("%s >-< %s", conn.RemoteAddr(), cc.RemoteAddr())

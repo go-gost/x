@@ -24,6 +24,35 @@ import (
 	xservice "github.com/go-gost/x/service"
 )
 
+// handleBind processes a relay CmdBind request.
+//
+// BIND mode is used for reverse-proxy scenarios: the client asks the relay
+// handler to listen on a local port, then forwards inbound connections back
+// to the client over a mux session.
+//
+// Flow:
+//
+//	handleBind()
+//	├─ 1. Wrap traffic limiter + stats
+//	├─ 2. Check BIND is enabled
+//	├─ 3. TCP BIND → bindTCP()
+//	│   ├─ net.Listen on the specified address
+//	│   ├─ Return the listening address via relay.Response
+//	│   ├─ Upgrade the connection to a mux session
+//	│   ├─ Start tcpHandler + tcpListener as an internal service
+//	│   │   ├─ tcpHandler: gets a stream from mux session → writes AddrFeature
+//	│   │   └─ tcpListener: accepts local TCP connections
+//	│   ├─ Goroutine: drain unexpected mux sessions
+//	│   └─ service.Serve() blocks
+//	└─ 4. UDP BIND → bindUDP()
+//	    ├─ net.ListenPacket on the UDP port
+//	    ├─ Return the listening address
+//	    └─ Create udp.Relay for datagram relay
+//
+// Key design:
+//   - TCP BIND uses mux: each inbound connection gets an independent mux stream
+//     carrying a relay AddrFeature identifying the peer address.
+//   - UDP BIND uses udp.Relay directly, bypassing mux.
 func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	log = log.WithFields(map[string]any{
 		"dst": address,
@@ -32,6 +61,7 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), address)
 
+	// --- Traffic limiter + stats wrapper ---
 	{
 		clientID := ctxvalue.ClientIDFromContext(ctx)
 		rw := traffic_wrapper.WrapReadWriter(
@@ -56,6 +86,7 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 		conn = xnet.NewReadWriteConn(rw, rw, conn)
 	}
 
+	// Check whether BIND is enabled in config.
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
@@ -75,6 +106,27 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 	}
 }
 
+// bindTCP implements TCP BIND mode.
+//
+// Detailed flow:
+//
+//	bindTCP()
+//	├─ 1. net.Listen on the specified TCP address
+//	├─ 2. Write the listening address into relay.Response, send to client
+//	├─ 3. Upgrade the client connection to a mux session
+//	│     (mux multiplexes multiple independent streams over one TCP conn)
+//	├─ 4. Create internal tcpListener + tcpHandler + Service
+//	│   ├─ tcpListener: wraps net.Listener with proxyproto/metrics/admission
+//	│   ├─ tcpHandler: on each inbound connection:
+//	│   │   ├─ Gets a stream from the mux session
+//	│   │   ├─ Writes the inbound peer address as AddrFeature on the stream
+//	│   │   └─ Pipes data bidirectionally (local conn ↔ mux stream)
+//	│   └─ Service: wraps listener + handler, blocks on Serve()
+//	├─ 5. Goroutine: accept and discard unexpected mux connections
+//	└─ 6. srv.Serve() blocks until shutdown
+//
+// The client receives forwarded connections as streams on the mux session.
+// Each stream carries a relay.AddrFeature identifying the original peer.
 func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -84,7 +136,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
-	ln, err := lc.Listen(ctx, network, address) // strict mode: if the port already in use, it will return error
+	ln, err := lc.Listen(ctx, network, address) // 严格模式：端口已被占用时会返回错误
 	if err != nil {
 		log.Error(err)
 		resp.Status = relay.StatusServiceUnavailable
@@ -93,6 +145,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	}
 	defer ln.Close()
 
+	// Internal service name: "<main-service>-ep-<listen-address>"
 	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
 	log = log.WithFields(map[string]any{
 		"service":  serviceName,
@@ -103,6 +156,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	})
 	ro.SrcAddr = ln.Addr().String()
 
+	// Return the listening address to the client.
 	af := &relay.AddrFeature{}
 	if err := af.ParseFrom(ln.Addr().String()); err != nil {
 		log.Warn(err)
@@ -113,7 +167,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 		return err
 	}
 
-	// Upgrade connection to multiplex session.
+	// Upgrade the client connection to a mux session.
 	session, err := mux.ClientSession(conn, h.md.muxCfg)
 	if err != nil {
 		log.Error(err)
@@ -121,6 +175,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	}
 	defer session.Close()
 
+	// Internal endpoint listener (proxyproto → metrics → admission layers).
 	epListener := newTCPListener(ln,
 		listener.AddrOption(address),
 		listener.ServiceOption(serviceName),
@@ -129,6 +184,10 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 			"kind": "listener",
 		})),
 	)
+	// Internal endpoint handler — on each inbound connection:
+	//   1. Gets a stream from the mux session
+	//   2. Writes the peer address as AddrFeature on the mux stream
+	//   3. Pipes data bidirectionally
 	epHandler := newTCPHandler(session,
 		handler.ServiceOption(serviceName),
 		handler.LoggerOption(log.WithFields(map[string]any{
@@ -145,6 +204,8 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	log = log.WithFields(map[string]any{})
 	log.Infof("bind on %s/%s OK", ln.Addr(), ln.Addr().Network())
 
+	// Goroutine: accept and discard unexpected mux connections.
+	// Normal inbound connections are handled by tcpHandler via session.GetConn().
 	go func() {
 		defer srv.Close()
 		for {
@@ -153,13 +214,23 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 				log.Error(err)
 				return
 			}
-			conn.Close() // we do not handle incoming connections.
+			conn.Close() // 我们不处理意外入站的连接
 		}
 	}()
 
 	return srv.Serve()
 }
 
+// bindUDP implements UDP BIND mode.
+//
+// Flow:
+//  1. net.ListenPacket on the specified UDP address.
+//  2. Return the listening address to the client.
+//  3. Create a udp.Relay for bidir datagram relay between client and local port.
+//
+// Unlike TCP BIND, UDP BIND does not use mux. It relays datagrams directly via
+// udp.Relay, wrapping the stream connection as UDPTunServerConn for datagram
+// framing over the stream.
 func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
 	resp := relay.Response{
 		Version: relay.Version1,
@@ -203,6 +274,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 
 	log.Infof("bind on %s OK", pc.LocalAddr())
 
+	// relay_util.UDPTunServerConn 将流式连接包装成数据报模式
 	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).
 		WithService(h.options.Service).
 		WithBypass(h.options.Bypass).
