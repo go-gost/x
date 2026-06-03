@@ -364,21 +364,21 @@ func (h *tunnelHandler) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			// Try to flush any buffered events from a previous failed attempt.
 			if len(events) > 0 {
-				if err := h.options.Observer.Observe(ctx, events); err == nil {
-					events = nil
-					// Retry succeeded — also flush new events this tick.
-					// Fall through without break to reach the normal path.
-				} else {
-					// Retry still failing — skip new events, try again next tick.
-					break
+				if err := h.options.Observer.Observe(ctx, events); err != nil {
+					continue
 				}
 			}
 
-			evs := h.stats.Events()
-			if err := h.options.Observer.Observe(ctx, evs); err != nil {
-				events = evs
+			// Collect and send fresh events.
+			if evs := h.stats.Events(); len(evs) > 0 {
+				if err := h.options.Observer.Observe(ctx, evs); err != nil {
+					events = evs
+					continue
+				}
 			}
+			events = nil
 
 		case <-ctx.Done():
 			return

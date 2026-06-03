@@ -48,7 +48,9 @@ func (h *routerHandler) handleEntrypoint(log logger.Logger) error {
 
 			if c := h.pool.Get(routerID, gateway); c != nil {
 				if w := c.Writer(); w != nil {
-					w.Write(buf[nn:])
+					if _, werr := w.Write(buf[nn:]); werr != nil {
+						log.Error(werr)
+					}
 				}
 			}
 

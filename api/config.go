@@ -17,6 +17,35 @@ type serviceStatus interface {
 	Status() *service.Status
 }
 
+func fillServiceStatus(svc *config.ServiceConfig) {
+	s := registry.ServiceRegistry().Get(svc.Name)
+	ss, ok := s.(serviceStatus)
+	if ok && ss != nil {
+		status := ss.Status()
+		svc.Status = &config.ServiceStatus{
+			CreateTime: status.CreateTime().Unix(),
+			State:      string(status.State()),
+		}
+		if st := status.Stats(); st != nil {
+			svc.Status.Stats = &config.ServiceStats{
+				TotalConns:   st.Get(stats.KindTotalConns),
+				CurrentConns: st.Get(stats.KindCurrentConns),
+				TotalErrs:    st.Get(stats.KindTotalErrs),
+				InputBytes:   st.Get(stats.KindInputBytes),
+				OutputBytes:  st.Get(stats.KindOutputBytes),
+			}
+		}
+		for _, ev := range status.Events() {
+			if !ev.Time.IsZero() {
+				svc.Status.Events = append(svc.Status.Events, config.ServiceEvent{
+					Time: ev.Time.Unix(),
+					Msg:  ev.Message,
+				})
+			}
+		}
+	}
+}
+
 // swagger:parameters getConfigRequest
 type getConfigRequest struct {
 	// output format, one of yaml|json, default is json.
@@ -49,32 +78,7 @@ func getConfig(ctx *gin.Context) {
 			if svc == nil {
 				continue
 			}
-			s := registry.ServiceRegistry().Get(svc.Name)
-			ss, ok := s.(serviceStatus)
-			if ok && ss != nil {
-				status := ss.Status()
-				svc.Status = &config.ServiceStatus{
-					CreateTime: status.CreateTime().Unix(),
-					State:      string(status.State()),
-				}
-				if st := status.Stats(); st != nil {
-					svc.Status.Stats = &config.ServiceStats{
-						TotalConns:   st.Get(stats.KindTotalConns),
-						CurrentConns: st.Get(stats.KindCurrentConns),
-						TotalErrs:    st.Get(stats.KindTotalErrs),
-						InputBytes:   st.Get(stats.KindInputBytes),
-						OutputBytes:  st.Get(stats.KindOutputBytes),
-					}
-				}
-				for _, ev := range status.Events() {
-					if !ev.Time.IsZero() {
-						svc.Status.Events = append(svc.Status.Events, config.ServiceEvent{
-							Time: ev.Time.Unix(),
-							Msg:  ev.Message,
-						})
-					}
-				}
-			}
+			fillServiceStatus(svc)
 		}
 		return nil
 	})

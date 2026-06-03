@@ -1,10 +1,8 @@
 package router
 
 import (
-	"context"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/relay"
@@ -76,7 +74,6 @@ type Router struct {
 	node       string
 	id         relay.TunnelID
 	connectors map[string][]*Connector
-	t          time.Time
 	close      chan struct{}
 	mu         sync.RWMutex
 }
@@ -86,7 +83,6 @@ func NewRouter(node string, rid relay.TunnelID) *Router {
 		node:       node,
 		id:         rid,
 		connectors: make(map[string][]*Connector),
-		t:          time.Now(),
 		close:      make(chan struct{}),
 	}
 	return r
@@ -139,8 +135,8 @@ func (r *Router) GetConnector(host string) *Connector {
 }
 
 func (r *Router) DelConnector(host string, cid relay.ConnectorID) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	connectors := r.connectors[host]
 	for i, c := range connectors {
@@ -174,7 +170,6 @@ type ConnectorPool struct {
 	node    string
 	routers map[relay.TunnelID]*Router
 	mu      sync.RWMutex
-	cancel  context.CancelFunc
 }
 
 func NewConnectorPool(node string) *ConnectorPool {
@@ -219,8 +214,8 @@ func (p *ConnectorPool) Del(rid relay.TunnelID, host string, cid relay.Connector
 		return
 	}
 
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	r := p.routers[rid]
 	if r == nil {
@@ -233,10 +228,6 @@ func (p *ConnectorPool) Del(rid relay.TunnelID, host string, cid relay.Connector
 func (p *ConnectorPool) Close() error {
 	if p == nil {
 		return nil
-	}
-
-	if p.cancel != nil {
-		p.cancel()
 	}
 
 	p.mu.Lock()

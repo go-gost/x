@@ -559,18 +559,21 @@ func (h *httpHandler) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			// Retry previously failed events first to preserve ordering.
+			// Try to flush any buffered events from a previous failed attempt.
 			if len(events) > 0 {
-				if err := h.options.Observer.Observe(ctx, events); err == nil {
-					events = nil
+				if err := h.options.Observer.Observe(ctx, events); err != nil {
+					continue
 				}
-				break
 			}
 
-			evs := h.stats.Events()
-			if err := h.options.Observer.Observe(ctx, evs); err != nil {
-				events = evs
+			// Collect and send fresh events.
+			if evs := h.stats.Events(); len(evs) > 0 {
+				if err := h.options.Observer.Observe(ctx, evs); err != nil {
+					events = evs
+					continue
+				}
 			}
+			events = nil
 
 		case <-ctx.Done():
 			return

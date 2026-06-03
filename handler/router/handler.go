@@ -273,17 +273,22 @@ func (h *routerHandler) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			// Try to flush any buffered events from a previous failed attempt.
 			if len(events) > 0 {
-				if err := h.options.Observer.Observe(ctx, events); err == nil {
-					events = nil
+				if err := h.options.Observer.Observe(ctx, events); err != nil {
+					continue
 				}
-				break
 			}
 
+			// Collect and send fresh events.
 			evs := h.stats.Events()
-			if err := h.options.Observer.Observe(ctx, evs); err != nil {
-				events = evs
+			if len(evs) > 0 {
+				if err := h.options.Observer.Observe(ctx, evs); err != nil {
+					events = evs
+					continue
+				}
 			}
+			events = nil
 
 		case <-ctx.Done():
 			return

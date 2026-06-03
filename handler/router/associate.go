@@ -52,7 +52,9 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 
 		if !rid.Equal(routerID) {
 			resp.Status = relay.StatusHostUnreachable
-			resp.WriteTo(conn)
+			if _, werr := resp.WriteTo(conn); werr != nil {
+				log.Error(werr)
+			}
 			err := fmt.Errorf("no route to host %s", host)
 			log.Error(err)
 			return err
@@ -62,7 +64,9 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 	uuid, err := uuid.NewRandom()
 	if err != nil {
 		resp.Status = relay.StatusInternalServerError
-		resp.WriteTo(conn)
+		if _, werr := resp.WriteTo(conn); werr != nil {
+			log.Error(werr)
+		}
 		return
 	}
 	connectorID := relay.NewConnectorID(uuid[:])
@@ -72,7 +76,9 @@ func (h *routerHandler) handleAssociate(ctx context.Context, conn net.Conn, netw
 			ID: connectorID,
 		},
 	)
-	resp.WriteTo(conn)
+	if _, werr := resp.WriteTo(conn); werr != nil {
+		log.Error(werr)
+	}
 
 	conn = &packetConn{conn}
 
@@ -203,7 +209,9 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 
 	if c := h.pool.Get(routerID, route.Gateway); c != nil {
 		if w := c.Writer(); w != nil {
-			w.Write(data)
+			if _, werr := w.Write(data); werr != nil {
+				log.Error(werr)
+			}
 		}
 		return nil
 	}
@@ -231,7 +239,9 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 	req.WriteTo(&buf)
 	buf.Write(data)
 
-	h.epConn.WriteTo(buf.Bytes(), raddr)
+	if _, werr := h.epConn.WriteTo(buf.Bytes(), raddr); werr != nil {
+		log.Error(werr)
+	}
 
 	return nil
 }

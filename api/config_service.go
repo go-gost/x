@@ -43,6 +43,13 @@ func getServiceList(ctx *gin.Context) {
 
 	list := config.Global().Services
 
+	for _, svc := range list {
+		if svc == nil {
+			continue
+		}
+		fillServiceStatus(svc)
+	}
+
 	var resp getServiceListResponse
 	resp.Data = serviceList{
 		Count: len(list),
@@ -89,6 +96,7 @@ func getService(ctx *gin.Context) {
 			continue
 		}
 		if service.Name == req.Service {
+			fillServiceStatus(service)
 			resp.Data = service
 		}
 	}
