@@ -65,6 +65,16 @@ func NewService(network, addr string, opts ...Option) (service.Service, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle(options.path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// CORS headers for browser-based access (e.g. Flutter dashboard)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		if options.auther != nil {
 			u, p, _ := r.BasicAuth()
 			if _, ok := options.auther.Authenticate(r.Context(), u, p, auth.WithService("@metrics")); !ok {
