@@ -23,11 +23,18 @@ func (b *fakeBypass) Contains(ctx context.Context, network, addr string, opts ..
 }
 
 // fakeIngress implements ingress.Ingress for testing.
+// It stores one rule per hostname for conflict simulation.
 type fakeIngress struct {
-	rule *ingress.Rule
+	rule     *ingress.Rule
+	ruleByHost map[string]*ingress.Rule
 }
 
 func (i *fakeIngress) GetRule(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule {
+	if i.ruleByHost != nil {
+		if r, ok := i.ruleByHost[host]; ok {
+			return r
+		}
+	}
 	return i.rule
 }
 

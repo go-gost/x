@@ -2,6 +2,8 @@ package tunnel
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"net"
 	"testing"
 	"time"
@@ -437,5 +439,132 @@ func TestHandleBind_WithHostEndpoint(t *testing.T) {
 	// Should have set at least the endpoint-based ingress rule.
 	if ing.rule == nil {
 		t.Error("expected ingress rule to be set")
+	}
+}
+// TestHandleBind_CustomHost tests that a user-supplied host is used as
+// the response address, not the md5 hash.
+func TestHandleBind_CustomHost(t *testing.T) {
+	tid := newTestTunnelID(t)
+
+	ing := &fakeIngress{}
+	h := &tunnelHandler{
+		options: handler.Options{
+			Logger: testLogger(),
+		},
+		md: metadata{
+			muxCfg:  &mux.Config{Version: 2},
+			ingress: ing,
+		},
+		id:   "node1",
+		pool: NewConnectorPool("node1"),
+		log:  testLogger(),
+	}
+	defer h.pool.Close()
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, testLogger())
+	}()
+
+	resp := &relay.Response{}
+	_, err := resp.ReadFrom(client)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+
+	// The response AddrFeature should use "dash", not the md5 hash.
+	var host string
+	for _, f := range resp.Features {
+		if f.Type() == relay.FeatureAddr {
+			if af, ok := f.(*relay.AddrFeature); ok {
+				host = af.Host
+			}
+		}
+	}
+	if host != "dash" {
+		t.Errorf("expected response host 'dash', got %q", host)
+	}
+
+	client.Close()
+	select {
+	case err := <-errCh:
+		t.Logf("handleBind returned: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleBind did not complete")
+	}
+}
+
+// TestHandleBind_CustomHostConflict tests that when the user-supplied host
+// is already claimed by a different tunnel in ingress, handleBind falls
+// back to the md5 hash to avoid route hijacking.
+func TestHandleBind_CustomHostConflict(t *testing.T) {
+	tid := newTestTunnelID(t)
+	otherEndpoint := "other-tunnel-id"
+
+	ing := &fakeIngress{
+		ruleByHost: map[string]*ingress.Rule{
+			"dash": {
+				Hostname: "dash",
+				Endpoint: otherEndpoint,
+			},
+		},
+	}
+	h := &tunnelHandler{
+		options: handler.Options{
+			Logger: testLogger(),
+		},
+		md: metadata{
+			muxCfg:  &mux.Config{Version: 2},
+			ingress: ing,
+		},
+		id:   "node1",
+		pool: NewConnectorPool("node1"),
+		log:  testLogger(),
+	}
+	defer h.pool.Close()
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, testLogger())
+	}()
+
+	resp := &relay.Response{}
+	_, err := resp.ReadFrom(client)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+
+	// The response should fall back to the md5 hash because "dash" is
+	// already claimed by another tunnel.
+	var host string
+	for _, f := range resp.Features {
+		if f.Type() == relay.FeatureAddr {
+			if af, ok := f.(*relay.AddrFeature); ok {
+				host = af.Host
+			}
+		}
+	}
+
+	// Compute the expected fallback hash for this tunnelID.
+	v := md5.Sum([]byte(tid.String()))
+	expectedHash := hex.EncodeToString(v[:8])
+	if host != expectedHash {
+		t.Errorf("expected fallback hash %q for conflicting host, got %q", expectedHash, host)
+	}
+
+	client.Close()
+	select {
+	case err := <-errCh:
+		t.Logf("handleBind returned: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleBind did not complete")
 	}
 }
