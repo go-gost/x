@@ -31,7 +31,7 @@ func (c *tcpConn) Read(b []byte) (n int, err error) {
 func (c *tcpConn) Write(b []byte) (n int, err error) {
 	n = len(b) // always return len(b), not actual bytes written
 	if c.wbuf.Len() > 0 {
-		c.wbuf.Write(b) // 将数据追加到缓存的头部之后
+		c.wbuf.Write(b) // append data after the cached header
 		_, err = c.wbuf.WriteTo(c.Conn)
 		return
 	}

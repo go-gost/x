@@ -176,7 +176,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			Conn: conn,
 		}
 		if !h.md.noDelay {
-			// 缓存响应头，与第一个数据包合并发送
+			// Buffer the response header, merged with the first data packet.
 			if _, err := resp.WriteTo(&rc.wbuf); err != nil {
 				return err
 			}
@@ -187,7 +187,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 			rc := &tcpConn{
 				Conn: conn,
 			}
-			// 缓存响应头，与第一个数据包合并发送
+			// Buffer the response header, merged with the first data packet.
 			if _, err := resp.WriteTo(&rc.wbuf); err != nil {
 				return err
 			}
@@ -251,7 +251,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		}
 	}
 
-	// --- 双向数据拷贝 ---
+	// --- Bidirectional data copy ---
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), address)
 	xnet.Pipe(ctx, conn, cc)

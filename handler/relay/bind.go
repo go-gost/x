@@ -136,7 +136,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
-	ln, err := lc.Listen(ctx, network, address) // 严格模式：端口已被占用时会返回错误
+	ln, err := lc.Listen(ctx, network, address) // strict: port-in-use returns error
 	if err != nil {
 		log.Error(err)
 		resp.Status = relay.StatusServiceUnavailable
@@ -214,7 +214,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 				log.Error(err)
 				return
 			}
-			conn.Close() // 我们不处理意外入站的连接
+			conn.Close() // unexpected inbound — we don't handle these
 		}
 	}()
 
@@ -274,7 +274,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 
 	log.Infof("bind on %s OK", pc.LocalAddr())
 
-	// relay_util.UDPTunServerConn 将流式连接包装成数据报模式
+	// UDPTunServerConn wraps the stream connection in datagram mode.
 	r := udp.NewRelay(relay_util.UDPTunServerConn(conn), pc).
 		WithService(h.options.Service).
 		WithBypass(h.options.Bypass).

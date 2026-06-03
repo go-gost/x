@@ -95,14 +95,14 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
-// Init 初始化 relay handler。在 handler 被注册到 service 后调用。
+// Init initialises the relay handler. Called after the handler is registered with a service.
 //
-// 初始化流程：
-//  1. 解析元数据配置（超时、嗅探、mux、MITM 等）
-//  2. 如果配置了 Observer，创建 stats 统计器并启动后台轮询协程
-//  3. 如果配置了 TrafficLimiter，创建带缓存的流量限制器
-//  4. 从 Recorders 列表中选取 ServiceHandler 类型的 recorder
-//  5. 如果配置了 MITM 证书，创建内存证书池
+// Initialisation flow:
+//  1. Parse metadata config (timeouts, sniffing, mux, MITM, etc.)
+//  2. If an Observer is configured, create a stats counter and start the background polling goroutine.
+//  3. If a TrafficLimiter is configured, create a cached traffic limiter.
+//  4. Pick the ServiceHandler recorder from the recorder list.
+//  5. If MITM certificates are configured, create an in-memory cert pool.
 func (h *relayHandler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err

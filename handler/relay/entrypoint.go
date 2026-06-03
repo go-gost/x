@@ -115,7 +115,7 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	// 从 mux 会话获取一个流
+	// Get a stream from the mux session.
 	cc, err := h.session.GetConn()
 	if err != nil {
 		log.Error(err)
@@ -123,7 +123,7 @@ func (h *tcpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 	defer cc.Close()
 
-	// 将入站连接地址编码为 AddrFeature，通过 relay 帧发送给客户端
+	// Encode the peer address as an AddrFeature sent to the client through relay.
 	af := &relay.AddrFeature{}
 	af.ParseFrom(conn.RemoteAddr().String())
 	resp := relay.Response{
