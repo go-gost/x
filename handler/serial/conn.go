@@ -40,8 +40,10 @@ func (c *recorderConn) Read(b []byte) (n int, err error) {
 	return
 }
 
-func (c *recorderConn) Write(b []byte) (int, error) {
-	if c.recorder.Recorder != nil {
+func (c *recorderConn) Write(b []byte) (n int, err error) {
+	n, err = c.Conn.Write(b)
+
+	if n > 0 && c.recorder.Recorder != nil {
 		var buf bytes.Buffer
 		if c.recorder.Options != nil && c.recorder.Options.Direction {
 			buf.WriteByte('<')
@@ -53,11 +55,12 @@ func (c *recorderConn) Write(b []byte) (int, error) {
 			buf.WriteByte('\n')
 		}
 		if c.recorder.Options != nil && c.recorder.Options.Hexdump {
-			buf.WriteString(hex.Dump(b))
+			buf.WriteString(hex.Dump(b[:n]))
 		} else {
-			buf.Write(b)
+			buf.Write(b[:n])
 		}
 		c.recorder.Recorder.Record(context.Background(), buf.Bytes())
 	}
-	return c.Conn.Write(b)
+
+	return
 }
