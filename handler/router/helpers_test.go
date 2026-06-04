@@ -328,15 +328,15 @@ func (r *mockRouter) GetRoute(ctx context.Context, dst string, opts ...router.Op
 // ---------------------------------------------------------------------------
 
 type mockSD struct {
-	getFn         func(ctx context.Context, name string, opts ...sd.Option) ([]*sd.Service, error)
+	getFn         func(ctx context.Context, name string) ([]*sd.Service, error)
 	registerFn    func(ctx context.Context, svc *sd.Service, opts ...sd.Option) error
-	deregisterFn  func(ctx context.Context, svc *sd.Service, opts ...sd.Option) error
-	renewFn       func(ctx context.Context, svc *sd.Service, opts ...sd.Option) error
+	deregisterFn  func(ctx context.Context, svc *sd.Service) error
+	renewFn       func(ctx context.Context, svc *sd.Service) error
 }
 
-func (s *mockSD) Get(ctx context.Context, name string, opts ...sd.Option) ([]*sd.Service, error) {
+func (s *mockSD) Get(ctx context.Context, name string) ([]*sd.Service, error) {
 	if s.getFn != nil {
-		return s.getFn(ctx, name, opts...)
+		return s.getFn(ctx, name)
 	}
 	return nil, nil
 }
@@ -346,15 +346,15 @@ func (s *mockSD) Register(ctx context.Context, svc *sd.Service, opts ...sd.Optio
 	}
 	return nil
 }
-func (s *mockSD) Deregister(ctx context.Context, svc *sd.Service, opts ...sd.Option) error {
+func (s *mockSD) Deregister(ctx context.Context, svc *sd.Service) error {
 	if s.deregisterFn != nil {
-		return s.deregisterFn(ctx, svc, opts...)
+		return s.deregisterFn(ctx, svc)
 	}
 	return nil
 }
-func (s *mockSD) Renew(ctx context.Context, svc *sd.Service, opts ...sd.Option) error {
+func (s *mockSD) Renew(ctx context.Context, svc *sd.Service) error {
 	if s.renewFn != nil {
-		return s.renewFn(ctx, svc, opts...)
+		return s.renewFn(ctx, svc)
 	}
 	return nil
 }
@@ -364,7 +364,15 @@ func (s *mockSD) Renew(ctx context.Context, svc *sd.Service, opts ...sd.Option) 
 // ---------------------------------------------------------------------------
 
 type mockIngress struct {
+	setRuleFn func(ctx context.Context, rule *ingress.Rule, opts ...ingress.Option) bool
 	getRuleFn func(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule
+}
+
+func (ing *mockIngress) SetRule(ctx context.Context, rule *ingress.Rule, opts ...ingress.Option) bool {
+	if ing.setRuleFn != nil {
+		return ing.setRuleFn(ctx, rule, opts...)
+	}
+	return false
 }
 
 func (ing *mockIngress) GetRule(ctx context.Context, host string, opts ...ingress.Option) *ingress.Rule {
