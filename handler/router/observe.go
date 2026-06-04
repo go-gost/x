@@ -8,6 +8,11 @@ import (
 	"github.com/go-gost/core/observer"
 )
 
+// checkRateLimit applies connection-level rate limiting based on the
+// client's remote address.
+//
+// The rate limiter key is the host portion of the remote address.
+// If no rate limiter is configured, all connections are allowed.
 func (h *routerHandler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
@@ -20,6 +25,23 @@ func (h *routerHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
+// observeStats periodically collects traffic statistics and reports them
+// to the configured observer.
+//
+// The collection period is controlled by metadata.observerPeriod
+// (default: 5s, minimum: 1s).
+//
+// # Retry behavior
+//
+// If observation fails (e.g., observer backend is temporarily
+// unavailable), the events are buffered and retried on the next tick.
+// During retry, new events are NOT collected — this prevents
+// unbounded accumulation while the backend is unhealthy. Once the
+// buffered events are successfully sent, the next tick resumes
+// normal collection.
+//
+// This pattern is used consistently across all handler packages
+// (http, http2, socks4/5, relay, tunnel, router, etc.).
 func (h *routerHandler) observeStats(ctx context.Context) {
 	if h.options.Observer == nil {
 		return
@@ -33,7 +55,7 @@ func (h *routerHandler) observeStats(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			// Try to flush any buffered events from a previous failed attempt.
+			// Retry buffered events from a previous failed attempt first.
 			if len(events) > 0 {
 				if err := h.options.Observer.Observe(ctx, events); err != nil {
 					continue
