@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -27,9 +28,12 @@ func TestHandleAssociate_NoIngress(t *testing.T) {
 
 	conn := &fakeConn{buf: reqData}
 	err := h.handleAssociate(context.Background(), conn, "ip", "10.0.0.1", rid, &testLogger{})
-	// The error comes from the packet read loop when the fake conn has no
-	// more data — it is not an associate failure.
-	if err != nil && err.Error() != "unexpected EOF" {
+	// handleAssociate returns io.EOF when the packet read loop exhausts the
+	// fake connection's data — that signals normal completion, not a failure.
+	// packetConn.Read uses io.ReadFull, which returns io.ErrUnexpectedEOF
+	// when the underlying connection has been exhausted mid-frame, rather
+	// than the plain io.EOF that the loop checks for.
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		t.Fatalf("handleAssociate: %v", err)
 	}
 
@@ -58,9 +62,7 @@ func TestHandleAssociate_IngressMatch(t *testing.T) {
 	reqData := buildRelayAssociateRequest(t, "10.0.0.1:0", rid, "ip")
 	conn := &fakeConn{buf: reqData}
 	err := h.handleAssociate(context.Background(), conn, "ip", "10.0.0.1", rid, &testLogger{})
-	// The error comes from the packet read loop when the fake conn has no
-	// more data — it is not an associate failure.
-	if err != nil && err.Error() != "unexpected EOF" {
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		t.Fatalf("handleAssociate: %v", err)
 	}
 
@@ -249,10 +251,19 @@ func TestGetRoute_CacheDisabled(t *testing.T) {
 	h := newInitdHandler(t)
 	h.md.routerCacheEnabled = false
 
-	// With no registry router and no fallback, should return nil.
+	// With cache disabled, getRoute always performs a lookup.
+	// Since cache is disabled, a cached value should NOT be returned even if one exists.
+	h.routeCache.Set("10.0.0.1", cache.NewItem(&router.Route{
+		Dst:     "10.0.0.0/24",
+		Gateway: "10.0.0.254",
+	}, time.Minute))
+
 	route := h.getRoute(context.Background(), "test-rid", "10.0.0.1")
+	// With cache disabled, the cached route must NOT be returned.
+	// Since there is no registry router registered for "test-rid" and no
+	// fallback router, the result should be nil.
 	if route != nil {
-		t.Log("route is not nil (may have registry router)")
+		t.Errorf("getRoute returned %+v, want nil (cache disabled, no fallback)", route)
 	}
 }
 

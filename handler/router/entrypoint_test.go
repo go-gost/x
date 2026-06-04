@@ -72,9 +72,10 @@ func TestHandleEntrypoint_NonAssociateCmd(t *testing.T) {
 	h.epConn = fpc
 	h.pool.Add(rid, c)
 
-	errCh := make(chan error, 1)
+	doneCh := make(chan struct{})
 	go func() {
-		errCh <- h.handleEntrypoint(&testLogger{})
+		h.handleEntrypoint(&testLogger{})
+		close(doneCh)
 	}()
 
 	// Send request with non-Associate cmd (CmdConnect)
@@ -93,7 +94,7 @@ func TestHandleEntrypoint_NonAssociateCmd(t *testing.T) {
 
 	// Close to stop the loop, then wait for goroutine to exit.
 	fpc.Close()
-	<-errCh
+	<-doneCh
 
 	if connBuf.Len() > 0 {
 		t.Error("data was forwarded to connector despite non-Associate cmd")
@@ -110,9 +111,10 @@ func TestHandleEntrypoint_NoMatchingConnector(t *testing.T) {
 	h.epConn = fpc
 	// No connector added to pool
 
-	errCh := make(chan error, 1)
+	doneCh := make(chan struct{})
 	go func() {
-		errCh <- h.handleEntrypoint(&testLogger{})
+		h.handleEntrypoint(&testLogger{})
+		close(doneCh)
 	}()
 
 	req := relay.Request{
@@ -132,9 +134,9 @@ func TestHandleEntrypoint_NoMatchingConnector(t *testing.T) {
 	fpc.dataCh <- buf.Bytes()
 	fpc.addrCh <- laddr
 
-	// Should not panic or error, just silently drop.
+	// Signal the loop to stop by sending EOF via the pipe concurrency pattern.
 	fpc.Close()
-	<-errCh
+	<-doneCh
 }
 
 func TestHandleEntrypoint_ReadError(t *testing.T) {

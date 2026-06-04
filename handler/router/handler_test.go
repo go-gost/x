@@ -126,8 +126,11 @@ func TestInit_WithLimiter(t *testing.T) {
 func TestHandle_BadVersion(t *testing.T) {
 	h := newInitdHandler(t)
 
+	// Version2 causes relay.Request.ReadFrom to return an error because the
+	// relay protocol only supports Version1. The Handle method returns the
+	// read error directly — it never reaches the version check.
 	req := relay.Request{
-		Version: 0x02, // not Version1 — triggers error in ReadFrom
+		Version: 0x02,
 		Cmd:     relay.CmdAssociate,
 	}
 	var buf bytes.Buffer
@@ -139,8 +142,47 @@ func TestHandle_BadVersion(t *testing.T) {
 		t.Fatal("expected error for bad version")
 	}
 
-	// The response is not written when ReadFrom fails, so we only verify
-	// that the connection was closed (defer conn.Close in Handle).
+	// Connection must be closed via defer.
+	if !conn.closed {
+		t.Error("connection was not closed")
+	}
+}
+
+// TestHandle_BadRequestVersion verifies that Handle rejects requests where
+// the version byte has been tampered with. relay.Request.ReadFrom checks the
+// version byte before the handler does — the handler's own version check
+// (req.Version != relay.Version1) is a defensive secondary guard. Since
+// ReadFrom catches bad versions first, Handle returns relay.ErrBadVersion
+// from ReadFrom without writing a response.
+func TestHandle_BadRequestVersion(t *testing.T) {
+	h := newInitdHandler(t)
+
+	// Build a valid relay request with Version1, then override the version byte.
+	rid := relay.NewTunnelID([]byte("0123456789abcdef"))
+	req := relay.Request{
+		Version: relay.Version1,
+		Cmd:     relay.CmdAssociate,
+		Features: []relay.Feature{
+			&relay.TunnelFeature{ID: rid},
+			&relay.NetworkFeature{Network: relay.NetworkIP},
+		},
+	}
+	var buf bytes.Buffer
+	req.WriteTo(&buf)
+
+	// Override the version byte to something that is not Version1.
+	b := buf.Bytes()
+	if len(b) > 0 {
+		b[0] = 0x02
+	}
+
+	conn := &fakeConn{buf: b}
+	err := h.Handle(context.Background(), conn)
+	if err == nil {
+		t.Fatal("expected error for bad request version")
+	}
+
+	// Connection must be closed via defer.
 	if !conn.closed {
 		t.Error("connection was not closed")
 	}
