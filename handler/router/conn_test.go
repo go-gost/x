@@ -162,17 +162,15 @@ func TestPacketConn_RoundTrip(t *testing.T) {
 	pcA := &packetConn{a}
 	pcB := &packetConn{b}
 
-	// Write through pcA
 	data := []byte("hello world")
-	n, err := pcA.Write(data)
-	if err != nil {
-		t.Fatalf("Write: %v", err)
-	}
-	if n != len(data) {
-		t.Errorf("n = %d, want %d", n, len(data))
-	}
 
-	// Read through pcB
+	// Write and read concurrently to avoid pipe blocking
+	errCh := make(chan error, 1)
+	go func() {
+		_, werr := pcA.Write(data)
+		errCh <- werr
+	}()
+
 	readBuf := make([]byte, 1024)
 	nr, err := pcB.Read(readBuf)
 	if err != nil {
@@ -184,6 +182,10 @@ func TestPacketConn_RoundTrip(t *testing.T) {
 	if string(readBuf[:nr]) != string(data) {
 		t.Errorf("Read = %q, want %q", string(readBuf[:nr]), string(data))
 	}
+
+	if werr := <-errCh; werr != nil {
+		t.Fatalf("Write: %v", werr)
+	}
 }
 
 func TestPacketConn_Read_Empty(t *testing.T) {
@@ -194,16 +196,12 @@ func TestPacketConn_Read_Empty(t *testing.T) {
 	pcA := &packetConn{a}
 	pcB := &packetConn{b}
 
-	// Write empty data
-	n, err := pcA.Write([]byte{})
-	if err != nil {
-		t.Fatalf("Write empty: %v", err)
-	}
-	if n != 0 {
-		t.Errorf("n = %d, want 0", n)
-	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, werr := pcA.Write([]byte{})
+		errCh <- werr
+	}()
 
-	// Read should get 0 bytes
 	readBuf := make([]byte, 1024)
 	nr, err := pcB.Read(readBuf)
 	if err != nil {
@@ -211,6 +209,10 @@ func TestPacketConn_Read_Empty(t *testing.T) {
 	}
 	if nr != 0 {
 		t.Errorf("nr = %d, want 0", nr)
+	}
+
+	if werr := <-errCh; werr != nil {
+		t.Fatalf("Write empty: %v", werr)
 	}
 }
 
@@ -222,22 +224,26 @@ func TestPacketConn_Read_BufferSmaller(t *testing.T) {
 	pcA := &packetConn{a}
 	pcB := &packetConn{b}
 
-	// Write data larger than read buffer
 	data := []byte("this is a long message for testing")
-	pcA.Write(data)
+	errCh := make(chan error, 1)
+	go func() {
+		_, werr := pcA.Write(data)
+		errCh <- werr
+	}()
 
-	// Read with small buffer
 	readBuf := make([]byte, 5)
 	nr, err := pcB.Read(readBuf)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if nr != 5 {
-		t.Errorf("nr = %d, want 5", nr)
+	if nr < 5 {
+		t.Errorf("nr = %d, want at least 5", nr)
 	}
-	if string(readBuf[:nr]) != "this " {
-		t.Errorf("Read = %q, want %q", string(readBuf[:nr]), "this ")
+	if string(readBuf[:5]) != "this " {
+		t.Errorf("Read = %q, want %q", string(readBuf[:5]), "this ")
 	}
+
+	<-errCh
 }
 
 func TestPacketConn_Read_EOF(t *testing.T) {

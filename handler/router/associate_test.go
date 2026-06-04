@@ -364,10 +364,10 @@ func TestSdRenew_Cancel(t *testing.T) {
 func TestSdRenew_NormalTick(t *testing.T) {
 	h := newInitdHandler(t)
 
-	var tickCount int
+	tickCh := make(chan struct{}, 10)
 	h.md.sd = &mockSD{
 		renewFn: func(ctx context.Context, svc *sd.Service) error {
-			tickCount++
+			tickCh <- struct{}{}
 			return nil
 		},
 	}
@@ -378,8 +378,9 @@ func TestSdRenew_NormalTick(t *testing.T) {
 
 	go h.sdRenew(ctx, "client-id", "connector-id")
 
-	time.Sleep(120 * time.Millisecond)
-	if tickCount == 0 {
+	select {
+	case <-tickCh:
+	case <-time.After(time.Second):
 		t.Error("Renew was never called")
 	}
 }
