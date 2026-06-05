@@ -120,11 +120,21 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return rate_limiter.ErrRateLimit
 	}
 
+	if h.md.readTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
+		defer conn.SetReadDeadline(time.Time{})
+	}
 	br := bufio.NewReader(conn)
-	proto, _ := sniffing.Sniff(ctx, br)
+	proto, sniffErr := sniffing.Sniff(ctx, br)
+	if sniffErr != nil {
+		log.Debugf("sniff: %v", sniffErr)
+	}
 	ro.Proto = proto
 
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		if h.options.Router == nil {
+			return nil, errors.New("sni: router not available")
+		}
 		var buf bytes.Buffer
 		cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
 		ro.Route = buf.String()
@@ -177,7 +187,8 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 			sniffing.WithLog(log),
 		)
 	default:
-		return errors.New("unknown traffic")
+			log.Debugf("unrecognized traffic from %s", conn.RemoteAddr())
+			return nil
 	}
 }
 

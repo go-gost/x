@@ -97,8 +97,8 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		cc = stats_wrapper.WrapPacketConn(cc, &pStats)
 
 		defer func() {
-			ro.InputBytes = pStats.Get(stats.KindInputBytes)
-			ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
+			ro.InputBytes += pStats.Get(stats.KindInputBytes)
+			ro.OutputBytes += pStats.Get(stats.KindOutputBytes)
 		}()
 
 		clientID := ctxvalue.ClientIDFromContext(ctx)

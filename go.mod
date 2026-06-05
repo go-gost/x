@@ -26,7 +26,7 @@ require (
 	github.com/pion/dtls/v3 v3.1.1
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.19.1
-	github.com/quic-go/quic-go v0.59.0
+	github.com/quic-go/quic-go v0.59.1
 	github.com/quic-go/webtransport-go v0.10.0
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5

@@ -36,6 +36,9 @@ type metadata struct {
 	privateKey  crypto.PrivateKey
 	alpn        string
 	mitmBypass  bypass.Bypass
+
+	stateless  bool
+	bufferSize int
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -69,6 +72,12 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	h.md.alpn = mdutil.GetString(md, "mitm.alpn")
 	h.md.mitmBypass = registry.BypassRegistry().Get(mdutil.GetString(md, "mitm.bypass"))
+
+	h.md.stateless = mdutil.GetBool(md, "stateless")
+	h.md.bufferSize = mdutil.GetInt(md, "bufferSize", "readBufferSize", "udp.bufferSize")
+	if h.md.bufferSize <= 0 {
+		h.md.bufferSize = 4096
+	}
 
 	return
 }

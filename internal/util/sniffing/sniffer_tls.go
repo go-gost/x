@@ -48,12 +48,16 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 	}
 
 	host := normalizeHost(clientHello.ServerName, "443")
-	if host != "" {
-		ro.Host = host
-
-		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
-			return xbypass.ErrBypass
+	if host == "" {
+		if log != nil {
+			log.Debugf("no sni in clienthello from %s", conn.RemoteAddr())
 		}
+		return nil
+	}
+	ro.Host = host
+
+	if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
+		return xbypass.ErrBypass
 	}
 
 	dial := ho.dial

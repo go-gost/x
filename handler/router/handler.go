@@ -14,7 +14,6 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	"github.com/go-gost/core/observer"
 	"github.com/go-gost/relay"
 	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
@@ -26,6 +25,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Error sentinel values returned by the router handler.
 var (
 	ErrBadVersion   = errors.New("bad version")
 	ErrUnknownCmd   = errors.New("unknown command")
@@ -37,20 +37,45 @@ func init() {
 	registry.HandlerRegistry().Register("router", NewHandler)
 }
 
+// routerHandler is the main handler for the GOST relay router protocol.
+//
+// It acts as the server-side component of a tunnel mesh: accepts TCP
+// connections from client nodes, authenticates them, and routes IP
+// packets between the mesh participants.
+//
+// # Architecture
+//
+//	┌───────────────┐
+//	│  routerHandler │
+//	├───────────────┤
+//	│ pool          │ ── ConnectorPool: manages all active connectors
+//	│ epConn        │ ── UDP packet conn for inter-node forwarding
+//	│ sdCache       │ ── Cache for service discovery lookups
+//	│ routeCache    │ ── Cache for route lookups
+//	│ stats         │ ── Per-connector traffic statistics
+//	│ limiter       │ ── Traffic rate limiter (per-client)
+//	└───────────────┘
+//
+// The handler only supports relay.CmdAssociate (IP packet forwarding).
+// Other commands return ErrUnknownCmd.
 type routerHandler struct {
 	id         string
 	options    handler.Options
 	pool       *ConnectorPool
-	epConn     net.PacketConn
+	epConn     net.PacketConn       // UDP socket for inter-node packet forwarding
 	md         metadata
 	log        logger.Logger
 	stats      *stats_util.HandlerStats
 	limiter    traffic.TrafficLimiter
-	cancel     context.CancelFunc
-	sdCache    *cache.Cache
-	routeCache *cache.Cache
+	cancel     context.CancelFunc   // cancels background goroutines (observeStats)
+	sdCache    *cache.Cache         // service discovery address cache
+	routeCache *cache.Cache         // route lookup cache
 }
 
+// NewHandler creates a new router handler.
+//
+// Caches are initialized with a 1-minute default TTL; individual entries
+// may override this via metadata configuration.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -64,6 +89,15 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init initializes the handler with the given metadata.
+//
+// Initialization sequence:
+//  1. Parse metadata (read timeout, buffer size, entrypoint, etc.)
+//  2. Generate a random node ID (UUID)
+//  3. Create the connector pool
+//  4. Initialize the UDP entrypoint listener (if configured)
+//  5. Start the observer stats goroutine (if an observer is set)
+//  6. Initialize the traffic limiter (if configured)
 func (h *routerHandler) Init(md md.Metadata) (err error) {
 	if err := h.parseMetadata(md); err != nil {
 		return err
@@ -103,6 +137,12 @@ func (h *routerHandler) Init(md md.Metadata) (err error) {
 	return nil
 }
 
+// initEntrypoint creates the UDP listening socket for inter-node
+// packet forwarding and starts the background read loop.
+//
+// The entrypoint is optional — if no entrypoint address is configured,
+// this node cannot receive packets from other mesh nodes (it can only
+// forward packets to connectors that were established via TCP).
 func (h *routerHandler) initEntrypoint() (err error) {
 	if h.md.entryPoint == "" {
 		return
@@ -132,6 +172,23 @@ func (h *routerHandler) initEntrypoint() (err error) {
 	return
 }
 
+// Handle processes an incoming TCP connection using the relay protocol.
+//
+// # Protocol flow
+//
+//  1. Read the relay request from the client (with optional read timeout).
+//  2. Validate the protocol version.
+//  3. Parse features: user authentication, addresses, tunnel ID, network.
+//  4. Authenticate the client (if an auther is configured).
+//  5. Dispatch to handleAssociate for CmdAssociate, or reject with error.
+//
+// The connection is always closed on return (via defer).
+//
+// # Feature parsing order
+//
+// The relay protocol allows multiple AddrFeatures. The first AddrFeature
+// is treated as the source address, the second as the destination. This
+// mirrors the behavior of other relay-based handlers (e.g., handler/relay).
 func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -164,6 +221,8 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return err
 	}
 
+	// Clear the read deadline — subsequent data transfer (IP packets
+	// through the packetConn) should not be time-limited.
 	conn.SetReadDeadline(time.Time{})
 
 	resp := relay.Response{
@@ -211,6 +270,7 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		log = log.WithFields(map[string]any{"user": user})
 	}
 
+	// Authenticate before establishing the tunnel association.
 	if h.options.Auther != nil {
 		clientID, ok := h.options.Auther.Authenticate(ctx, user, pass, auth.WithService(h.options.Service))
 		if !ok {
@@ -234,7 +294,11 @@ func (h *routerHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 }
 
-// Close implements io.Closer interface.
+// Close shuts down the handler: closes the entrypoint UDP socket,
+// closes the connector pool (which closes all connectors), and
+// cancels background goroutines.
+//
+// Implements io.Closer.
 func (h *routerHandler) Close() error {
 	if h.epConn != nil {
 		h.epConn.Close()
@@ -246,52 +310,4 @@ func (h *routerHandler) Close() error {
 	}
 
 	return nil
-}
-
-func (h *routerHandler) checkRateLimit(addr net.Addr) bool {
-	if h.options.RateLimiter == nil {
-		return true
-	}
-	host, _, _ := net.SplitHostPort(addr.String())
-	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
-		return limiter.Allow(1)
-	}
-
-	return true
-}
-
-func (h *routerHandler) observeStats(ctx context.Context) {
-	if h.options.Observer == nil {
-		return
-	}
-
-	var events []observer.Event
-
-	ticker := time.NewTicker(h.md.observerPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// Try to flush any buffered events from a previous failed attempt.
-			if len(events) > 0 {
-				if err := h.options.Observer.Observe(ctx, events); err != nil {
-					continue
-				}
-			}
-
-			// Collect and send fresh events.
-			evs := h.stats.Events()
-			if len(evs) > 0 {
-				if err := h.options.Observer.Observe(ctx, evs); err != nil {
-					events = evs
-					continue
-				}
-			}
-			events = nil
-
-		case <-ctx.Done():
-			return
-		}
-	}
 }

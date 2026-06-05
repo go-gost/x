@@ -13,11 +13,11 @@ import (
 )
 
 type metadata struct {
-	// readTimeout is passed to SnifferBuilder as the timeout for reading
-	// upstream response headers during HTTP/TLS sniffing. It is NOT used
-	// as a deadline on the initial client connection (unlike socks/ss
-	// handlers), because SNI routing has no protocol handshake beyond
-	// the TLS ClientHello which is parsed during sniffing.
+	// readTimeout controls two behaviors:
+	// 1. A read deadline set on the client connection before sniffing the
+	//    TLS ClientHello / HTTP request (see handler.go Handle).
+	// 2. Passed to SnifferBuilder as the timeout for reading upstream
+	//    response headers during HTTP/TLS sniffing.
 	// 0 or negative defaults to 15s.
 	readTimeout time.Duration
 	hash        string

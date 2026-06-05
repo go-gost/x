@@ -20,6 +20,7 @@ type metadata struct {
 	backlog        int
 	keepalive      bool
 	ttl            time.Duration
+	stateless      bool
 }
 
 func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -42,6 +43,8 @@ func (l *udpListener) parseMetadata(md mdata.Metadata) (err error) {
 	if l.md.readQueueSize <= 0 {
 		l.md.readQueueSize = defaultReadQueueSize
 	}
+
+	l.md.stateless = mdutil.GetBool(md, "stateless")
 
 	return
 }
