@@ -67,16 +67,16 @@ func (l *loader) Load(cfg *config.Config) error {
 		return nil
 	}
 
-	tlsCfg, err := parsing.BuildDefaultTLSConfig(cfg.TLS)
-	if err != nil {
-		return err
-	}
-
 	logCfg := cfg.Log
 	if logCfg == nil {
 		logCfg = &config.LogConfig{}
 	}
 	logger.SetDefault(logger_parser.ParseLogger(&config.LoggerConfig{Log: logCfg}))
+
+	tlsCfg, err := parsing.BuildDefaultTLSConfig(cfg.TLS)
+	if err != nil {
+		return err
+	}
 
 	parsing.SetDefaultTLSConfig(tlsCfg)
 
