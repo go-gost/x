@@ -76,6 +76,7 @@ func (l *udpListener) Init(md md.Metadata) (err error) {
 		ReadBufferSize: l.md.readBufferSize,
 		Keepalive:      l.md.keepalive,
 		TTL:            l.md.ttl,
+		Stateless:      l.md.stateless,
 		Logger:         l.logger,
 	})
 	return

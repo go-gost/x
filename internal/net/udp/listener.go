@@ -19,6 +19,7 @@ type ListenConfig struct {
 	ReadBufferSize int
 	TTL            time.Duration
 	Keepalive      bool
+	Stateless      bool
 	Logger         logger.Logger
 }
 type listener struct {
@@ -33,6 +34,11 @@ type listener struct {
 // NewListener creates a net.Listener from a net.PacketConn by demultiplexing
 // UDP datagrams into per-client net.Conn streams. Idle connections are cleaned
 // up according to cfg.TTL.
+//
+// When cfg.Stateless is true, the listener operates in raw datagram mode:
+// no connPool, no listenLoop goroutine, no per-client session tracking.
+// Each Accept call blocks on a ReadFrom and returns a lightweight
+// datagramConn wrapping a single packet.
 func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
 	if cfg == nil {
 		cfg = &ListenConfig{}
@@ -40,11 +46,16 @@ func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
 
 	ln := &listener{
 		conn:    conn,
-		cqueue:  make(chan net.Conn, cfg.Backlog),
 		closed:  make(chan struct{}),
 		errChan: make(chan error, 1),
 		config:  cfg,
 	}
+
+	if cfg.Stateless {
+		return ln
+	}
+
+	ln.cqueue = make(chan net.Conn, cfg.Backlog)
 	ln.connPool = newConnPool(cfg.TTL).WithLogger(cfg.Logger)
 	go ln.listenLoop()
 
@@ -52,6 +63,10 @@ func NewListener(conn net.PacketConn, cfg *ListenConfig) net.Listener {
 }
 
 func (ln *listener) Accept() (conn net.Conn, err error) {
+	if ln.config.Stateless {
+		return ln.acceptStateless()
+	}
+
 	select {
 	case conn = <-ln.cqueue:
 		return
@@ -63,6 +78,30 @@ func (ln *listener) Accept() (conn net.Conn, err error) {
 		}
 		return
 	}
+}
+
+func (ln *listener) acceptStateless() (net.Conn, error) {
+	b := bufpool.Get(ln.config.ReadBufferSize)
+
+	n, raddr, err := ln.conn.ReadFrom(b)
+	if err != nil {
+		bufpool.Put(b)
+		// Surface the error so the service loop can decide whether to
+		// continue accepting.
+		select {
+		case <-ln.closed:
+			return nil, net.ErrClosed
+		default:
+		}
+		return nil, err
+	}
+
+	return &datagramConn{
+		pc:         ln.conn,
+		data:       b[:n],
+		localAddr:  ln.Addr(),
+		remoteAddr: raddr,
+	}, nil
 }
 
 func (ln *listener) listenLoop() {
@@ -242,4 +281,68 @@ func (c *conn) WriteQueue(b []byte) error {
 	default:
 		return errors.New("recv queue is full")
 	}
+}
+
+// datagramConn is a lightweight net.Conn that wraps a single UDP datagram.
+// It is used in stateless mode where each Accept returns a new datagramConn
+// for a single packet — no channels, no mutexes, no pool tracking.
+type datagramConn struct {
+	pc         net.PacketConn
+	data       []byte
+	offset     int
+	localAddr  net.Addr
+	remoteAddr net.Addr
+}
+
+func (c *datagramConn) Read(b []byte) (n int, err error) {
+	if c.data == nil || c.offset >= len(c.data) {
+		return 0, net.ErrClosed
+	}
+	n = copy(b, c.data[c.offset:])
+	c.offset += n
+	return
+}
+
+func (c *datagramConn) Write(b []byte) (n int, err error) {
+	return c.pc.WriteTo(b, c.remoteAddr)
+}
+
+// ReadFrom implements net.PacketConn. It reads the buffered datagram and
+// returns the sender's address.
+func (c *datagramConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	n, err = c.Read(b)
+	addr = c.remoteAddr
+	return
+}
+
+// WriteTo implements net.PacketConn. It sends b to addr via the underlying
+// PacketConn, ignoring the stored remoteAddr.
+func (c *datagramConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
+	return c.pc.WriteTo(b, addr)
+}
+
+func (c *datagramConn) Close() error {
+	bufpool.Put(c.data)
+	c.data = nil
+	return nil
+}
+
+func (c *datagramConn) LocalAddr() net.Addr {
+	return c.localAddr
+}
+
+func (c *datagramConn) RemoteAddr() net.Addr {
+	return c.remoteAddr
+}
+
+func (c *datagramConn) SetDeadline(t time.Time) error {
+	return c.pc.SetReadDeadline(t)
+}
+
+func (c *datagramConn) SetReadDeadline(t time.Time) error {
+	return c.pc.SetReadDeadline(t)
+}
+
+func (c *datagramConn) SetWriteDeadline(t time.Time) error {
+	return c.pc.SetWriteDeadline(t)
 }

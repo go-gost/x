@@ -206,6 +206,10 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return errRouterNotAvailable
 	}
 
+	if h.md.stateless {
+		return h.handleRawDatagram(ctx, conn, ro, log, network, "udp")
+	}
+
 	var proto string
 	if network == "tcp" && h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
