@@ -179,7 +179,10 @@ func (h *serialHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.LocalAddr(), "@")
 	// xnet.Transport(conn, cc)
-	xnet.Pipe(ctx, conn, cc)
+	if err := xnet.Pipe(ctx, conn, cc); err != nil {
+		log.Errorf("pipe: %v", err)
+		return err
+	}
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), "@")
@@ -236,6 +239,11 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 	// If the router chain returned an actual error, we skip the fallback
 	// and propagate the error — a configured chain is authoritative.
 	if port == nil && err == nil {
+		if h.options.Router != nil {
+			if opts := h.options.Router.Options(); opts != nil && opts.Chain != nil {
+				log.Warnf("chain dial returned no connection and no error, falling back to direct serial port")
+			}
+		}
 		cfg.ReadTimeout = h.md.timeout
 		port, err = serial.OpenPort(cfg)
 	}
@@ -251,7 +259,10 @@ func (h *serialHandler) forwardSerial(ctx context.Context, conn net.Conn, target
 	// Pipe bidirectionally between the client connection and the serial port.
 	// xnet.Pipe spawns two goroutines and returns on first error or when
 	// both directions complete.
-	xnet.Pipe(ctx, conn, port)
+	if err := xnet.Pipe(ctx, conn, port); err != nil {
+		log.Errorf("pipe: %v", err)
+		return err
+	}
 	log.WithFields(map[string]any{
 		"duration": time.Since(t),
 	}).Infof("%s >-< %s", conn.LocalAddr(), target.Addr)

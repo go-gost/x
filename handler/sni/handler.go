@@ -122,12 +122,10 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	if h.md.readTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
+		defer conn.SetReadDeadline(time.Time{})
 	}
 	br := bufio.NewReader(conn)
 	proto, sniffErr := sniffing.Sniff(ctx, br)
-	if h.md.readTimeout > 0 {
-		conn.SetReadDeadline(time.Time{})
-	}
 	if sniffErr != nil {
 		log.Debugf("sniff: %v", sniffErr)
 	}
@@ -189,7 +187,8 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 			sniffing.WithLog(log),
 		)
 	default:
-		return errors.New("unknown traffic")
+			log.Debugf("unrecognized traffic from %s", conn.RemoteAddr())
+			return nil
 	}
 }
 
