@@ -175,6 +175,7 @@ type BypassConfig struct {
 	// Deprecated: use whitelist instead
 	Reverse   bool          `yaml:",omitempty" json:"reverse,omitempty"`
 	Whitelist bool          `yaml:",omitempty" json:"whitelist,omitempty"`
+	Network   string        `yaml:",omitempty" json:"network,omitempty"`
 	Matchers  []string      `yaml:",omitempty" json:"matchers,omitempty"`
 	Reload    time.Duration `yaml:",omitempty" json:"reload,omitempty"`
 	File      *FileLoader   `yaml:",omitempty" json:"file,omitempty"`

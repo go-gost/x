@@ -288,32 +288,32 @@ func TestMatched_IP(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("192.168.1.1"))
-	assert.Equal(t, decisionProxy, b.decide("10.0.0.1"))
+	assert.Equal(t, decisionBypass, b.decide("", "192.168.1.1"))
+	assert.Equal(t, decisionProxy, b.decide("", "10.0.0.1"))
 }
 
 func TestMatched_CIDR(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"10.0.0.0/8"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("10.0.0.1"))
-	assert.Equal(t, decisionProxy, b.decide("192.168.1.1"))
+	assert.Equal(t, decisionBypass, b.decide("", "10.0.0.1"))
+	assert.Equal(t, decisionProxy, b.decide("", "192.168.1.1"))
 }
 
 func TestMatched_Wildcard(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"*.example.com"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("foo.example.com"))
-	assert.Equal(t, decisionProxy, b.decide("foo.other.com"))
+	assert.Equal(t, decisionBypass, b.decide("", "foo.example.com"))
+	assert.Equal(t, decisionProxy, b.decide("", "foo.other.com"))
 }
 
 func TestMatched_IPRange(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"10.0.0.1-10.0.0.100"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("10.0.0.50"))
-	assert.Equal(t, decisionProxy, b.decide("10.0.0.200"))
+	assert.Equal(t, decisionBypass, b.decide("", "10.0.0.50"))
+	assert.Equal(t, decisionProxy, b.decide("", "10.0.0.200"))
 }
 
 // --- reload tests ---
@@ -683,13 +683,193 @@ func TestNewBypass_ReloadError(t *testing.T) {
 
 // --- Network parameter ignored ---
 
-func TestContains_NetworkIgnoredForMatching(t *testing.T) {
+// --- Network option tests ---
+
+func TestNetworkOption(t *testing.T) {
+	var opts options
+	NetworkOption("tcp")(&opts)
+	assert.Equal(t, "tcp", opts.network)
+
+	NetworkOption("")(&opts)
+	assert.Equal(t, "", opts.network)
+}
+
+// --- Network pre-filter tests ---
+
+func TestContains_NetworkNotSet_BehavesAsBefore(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
 	assert.True(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
 	assert.True(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
 	assert.True(t, b.Contains(context.Background(), "ip4", "192.168.1.1"))
+}
+
+func TestContains_NetworkMatch_BlacklistBypass(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network matches and addr matches → bypass
+	assert.True(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
+}
+
+func TestContains_NetworkMatch_BlacklistPass(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network matches but addr does not match → proxy
+	assert.False(t, b.Contains(context.Background(), "tcp", "10.0.0.1"))
+}
+
+func TestContains_NetworkMatch_WhitelistProxy(t *testing.T) {
+	b := newSyncedBypass(
+		WhitelistOption(true),
+		NetworkOption("udp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network matches and addr matches → in whitelist, addr goes through proxy
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
+func TestContains_NetworkMatch_WhitelistBypass(t *testing.T) {
+	b := newSyncedBypass(
+		WhitelistOption(true),
+		NetworkOption("udp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network matches but addr does not match → whitelist bypass
+	assert.True(t, b.Contains(context.Background(), "udp", "10.0.0.1"))
+}
+
+func TestContains_NetworkMismatch_ReturnsFalse(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network does not match → bypass returns false regardless of addr
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+	assert.False(t, b.Contains(context.Background(), "udp", ""))
+	assert.False(t, b.Contains(context.Background(), "sctp", "192.168.1.1"))
+}
+
+func TestContains_NetworkMismatch_EmptyAddr(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// addr is empty → early return false
+	assert.False(t, b.Contains(context.Background(), "tcp", ""))
+}
+
+func TestContains_NetworkMismatch_WhitelistReturnsFalse(t *testing.T) {
+	b := newSyncedBypass(
+		WhitelistOption(true),
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// Network does not match → bypass returns false even in whitelist mode
+	assert.False(t, b.Contains(context.Background(), "udp", "10.0.0.1"))
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
+func TestContains_PatternSetPassesThroughNetworkFilter(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1", "10.0.0.0/8", "*.example.com"}),
+	)
+	defer b.Close()
+
+	// Network matches → pattern set is evaluated
+	assert.True(t, b.Contains(context.Background(), "tcp", "10.0.0.1"))
+	assert.True(t, b.Contains(context.Background(), "tcp", "foo.example.com"))
+	assert.False(t, b.Contains(context.Background(), "tcp", "8.8.8.8"))
+}
+
+// --- Network-only tests (no address matchers) ---
+
+func TestNetworkOnly_Blacklist_BypassesMatchingNetwork(t *testing.T) {
+	b := newSyncedBypass(NetworkOption("tcp"))
+	defer b.Close()
+
+	// Network matches → bypass
+	assert.True(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
+	assert.True(t, b.Contains(context.Background(), "tcp", "10.0.0.1"))
+}
+
+func TestNetworkOnly_Blacklist_DoesNotBypassNonMatching(t *testing.T) {
+	b := newSyncedBypass(NetworkOption("tcp"))
+	defer b.Close()
+
+	// Network does not match → not bypassed
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
+func TestNetworkOnly_Whitelist_ProxiesMatchingNetwork(t *testing.T) {
+	b := newSyncedBypass(
+		WhitelistOption(true),
+		NetworkOption("tcp"),
+	)
+	defer b.Close()
+
+	// In whitelist mode, matched network → proxy (not bypassed)
+	assert.False(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
+	assert.False(t, b.Contains(context.Background(), "tcp", "10.0.0.1"))
+}
+
+func TestNetworkOnly_Whitelist_NonMatchingNotAffected(t *testing.T) {
+	b := newSyncedBypass(
+		WhitelistOption(true),
+		NetworkOption("tcp"),
+	)
+	defer b.Close()
+
+	// network: tcp 是作用域限定，非 TCP 流量不受影响
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
+func TestNetworkOnly_NoNetwork_BehavesAsBefore(t *testing.T) {
+	b := newSyncedBypass()
+	defer b.Close()
+
+	// No network configured, no matchers → never bypass
+	assert.False(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
+	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
+func TestNetworkOnly_EmptyAddr_ReturnsFalse(t *testing.T) {
+	b := newSyncedBypass(NetworkOption("tcp"))
+	defer b.Close()
+
+	assert.False(t, b.Contains(context.Background(), "tcp", ""))
+}
+
+func TestNetworkOption_DoesNotAffectGroupBypass(t *testing.T) {
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"192.168.1.1"}),
+	)
+	defer b.Close()
+
+	// bypassGroup embeds the same localBypass and respects the network filter
+	g := BypassGroup(b)
+	assert.False(t, g.Contains(context.Background(), "udp", "192.168.1.1"))
+	assert.True(t, g.Contains(context.Background(), "tcp", "192.168.1.1"))
 }
 
 // --- Debug logging doesn't panic ---
@@ -916,33 +1096,33 @@ func TestDecide_BlacklistMatched(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("192.168.1.1"))
+	assert.Equal(t, decisionBypass, b.decide("", "192.168.1.1"))
 }
 
 func TestDecide_BlacklistNotMatched(t *testing.T) {
 	b := newSyncedBypass(MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionProxy, b.decide("10.0.0.1"))
+	assert.Equal(t, decisionProxy, b.decide("", "10.0.0.1"))
 }
 
 func TestDecide_WhitelistMatched(t *testing.T) {
 	b := newSyncedBypass(WhitelistOption(true), MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionProxy, b.decide("192.168.1.1"))
+	assert.Equal(t, decisionProxy, b.decide("", "192.168.1.1"))
 }
 
 func TestDecide_WhitelistNotMatched(t *testing.T) {
 	b := newSyncedBypass(WhitelistOption(true), MatchersOption([]string{"192.168.1.1"}))
 	defer b.Close()
 
-	assert.Equal(t, decisionBypass, b.decide("10.0.0.1"))
+	assert.Equal(t, decisionBypass, b.decide("", "10.0.0.1"))
 }
 
 func TestDecide_NilPatterns(t *testing.T) {
 	lb := &localBypass{logger: xlogger.Nop()}
-	assert.Equal(t, decisionProxy, lb.decide("anything"))
+	assert.Equal(t, decisionProxy, lb.decide("", "anything"))
 }
 
 // --- evaluate (bypassGroup) tests ---

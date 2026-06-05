@@ -47,6 +47,12 @@ type options struct {
 	// When true: only matching addresses bypass the proxy.
 	whitelist bool
 
+	// network restricts this bypass to a specific network protocol.
+	// When set, the incoming network must match before address matchers
+	// are evaluated. Recognized values include "tcp" and "udp".
+	// An empty value disables the network check.
+	network string
+
 	// matchers holds static patterns provided at construction time
 	// (e.g. from config file or command-line arguments).
 	matchers []string
@@ -79,6 +85,15 @@ type Option func(opts *options)
 func WhitelistOption(whitelist bool) Option {
 	return func(opts *options) {
 		opts.whitelist = whitelist
+	}
+}
+
+// NetworkOption restricts this bypass to a specific network protocol.
+// When set, Contains returns false when the incoming network does not
+// match, regardless of address matchers. Accepts values like "tcp" or "udp".
+func NetworkOption(network string) Option {
+	return func(opts *options) {
+		opts.network = network
 	}
 }
 
@@ -272,10 +287,10 @@ func (p *localBypass) reload(ctx context.Context) error {
 	patterns := append(p.options.matchers, v...)
 	p.logger.Debugf("load items %d", len(patterns))
 
-	ps := classifyPatterns(patterns, p.logger)
-
 	p.mu.Lock()
-	p.patterns = ps
+	if len(patterns) > 0 {
+		p.patterns = classifyPatterns(patterns, p.logger)
+	}
 	p.mu.Unlock()
 
 	return nil
@@ -402,7 +417,7 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 		return false
 	}
 
-	decision := p.decide(addr)
+	decision := p.decide(network, addr)
 
 	log := p.logger.WithFields(map[string]any{
 		"sid": ctxvalue.SidFromContext(ctx),
@@ -414,11 +429,22 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 
 // decide returns the bypass decision for the given address, applying the
 // whitelist or blacklist mode to the pattern match result.
-func (p *localBypass) decide(addr string) bypassDecision {
+func (p *localBypass) decide(network string, addr string) bypassDecision {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	if p.options.network != "" && p.options.network != network {
+		return decisionProxy
+	}
+
 	if p.patterns == nil {
+		if p.options.network != "" {
+			if p.options.whitelist {
+				return decisionProxy
+			}
+			return decisionBypass
+		}
+
 		return decisionProxy
 	}
 
