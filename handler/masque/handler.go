@@ -1,3 +1,38 @@
+// Package masque implements a MASQUE (Multiplexed Application Substrate over
+// QUIC Encryption) proxy handler for GOST. MASQUE is an IETF standard for
+// tunneling IP traffic over HTTP/3, used by systems like Apple's iCloud
+// Private Relay.
+//
+// This handler implements two proxy modes over HTTP/3 (QUIC):
+//
+//   - CONNECT-UDP (RFC 9298): Proxies UDP datagrams via HTTP/3 Datagram frames
+//     (RFC 9297). The client sends an Extended CONNECT request with
+//     :protocol="connect-udp" to the well-known path
+//     "/.well-known/masque/udp/{host}/{port}/". UDP packets are then exchanged
+//     as HTTP/3 datagrams with a context ID prefix per RFC 9297.
+//
+//   - CONNECT-TCP (RFC 9114): Tunnels TCP connections over HTTP/3 stream bodies.
+//     The client sends a standard HTTP/3 CONNECT request with the target in the
+//     :authority pseudo-header. Data is then relayed bidirectionally through the
+//     HTTP/3 stream.
+//
+// # Request flow
+//
+// The HTTP/3 listener injects the http.ResponseWriter and http.Request into the
+// context metadata. Handle() extracts them, validates the CONNECT method, and
+// dispatches to handleConnectUDP or handleConnectTCP based on the :protocol
+// pseudo-header (stored in r.Proto by quic-go).
+//
+// # Cross-cutting concerns
+//
+// The handler integrates with GOST's cross-cutting infrastructure: HTTP Basic
+// proxy authentication, bypass rules, rate limiting, traffic limiting, Prometheus
+// metrics, observer event reporting, and traffic recording.
+//
+// # Registration
+//
+// The handler is registered as "masque" in the handler registry via init().
+// It must be paired with an HTTP/3 listener (registered as "h3") to function.
 package masque
 
 import (
@@ -39,6 +74,9 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
+// init registers the MASQUE handler in the global handler registry under the
+// name "masque". This enables the handler to be referenced by name in GOST
+// configuration files and CLI flags (e.g., handler.type: masque).
 func init() {
 	registry.HandlerRegistry().Register("masque", NewHandler)
 }
@@ -54,17 +92,29 @@ var (
 	ErrDatagramNotSupport = errors.New("masque: datagrams not supported")
 )
 
+// masqueHandler implements handler.Handler for the MASQUE proxy protocol.
+// It processes HTTP/3 CONNECT requests to tunnel UDP (RFC 9298) or TCP
+// (RFC 9114) traffic through an HTTP/3 (QUIC) connection.
+//
+// The handler integrates with GOST's cross-cutting infrastructure:
+//   - Authentication via HTTP Basic Proxy Authentication
+//   - Bypass rules for selective target filtering
+//   - Rate limiting and traffic limiting
+//   - Observer event reporting for connection statistics
+//   - Prometheus metrics collection
+//   - Traffic recording for audit/logging
 type masqueHandler struct {
-	md       metadata
-	options  handler.Options
-	stats    *stats_util.HandlerStats
-	limiter  traffic.TrafficLimiter
-	cancel   context.CancelFunc
-	recorder recorder.RecorderObject
+	md       metadata                  // parsed configuration metadata
+	options  handler.Options           // handler options (auth, bypass, router, etc.)
+	stats    *stats_util.HandlerStats  // per-client connection statistics for observer
+	limiter  traffic.TrafficLimiter    // cached traffic limiter wrapping the global limiter
+	cancel   context.CancelFunc        // cancels the background observer goroutine
+	recorder recorder.RecorderObject   // traffic recorder for handler-level events
 }
 
-// NewHandler creates a MASQUE protocol handler that supports CONNECT-UDP
-// (RFC 9298) and CONNECT for TCP tunneling over HTTP/3.
+// NewHandler creates a new MASQUE handler instance. It supports CONNECT-UDP
+// (RFC 9298) for UDP proxying and standard HTTP/3 CONNECT (RFC 9114) for TCP
+// tunneling. The returned handler must be initialized via Init() before use.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
@@ -76,6 +126,11 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 	}
 }
 
+// Init initializes the MASQUE handler with the provided metadata. It:
+//   - Parses configuration from metadata (buffer sizes, timeouts, etc.)
+//   - Starts a background observer goroutine if an Observer is configured
+//   - Creates a cached traffic limiter wrapping the global limiter
+//   - Selects the handler-level recorder from the configured recorders
 func (h *masqueHandler) Init(md md.Metadata) error {
 	if err := h.parseMetadata(md); err != nil {
 		return err
@@ -107,6 +162,15 @@ func (h *masqueHandler) Init(md md.Metadata) error {
 	return nil
 }
 
+// Handle processes an inbound MASQUE connection. It extracts the HTTP/3 request
+// and response writer from the context metadata (injected by the HTTP/3 listener),
+// validates the CONNECT method, and dispatches to the appropriate handler based on
+// the :protocol pseudo-header:
+//   - "connect-udp" → handleConnectUDP (RFC 9298, UDP over HTTP/3 datagrams)
+//   - "HTTP/3.0" or "" → handleConnectTCP (RFC 9114, TCP over HTTP/3 stream)
+//
+// The connection's entire lifecycle — rate limiting, stats recording, traffic
+// metrics, and cleanup — is managed within this method and its deferred cleanup.
 func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -135,8 +199,10 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
+	// pStats tracks per-connection I/O byte counts for recording and logging.
 	pStats := &xstats.Stats{}
 
+	// Deferred cleanup: record traffic stats, log session end, and report errors.
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -161,7 +227,10 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return rate_limiter.ErrRateLimit
 	}
 
-	// Extract request and response from context metadata
+	// The HTTP/3 listener injects the http.ResponseWriter and http.Request
+	// into the context metadata so the handler can access the HTTP/3
+	// request/response layer. Without this metadata, the connection did not
+	// originate from an HTTP/3 listener and MASQUE cannot operate.
 	ctxMd := ictx.MetadataFromContext(ctx)
 	if ctxMd == nil {
 		err := errors.New("masque: wrong connection type, requires HTTP/3")
@@ -169,6 +238,8 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return err
 	}
 
+	// w is the HTTP/3 response writer; r is the HTTP/3 request.
+	// These are set by the HTTP/3 listener when accepting the QUIC stream.
 	w, _ := ctxMd.Get("w").(http.ResponseWriter)
 	r, _ := ctxMd.Get("r").(*http.Request)
 
@@ -206,6 +277,8 @@ func (h *masqueHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	}
 }
 
+// Close shuts down the MASQUE handler by cancelling the background observer
+// goroutine. It is called when the owning service is stopped.
 func (h *masqueHandler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
@@ -213,8 +286,25 @@ func (h *masqueHandler) Close() error {
 	return nil
 }
 
+// handleConnectUDP implements the CONNECT-UDP method (RFC 9298). It proxies UDP
+// datagrams between the MASQUE client and the target host using HTTP/3 datagrams
+// (RFC 9297) as the transport.
+//
+// Request flow:
+//  1. Authenticate the client via HTTP Basic Proxy Authentication
+//  2. Parse the target host:port from the URI template path
+//     "/.well-known/masque/udp/{host}/{port}/"
+//  3. Check bypass rules for the target address
+//  4. Validate the Capsule-Protocol header (required by RFC 9298)
+//  5. Obtain the HTTP/3 stream and respond with 200 OK + Capsule-Protocol header
+//  6. Create a DatagramConn wrapping the HTTP/3 stream's datagram interface
+//  7. Dial the target (via Router chain or direct UDP socket)
+//  8. Run a bidirectional UDP relay between client and target
+//
+// Data path:
+//
+//	Client ↔ HTTP/3 Datagram ↔ DatagramConn ↔ [stats/limiter wrappers] ↔ UDP Relay ↔ Target
 func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger, pStats *xstats.Stats) error {
-	// Extract user for logging
 	if u, _, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization")); u != "" {
 		log = log.WithFields(map[string]any{"user": u})
 		ro.ClientID = u
@@ -379,6 +469,23 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 	return relay.Run(ctx)
 }
 
+// handleConnectTCP implements standard HTTP/3 CONNECT (RFC 9114) for TCP
+// tunneling. Data is relayed bidirectionally through the HTTP/3 stream body
+// (not via datagrams), providing a reliable, ordered byte stream.
+//
+// Request flow:
+//  1. Authenticate the client via HTTP Basic Proxy Authentication
+//  2. Extract the target address from the :authority pseudo-header (r.Host),
+//     defaulting to port 443 if no port is specified
+//  3. Check bypass rules for the target address
+//  4. Dial the target (via Router chain or direct TCP connection)
+//  5. Obtain the HTTP/3 stream and respond with 200 OK
+//  6. Create a StreamConn wrapping the HTTP/3 stream body
+//  7. Run bidirectional data relay between client and target
+//
+// Data path:
+//
+//	Client ↔ HTTP/3 Stream Body ↔ StreamConn ↔ [stats/limiter wrappers] ↔ xnet.Pipe ↔ Target
 func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWriter, r *http.Request, laddr net.Addr, ro *xrecorder.HandlerRecorderObject, log logger.Logger, pStats *xstats.Stats) error {
 	// Extract user for logging
 	if u, _, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization")); u != "" {
@@ -520,37 +627,53 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 	return nil
 }
 
-// fixedTargetPacketConn wraps a PacketConn and always reads/writes to a fixed target address
+// fixedTargetPacketConn wraps a net.PacketConn and pins all reads and writes
+// to a single target address. This is used for direct UDP forwarding where
+// the MASQUE target address is fixed for the lifetime of the connection.
+// ReadFrom returns the fixed target as the source address (instead of the
+// actual source), so the UDP relay always sees a consistent peer.
 type fixedTargetPacketConn struct {
 	net.PacketConn
 	target net.Addr
 }
 
+// ReadFrom reads a packet from the underlying PacketConn but returns the
+// fixed target address as the source, ignoring the actual source address.
 func (c *fixedTargetPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	n, _, err = c.PacketConn.ReadFrom(b)
 	return n, c.target, err
 }
 
+// WriteTo writes a packet to the fixed target address, ignoring the addr parameter.
 func (c *fixedTargetPacketConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	return c.PacketConn.WriteTo(b, c.target)
 }
 
-// connPacketConn wraps a net.Conn as a net.PacketConn for use with the UDP relay.
-// This is used when the router returns a stream-based connection (like from masque connector).
+// connPacketConn adapts a stream-based net.Conn to the net.PacketConn interface
+// for use with the UDP relay. This is needed when the Router returns a
+// connection from an upstream MASQUE connector (which uses HTTP/3 stream body
+// framing rather than datagrams). Each Read/Write maps to a single
+// ReadFrom/WriteTo with the fixed remote address.
 type connPacketConn struct {
 	net.Conn
 	raddr net.Addr
 }
 
+// ReadFrom reads data from the stream connection and reports the fixed remote address.
 func (c *connPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	n, err = c.Conn.Read(b)
 	return n, c.raddr, err
 }
 
+// WriteTo writes data to the stream connection, ignoring the addr parameter.
 func (c *connPacketConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	return c.Conn.Write(b)
 }
 
+// checkRateLimit checks whether the connection from the given address is
+// allowed by the rate limiter. Returns true if the connection is allowed
+// (including when no rate limiter is configured), false if the limit is exceeded.
+// The rate limit is applied per client IP (host portion of the address).
 func (h *masqueHandler) checkRateLimit(addr net.Addr) bool {
 	if h.options.RateLimiter == nil {
 		return true
@@ -563,6 +686,12 @@ func (h *masqueHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
+// observeStats is a background goroutine that periodically collects per-client
+// connection statistics from the HandlerStats and reports them to the Observer.
+// It runs until the context is cancelled (when the handler is closed).
+//
+// If the Observer fails to accept events, they are buffered and retried on the
+// next tick to avoid data loss during transient failures.
 func (h *masqueHandler) observeStats(ctx context.Context) {
 	if h.options.Observer == nil {
 		return
@@ -598,6 +727,10 @@ func (h *masqueHandler) observeStats(ctx context.Context) {
 	}
 }
 
+// basicProxyAuth parses an HTTP Basic Proxy-Authorization header value.
+// It decodes the Base64-encoded "username:password" credentials.
+// Returns the username, password, and true on success, or empty strings
+// and false if the header is missing, malformed, or not Basic auth.
 func (h *masqueHandler) basicProxyAuth(proxyAuth string) (username, password string, ok bool) {
 	if proxyAuth == "" {
 		return
@@ -619,6 +752,11 @@ func (h *masqueHandler) basicProxyAuth(proxyAuth string) (username, password str
 	return cs[:s], cs[s+1:], true
 }
 
+// authenticate validates the client's proxy credentials against the configured
+// Authenticator. If no Authenticator is configured, all requests are allowed.
+// On authentication failure, it sends a 407 Proxy Authentication Required response
+// with a Proxy-Authenticate challenge header and returns ("", false).
+// On success, it returns the authenticated client ID and true.
 func (h *masqueHandler) authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, log logger.Logger) (id string, ok bool) {
 	u, p, _ := h.basicProxyAuth(r.Header.Get("Proxy-Authorization"))
 	if h.options.Auther == nil {
