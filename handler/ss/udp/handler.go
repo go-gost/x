@@ -36,6 +36,7 @@ type ssuHandler struct {
 	md        metadata
 	options   handler.Options
 	recorder  recorder.RecorderObject
+	cancels   sync.Map // session hash -> context.CancelFunc
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -174,6 +175,9 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 }
 
 func (h *ssuHandler) relayPacketUDP(ctx context.Context, src net.PacketConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // cancel all per-session goroutines on exit
+
 	bufferSize := h.md.udpBufferSize
 	if bufferSize <= 0 {
 		bufferSize = defaultBufferSize
@@ -248,16 +252,22 @@ func (h *ssuHandler) packetConnForSession(ctx context.Context, src net.PacketCon
 		return nil, err
 	}
 
-	actual, loaded := h.connMap.LoadOrStore(session.Hash(), cc)
-	if loaded {
+	if actual, loaded := h.connMap.LoadOrStore(session.Hash(), cc); loaded {
 		c.Close()
 		return actual.(net.PacketConn), nil
 	}
 
+	// Create a per-session cancel so the goroutine can be cleaned up
+	// when relayPacketUDP exits (parent context cancelled) or on error.
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+	h.cancels.Store(session.Hash(), sessionCancel)
+
 	go func() {
 		defer func() {
+			sessionCancel()
 			cc.Close()
 			h.connMap.Delete(session.Hash())
+			h.cancels.Delete(session.Hash())
 		}()
 
 		bufSize := h.md.udpBufferSize
@@ -267,17 +277,32 @@ func (h *ssuHandler) packetConnForSession(ctx context.Context, src net.PacketCon
 		b := make([]byte, bufSize)
 
 		for {
+			// Use a read deadline so the goroutine periodically checks
+			// whether the parent context has been cancelled, instead of
+			// blocking indefinitely on ReadFrom.
+			cc.SetReadDeadline(time.Now().Add(30 * time.Second))
 			n, raddr, err := cc.ReadFrom(b)
 			if err != nil {
+				// If the parent context is done, exit silently.
+				if sessionCtx.Err() != nil {
+					return
+				}
+				// Timeout is expected — check context again before retrying.
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
 				log.Warnf("failed to read response: %v", err)
 				return
 			}
 
-			if h.options.Bypass != nil && h.options.Bypass.Contains(ctx, "udp", raddr.String(), bypass.WithService(h.options.Service)) {
+			if h.options.Bypass != nil && h.options.Bypass.Contains(sessionCtx, "udp", raddr.String(), bypass.WithService(h.options.Service)) {
 				log.Warn("bypass: ", raddr)
 				return
 			}
 
+			if sessionCtx.Err() != nil {
+				return
+			}
 			addr := core.NewUDPServerPacketAddr(raddr, net.UDPAddrFromAddrPort(session.ClientAddr()), session)
 			if _, err = src.WriteTo(b[:n], addr); err != nil {
 				log.Warnf("failed to write response to %v: %v", session.ClientAddr(), err)
@@ -301,4 +326,21 @@ func (h *ssuHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+// Close cancels all per-session goroutines and closes cached connections.
+func (h *ssuHandler) Close() error {
+	h.cancels.Range(func(key, value any) bool {
+		if cancel, ok := value.(context.CancelFunc); ok {
+			cancel()
+		}
+		return true
+	})
+	h.connMap.Range(func(key, value any) bool {
+		if cc, ok := value.(net.PacketConn); ok {
+			cc.Close()
+		}
+		return true
+	})
+	return nil
 }
