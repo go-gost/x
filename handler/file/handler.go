@@ -4,6 +4,7 @@ package file
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -55,6 +56,14 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 func (h *fileHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
+	}
+
+	if h.md.dir != "" {
+		if info, err := os.Stat(h.md.dir); err != nil {
+			return fmt.Errorf("file handler: directory %q: %w", h.md.dir, err)
+		} else if !info.IsDir() {
+			return fmt.Errorf("file handler: %q is not a directory", h.md.dir)
+		}
 	}
 
 	fs := http.FileServer(http.Dir(h.md.dir))

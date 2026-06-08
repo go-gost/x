@@ -14,12 +14,16 @@ import (
 func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.IP, err error) {
 	ip, ipNet, _ := net.ParseCIDR(l.md.config.Net)
 
+	// On Windows, InterfaceName is a selection filter, not a name assignment.
+	// Passing it to water.New() causes the library to look for an existing
+	// adapter with that friendly name in the registry, which fails if no
+	// adapter with that name exists yet. Instead, let Windows auto-name the
+	// new adapter, then rename it afterwards if the user requested a name.
 	ifce, err := water.New(water.Config{
 		DeviceType: water.TAP,
 		PlatformSpecificParams: water.PlatformSpecificParams{
-			ComponentID:   l.md.config.ComponentID,
-			InterfaceName: l.md.config.Name,
-			Network:       l.md.config.Net,
+			ComponentID: l.md.config.ComponentID,
+			Network:     l.md.config.Net,
 		},
 	})
 	if err != nil {
@@ -29,10 +33,24 @@ func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.I
 	dev = ifce
 	name = ifce.Name()
 
+	// Rename the adapter if the user specified a custom name.
+	if l.md.config.Name != "" && l.md.config.Name != name {
+		renameCmd := fmt.Sprintf("netsh interface set interface name=%s newname=%s",
+			name, l.md.config.Name)
+		l.logger.Debug(renameCmd)
+		args := strings.Split(renameCmd, " ")
+		if er := exec.Command(args[0], args[1:]...).Run(); er == nil {
+			name = l.md.config.Name
+		} else {
+			l.logger.Warnf("failed to rename adapter from %s to %s: %v",
+				name, l.md.config.Name, er)
+		}
+	}
+
 	if ip != nil && ipNet != nil {
 		cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
 			"source=static addr=%s mask=%s gateway=none",
-			ifce.Name(), ip.String(), ipMask(ipNet.Mask))
+			name, ip.String(), ipMask(ipNet.Mask))
 		l.logger.Debug(cmd)
 
 		args := strings.Split(cmd, " ")
@@ -42,7 +60,7 @@ func (l *tapListener) createTap() (dev io.ReadWriteCloser, name string, ip net.I
 		}
 	}
 
-	if err = l.addRoutes(ifce.Name(), l.md.config.Routes...); err != nil {
+	if err = l.addRoutes(name, l.md.config.Routes...); err != nil {
 		return
 	}
 
