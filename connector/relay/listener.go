@@ -62,7 +62,13 @@ func (p *bindListener) getPeerConn(conn net.Conn) (net.Conn, error) {
 		}
 	}
 
-	raddr, err := net.ResolveTCPAddr("tcp", address)
+	var raddr net.Addr
+	var err error
+	if p.network == "unix" {
+		raddr, err = net.ResolveUnixAddr("unix", address)
+	} else {
+		raddr, err = net.ResolveTCPAddr("tcp", address)
+	}
 	if err != nil {
 		return nil, err
 	}

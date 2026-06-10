@@ -82,6 +82,19 @@ func TestNewRecorderObject_UDP(t *testing.T) {
 	}
 }
 
+func TestNewRecorderObject_Unix(t *testing.T) {
+	h := newInitdHandler()
+	conn := newStringConn(nil)
+	conn.local = &net.UnixAddr{Name: "/tmp/local.sock", Net: "unix"}
+	conn.remote = &net.UnixAddr{Name: "/tmp/remote.sock", Net: "unix"}
+
+	ro := h.newRecorderObject(context.Background(), conn, time.Now())
+
+	if ro.Network != "unix" {
+		t.Errorf("expected network unix, got %s", ro.Network)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // checkRateLimit
 // ---------------------------------------------------------------------------

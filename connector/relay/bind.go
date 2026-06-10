@@ -28,7 +28,7 @@ func (c *relayConnector) Bind(ctx context.Context, conn net.Conn, network, addre
 	}
 
 	switch network {
-	case "tcp", "tcp4", "tcp6":
+	case "tcp", "tcp4", "tcp6", "unix":
 		return c.bindTCP(ctx, conn, network, address, log)
 	case "udp", "udp4", "udp6":
 		return c.bindUDP(ctx, conn, network, address, &options, log)
@@ -52,6 +52,7 @@ func (c *relayConnector) bindTCP(ctx context.Context, conn net.Conn, network, ad
 	}
 
 	return &bindListener{
+		network: network,
 		addr:    laddr,
 		session: session,
 		logger:  log,
@@ -97,13 +98,17 @@ func (c *relayConnector) bind(conn net.Conn, cmd relay.CmdType, network, address
 	nid := relay.NetworkTCP
 	if network == "udp" || network == "udp4" || network == "udp6" {
 		nid = relay.NetworkUDP
+	} else if network == "unix" {
+		nid = relay.NetworkUnix
 	}
 	req.Features = append(req.Features, &relay.NetworkFeature{
 		Network: nid,
 	})
 	fa := &relay.AddrFeature{}
-	if h, _, e := net.SplitHostPort(address); e == nil && h == "" {
-		address = net.JoinHostPort("0.0.0.0", address)
+	if network != "unix" {
+		if h, _, e := net.SplitHostPort(address); e == nil && h == "" {
+			address = net.JoinHostPort("0.0.0.0", address)
+		}
 	}
 	fa.ParseFrom(address)
 	req.Features = append(req.Features, fa)
@@ -125,7 +130,11 @@ func (c *relayConnector) bind(conn net.Conn, cmd relay.CmdType, network, address
 	for _, f := range resp.Features {
 		if f.Type() == relay.FeatureAddr {
 			if fa, ok := f.(*relay.AddrFeature); ok {
-				addr = net.JoinHostPort(fa.Host, strconv.Itoa(int(fa.Port)))
+				if network == "unix" {
+					addr = fa.Host
+				} else {
+					addr = net.JoinHostPort(fa.Host, strconv.Itoa(int(fa.Port)))
+				}
 			}
 		}
 	}
@@ -137,6 +146,8 @@ func (c *relayConnector) bind(conn net.Conn, cmd relay.CmdType, network, address
 		baddr, err = net.ResolveTCPAddr(network, addr)
 	case "udp", "udp4", "udp6":
 		baddr, err = net.ResolveUDPAddr(network, addr)
+	case "unix":
+		baddr, err = net.ResolveUnixAddr(network, addr)
 	default:
 		err = fmt.Errorf("unknown network %s", network)
 	}

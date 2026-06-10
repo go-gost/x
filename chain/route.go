@@ -86,6 +86,12 @@ func (*defaultRoute) Bind(ctx context.Context, network, address string, opts ...
 			Logger:         logger,
 		})
 		return ln, err
+	case "unix":
+		addr, err := net.ResolveUnixAddr(network, address)
+		if err != nil {
+			return nil, err
+		}
+		return net.ListenUnix(network, addr)
 	default:
 		err := fmt.Errorf("network %s unsupported", network)
 		return nil, err

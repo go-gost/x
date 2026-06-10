@@ -28,13 +28,13 @@ func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn,
 	}
 	addr := target.Addr
 	if opts := target.Options(); opts != nil {
-		switch opts.Network {
-		case "unix":
+		if opts.Network != "" {
 			network = opts.Network
-		default:
-			if _, _, err := net.SplitHostPort(addr); err != nil {
-				addr += ":0"
-			}
+		}
+	}
+	if network != "unix" {
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			addr += ":0"
 		}
 	}
 

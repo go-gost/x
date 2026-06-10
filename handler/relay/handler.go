@@ -236,6 +236,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 
 	var user, pass string
 	var address string
+	var addrFeature *relay.AddrFeature
 	var networkID relay.NetworkID
 	for _, f := range req.Features {
 		switch f.Type() {
@@ -245,7 +246,7 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 			}
 		case relay.FeatureAddr:
 			if feature, _ := f.(*relay.AddrFeature); feature != nil {
-				address = net.JoinHostPort(feature.Host, strconv.Itoa(int(feature.Port)))
+				addrFeature = feature
 			}
 		case relay.FeatureNetwork:
 			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
@@ -274,6 +275,14 @@ func (h *relayHandler) Handle(ctx context.Context, conn net.Conn, opts ...handle
 	network := networkID.String()
 	if (req.Cmd & relay.FUDP) == relay.FUDP {
 		network = "udp"
+	}
+	if addrFeature != nil {
+		switch network {
+		case "unix", "serial":
+			address = addrFeature.Host
+		default:
+			address = net.JoinHostPort(addrFeature.Host, strconv.Itoa(int(addrFeature.Port)))
+		}
 	}
 	ro.Network = network
 	ro.Host = address
