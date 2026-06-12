@@ -100,3 +100,17 @@ func ClientIDFromContext(ctx context.Context) ClientID {
 	v, _ := ctx.Value(clientIDKey{}).(ClientID)
 	return v
 }
+
+// labelsKey saves the static service labels.
+type labelsKey struct{}
+
+// ContextWithLabels returns a new context carrying the given service labels.
+func ContextWithLabels(ctx context.Context, labels map[string]string) context.Context {
+	return context.WithValue(ctx, labelsKey{}, labels)
+}
+
+// LabelsFromContext returns the service labels stored in the context, or nil.
+func LabelsFromContext(ctx context.Context) map[string]string {
+	v, _ := ctx.Value(labelsKey{}).(map[string]string)
+	return v
+}

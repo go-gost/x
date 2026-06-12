@@ -92,4 +92,8 @@ const (
 
 	// MDKeyDialTimeout sets the dial timeout for outbound connections.
 	MDKeyDialTimeout = "dialTimeout"
+
+	// MDKeyLabels holds static key/value labels attached to a service's
+	// records and logs.
+	MDKeyLabels = "labels"
 )
