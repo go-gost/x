@@ -115,6 +115,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var observerPeriod time.Duration
 	var netnsIn, netnsOut string
 	var dialTimeout time.Duration
+	var labels map[string]string
 
 	var limiterRefreshInterval time.Duration
 	var limiterCleanupInterval time.Duration
@@ -150,6 +151,14 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		limiterRefreshInterval = mdutil.GetDuration(md, parsing.MDKeyLimiterRefreshInterval)
 		limiterCleanupInterval = mdutil.GetDuration(md, parsing.MDKeyLimiterCleanupInterval)
 		limiterScope = mdutil.GetString(md, parsing.MDKeyLimiterScope)
+
+		labels = mdutil.GetStringMapString(md, parsing.MDKeyLabels)
+	}
+
+	if len(labels) > 0 {
+		serviceLogger = serviceLogger.WithFields(map[string]any{
+			"labels": labels,
+		})
 	}
 
 	listenerLogger := serviceLogger.WithFields(map[string]any{
@@ -349,6 +358,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.ObserverOption(registry.ObserverRegistry().Get(cfg.Observer)),
 		xservice.ObserverPeriodOption(observerPeriod),
 		xservice.LoggerOption(serviceLogger),
+		xservice.LabelsOption(labels),
 	)
 
 	serviceLogger.Infof("listening on %s/%s", s.Addr().String(), s.Addr().Network())

@@ -3,6 +3,7 @@ package ctx
 import (
 	"context"
 	"net"
+	"reflect"
 	"testing"
 )
 
@@ -146,6 +147,29 @@ func TestClientIDFromContext_WrongType(t *testing.T) {
 	ctx := context.WithValue(context.Background(), clientIDKey{}, 99)
 	if got := ClientIDFromContext(ctx); got != "" {
 		t.Errorf("ClientIDFromContext(wrong type) = %q, want empty string", got)
+	}
+}
+
+func TestContextWithLabels(t *testing.T) {
+	labels := map[string]string{"tenant": "acme", "region": "eu"}
+	ctx := ContextWithLabels(context.Background(), labels)
+
+	got := LabelsFromContext(ctx)
+	if !reflect.DeepEqual(got, labels) {
+		t.Errorf("LabelsFromContext() = %v, want %v", got, labels)
+	}
+}
+
+func TestLabelsFromContext_Empty(t *testing.T) {
+	if got := LabelsFromContext(context.Background()); got != nil {
+		t.Errorf("LabelsFromContext(empty) = %v, want nil", got)
+	}
+}
+
+func TestLabelsFromContext_WrongType(t *testing.T) {
+	ctx := context.WithValue(context.Background(), labelsKey{}, "not-a-map")
+	if got := LabelsFromContext(ctx); got != nil {
+		t.Errorf("LabelsFromContext(wrong type) = %v, want nil", got)
 	}
 }
 

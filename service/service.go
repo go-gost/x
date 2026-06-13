@@ -43,6 +43,7 @@ type options struct {
 	observer       observer.Observer
 	observerPeriod time.Duration
 	logger         logger.Logger
+	labels         map[string]string
 }
 
 // Option is a functional option for configuring a service.
@@ -110,6 +111,14 @@ func ObserverOption(observer observer.Observer) Option {
 func ObserverPeriodOption(period time.Duration) Option {
 	return func(opts *options) {
 		opts.observerPeriod = period
+	}
+}
+
+// LabelsOption sets the static labels attached to the service's records
+// and logs.
+func LabelsOption(labels map[string]string) Option {
+	return func(opts *options) {
+		opts.labels = labels
 	}
 }
 
@@ -244,6 +253,10 @@ func (s *defaultService) Serve() error {
 
 		sid := xid.New().String()
 		ctx = xctx.ContextWithSid(ctx, xctx.Sid(sid))
+
+		if len(s.options.labels) > 0 {
+			ctx = xctx.ContextWithLabels(ctx, s.options.labels)
+		}
 
 		log := s.options.logger.WithFields(map[string]any{
 			"sid": sid,

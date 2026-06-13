@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/recorder"
+	xctx "github.com/go-gost/x/ctx"
 )
 
 const (
@@ -82,16 +83,17 @@ type DNSRecorderObject struct {
 // level — addresses, protocols, transferred bytes, and optional sub-records
 // for HTTP, WebSocket, TLS, and DNS traffic.
 type HandlerRecorderObject struct {
-	Node       string `json:"node,omitempty"`
-	Service    string `json:"service"`
-	Network    string `json:"network"`
-	RemoteAddr string `json:"remote"`
-	LocalAddr  string `json:"local"`
-	ClientAddr string `json:"client"`
-	SrcAddr    string `json:"src"`
-	DstAddr    string `json:"dst"`
-	Host       string `json:"host"`
-	Proto      string `json:"proto,omitempty"`
+	Node        string                   `json:"node,omitempty"`
+	Service     string                   `json:"service"`
+	Labels      map[string]string        `json:"labels,omitempty"`
+	Network     string                   `json:"network"`
+	RemoteAddr  string                   `json:"remote"`
+	LocalAddr   string                   `json:"local"`
+	ClientAddr  string                   `json:"client"`
+	SrcAddr     string                   `json:"src"`
+	DstAddr     string                   `json:"dst"`
+	Host        string                   `json:"host"`
+	Proto       string                   `json:"proto,omitempty"`
 	ClientIP    string                   `json:"clientIP"`
 	ClientID    string                   `json:"clientID,omitempty"`
 	HTTP        *HTTPRecorderObject      `json:"http,omitempty"`
@@ -113,6 +115,10 @@ type HandlerRecorderObject struct {
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
 	if p == nil || r == nil || p.Time.IsZero() {
 		return nil
+	}
+
+	if p.Labels == nil {
+		p.Labels = xctx.LabelsFromContext(ctx)
 	}
 
 	data, err := json.Marshal(p)
