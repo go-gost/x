@@ -50,6 +50,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 	opts := []xbypass.Option{
 		xbypass.MatchersOption(cfg.Matchers),
 		xbypass.WhitelistOption(cfg.Reverse || cfg.Whitelist),
+		xbypass.NetworkOption(cfg.Network),
 		xbypass.ReloadPeriodOption(cfg.Reload),
 		xbypass.LoggerOption(logger.Default().WithFields(map[string]any{
 			"kind":   "bypass",
