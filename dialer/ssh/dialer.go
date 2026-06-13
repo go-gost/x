@@ -105,6 +105,13 @@ func (d *sshDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 	}
 	channel, reqs, err := session.OpenChannel(ssh_util.GostSSHTunnelRequest)
 	if err != nil {
+		// The cached session is unusable (typically dead but not yet detected
+		// by IsClosed, e.g. an idle connection silently dropped by NAT). Tear
+		// it down and evict it so the next Dial rebuilds a fresh session
+		// instead of retrying against this dead one. Matches the eviction
+		// pattern in the kcp/quic/icmp dialers.
+		session.Close()
+		delete(d.sessions, addr)
 		return nil, err
 	}
 	go ssh.DiscardRequests(reqs)
