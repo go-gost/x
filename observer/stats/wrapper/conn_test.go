@@ -306,6 +306,41 @@ func TestWrapUDPConn_Nil(t *testing.T) {
 	}
 }
 
+func TestWrapUDPConn_Conns(t *testing.T) {
+	st := ostats.NewStats(false)
+	WrapUDPConn(&fakePacketConn{}, st)
+
+	if v := st.Get(stats.KindTotalConns); v != 1 {
+		t.Errorf("totalConns = %d, want 1", v)
+	}
+	if v := st.Get(stats.KindCurrentConns); v != 1 {
+		t.Errorf("currentConns = %d, want 1", v)
+	}
+}
+
+func TestWrapUDPConn_Close(t *testing.T) {
+	st := ostats.NewStats(false)
+	wrapped := WrapUDPConn(&fakePacketConn{}, st)
+
+	if err := wrapped.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if v := st.Get(stats.KindCurrentConns); v != 0 {
+		t.Errorf("currentConns after close = %d, want 0", v)
+	}
+
+	// A second Close must be a no-op: currentConns must not go negative.
+	if err := wrapped.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+	if v := st.Get(stats.KindCurrentConns); v != 0 {
+		t.Errorf("currentConns after second close = %d, want 0", v)
+	}
+	if v := st.Get(stats.KindTotalConns); v != 1 {
+		t.Errorf("totalConns = %d, want 1 (monotonic)", v)
+	}
+}
+
 func TestWrapUDPConn_ReadFrom(t *testing.T) {
 	st := ostats.NewStats(false)
 	fpc := &fakePacketConn{readBuf: []byte("udp-packet")}

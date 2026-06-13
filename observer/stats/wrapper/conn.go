@@ -146,21 +146,48 @@ func (c *packetConn) Context() context.Context {
 
 type udpConn struct {
 	net.PacketConn
-	stats stats.Stats
+	stats  stats.Stats
+	closed chan struct{}
+	mu     sync.Mutex
 }
 
-// WrapUDPConn wraps a net.PacketConn as a udp.Conn to track input and output
-// bytes across all read/write methods (Read, Write, ReadFrom, WriteTo,
-// ReadFromUDP, ReadMsgUDP, WriteToUDP, WriteMsgUDP). If pc or stats is nil,
+// WrapUDPConn wraps a net.PacketConn as a udp.Conn to track connection and
+// traffic statistics. It increments total and current connection counts (one
+// accepted UDP client session == one connection, mirroring WrapConn) and
+// tracks bytes read and written across all read/write methods (Read, Write,
+// ReadFrom, WriteTo, ReadFromUDP, ReadMsgUDP, WriteToUDP, WriteMsgUDP). On
+// Close, it decrements the current connection count. If pc or pStats is nil,
 // it returns nil.
-func WrapUDPConn(pc net.PacketConn, stats stats.Stats) udp.Conn {
-	if pc == nil || stats == nil {
+func WrapUDPConn(pc net.PacketConn, pStats stats.Stats) udp.Conn {
+	if pc == nil || pStats == nil {
 		return nil
 	}
+
+	pStats.Add(stats.KindTotalConns, 1)
+	pStats.Add(stats.KindCurrentConns, 1)
+
 	return &udpConn{
 		PacketConn: pc,
-		stats:      stats,
+		stats:      pStats,
+		closed:     make(chan struct{}),
 	}
+}
+
+// Close decrements the current connection count once and closes the underlying
+// PacketConn. It is safe to call multiple times.
+func (c *udpConn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	select {
+	case <-c.closed:
+		return nil
+	default:
+		close(c.closed)
+	}
+
+	c.stats.Add(stats.KindCurrentConns, -1)
+	return c.PacketConn.Close()
 }
 
 func (c *udpConn) RemoteAddr() net.Addr {
