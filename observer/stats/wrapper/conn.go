@@ -45,6 +45,12 @@ func WrapConn(c net.Conn, pStats stats.Stats) net.Conn {
 	}
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *conn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 func (c *conn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 	c.stats.Add(stats.KindInputBytes, int64(n))

@@ -36,6 +36,12 @@ func WrapConn(limiter limiter.Limiter, c net.Conn) net.Conn {
 	}
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *serverConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 func (c *serverConn) SyscallConn() (rc syscall.RawConn, err error) {
 	if sc, ok := c.Conn.(syscall.Conn); ok {
 		rc, err = sc.SyscallConn()

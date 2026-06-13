@@ -14,6 +14,12 @@ type serverConn struct {
 	ctx context.Context
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *serverConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 func (c *serverConn) Context() context.Context {
 	return c.ctx
 }

@@ -44,6 +44,12 @@ func WrapConn(admission admission.Admission, c net.Conn) net.Conn {
 	}
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *serverConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 // Read checks the remote address against the admission controller
 // before delegating to the underlying connection. If denied, it returns
 // io.EOF to signal end-of-stream.

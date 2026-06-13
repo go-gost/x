@@ -42,6 +42,12 @@ func WrapConn(service string, c net.Conn) net.Conn {
 	}
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *serverConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 func (c *serverConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 	if counter := xmetrics.GetCounter(
