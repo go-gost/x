@@ -37,11 +37,19 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		return reply.Write(conn)
 	}
 
+	// Bind the client-facing relay socket to the TCP control connection's local
+	// IP — the address advertised to the client as BND.ADDR — so replies sent
+	// from this socket carry the matching source IP. A wildcard bind lets the
+	// kernel pick the interface's primary IP, which mismatches BND.ADDR and
+	// makes compliant clients drop the replies (RFC 1928 §6). This is what
+	// breaks UDP associate under multiple IP aliases (metadata.interface).
+	host, _, _ := net.SplitHostPort(conn.LocalAddr().String())
+
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
 
-	cc, err := lc.ListenPacket(ctx, network, "")
+	cc, err := lc.ListenPacket(ctx, network, net.JoinHostPort(host, "0"))
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -60,7 +68,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(cc.LocalAddr().String())
 
-	saddr.Host, _, _ = net.SplitHostPort(conn.LocalAddr().String())
+	saddr.Host = host
 	if v := net.ParseIP(h.md.publicAddr); v != nil {
 		saddr.Host = h.md.publicAddr
 	}
