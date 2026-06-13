@@ -130,9 +130,9 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		return rate_limiter.ErrRateLimit
 	}
 
-	switch cc := conn.(type) {
+	switch cc := unwrapConn(conn).(type) {
 	case *sshd_util.DirectForwardConn:
-		return h.handleDirectForward(ctx, cc, ro, log, &pStats)
+		return h.handleDirectForward(ctx, cc.DstAddr(), conn, ro, log, &pStats)
 	case *sshd_util.RemoteForwardConn:
 		return h.handleRemoteForward(ctx, cc, ro, log, &pStats)
 	default:
@@ -142,9 +142,8 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 }
 
-func (h *forwardHandler) handleDirectForward(ctx context.Context, c *sshd_util.DirectForwardConn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, stats *xstats.Stats) error {
-	targetAddr := c.DstAddr()
-	conn := stats_wrapper.WrapConn(c, stats)
+func (h *forwardHandler) handleDirectForward(ctx context.Context, targetAddr string, origConn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, stats *xstats.Stats) error {
+	conn := stats_wrapper.WrapConn(origConn, stats)
 
 	ro.Host = targetAddr
 	log = log.WithFields(map[string]any{
@@ -359,6 +358,28 @@ func (h *forwardHandler) checkRateLimit(addr net.Addr) bool {
 	}
 
 	return true
+}
+
+// connUnwrapper is an interface for unwrapping net.Conn wrappers to access
+// the underlying connection type.
+type connUnwrapper interface {
+	UnwrapConn() net.Conn
+}
+
+// unwrapConn peels through net.Conn wrapper layers (e.g. traffic limiters)
+// to find the underlying concrete connection type.
+func unwrapConn(c net.Conn) net.Conn {
+	for {
+		uw, ok := c.(connUnwrapper)
+		if !ok {
+			return c
+		}
+		if inner := uw.UnwrapConn(); inner != nil {
+			c = inner
+		} else {
+			return c
+		}
+	}
 }
 
 func getHostPortFromAddr(addr net.Addr) (host string, port int, err error) {

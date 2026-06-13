@@ -37,6 +37,7 @@ type Status struct {
 	state      State
 	events     []Event
 	stats      stats.Stats
+	lastError  error
 	mu         sync.RWMutex
 }
 
@@ -79,6 +80,24 @@ func (p *Status) addEvent(event Event) {
 		p.events = events
 	}
 	p.events = append(p.events, event)
+}
+
+// LastError returns the last accept/bind error that caused the service to
+// enter StateFailed. Returns nil if the service never entered the failed state.
+func (p *Status) LastError() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.lastError
+}
+
+// setLastError stores the last accept/bind error for retrieval via LastError().
+func (p *Status) setLastError(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.lastError = err
 }
 
 // Stats returns the traffic statistics for the service. It safely handles nil

@@ -111,6 +111,12 @@ func (c *limitConn) Write(b []byte) (n int, err error) {
 	return
 }
 
+// UnwrapConn returns the underlying connection, allowing type assertions
+// through wrapper layers.
+func (c *limitConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
+
 func (c *limitConn) SyscallConn() (rc syscall.RawConn, err error) {
 	if sc, ok := c.Conn.(syscall.Conn); ok {
 		rc, err = sc.SyscallConn()

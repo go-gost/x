@@ -223,6 +223,7 @@ func (s *defaultService) Serve() error {
 				}
 
 				s.setState(StateFailed)
+				s.status.setLastError(e)
 
 				log.Warnf("accept: %v, retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
@@ -242,6 +243,7 @@ func (s *defaultService) Serve() error {
 		if tempDelay > 0 {
 			tempDelay = 0
 			s.setState(StateReady)
+			s.status.setLastError(nil)
 		}
 
 		ctx := gctx
