@@ -1,8 +1,8 @@
 // Package remote implements a reverse forwarding handler for connections
-// received from remote GOST nodes. It listens for "rtcp" and "rudp" protocols
+// received from remote GOST nodes. It listens for "rtcp", "rudp", and "runix" protocols
 // and forwards the accepted connections to the configured hop.
 //
-// The handler is registered under the names "rtcp" and "rudp" via
+// The handler is registered under the names "rtcp", "rudp", and "runix" via
 // NewHandler in init().
 //
 // # Connection processing flow
@@ -85,6 +85,7 @@ import (
 func init() {
 	registry.HandlerRegistry().Register("rtcp", NewHandler)
 	registry.HandlerRegistry().Register("rudp", NewHandler)
+	registry.HandlerRegistry().Register("runix", NewHandler)
 }
 
 type forwardHandler struct {
@@ -98,7 +99,7 @@ type forwardHandler struct {
 }
 
 // NewHandler creates a remote forwarding handler with the given options.
-// The handler registers for "rtcp" and "rudp" protocols.
+// The handler registers for "rtcp", "rudp", and "runix" protocols.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {

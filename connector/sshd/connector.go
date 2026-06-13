@@ -74,8 +74,10 @@ func (c *sshdConnector) Bind(ctx context.Context, conn net.Conn, network, addres
 		return nil, errors.New("ssh: invalid connection")
 	}
 
-	if host, port, _ := net.SplitHostPort(address); host == "" {
-		address = net.JoinHostPort("0.0.0.0", port)
+	if network != "unix" {
+		if host, port, err := net.SplitHostPort(address); err == nil && host == "" {
+			address = net.JoinHostPort("0.0.0.0", port)
+		}
 	}
 
 	return cc.Client().Listen(network, address)

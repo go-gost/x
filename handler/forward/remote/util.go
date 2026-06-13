@@ -22,7 +22,7 @@ func (h *forwardHandler) newRecorderObject(ctx context.Context, conn net.Conn, s
 		Service:    h.options.Service,
 		RemoteAddr: conn.RemoteAddr().String(),
 		LocalAddr:  conn.LocalAddr().String(),
-		Network:    "tcp",
+		Network:    conn.LocalAddr().Network(),
 		Time:       start,
 		SID:        xctx.SidFromContext(ctx).String(),
 	}

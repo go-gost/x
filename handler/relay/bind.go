@@ -99,10 +99,15 @@ func (h *relayHandler) handleBind(ctx context.Context, conn net.Conn, network, a
 		return err
 	}
 
-	if network == "tcp" {
+	switch network {
+	case "tcp", "tcp4", "tcp6", "unix":
 		return h.bindTCP(ctx, conn, network, address, ro, log)
-	} else {
+	case "udp", "udp4", "udp6":
 		return h.bindUDP(ctx, conn, network, address, ro, log)
+	default:
+		resp.Status = relay.StatusBadRequest
+		resp.WriteTo(conn)
+		return fmt.Errorf("network %s is unsupported", network)
 	}
 }
 
@@ -149,7 +154,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	serviceName := fmt.Sprintf("%s-ep-%s", h.options.Service, ln.Addr())
 	log = log.WithFields(map[string]any{
 		"service":  serviceName,
-		"listener": "tcp",
+		"listener": network,
 		"handler":  "ep-tcp",
 		"bind":     fmt.Sprintf("%s/%s", ln.Addr(), ln.Addr().Network()),
 		"src":      ln.Addr().String(),
