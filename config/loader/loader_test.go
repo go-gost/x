@@ -3,8 +3,10 @@ package loader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/go-gost/core/handler"
@@ -803,5 +805,131 @@ func TestRegister_ServiceUnknownListener(t *testing.T) {
 	}
 	if err := register(cfg); err == nil {
 		t.Fatal("expected error for unknown listener type, got nil")
+	}
+}
+
+// bindingStubListener is a stubListener whose Init actually binds a TCP port
+// via net.Listen, reproducing the EADDRINUSE condition the close-old-before-
+// bind ordering in register() must prevent. Used only by reload-collision tests.
+type bindingStubListener struct {
+	addr string
+	ln   net.Listener
+}
+
+func (l *bindingStubListener) Init(md metadata.Metadata) error {
+	ln, err := net.Listen("tcp", l.addr)
+	if err != nil {
+		return err
+	}
+	l.ln = ln
+	return nil
+}
+
+func (l *bindingStubListener) Accept() (net.Conn, error) {
+	if l.ln == nil {
+		return nil, net.ErrClosed
+	}
+	return l.ln.Accept()
+}
+
+func (l *bindingStubListener) Addr() net.Addr {
+	if l.ln != nil {
+		return l.ln.Addr()
+	}
+	return &net.TCPAddr{IP: net.IPv4zero, Port: 0}
+}
+
+func (l *bindingStubListener) Close() error {
+	if l.ln == nil {
+		return nil
+	}
+	return l.ln.Close()
+}
+
+// freeTCPPort returns the number of a TCP port that is free at call time by
+// opening and immediately closing a listener on 127.0.0.1:0. There is a small
+// race window before the caller rebinds, which is acceptable for tests.
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for free port: %v", err)
+	}
+	addr := l.Addr().(*net.TCPAddr)
+	l.Close()
+	return addr.Port
+}
+
+// TestRegister_ServiceReloadNoCollision verifies that calling register() twice
+// with a service on a fixed port does NOT return EADDRINUSE on the second call
+// (issue #754). Before the close-old-before-bind ordering, the second
+// register() bound the new listener while the old one was still listening.
+func TestRegister_ServiceReloadNoCollision(t *testing.T) {
+	port := freeTCPPort(t)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+	// Register a binding listener factory under a test-specific name so we
+	// don't interfere with the "tcp" save/restore in TestRegister_Services.
+	const factoryName = "tcp-binding-test"
+	origListener := registry.ListenerRegistry().Get(factoryName)
+	registry.ListenerRegistry().Register(factoryName, func(opts ...listener.Option) listener.Listener {
+		options := listener.Options{}
+		for _, opt := range opts {
+			opt(&options)
+		}
+		return &bindingStubListener{addr: options.Addr}
+	})
+	// Reuse the inert "auto" handler stub.
+	origHandler := registry.HandlerRegistry().Get("auto")
+	registry.HandlerRegistry().Register("auto", func(opts ...handler.Option) handler.Handler {
+		return &stubHandler{}
+	})
+	t.Cleanup(func() {
+		registry.ListenerRegistry().Unregister(factoryName)
+		registry.HandlerRegistry().Unregister("auto")
+		if origListener != nil {
+			registry.ListenerRegistry().Register(factoryName, origListener)
+		}
+		if origHandler != nil {
+			registry.HandlerRegistry().Register("auto", origHandler)
+		}
+	})
+
+	r := registry.ServiceRegistry()
+	const svcName = "reload-svc"
+	t.Cleanup(func() { r.Unregister(svcName) })
+
+	buildCfg := func() *config.Config {
+		return &config.Config{
+			Services: []*config.ServiceConfig{
+				{
+					Name:     svcName,
+					Addr:     addr,
+					Listener: &config.ListenerConfig{Type: factoryName},
+					Handler:  &config.HandlerConfig{Type: "auto"},
+				},
+			},
+		}
+	}
+
+	// First load: registers the service and binds the port.
+	if err := register(buildCfg()); err != nil {
+		t.Fatalf("first register: unexpected error: %v", err)
+	}
+	if !r.IsRegistered(svcName) {
+		t.Fatal("expected service registered after first load")
+	}
+
+	// Second load simulates a SIGHUP reload. With the old ordering this bound
+	// the new listener while the old one was still open and returned
+	// "address already in use"; the fix closes old services first.
+	if err := register(buildCfg()); err != nil {
+		if strings.Contains(err.Error(), "address already in use") {
+			t.Fatalf("second register (reload): port collision not avoided: %v", err)
+		}
+		t.Fatalf("second register (reload): unexpected error: %v", err)
+	}
+	if !r.IsRegistered(svcName) {
+		t.Fatal("expected service registered after reload")
 	}
 }

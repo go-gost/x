@@ -23,7 +23,6 @@ import (
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/sd"
-	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	admission_parser "github.com/go-gost/x/config/parsing/admission"
@@ -94,20 +93,27 @@ type named[T any] struct {
 	v    T
 }
 
-// registerGroup replaces all entries in r with the given entries.
-// Old entries are unregistered first; if any new entry fails to register,
-// the group is left partially updated (matching the historical reload
-// behavior for intra-group failures).
+// registerGroup replaces all entries in r with the given entries. Old entries
+// are unregistered first (see unregisterAll); if any new entry fails to
+// register, the group is left partially updated (matching the historical
+// reload behavior for intra-group failures).
 func registerGroup[T any](entries []named[T], r reg.Registry[T]) error {
-	for name := range r.GetAll() {
-		r.Unregister(name)
-	}
+	unregisterAll(r)
 	for _, e := range entries {
 		if err := r.Register(e.name, e.v); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// unregisterAll removes every entry from r. registry.Unregister closes a value
+// before deleting it when it implements io.Closer, so for services this frees
+// the bound port (a service's Close closes its listener).
+func unregisterAll[T any](r reg.Registry[T]) {
+	for name := range r.GetAll() {
+		r.Unregister(name)
+	}
 }
 
 // register parses config sections and registers them into the global
@@ -300,20 +306,33 @@ func register(cfg *config.Config) error {
 
 	// --- services (references chains, resolvers, hosts, recorders,
 	//     limiters, observers, hops from registries) ---
-
+	//
+	// Services are the only component group whose construction binds a port:
+	// service_parser.ParseService calls listener.Init, which binds. The generic
+	// registerGroup "parse-all-then-swap" sequence used by the other groups
+	// would therefore bind every new listener while the old services are still
+	// listening, causing EADDRINUSE on SIGHUP reload (issue #754, regressed by
+	// 82e7e50). Instead, unregister all old services first — unregisterAll
+	// closes each one (a service implements io.Closer), freeing its port —
+	// then parse, bind, and register the new ones.
+	//
+	// Trade-off: a parse error in the loop below leaves the registry partially
+	// updated (the old services are already closed and only the services parsed
+	// before the failure are registered). The construct/bind split would be
+	// needed for atomic reload, but this restores the pre-82e7e50 behavior.
 	{
-		var entries []named[service.Service]
+		unregisterAll(registry.ServiceRegistry())
+
 		for _, c := range cfg.Services {
 			svc, err := service_parser.ParseService(c)
 			if err != nil {
 				return err
 			}
 			if svc != nil {
-				entries = append(entries, named[service.Service]{c.Name, svc})
+				if err := registry.ServiceRegistry().Register(c.Name, svc); err != nil {
+					return err
+				}
 			}
-		}
-		if err := registerGroup(entries, registry.ServiceRegistry()); err != nil {
-			return err
 		}
 	}
 
