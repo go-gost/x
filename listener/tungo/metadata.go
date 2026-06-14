@@ -57,29 +57,44 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 		}
 	}
 
-	for _, s := range mdutil.GetStrings(md, "routes", "tun.routes") {
-		ss := strings.SplitN(s, " ", 2)
-		if len(ss) == 2 {
-			_, ipNet, _ := net.ParseCIDR(strings.TrimSpace(ss[0]))
-			if ipNet == nil {
-				continue
-			}
-			gw := net.ParseIP(ss[1])
-			if gw == nil {
-				gw = config.Gateway
-			}
-
-			gateway := ""
-			if gw != nil {
-				gateway = gw.String()
-			}
-
-			l.routes = append(l.routes, &router.Route{
-				Net:     ipNet,
-				Dst:     ipNet.String(),
-				Gateway: gateway,
-			})
+	routeStrs := mdutil.GetStrings(md, "routes", "tun.routes")
+	if len(routeStrs) == 0 {
+		// Fall back to single string (e.g. from URL query parameter routes=0.0.0.0/0)
+		if s := mdutil.GetString(md, "routes", "tun.routes"); s != "" {
+			routeStrs = strings.Split(s, ",")
 		}
+	}
+	for _, s := range routeStrs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		ss := strings.SplitN(s, " ", 2)
+		var cidr, gwStr string
+		if len(ss) == 2 {
+			cidr, gwStr = strings.TrimSpace(ss[0]), ss[1]
+		} else {
+			cidr = s
+		}
+		_, ipNet, _ := net.ParseCIDR(cidr)
+		if ipNet == nil {
+			continue
+		}
+		gw := net.ParseIP(gwStr)
+		if gw == nil {
+			gw = config.Gateway
+		}
+
+		gateway := ""
+		if gw != nil {
+			gateway = gw.String()
+		}
+
+		l.routes = append(l.routes, &router.Route{
+			Net:     ipNet,
+			Dst:     ipNet.String(),
+			Gateway: gateway,
+		})
 	}
 
 	for _, v := range strings.Split(mdutil.GetString(md, "dns", "tun.dns"), ",") {
