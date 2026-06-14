@@ -365,6 +365,11 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 
 	conn := v.(net.Conn)
 
+	// Disable per-response buffering so streaming proxies forward each flushed
+	// chunk immediately. Without this, Nginx with proxy_buffering on (the
+	// default) holds the tiny streamed chunks in its buffer and the response
+	// hangs until the buffer fills or the connection closes. (issue #721)
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	if fw, ok := w.(http.Flusher); ok {
 		fw.Flush()
