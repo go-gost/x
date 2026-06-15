@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/go-gost/core/logger"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
-	"github.com/vishvananda/netns"
 )
 
 const (
@@ -54,29 +52,11 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 	})
 
 	if d.Netns != "" {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-
-		originNs, err := netns.Get()
+		restore, err := switchNetns(d.Netns)
 		if err != nil {
-			return nil, fmt.Errorf("netns.Get(): %v", err)
+			return nil, err
 		}
-		defer netns.Set(originNs)
-
-		var ns netns.NsHandle
-		if strings.HasPrefix(d.Netns, "/") {
-			ns, err = netns.GetFromPath(d.Netns)
-		} else {
-			ns, err = netns.GetFromName(d.Netns)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("netns.Get(%s): %v", d.Netns, err)
-		}
-		defer ns.Close()
-
-		if err := netns.Set(ns); err != nil {
-			return nil, fmt.Errorf("netns.Set(%s): %v", d.Netns, err)
-		}
+		defer restore()
 	}
 
 	if d.DialFunc != nil {
