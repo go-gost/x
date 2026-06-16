@@ -70,19 +70,32 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 	}
 	if l.md.cipherKey != nil {
 		conn = quic_util.CipherPacketConn(conn, l.md.cipherKey)
+		conn = metrics.WrapPacketConn(l.options.Service, conn)
+		conn = stats.WrapPacketConn(conn, l.options.Stats)
+		conn = admission.WrapPacketConn(l.options.Admission, conn)
+		conn = limiter_wrapper.WrapPacketConn(
+			conn,
+			l.options.TrafficLimiter,
+			traffic_limiter.ServiceLimitKey,
+			limiter.ScopeOption(limiter.ScopeService),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(conn.LocalAddr().Network()),
+		)
+	} else {
+		conn = metrics.WrapUDPConn(l.options.Service, conn)
+		if l.options.Stats != nil {
+			conn = stats.WrapUDPConn(conn, l.options.Stats)
+		}
+		conn = admission.WrapUDPConn(l.options.Admission, conn)
+		conn = limiter_wrapper.WrapUDPConn(
+			conn,
+			l.options.TrafficLimiter,
+			traffic_limiter.ServiceLimitKey,
+			limiter.ScopeOption(limiter.ScopeService),
+			limiter.ServiceOption(l.options.Service),
+			limiter.NetworkOption(conn.LocalAddr().Network()),
+		)
 	}
-
-	conn = metrics.WrapPacketConn(l.options.Service, conn)
-	conn = stats.WrapPacketConn(conn, l.options.Stats)
-	conn = admission.WrapPacketConn(l.options.Admission, conn)
-	conn = limiter_wrapper.WrapPacketConn(
-		conn,
-		l.options.TrafficLimiter,
-		traffic_limiter.ServiceLimitKey,
-		limiter.ScopeOption(limiter.ScopeService),
-		limiter.ServiceOption(l.options.Service),
-		limiter.NetworkOption(conn.LocalAddr().Network()),
-	)
 
 	config := &quic.Config{
 		KeepAlivePeriod:      l.md.keepAlivePeriod,

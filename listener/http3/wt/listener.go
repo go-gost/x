@@ -74,10 +74,12 @@ func (l *wtListener) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	pc = metrics.WrapPacketConn(l.options.Service, pc)
-	pc = stats.WrapPacketConn(pc, l.options.Stats)
-	pc = admission.WrapPacketConn(l.options.Admission, pc)
-	pc = limiter_wrapper.WrapPacketConn(
+	pc = metrics.WrapUDPConn(l.options.Service, pc)
+	if l.options.Stats != nil {
+		pc = stats.WrapUDPConn(pc, l.options.Stats)
+	}
+	pc = admission.WrapUDPConn(l.options.Admission, pc)
+	pc = limiter_wrapper.WrapUDPConn(
 		pc,
 		l.options.TrafficLimiter,
 		traffic_limiter.ServiceLimitKey,
