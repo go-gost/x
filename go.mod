@@ -30,7 +30,6 @@ require (
 	github.com/quic-go/webtransport-go v0.10.0
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
-	github.com/sirupsen/logrus v1.9.3
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.11.1
@@ -56,6 +55,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20250523182742-eede7a881b20
 )
+
+require github.com/sirupsen/logrus v1.9.3 // indirect
 
 require (
 	github.com/alessio/shellescape v1.4.1 // indirect
