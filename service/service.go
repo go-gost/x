@@ -227,6 +227,14 @@ func (s *defaultService) Serve() error {
 
 				log.Warnf("accept: %v, retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
+
+				// Transition back to Ready so status observers see the
+				// recovered service immediately, instead of waiting for
+				// the next successful Accept (which may block arbitrarily).
+				if s.status.State() == StateFailed {
+					s.setState(StateReady)
+					s.status.setLastError(nil)
+				}
 				continue
 			}
 			s.setState(StateClosed)
