@@ -250,8 +250,6 @@ func (s *defaultService) Serve() error {
 
 		if tempDelay > 0 {
 			tempDelay = 0
-			s.setState(StateReady)
-			s.status.setLastError(nil)
 		}
 
 		ctx := gctx
