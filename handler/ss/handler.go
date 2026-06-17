@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -21,6 +22,7 @@ import (
 	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
+	"github.com/go-gost/x/internal/util/ss/none"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xstats "github.com/go-gost/x/observer/stats"
@@ -64,14 +66,22 @@ func (h *ssHandler) Init(md md.Metadata) (err error) {
 	method := h.options.Auth.Username()
 	password, _ := h.options.Auth.Password()
 
-	serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
-	if err != nil {
-		return err
-	}
-	h.server = core.NewTCPServer(serverConfig)
-	err = h.server.Init()
-	if err != nil {
-		return err
+	if strings.EqualFold(method, "none") || strings.EqualFold(method, "dummy") {
+		h.server = core.NewTCPServer(core.ServerConfig{Cipher: none.Cipher, Users: h.md.users})
+		err = h.server.Init()
+		if err != nil {
+			return err
+		}
+	} else {
+		serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
+		if err != nil {
+			return err
+		}
+		h.server = core.NewTCPServer(serverConfig)
+		err = h.server.Init()
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, ro := range h.options.Recorders {

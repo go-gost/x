@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/connector"
@@ -16,6 +17,7 @@ import (
 	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/util/relay"
 	"github.com/go-gost/x/internal/util/ss"
+	ssnone "github.com/go-gost/x/internal/util/ss/none"
 	"github.com/go-gost/x/registry"
 )
 
@@ -52,6 +54,13 @@ func (c *ssuConnector) Init(md md.Metadata) (err error) {
 
 	method := c.options.Auth.Username()
 	password, _ := c.options.Auth.Password()
+
+	if strings.EqualFold(method, "none") || strings.EqualFold(method, "dummy") {
+		c.clientCfg = core.ClientConfig{Cipher: ssnone.Cipher, UDPTimeout: time.Minute}
+		c.tcpClient = core.NewTCPClient(core.ClientConfig{Cipher: ssnone.Cipher})
+		return
+	}
+
 	clientConfig, err := utils.NewClientConfig(method, password)
 	if err != nil {
 		return err

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/relay"
+	"github.com/go-gost/x/internal/util/ss/none"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
@@ -62,21 +64,35 @@ func (h *ssuHandler) Init(md md.Metadata) (err error) {
 	method := h.options.Auth.Username()
 	password, _ := h.options.Auth.Password()
 
-	serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
-	if err != nil {
-		return err
-	}
-	serverConfig.UDPTimeout = time.Minute
-	h.udpServer = core.NewUDPServer(serverConfig)
-	err = h.udpServer.Init()
-	if err != nil {
-		return err
-	}
+	if strings.EqualFold(method, "none") || strings.EqualFold(method, "dummy") {
+		c := core.ServerConfig{Cipher: none.Cipher, Users: h.md.users, UDPTimeout: time.Minute}
+		h.udpServer = core.NewUDPServer(c)
+		err = h.udpServer.Init()
+		if err != nil {
+			return err
+		}
+		h.tcpServer = core.NewTCPServer(c)
+		err = h.tcpServer.Init()
+		if err != nil {
+			return err
+		}
+	} else {
+		serverConfig, err := utils.NewServerConfig(method, password, h.md.users)
+		if err != nil {
+			return err
+		}
+		serverConfig.UDPTimeout = time.Minute
+		h.udpServer = core.NewUDPServer(serverConfig)
+		err = h.udpServer.Init()
+		if err != nil {
+			return err
+		}
 
-	h.tcpServer = core.NewTCPServer(serverConfig)
-	err = h.tcpServer.Init()
-	if err != nil {
-		return err
+		h.tcpServer = core.NewTCPServer(serverConfig)
+		err = h.tcpServer.Init()
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, ro := range h.options.Recorders {
