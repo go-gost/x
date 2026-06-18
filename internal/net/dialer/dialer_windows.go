@@ -49,6 +49,11 @@ func setMark(fd uintptr, mark int) error {
 	return nil
 }
 
+// switchNetns is a no-op stub — network namespace switching is a Linux-only feature.
+func switchNetns(name string) (restore func(), err error) {
+	return nil, nil
+}
+
 func bindSocketToInterface4(handle windows.Handle, index uint32) error {
 	// For IPv4, this parameter must be an interface index in network byte order.
 	// Ref: https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options

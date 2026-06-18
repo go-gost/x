@@ -14,3 +14,8 @@ func setMark(fd uintptr, mark int) error {
 	}
 	return unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RTABLE, mark)
 }
+
+// switchNetns is a no-op stub — network namespace switching is a Linux-only feature.
+func switchNetns(name string) (restore func(), err error) {
+	return nil, nil
+}
