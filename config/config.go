@@ -469,6 +469,7 @@ type ServiceConfig struct {
 	Resolver   string            `yaml:",omitempty" json:"resolver,omitempty"`
 	Hosts      string            `yaml:",omitempty" json:"hosts,omitempty"`
 	Limiter    string            `yaml:",omitempty" json:"limiter,omitempty"`
+	Quotas     []string          `yaml:",omitempty" json:"quotas,omitempty"`
 	CLimiter   string            `yaml:"climiter,omitempty" json:"climiter,omitempty"`
 	RLimiter   string            `yaml:"rlimiter,omitempty" json:"rlimiter,omitempty"`
 	Logger     string            `yaml:",omitempty" json:"logger,omitempty"`
@@ -484,10 +485,12 @@ type ServiceConfig struct {
 }
 
 type ServiceStatus struct {
-	CreateTime int64          `yaml:"createTime" json:"createTime"`
-	State      string         `yaml:"state" json:"state"`
-	Events     []ServiceEvent `yaml:",omitempty" json:"events,omitempty"`
-	Stats      *ServiceStats  `yaml:",omitempty" json:"stats,omitempty"`
+	CreateTime     int64          `yaml:"createTime" json:"createTime"`
+	State          string         `yaml:"state" json:"state"`
+	Events         []ServiceEvent `yaml:",omitempty" json:"events,omitempty"`
+	Stats          *ServiceStats  `yaml:",omitempty" json:"stats,omitempty"`
+	StoppedByLimit bool           `yaml:"stoppedByLimit,omitempty" json:"stoppedByLimit,omitempty"`
+	Quotas         []ServiceQuota `yaml:",omitempty" json:"quotas,omitempty"`
 }
 
 type ServiceEvent struct {
@@ -501,6 +504,57 @@ type ServiceStats struct {
 	TotalErrs    uint64 `yaml:"totalErrs" json:"totalErrs"`
 	InputBytes   uint64 `yaml:"inputBytes" json:"inputBytes"`
 	OutputBytes  uint64 `yaml:"outputBytes" json:"outputBytes"`
+}
+
+// QuotaConfig is a named cumulative traffic-volume limiter; the same name
+// referenced by several services (ServiceConfig.Quotas) shares one counter.
+type QuotaConfig struct {
+	Name      string            `json:"name"`
+	Limit     string            `yaml:",omitempty" json:"limit,omitempty"`
+	StartsAt  string            `yaml:"startsAt,omitempty" json:"startsAt,omitempty"`
+	ExpiresAt string            `yaml:"expiresAt,omitempty" json:"expiresAt,omitempty"`
+	Direction string            `yaml:",omitempty" json:"direction,omitempty"`
+	Flush     string            `yaml:",omitempty" json:"flush,omitempty"`
+	Store     *QuotaStoreConfig `yaml:",omitempty" json:"store,omitempty"`
+	// read-only
+	Status *QuotaStatus `yaml:",omitempty" json:"status,omitempty"`
+}
+
+type QuotaStoreConfig struct {
+	Type  string            `json:"type"` // "file" (default) | "redis" (stub, not implemented)
+	File  string            `yaml:",omitempty" json:"file,omitempty"`
+	Redis *QuotaRedisConfig `yaml:",omitempty" json:"redis,omitempty"`
+}
+
+type QuotaRedisConfig struct {
+	Addr     string `json:"addr"`
+	DB       int    `yaml:",omitempty" json:"db,omitempty"`
+	Username string `yaml:",omitempty" json:"username,omitempty"`
+	Password string `yaml:",omitempty" json:"password,omitempty"`
+	Key      string `yaml:",omitempty" json:"key,omitempty"`
+}
+
+type QuotaStatus struct {
+	Used      uint64 `yaml:"used" json:"used"`
+	Limit     uint64 `yaml:"limit" json:"limit"`
+	StartsAt  int64  `yaml:"startsAt,omitempty" json:"startsAt,omitempty"`
+	ExpiresAt int64  `yaml:"expiresAt,omitempty" json:"expiresAt,omitempty"`
+	Active    bool   `yaml:"active" json:"active"`
+	Expired   bool   `yaml:"expired,omitempty" json:"expired,omitempty"`
+	Blocked   bool   `yaml:"blocked" json:"blocked"`
+	Direction string `yaml:"direction,omitempty" json:"direction,omitempty"`
+}
+
+type ServiceQuota struct {
+	Name      string `yaml:"name" json:"name"`
+	Used      uint64 `yaml:"used" json:"used"`
+	Limit     uint64 `yaml:"limit" json:"limit"`
+	StartsAt  int64  `yaml:"startsAt,omitempty" json:"startsAt,omitempty"`
+	ExpiresAt int64  `yaml:"expiresAt,omitempty" json:"expiresAt,omitempty"`
+	Active    bool   `yaml:"active" json:"active"`
+	Expired   bool   `yaml:"expired,omitempty" json:"expired,omitempty"`
+	Blocked   bool   `yaml:"blocked" json:"blocked"`
+	Direction string `yaml:"direction,omitempty" json:"direction,omitempty"`
 }
 
 type ChainConfig struct {
@@ -572,6 +626,7 @@ type Config struct {
 	SDs        []*SDConfig        `yaml:"sds,omitempty" json:"sds,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
+	Quotas     []*QuotaConfig     `yaml:",omitempty" json:"quotas,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`
 	RLimiters  []*LimiterConfig   `yaml:"rlimiters,omitempty" json:"rlimiters,omitempty"`
 	Observers  []*ObserverConfig  `yaml:",omitempty" json:"observers,omitempty"`
