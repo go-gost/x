@@ -11,5 +11,8 @@ func (l *redirectListener) control(network, address string, c syscall.RawConn) e
 		if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
 			l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
 		}
+		if err := unix.SetsockoptInt(int(fd), unix.SOL_IPV6, unix.IPV6_TRANSPARENT, 1); err != nil {
+			l.logger.Errorf("SetsockoptInt(SOL_IPV6, IPV6_TRANSPARENT, 1): %v", err)
+		}
 	})
 }
