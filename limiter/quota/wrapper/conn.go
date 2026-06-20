@@ -76,3 +76,9 @@ func (c *quotaConn) Context() context.Context {
 	}
 	return nil
 }
+
+// UnwrapConn returns the underlying connection, allowing type assertions
+// in handlers that iterate wrapper layers (e.g., SSH handler's unwrapConn).
+func (c *quotaConn) UnwrapConn() net.Conn {
+	return c.Conn
+}
