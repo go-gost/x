@@ -137,7 +137,10 @@ func (h *hostMapper) Lookup(ctx context.Context, network, host string, opts ...h
 	}
 
 	if ips == nil {
-		return
+		ips = h.lookup(".")
+		if ips == nil {
+			return
+		}
 	}
 
 	switch network {

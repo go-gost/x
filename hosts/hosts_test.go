@@ -14,12 +14,26 @@ import (
 
 // newTestMapper creates a hostMapper for testing with a nop logger to avoid nil dereference
 // when Lookup uses h.options.logger directly.
-// It synchronously loads the initial mappings to avoid race conditions with the background
-// reload goroutine started by NewHostMapper.
+// It synchronously loads the initial mappings without starting the background reload goroutine
+// to prevent data races between NewHostMapper's goroutine and test lookups.
 func newTestMapper(opts ...Option) *hostMapper {
 	opts = append(opts, LoggerOption(xlogger.Nop()))
-	h := NewHostMapper(opts...).(*hostMapper)
-	_ = h.reload(context.Background())
+	var options options
+	for _, opt := range opts {
+		opt(&options)
+	}
+	ctx, cancel := context.WithCancel(context.TODO())
+	h := &hostMapper{
+		mappings:   make(map[string][]net.IP),
+		cancelFunc: cancel,
+		options:    options,
+		logger:     options.logger,
+	}
+	if h.logger == nil {
+		h.logger = xlogger.Nop()
+	}
+	_ = h.reload(ctx)
+	cancel()
 	return h
 }
 
@@ -564,6 +578,86 @@ func TestLookupIPv4MappedIPv6(t *testing.T) {
 	ips, ok = h.Lookup(context.Background(), "ip6", "example.com")
 	if ok || len(ips) != 0 {
 		t.Fatalf("expected no results for ip6 filter, got %v (ok=%v)", ips, ok)
+	}
+}
+
+func TestLookupCatchAll(t *testing.T) {
+	h := newTestMapper(MappingsOption([]Mapping{
+		{Hostname: ".", IP: net.ParseIP("10.0.0.1")},
+	}))
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		host string
+		ok   bool
+	}{
+		{"example.com", true},
+		{"anything.else.com", true},
+		{"deep.sub.domain.org", true},
+		{"singleword", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			_, ok := h.Lookup(context.Background(), "ip", tt.host)
+			if ok != tt.ok {
+				t.Errorf("Lookup(%q) ok = %v, want %v", tt.host, ok, tt.ok)
+			}
+		})
+	}
+}
+
+func TestLookupCatchAllWithSpecific(t *testing.T) {
+	h := newTestMapper(MappingsOption([]Mapping{
+		{Hostname: ".example.com", IP: net.ParseIP("10.0.0.1")},
+		{Hostname: ".", IP: net.ParseIP("10.0.0.2")},
+	}))
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Specific .suffix should take priority over catch-all
+	ips, ok := h.Lookup(context.Background(), "ip", "example.com")
+	if !ok || !ips[0].Equal(net.ParseIP("10.0.0.1")) {
+		t.Fatalf("expected [10.0.0.1] from .example.com, got %v (ok=%v)", ips, ok)
+	}
+
+	ips, ok = h.Lookup(context.Background(), "ip", "sub.example.com")
+	if !ok || !ips[0].Equal(net.ParseIP("10.0.0.1")) {
+		t.Fatalf("expected [10.0.0.1] from .example.com, got %v (ok=%v)", ips, ok)
+	}
+
+	// Unmatched hostname falls through to catch-all
+	ips, ok = h.Lookup(context.Background(), "ip", "other.com")
+	if !ok || !ips[0].Equal(net.ParseIP("10.0.0.2")) {
+		t.Fatalf("expected [10.0.0.2] from catch-all, got %v (ok=%v)", ips, ok)
+	}
+}
+
+func TestLookupCatchAllIP4IP6(t *testing.T) {
+	h := newTestMapper(MappingsOption([]Mapping{
+		{Hostname: ".", IP: net.ParseIP("10.0.0.1")},
+		{Hostname: ".", IP: net.ParseIP("::1")},
+	}))
+	if err := h.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ips, ok := h.Lookup(context.Background(), "ip4", "anyhost.com")
+	if !ok || len(ips) != 1 || !ips[0].Equal(net.ParseIP("10.0.0.1")) {
+		t.Fatalf("expected [10.0.0.1] via ip4 catch-all, got %v (ok=%v)", ips, ok)
+	}
+
+	ips, ok = h.Lookup(context.Background(), "ip6", "anyhost.com")
+	if !ok || len(ips) != 1 || !ips[0].Equal(net.ParseIP("::1")) {
+		t.Fatalf("expected [::1] via ip6 catch-all, got %v (ok=%v)", ips, ok)
+	}
+
+	ips, ok = h.Lookup(context.Background(), "ip", "anyhost.com")
+	if !ok || len(ips) != 2 {
+		t.Fatalf("expected 2 IPs via catch-all, got %d (ok=%v)", len(ips), ok)
 	}
 }
 
