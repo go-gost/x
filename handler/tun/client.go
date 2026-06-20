@@ -45,10 +45,10 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 			defer cc.Close()
 
 			if network == "udp" {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
+				iterCtx, iterCancel := context.WithCancel(ctx)
+				defer iterCancel()
 
-				go h.keepalive(ctx, cc, ips)
+				go h.keepalive(iterCtx, cc, ips)
 			}
 
 			return h.transportClient(ctx, conn, cc, log)
@@ -100,11 +100,21 @@ func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP)
 }
 
 func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, conn net.Conn, log logger.Logger) error {
+	c, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	errc := make(chan error, 2)
 
 	go func() {
 		var b [MaxMessageSize]byte
 		for {
+			select {
+			case <-c.Done():
+				errc <- c.Err()
+				return
+			default:
+			}
+
 			err := func() error {
 				n, err := tun.Read(b[:])
 				if err != nil {
@@ -155,6 +165,13 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 	go func() {
 		var b [MaxMessageSize]byte
 		for {
+			select {
+			case <-c.Done():
+				errc <- c.Err()
+				return
+			default:
+			}
+
 			err := func() error {
 				n, err := conn.Read(b[:])
 				if err != nil {
@@ -214,14 +231,5 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 		}
 	}()
 
-	select {
-	case err := <-errc:
-		if err != nil && err == io.EOF {
-			err = nil
-		}
-		return err
-
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return collectFirstError(errc, cancel)
 }

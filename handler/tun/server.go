@@ -3,6 +3,7 @@ package tun
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -29,7 +30,7 @@ func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tu
 
 			return h.transportServer(ctx, conn, pc, config, log)
 		}()
-		if err == ErrTun {
+		if errors.Is(err, ErrTun) {
 			return err
 		}
 
@@ -39,11 +40,21 @@ func (h *tunHandler) handleServer(ctx context.Context, conn net.Conn, config *tu
 }
 
 func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, conn net.PacketConn, config *tun_util.Config, log logger.Logger) error {
-	errc := make(chan error, 1)
+	c, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errc := make(chan error, 2)
 
 	go func() {
 		var b [MaxMessageSize]byte
 		for {
+			select {
+			case <-c.Done():
+				errc <- c.Err()
+				return
+			default:
+			}
+
 			err := func() error {
 				n, err := tun.Read(b[:])
 				if err != nil {
@@ -110,6 +121,13 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 	go func() {
 		var b [MaxMessageSize]byte
 		for {
+			select {
+			case <-c.Done():
+				errc <- c.Err()
+				return
+			default:
+			}
+
 			err := func() error {
 				n, addr, err := conn.ReadFrom(b[:])
 				if err != nil {
@@ -231,11 +249,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 		}
 	}()
 
-	err := <-errc
-	if err != nil && err == io.EOF {
-		err = nil
-	}
-	return err
+	return collectFirstError(errc, cancel)
 }
 
 func (h *tunHandler) updateRoute(ip net.IP, addr net.Addr, log logger.Logger) {

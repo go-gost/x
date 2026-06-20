@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -109,6 +110,32 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 
 	return h.handleServer(ctx, conn, config, log)
+}
+
+// collectFirstError drains errc (whose capacity must equal the number of
+// goroutines writing to it) and returns the first error that is not io.EOF,
+// context.Canceled, or context.DeadlineExceeded. It cancels the derived
+// context after the first error to signal sibling goroutines to exit.
+// A timeout on the second read prevents deadlock when a goroutine is stuck
+// in a blocking read that is not context-aware.
+func collectFirstError(errc <-chan error, cancel context.CancelFunc) error {
+	var firstErr error
+	// Wait for the first goroutine to exit.
+	err := <-errc
+	cancel() // signal the sibling goroutine to exit
+	if err != nil && err != io.EOF && err != context.Canceled && err != context.DeadlineExceeded {
+		firstErr = err
+	}
+	// Wait for the sibling goroutine, but don't block forever — the
+	// goroutine may be stuck in a blocking read that is not context-aware.
+	select {
+	case err := <-errc:
+		if err != nil && firstErr == nil && err != io.EOF && err != context.Canceled && err != context.DeadlineExceeded {
+			firstErr = err
+		}
+	case <-time.After(5 * time.Second):
+	}
+	return firstErr
 }
 
 type tunRouteKey [16]byte
