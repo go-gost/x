@@ -110,7 +110,10 @@ func (l *quicListener) Init(md md.Metadata) (err error) {
 	}
 
 	tlsCfg := l.options.TLSConfig
-	tlsCfg.NextProtos = []string{"h3", "quic/v1"}
+	tlsCfg = tlsCfg.Clone()
+	if len(tlsCfg.NextProtos) == 0 {
+		tlsCfg.NextProtos = []string{"h3", "quic/v1"}
+	}
 
 	ln, err := quic.ListenEarly(conn, tlsCfg, config)
 	if err != nil {

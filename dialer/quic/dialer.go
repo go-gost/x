@@ -115,7 +115,10 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 	}
 
 	tlsCfg := d.options.TLSConfig
-	tlsCfg.NextProtos = []string{"h3", "quic/v1"}
+	tlsCfg = tlsCfg.Clone()
+	if len(tlsCfg.NextProtos) == 0 {
+		tlsCfg.NextProtos = []string{"h3", "quic/v1"}
+	}
 
 	session, err := quic.DialEarly(ctx, conn, addr, tlsCfg, quicConfig)
 	if err != nil {
