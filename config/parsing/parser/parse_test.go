@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-gost/x/config"
@@ -47,6 +49,7 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 		SDs:        []*config.SDConfig{{Name: "sd1"}},
 		Recorders:  []*config.RecorderConfig{{Name: "rec1"}},
 		Limiters:   []*config.LimiterConfig{{Name: "l1"}},
+		Quotas:     []*config.QuotaConfig{{Name: "q1"}},
 		CLimiters:  []*config.LimiterConfig{{Name: "cl1"}},
 		RLimiters:  []*config.LimiterConfig{{Name: "rl1"}},
 		Loggers:    []*config.LoggerConfig{{Name: "log1"}},
@@ -66,6 +69,7 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 		SDs:        []*config.SDConfig{{Name: "sd2"}},
 		Recorders:  []*config.RecorderConfig{{Name: "rec2"}},
 		Limiters:   []*config.LimiterConfig{{Name: "l2"}},
+		Quotas:     []*config.QuotaConfig{{Name: "q2"}},
 		CLimiters:  []*config.LimiterConfig{{Name: "cl2"}},
 		RLimiters:  []*config.LimiterConfig{{Name: "rl2"}},
 		Loggers:    []*config.LoggerConfig{{Name: "log2"}},
@@ -110,6 +114,9 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 	}
 	if len(got.Limiters) != 2 {
 		t.Fatal("limiters not properly appended")
+	}
+	if len(got.Quotas) != 2 {
+		t.Fatal("quotas not properly appended")
 	}
 	if len(got.CLimiters) != 2 {
 		t.Fatal("climiters not properly appended")
@@ -194,7 +201,7 @@ func TestMergeConfig_ScalarKeepsCfg1WhenCfg2Nil(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	Init(Args{
-		CfgFile:     "test.yml",
+		CfgFiles:    []string{"test.yml"},
 		Services:    []string{"s1"},
 		Nodes:       []string{"n1"},
 		Debug:       true,
@@ -203,8 +210,8 @@ func TestInit(t *testing.T) {
 		MetricsAddr: ":9090",
 	})
 
-	if defaultParser.args.CfgFile != "test.yml" {
-		t.Fatalf("CfgFile not set: got %q", defaultParser.args.CfgFile)
+	if len(defaultParser.args.CfgFiles) != 1 || defaultParser.args.CfgFiles[0] != "test.yml" {
+		t.Fatalf("CfgFiles not set: got %v", defaultParser.args.CfgFiles)
 	}
 	if len(defaultParser.args.Services) != 1 || defaultParser.args.Services[0] != "s1" {
 		t.Fatal("Services not set")
@@ -223,5 +230,58 @@ func TestInit(t *testing.T) {
 	}
 	if defaultParser.args.MetricsAddr != ":9090" {
 		t.Fatal("MetricsAddr not set")
+	}
+}
+
+func TestParse_MultiFile(t *testing.T) {
+	// Create two temporary config files.
+	cfg1 := &config.Config{
+		Services: []*config.ServiceConfig{{Name: "s1", Addr: ":8080"}},
+	}
+	cfg2 := &config.Config{
+		Services: []*config.ServiceConfig{{Name: "s2", Addr: ":8081"}},
+		Log:      &config.LogConfig{Level: "debug"},
+		Quotas:   []*config.QuotaConfig{{Name: "q1"}},
+	}
+
+	tmpDir := t.TempDir()
+	file1 := filepath.Join(tmpDir, "cfg1.yml")
+	file2 := filepath.Join(tmpDir, "cfg2.yml")
+
+	for _, entry := range []struct {
+		path string
+		cfg  *config.Config
+	}{
+		{file1, cfg1},
+		{file2, cfg2},
+	} {
+		f, err := os.Create(entry.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := entry.cfg.Write(f, "yaml"); err != nil {
+			f.Close()
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+
+	Init(Args{
+		CfgFiles: []string{file1, file2},
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+
+	if len(got.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(got.Services))
+	}
+	if got.Log == nil || got.Log.Level != "debug" {
+		t.Fatal("Log.Level not set from cfg2")
+	}
+	if len(got.Quotas) != 1 || got.Quotas[0].Name != "q1" {
+		t.Fatal("Quotas not merged from cfg2")
 	}
 }

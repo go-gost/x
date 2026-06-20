@@ -35,9 +35,9 @@ func Parse() (*config.Config, error) {
 // Args holds the raw CLI flags and positional arguments that Init will merge
 // into the final configuration.
 type Args struct {
-	// CfgFile is the path to a YAML or JSON config file, "-" for stdin, or
-	// an inline JSON string.
-	CfgFile string
+	// CfgFiles is the list of YAML or JSON config file paths, "-" for stdin, or
+	// an inline JSON string. Multiple files are merged left-to-right.
+	CfgFiles []string
 
 	// Services is the list of service definitions from -L flags.
 	Services []string
@@ -65,31 +65,16 @@ type parser struct {
 func (p *parser) Parse() (*config.Config, error) {
 	cfg := &config.Config{}
 
-	if cfgFile := strings.TrimSpace(p.args.CfgFile); cfgFile != "" {
-		if cfgFile == "-" { // stdin
-			br := bufio.NewReader(os.Stdin)
-			b, err := br.Peek(1)
-			if err != nil {
-				return nil, err
-			}
-			if b[0] == '{' {
-				if err := cfg.Read(br, "json"); err != nil {
-					return nil, err
-				}
-			} else {
-				if err := cfg.Read(br, "yaml"); err != nil {
-					return nil, err
-				}
-			}
-		} else if strings.HasPrefix(cfgFile, "{") && strings.HasSuffix(cfgFile, "}") { // inline
-			if err := json.Unmarshal([]byte(cfgFile), cfg); err != nil {
-				return nil, err
-			}
-		} else {
-			if err := cfg.ReadFile(cfgFile); err != nil { // file
-				return nil, err
-			}
+	for _, cfgFile := range p.args.CfgFiles {
+		cfgFile = strings.TrimSpace(cfgFile)
+		if cfgFile == "" {
+			continue
 		}
+		fcfg, err := readConfig(cfgFile)
+		if err != nil {
+			return nil, err
+		}
+		cfg = mergeConfig(cfg, fcfg)
 	}
 
 	cmdCfg, err := cmd.BuildConfigFromCmd(p.args.Services, p.args.Nodes)
@@ -193,6 +178,39 @@ func (p *parser) Parse() (*config.Config, error) {
 	return cfg, nil
 }
 
+// readConfig reads a single configuration source, which may be "-" (stdin),
+// an inline JSON string starting with "{", or a file path.
+func readConfig(cfgFile string) (*config.Config, error) {
+	cfg := &config.Config{}
+
+	if cfgFile == "-" { // stdin
+		br := bufio.NewReader(os.Stdin)
+		b, err := br.Peek(1)
+		if err != nil {
+			return nil, err
+		}
+		if b[0] == '{' {
+			if err := cfg.Read(br, "json"); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := cfg.Read(br, "yaml"); err != nil {
+				return nil, err
+			}
+		}
+	} else if strings.HasPrefix(cfgFile, "{") && strings.HasSuffix(cfgFile, "}") { // inline
+		if err := json.Unmarshal([]byte(cfgFile), cfg); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := cfg.ReadFile(cfgFile); err != nil { // file
+			return nil, err
+		}
+	}
+
+	return cfg, nil
+}
+
 func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 	if cfg1 == nil {
 		return cfg2
@@ -214,6 +232,7 @@ func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 		SDs:        append(cfg1.SDs, cfg2.SDs...),
 		Recorders:  append(cfg1.Recorders, cfg2.Recorders...),
 		Limiters:   append(cfg1.Limiters, cfg2.Limiters...),
+		Quotas:     append(cfg1.Quotas, cfg2.Quotas...),
 		CLimiters:  append(cfg1.CLimiters, cfg2.CLimiters...),
 		RLimiters:  append(cfg1.RLimiters, cfg2.RLimiters...),
 		Loggers:    append(cfg1.Loggers, cfg2.Loggers...),
