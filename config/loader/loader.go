@@ -35,11 +35,13 @@ import (
 	limiter_parser "github.com/go-gost/x/config/parsing/limiter"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	observer_parser "github.com/go-gost/x/config/parsing/observer"
+	quota_parser "github.com/go-gost/x/config/parsing/quota"
 	recorder_parser "github.com/go-gost/x/config/parsing/recorder"
 	resolver_parser "github.com/go-gost/x/config/parsing/resolver"
 	router_parser "github.com/go-gost/x/config/parsing/router"
 	sd_parser "github.com/go-gost/x/config/parsing/sd"
 	service_parser "github.com/go-gost/x/config/parsing/service"
+	quota "github.com/go-gost/x/limiter/quota"
 	"github.com/go-gost/x/registry"
 )
 
@@ -248,6 +250,16 @@ func register(cfg *config.Config) error {
 			entries = append(entries, named[traffic.TrafficLimiter]{c.Name, limiter_parser.ParseTrafficLimiter(c)})
 		}
 		if err := registerGroup(entries, registry.TrafficLimiterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[*quota.Limiter]
+		for _, c := range cfg.Quotas {
+			entries = append(entries, named[*quota.Limiter]{c.Name, quota_parser.ParseQuotaLimiter(c)})
+		}
+		if err := registerGroup(entries, registry.QuotaLimiterRegistry()); err != nil {
 			return err
 		}
 	}

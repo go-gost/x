@@ -35,6 +35,29 @@ func fillServiceStatus(svc *config.ServiceConfig) {
 				OutputBytes:  st.Get(stats.KindOutputBytes),
 			}
 		}
+		var stopped bool
+		for _, qname := range svc.Quotas {
+			lim := registry.QuotaLimiterRegistry().Get(qname)
+			if lim == nil {
+				continue
+			}
+			qs := lim.Snapshot()
+			if qs.Blocked {
+				stopped = true
+			}
+			svc.Status.Quotas = append(svc.Status.Quotas, config.ServiceQuota{
+				Name:      qname,
+				Used:      qs.Used,
+				Limit:     qs.Limit,
+				StartsAt:  qs.StartsAtUnix,
+				ExpiresAt: qs.ExpiresAtUnix,
+				Active:    qs.Active,
+				Expired:   qs.Expired,
+				Blocked:   qs.Blocked,
+				Direction: qs.Direction,
+			})
+		}
+		svc.Status.StoppedByLimit = stopped
 		for _, ev := range status.Events() {
 			if !ev.Time.IsZero() {
 				svc.Status.Events = append(svc.Status.Events, config.ServiceEvent{

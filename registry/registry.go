@@ -23,6 +23,7 @@ import (
 	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/service"
+	"github.com/go-gost/x/limiter/quota"
 )
 
 var (
@@ -49,6 +50,7 @@ var (
 	trafficLimiterReg reg.Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
 	connLimiterReg    reg.Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
 	rateLimiterReg    reg.Registry[rate.RateLimiter]       = new(rateLimiterRegistry)
+	quotaLimiterReg   reg.Registry[*quota.Limiter]         = new(quotaLimiterRegistry)
 
 	ingressReg  reg.Registry[ingress.Ingress]   = new(ingressRegistry)
 	routerReg   reg.Registry[router.Router]     = new(routerRegistry)
@@ -198,6 +200,11 @@ func ConnLimiterRegistry() reg.Registry[conn.ConnLimiter] {
 // RateLimiterRegistry returns the global registry of rate limiter instances.
 func RateLimiterRegistry() reg.Registry[rate.RateLimiter] {
 	return rateLimiterReg
+}
+
+// QuotaLimiterRegistry returns the global registry of quota limiter instances.
+func QuotaLimiterRegistry() reg.Registry[*quota.Limiter] {
+	return quotaLimiterReg
 }
 
 // IngressRegistry returns the global registry of ingress instances.

@@ -29,6 +29,7 @@ import (
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	quota_wrapper "github.com/go-gost/x/limiter/quota/wrapper"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
@@ -244,6 +245,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if err := ln.Init(metadata.NewMetadata(cfg.Listener.Metadata)); err != nil {
 		listenerLogger.Error("init: ", err)
 		return nil, err
+	}
+
+	for _, qname := range cfg.Quotas {
+		ln = quota_wrapper.WrapListener(ln, strings.TrimSpace(qname))
 	}
 
 	handlerLogger := serviceLogger.WithFields(map[string]any{

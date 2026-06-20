@@ -145,6 +145,13 @@ func Register(r *gin.Engine, opts *Options) {
 	config.PUT("/limiters/:limiter", updateLimiter)
 	config.DELETE("/limiters/:limiter", deleteLimiter)
 
+	config.GET("/quotas", getQuotaList)
+	config.GET("/quotas/:quota", getQuota)
+	config.POST("/quotas", createQuota)
+	config.PUT("/quotas/:quota", updateQuota)
+	config.DELETE("/quotas/:quota", deleteQuota)
+	config.POST("/quotas/:quota/reset", resetQuota)
+
 	config.GET("/climiters", getConnLimiterList)
 	config.GET("/climiters/:limiter", getConnLimiter)
 	config.POST("/climiters", createConnLimiter)
