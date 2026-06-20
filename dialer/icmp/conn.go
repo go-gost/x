@@ -23,6 +23,15 @@ func (session *quicSession) GetConn() (*quicConn, error) {
 	}, nil
 }
 
+func (session *quicSession) IsClosed() bool {
+	select {
+	case <-session.session.Context().Done():
+		return true
+	default:
+		return false
+	}
+}
+
 func (session *quicSession) Close() error {
 	return session.session.CloseWithError(quic.ApplicationErrorCode(0), "closed")
 }

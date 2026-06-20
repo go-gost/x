@@ -61,6 +61,10 @@ func (d *quicDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 	defer d.sessionMutex.Unlock()
 
 	session, ok := d.sessions[addr]
+	if session != nil && session.IsClosed() {
+		delete(d.sessions, addr) // session is dead
+		ok = false
+	}
 	if !ok {
 		options := &dialer.DialOptions{}
 		for _, opt := range opts {
