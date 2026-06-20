@@ -109,6 +109,23 @@ func (h *dnsHandler) Init(md md.Metadata) (err error) {
 	}
 
 	if len(h.exchangers) == 0 {
+		// Try system nameservers first (from /etc/resolv.conf on Unix).
+		for i, addr := range systemNameservers() {
+			ex, err := exchanger.NewExchanger(
+				addr,
+				exchanger.RouterOption(h.options.Router),
+				exchanger.TimeoutOption(h.md.timeout),
+				exchanger.LoggerOption(log),
+			)
+			if err != nil {
+				log.Warnf("system nameserver %s: %v", addr, err)
+				continue
+			}
+			h.exchangers[fmt.Sprintf("system-%d", i)] = ex
+		}
+	}
+
+	if len(h.exchangers) == 0 {
 		ex, err := exchanger.NewExchanger(
 			defaultNameserver,
 			exchanger.RouterOption(h.options.Router),
