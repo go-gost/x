@@ -109,6 +109,7 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	if config.Router == nil && len(l.routes) > 0 {
 		config.Router = xrouter.NewRouter(
 			xrouter.RoutesOption(l.routes),
+			xrouter.NoSysRouteOption(),
 			xrouter.LoggerOption(logger.Default().WithFields(map[string]any{
 				"kind":   "router",
 				"router": "@internal",

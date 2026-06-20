@@ -22,6 +22,7 @@ type options struct {
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
 	period      time.Duration
+	noSysRoute  bool
 	logger      logger.Logger
 }
 
@@ -60,6 +61,17 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+// NoSysRouteOption disables automatic system route management via netlink.
+// When set, the router only maintains in-memory routes for GetRoute lookups
+// and does not attempt to add or replace routes in the OS routing table.
+// This is useful when another component (e.g. a TUN listener) manages system
+// routes independently.
+func NoSysRouteOption() Option {
+	return func(opts *options) {
+		opts.noSysRoute = true
 	}
 }
 
@@ -141,8 +153,10 @@ func (p *localRouter) reload(ctx context.Context) error {
 
 	p.options.logger.Debugf("load items %d", len(routes))
 
-	if err := p.setSysRoutes(routes...); err != nil {
-		p.options.logger.Error(err)
+	if !p.options.noSysRoute {
+		if err := p.setSysRoutes(routes...); err != nil {
+			p.options.logger.Error(err)
+		}
 	}
 
 	p.mu.Lock()
