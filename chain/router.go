@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -141,9 +142,34 @@ func (r *Router) dial(ctx context.Context, network, address string, log logger.L
 			if route == nil {
 				route = DefaultRoute
 			}
+			ifceName := r.options.IfceName
+			if strings.Contains(ifceName, "auto") {
+				// "auto" triggers per-connection interface detection: the
+				// ingress IP (conn.LocalAddr()) is used as the bind address,
+				// ensuring egress traffic leaves via the same interface that
+				// received the connection — the "source-in source-out"
+				// pattern for multi-homed hosts.
+				if dstAddr := xctx.DstAddrFromContext(ctx); dstAddr != nil {
+					if host, _, _ := net.SplitHostPort(dstAddr.String()); host != "" &&
+						host != "0.0.0.0" && host != "::" {
+						// Replace only exact "auto" tokens in the
+						// comma-separated interface list.
+						parts := strings.Split(ifceName, ",")
+						for i, p := range parts {
+							if p == "auto" {
+								parts[i] = host
+							}
+						}
+						ifceName = strings.Join(parts, ",")
+					}
+				}
+				if strings.Contains(ifceName, "auto") {
+					log.Debugf("auto interface: no suitable ingress address, keeping literal %q", ifceName)
+				}
+			}
 			conn, err = route.Dial(ctx, network, ipAddr,
 				append([]chain.DialOption{
-					chain.InterfaceDialOption(r.options.IfceName),
+					chain.InterfaceDialOption(ifceName),
 					chain.NetnsDialOption(r.options.Netns),
 					chain.SockOptsDialOption(r.options.SockOpts),
 					chain.LoggerDialOption(log),
