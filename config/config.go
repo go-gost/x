@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"io"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -658,6 +660,7 @@ func (c *Config) Read(r io.Reader, configType string) error {
 
 func (c *Config) ReadFile(file string) error {
 	v.SetConfigFile(file)
+	v.SetConfigType(strings.TrimPrefix(filepath.Ext(file), ".")) // force format from extension
 	if err := v.ReadInConfig(); err != nil {
 		return err
 	}

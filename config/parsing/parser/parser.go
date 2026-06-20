@@ -2,9 +2,17 @@ package parser
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"strings"
+	"time"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
@@ -35,8 +43,9 @@ func Parse() (*config.Config, error) {
 // Args holds the raw CLI flags and positional arguments that Init will merge
 // into the final configuration.
 type Args struct {
-	// CfgFiles is the list of YAML or JSON config file paths, "-" for stdin, or
-	// an inline JSON string. Multiple files are merged left-to-right.
+	// CfgFiles is the list of YAML or JSON config sources: file paths,
+	// HTTP(S) URLs, "-" for stdin, or an inline JSON string.
+	// Multiple sources are merged left-to-right.
 	CfgFiles []string
 
 	// Services is the list of service definitions from -L flags.
@@ -83,7 +92,8 @@ func (p *parser) Parse() (*config.Config, error) {
 	}
 	cfg = mergeConfig(cfg, cmdCfg)
 
-	if len(cfg.Services) == 0 && p.args.ApiAddr == "" && cfg.API == nil {
+	if len(cfg.Services) == 0 && p.args.ApiAddr == "" && cfg.API == nil &&
+		len(p.args.CfgFiles) == 0 {
 		if err := cfg.Load(); err != nil {
 			return nil, err
 		}
@@ -179,7 +189,7 @@ func (p *parser) Parse() (*config.Config, error) {
 }
 
 // readConfig reads a single configuration source, which may be "-" (stdin),
-// an inline JSON string starting with "{", or a file path.
+// an HTTP(S) URL, an inline JSON string starting with "{", or a file path.
 func readConfig(cfgFile string) (*config.Config, error) {
 	cfg := &config.Config{}
 
@@ -202,6 +212,10 @@ func readConfig(cfgFile string) (*config.Config, error) {
 		if err := json.Unmarshal([]byte(cfgFile), cfg); err != nil {
 			return nil, err
 		}
+	} else if isHTTPURL(cfgFile) { // URL
+		if err := readConfigFromURL(cfgFile, cfg); err != nil {
+			return nil, err
+		}
 	} else {
 		if err := cfg.ReadFile(cfgFile); err != nil { // file
 			return nil, err
@@ -209,6 +223,89 @@ func readConfig(cfgFile string) (*config.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// isHTTPURL reports whether s is an HTTP or HTTPS URL.
+func isHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme != "" && u.Host != "" &&
+		(u.Scheme == "http" || u.Scheme == "https")
+}
+
+// maxConfigSize is the maximum response body size for remote config files.
+const maxConfigSize = 10 << 20 // 10 MiB
+
+// sharedHTTPClient is reused across config URL fetches to benefit from
+// connection pooling.
+var sharedHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
+// readConfigFromURL fetches a configuration from an HTTP(S) URL and reads it
+// into cfg. The format (yaml or json) is detected from the Content-Type header
+// or the URL path extension.
+func readConfigFromURL(urlStr string, cfg *config.Config) error {
+	resp, err := sharedHTTPClient.Get(urlStr)
+	if err != nil {
+		return fmt.Errorf("fetch config from %s: %w", sanitizeURL(urlStr), err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body) // drain body for connection reuse; ignore error since we are already failing
+		return fmt.Errorf("fetch config from %s: %s", sanitizeURL(urlStr), resp.Status)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxConfigSize+1))
+	if err != nil {
+		return fmt.Errorf("read config from %s: %w", sanitizeURL(urlStr), err)
+	}
+	if len(data) > maxConfigSize {
+		return fmt.Errorf("config from %s exceeds maximum size %d", sanitizeURL(urlStr), maxConfigSize)
+	}
+
+	format := detectFormat(resp.Header.Get("Content-Type"), urlStr)
+
+	if err := cfg.Read(bytes.NewReader(data), format); err != nil {
+		return fmt.Errorf("parse config from %s: %w", sanitizeURL(urlStr), err)
+	}
+	return nil
+}
+
+// sanitizeURL returns the URL with any embedded userinfo stripped for safe
+// use in error messages.
+func sanitizeURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	u.User = nil
+	return u.String()
+}
+
+// detectFormat determines the config format from the HTTP Content-Type header
+// or the URL path extension. Returns "yaml" or "json".
+func detectFormat(contentType, urlStr string) string {
+	if mediatype, _, err := mime.ParseMediaType(contentType); err == nil {
+		switch mediatype {
+		case "application/json":
+			return "json"
+		case "application/yaml", "application/x-yaml",
+			"text/yaml", "text/x-yaml":
+			return "yaml"
+		}
+	}
+
+	if u, err := url.Parse(urlStr); err == nil {
+		switch strings.ToLower(strings.TrimPrefix(path.Ext(u.Path), ".")) {
+		case "json":
+			return "json"
+		case "yaml", "yml":
+			return "yaml"
+		}
+	}
+
+	return "yaml"
 }
 
 func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
