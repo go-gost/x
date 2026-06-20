@@ -28,6 +28,7 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/quic-go/quic-go v0.59.1
 	github.com/quic-go/webtransport-go v0.10.0
+	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
@@ -56,7 +57,11 @@ require (
 	gvisor.dev/gvisor v0.0.0-20250523182742-eede7a881b20
 )
 
-require github.com/sirupsen/logrus v1.9.3 // indirect
+require (
+	github.com/andybalholm/brotli v1.0.6 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
+)
 
 require (
 	github.com/alessio/shellescape v1.4.1 // indirect
