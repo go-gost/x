@@ -355,6 +355,7 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 	// Resolve target address
 	raddr, err := net.ResolveUDPAddr("udp", targetAddr)
 	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		log.Error("masque: failed to resolve target address: ", err)
 		return err
 	}
@@ -369,43 +370,6 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 
 	// Get the underlying HTTP/3 stream
 	stream := streamer.HTTPStream()
-
-	// Send success response with capsule-protocol header
-	w.Header().Set("Capsule-Protocol", "?1")
-	w.WriteHeader(http.StatusOK)
-
-	// Flush the response headers
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
-
-	// Create datagram connection wrapping the HTTP/3 stream (client side)
-	datagramConn := masque_util.NewDatagramConn(stream, laddr, raddr)
-	defer datagramConn.Close()
-
-	// Wrap with recorder stats and traffic limiter
-	var clientPC net.PacketConn = datagramConn
-	clientPC = stats_wrapper.WrapPacketConn(clientPC, pStats)
-	clientPC = traffic_wrapper.WrapPacketConn(
-		clientPC,
-		h.limiter,
-		clientID,
-		limiter.ServiceOption(h.options.Service),
-		limiter.ScopeOption(limiter.ScopeClient),
-		limiter.NetworkOption("udp"),
-		limiter.AddrOption(targetAddr),
-		limiter.ClientOption(clientID),
-		limiter.SrcOption(ro.RemoteAddr),
-	)
-
-	// Track per-client connection stats
-	if h.options.Observer != nil {
-		pstats := h.stats.Stats(clientID)
-		pstats.Add(stats.KindTotalConns, 1)
-		pstats.Add(stats.KindCurrentConns, 1)
-		defer pstats.Add(stats.KindCurrentConns, -1)
-		clientPC = stats_wrapper.WrapPacketConn(clientPC, pstats)
-	}
 
 	// Get target connection - either through router/chain or direct
 	var targetPC net.PacketConn
@@ -459,6 +423,43 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 
 	// Wrap target with metrics
 	targetPC = metrics.WrapPacketConn(h.options.Service, targetPC)
+
+	// Send success response with capsule-protocol header
+	w.Header().Set("Capsule-Protocol", "?1")
+	w.WriteHeader(http.StatusOK)
+
+	// Flush the response headers
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Create datagram connection wrapping the HTTP/3 stream (client side)
+	datagramConn := masque_util.NewDatagramConn(stream, laddr, raddr)
+	defer datagramConn.Close()
+
+	// Wrap with recorder stats and traffic limiter
+	var clientPC net.PacketConn = datagramConn
+	clientPC = stats_wrapper.WrapPacketConn(clientPC, pStats)
+	clientPC = traffic_wrapper.WrapPacketConn(
+		clientPC,
+		h.limiter,
+		clientID,
+		limiter.ServiceOption(h.options.Service),
+		limiter.ScopeOption(limiter.ScopeClient),
+		limiter.NetworkOption("udp"),
+		limiter.AddrOption(targetAddr),
+		limiter.ClientOption(clientID),
+		limiter.SrcOption(ro.RemoteAddr),
+	)
+
+	// Track per-client connection stats
+	if h.options.Observer != nil {
+		pstats := h.stats.Stats(clientID)
+		pstats.Add(stats.KindTotalConns, 1)
+		pstats.Add(stats.KindCurrentConns, 1)
+		defer pstats.Add(stats.KindCurrentConns, -1)
+		clientPC = stats_wrapper.WrapPacketConn(clientPC, pstats)
+	}
 
 	// Relay UDP packets between client and target
 	relay := udp.NewRelay(clientPC, targetPC).

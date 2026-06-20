@@ -47,7 +47,11 @@ func (l *http3Listener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
 	l.md.maxStreams = mdutil.GetInt(md, maxStreams)
-	l.md.enableDatagrams = mdutil.GetBool(md, "enableDatagrams")
+	if mdutil.IsExists(md, "enableDatagrams") {
+		l.md.enableDatagrams = mdutil.GetBool(md, "enableDatagrams")
+	} else {
+		l.md.enableDatagrams = true
+	}
 
 	return
 }
