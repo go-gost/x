@@ -123,11 +123,12 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 				return nil, err
 			}
 			err = sc.Control(func(fd uintptr) {
-				if ifceName != "" {
-					if err := bindDevice(network, addr, fd, ifceName); err != nil {
-						log.Warnf("bind device: %v", err)
-					}
-				}
+				// NOTE: bindDevice is intentionally skipped for empty-addr UDP
+				// (relay/listener sockets). The ListenUDP laddr binding above
+				// is sufficient to pin the source IP. SO_BINDTODEVICE would
+				// force all outbound datagrams through the named interface,
+				// which may conflict with the kernel routing table and cause
+				// silent packet drops — breaking UDP associate (issue #287).
 				if d.Mark != 0 {
 					if err := setMark(fd, d.Mark); err != nil {
 						log.Warnf("set mark: %v", err)
