@@ -163,10 +163,20 @@ type udpConn struct {
 // WrapUDPConn wraps a net.PacketConn as a udp.Conn with admission control.
 // This is used in UDP forwarding paths where the connection is treated
 // as a connected UDP socket.
-func WrapUDPConn(admission admission.Admission, pc net.PacketConn) udp.Conn {
+// If pc is nil, nil is returned. If admission is nil, the original connection
+// is returned unchanged (no-op).
+func WrapUDPConn(adm admission.Admission, pc net.PacketConn) udp.Conn {
+	if pc == nil {
+		return nil
+	}
+	if adm == nil {
+		if uc, ok := pc.(udp.Conn); ok {
+			return uc
+		}
+	}
 	return &udpConn{
 		PacketConn: pc,
-		admission:  admission,
+		admission:  adm,
 	}
 }
 

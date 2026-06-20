@@ -227,10 +227,20 @@ func (c *udpConn) DroppedPackets() int64 {
 }
 
 // WrapUDPConn wraps a net.PacketConn as a udp.Conn with traffic rate limiting.
-func WrapUDPConn(pc net.PacketConn, limiter traffic.TrafficLimiter, key string, opts ...limiter.Option) udp.Conn {
+// If pc is nil, nil is returned. If limiter is nil, the original connection is
+// returned unchanged (no-op).
+func WrapUDPConn(pc net.PacketConn, lim traffic.TrafficLimiter, key string, opts ...limiter.Option) udp.Conn {
+	if pc == nil {
+		return nil
+	}
+	if lim == nil {
+		if uc, ok := pc.(udp.Conn); ok {
+			return uc
+		}
+	}
 	return &udpConn{
 		PacketConn: pc,
-		limiter:    limiter,
+		limiter:    lim,
 		opts:       opts,
 		key:        key,
 	}

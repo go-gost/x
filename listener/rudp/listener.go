@@ -106,7 +106,9 @@ func (l *rudpListener) Accept() (conn net.Conn, err error) {
 
 	if pc, ok := conn.(net.PacketConn); ok {
 		uc := metrics.WrapUDPConn(l.options.Service, pc)
-		uc = stats.WrapUDPConn(uc, l.options.Stats)
+		if l.options.Stats != nil {
+			uc = stats.WrapUDPConn(uc, l.options.Stats)
+		}
 		uc = admission.WrapUDPConn(l.options.Admission, uc)
 		conn = limiter_wrapper.WrapUDPConn(
 			uc,

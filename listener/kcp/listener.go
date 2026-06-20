@@ -78,7 +78,9 @@ func (l *kcpListener) Init(md md.Metadata) (err error) {
 	}
 
 	conn = metrics.WrapUDPConn(l.options.Service, conn)
-	conn = stats.WrapUDPConn(conn, l.options.Stats)
+	if l.options.Stats != nil {
+		conn = stats.WrapUDPConn(conn, l.options.Stats)
+	}
 	conn = admission.WrapUDPConn(l.options.Admission, conn)
 	conn = limiter_wrapper.WrapUDPConn(
 		conn,

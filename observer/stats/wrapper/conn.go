@@ -156,10 +156,18 @@ type udpConn struct {
 // accepted UDP client session == one connection, mirroring WrapConn) and
 // tracks bytes read and written across all read/write methods (Read, Write,
 // ReadFrom, WriteTo, ReadFromUDP, ReadMsgUDP, WriteToUDP, WriteMsgUDP). On
-// Close, it decrements the current connection count. If pc or pStats is nil,
-// it returns nil.
+// Close, it decrements the current connection count.
+//
+// If pc is nil, nil is returned. If pStats is nil, the original connection
+// is returned unchanged (consistent with WrapConn and WrapPacketConn).
 func WrapUDPConn(pc net.PacketConn, pStats stats.Stats) udp.Conn {
-	if pc == nil || pStats == nil {
+	if pc == nil {
+		return nil
+	}
+	if pStats == nil {
+		if uc, ok := pc.(udp.Conn); ok {
+			return uc
+		}
 		return nil
 	}
 
