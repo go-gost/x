@@ -16,8 +16,13 @@ type promMetrics struct {
 }
 
 // NewMetrics returns a Prometheus-based Metrics implementation. All metrics are
-// automatically registered with the default Prometheus registry.
-func NewMetrics() metrics.Metrics {
+// registered with the given registry. Use nil to register with the default
+// Prometheus registry.
+func NewMetrics(reg *prometheus.Registry) metrics.Metrics {
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer.(*prometheus.Registry)
+	}
+
 	host, _ := os.Hostname()
 	m := &promMetrics{
 		host: host,
@@ -95,13 +100,13 @@ func NewMetrics() metrics.Metrics {
 		},
 	}
 	for k := range m.gauges {
-		prometheus.MustRegister(m.gauges[k])
+		reg.MustRegister(m.gauges[k])
 	}
 	for k := range m.counters {
-		prometheus.MustRegister(m.counters[k])
+		reg.MustRegister(m.counters[k])
 	}
 	for k := range m.histograms {
-		prometheus.MustRegister(m.histograms[k])
+		reg.MustRegister(m.histograms[k])
 	}
 
 	return m

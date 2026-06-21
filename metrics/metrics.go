@@ -4,6 +4,8 @@ import (
 	"sync/atomic"
 
 	"github.com/go-gost/core/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 const (
@@ -30,9 +32,30 @@ const (
 )
 
 var (
-	defaultMetrics metrics.Metrics = NewMetrics()
-	enabled        atomic.Bool
+	defaultMetrics  metrics.Metrics
+	defaultRegistry *prometheus.Registry
+	enabled         atomic.Bool
 )
+
+func init() {
+	defaultRegistry = prometheus.NewRegistry()
+
+	// Register Go and process collectors on our custom registry so the metrics
+	// endpoint is self-contained. The process collector is platform-specific:
+	// Linux/Windows use the standard procfs/Win32-based collector; all other
+	// platforms (FreeBSD, Darwin, etc.) use a gopsutil-based collector.
+	defaultRegistry.MustRegister(collectors.NewGoCollector())
+	registerProcessCollector(defaultRegistry)
+
+	defaultMetrics = NewMetrics(defaultRegistry)
+}
+
+// Registry returns the custom Prometheus registry that holds all GOST metrics
+// plus the Go and process collectors. The metrics HTTP endpoint should serve
+// from this registry rather than prometheus.DefaultGatherer.
+func Registry() *prometheus.Registry {
+	return defaultRegistry
+}
 
 // Enable enables or disables metrics collection globally. When disabled, all
 // GetCounter, GetGauge, and GetObserver calls return noop implementations.

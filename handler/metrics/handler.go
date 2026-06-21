@@ -43,7 +43,7 @@ func (h *metricsHandler) Init(md md.Metadata) (err error) {
 
 	xmetrics.Enable(true)
 
-	h.handler = promhttp.Handler()
+	h.handler = promhttp.HandlerFor(xmetrics.Registry(), promhttp.HandlerOpts{})
 
 	mux := http.NewServeMux()
 	mux.Handle(h.md.path, http.HandlerFunc(h.handleFunc))
