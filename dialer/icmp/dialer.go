@@ -75,7 +75,6 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 	}
 
 	d.sessionMutex.Lock()
-	defer d.sessionMutex.Unlock()
 
 	session, ok := d.sessions[addr]
 	if session != nil && session.IsClosed() {
@@ -95,6 +94,7 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			pc, err = icmp_pkg.ListenPacket("ip4:icmp", "")
 		}
 		if err != nil {
+			d.sessionMutex.Unlock()
 			return
 		}
 
@@ -109,16 +109,22 @@ func (d *icmpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 		if err != nil {
 			d.logger.Error(err)
 			pc.Close()
+			d.sessionMutex.Unlock()
 			return nil, err
 		}
 
 		d.sessions[addr] = session
 	}
+	d.sessionMutex.Unlock()
 
 	conn, err = session.GetConn()
 	if err != nil {
+		d.sessionMutex.Lock()
+		if d.sessions[addr] == session {
+			delete(d.sessions, addr)
+		}
 		session.Close()
-		delete(d.sessions, addr)
+		d.sessionMutex.Unlock()
 		return nil, err
 	}
 
