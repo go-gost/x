@@ -2,6 +2,7 @@ package auto
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"net"
 	"time"
@@ -12,7 +13,10 @@ import (
 	"github.com/go-gost/gosocks4"
 	"github.com/go-gost/gosocks5"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
+	"github.com/go-gost/x/internal/util/sniffing"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
 
@@ -94,6 +98,16 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 
 	br := bufio.NewReader(conn)
+	proto, _ := sniffing.Sniff(ctx, br)
+
+	conn = xnet.NewReadWriteConn(br, conn, conn)
+
+	if proto == sniffing.ProtoTLS {
+		return h.handleTLS(ctx, conn, log)
+	}
+
+	// Fall back to 1-byte peek for SOCKS4 (0x04) vs SOCKS5 (0x05) vs HTTP.
+	// Sniff() already read 5 bytes, but the buffered reader exposes them.
 	b, err := br.Peek(1)
 	if err != nil {
 		log.Error(err)
@@ -101,7 +115,6 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return err
 	}
 
-	conn = xnet.NewReadWriteConn(br, conn, conn)
 	switch b[0] {
 	case gosocks4.Ver4: // socks4
 		if h.socks4Handler != nil {
@@ -117,4 +130,35 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		}
 	}
 	return nil
+}
+
+// handleTLS forwards a TLS connection that arrived at the auto handler.
+// It parses the ClientHello for SNI, dials upstream through the router,
+// forwards the ClientHello, records ServerHello metadata, and pipes data
+// bidirectionally.
+func (h *autoHandler) handleTLS(ctx context.Context, conn net.Conn, log logger.Logger) error {
+	ro := &xrecorder.HandlerRecorderObject{
+		Network:    "tcp",
+		Service:    h.options.Service,
+		RemoteAddr: conn.RemoteAddr().String(),
+		LocalAddr:  conn.LocalAddr().String(),
+		SID:        ctxvalue.SidFromContext(ctx).String(),
+		Time:       time.Now(),
+	}
+	sniffer := &sniffing.Sniffer{}
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		var buf bytes.Buffer
+		cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+		if err != nil {
+			return nil, err
+		}
+		ro.Route = buf.String()
+		return cc, nil
+	}
+	return sniffer.HandleTLS(ctx, "tcp", conn,
+		sniffing.WithDial(dial),
+		sniffing.WithBypass(h.options.Bypass),
+		sniffing.WithRecorderObject(ro),
+		sniffing.WithLog(log),
+	)
 }
