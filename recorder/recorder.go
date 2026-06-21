@@ -10,6 +10,23 @@ import (
 	xctx "github.com/go-gost/x/ctx"
 )
 
+// MetadataRecorder wraps a Recorder and automatically appends metadata
+// to every Record call.
+type MetadataRecorder struct {
+	recorder.Recorder
+	Metadata any
+}
+
+func (r *MetadataRecorder) Record(ctx context.Context, b []byte, opts ...recorder.RecordOption) error {
+	if r.Recorder == nil {
+		return nil
+	}
+	if r.Metadata == nil {
+		return r.Recorder.Record(ctx, b, opts...)
+	}
+	return r.Recorder.Record(ctx, b, append(opts, recorder.MetadataRecordOption(r.Metadata))...)
+}
+
 const (
 	RecorderServiceHandler       = "recorder.service.handler"
 	RecorderServiceHandlerSerial = "recorder.service.handler.serial"

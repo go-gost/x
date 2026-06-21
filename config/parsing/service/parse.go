@@ -34,6 +34,7 @@ import (
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
 	xstats "github.com/go-gost/x/observer/stats"
+	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 	xservice "github.com/go-gost/x/service"
 	"github.com/vishvananda/netns"
@@ -285,8 +286,15 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	var recorders []recorder.RecorderObject
 	for _, r := range cfg.Recorders {
 		md := metadata.NewMetadata(r.Metadata)
+		rec := registry.RecorderRegistry().Get(r.Name)
+		if r.Metadata != nil {
+			rec = &xrecorder.MetadataRecorder{
+				Recorder: rec,
+				Metadata: r.Metadata,
+			}
+		}
 		recorders = append(recorders, recorder.RecorderObject{
-			Recorder: registry.RecorderRegistry().Get(r.Name),
+			Recorder: rec,
 			Record:   r.Record,
 			Options: &recorder.Options{
 				Direction:       mdutil.GetBool(md, parsing.MDKeyRecorderDirection),
@@ -295,6 +303,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 				HTTPBody:        mdutil.GetBool(md, parsing.MDKeyRecorderHTTPBody),
 				MaxBodySize:     mdutil.GetInt(md, parsing.MDKeyRecorderHTTPMaxBodySize),
 			},
+			Metadata: r.Metadata,
 		})
 	}
 
