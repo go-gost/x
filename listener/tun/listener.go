@@ -2,6 +2,7 @@ package tun
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -75,7 +76,13 @@ func (l *tunListener) Init(md mdata.Metadata) (err error) {
 func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
-		err := func() error {
+		err := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic in createTun: %v", r)
+				}
+			}()
+
 			ifce, name, ip, err := l.createTun()
 			if err != nil {
 				if ifce != nil {

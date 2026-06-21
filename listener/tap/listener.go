@@ -2,6 +2,7 @@ package tap
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -68,7 +69,13 @@ func (l *tapListener) Init(md mdata.Metadata) (err error) {
 func (l *tapListener) listenLoop() {
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
-		err := func() error {
+		err := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic in createTap: %v", r)
+				}
+			}()
+
 			ifce, name, ip, err := l.createTap()
 			if err != nil {
 				if ifce != nil {
