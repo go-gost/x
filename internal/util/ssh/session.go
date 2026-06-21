@@ -114,6 +114,25 @@ func (s *Session) Keepalive(interval, timeout time.Duration, retries int) {
 	}
 }
 
+// Ping checks if the SSH session is alive by sending a keepalive request.
+// It blocks until a response is received or the timeout expires.
+// A nil error indicates the session is healthy.
+func (s *Session) Ping(timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = defaultKeepaliveTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	select {
+	case err := <-s.ping():
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *Session) ping() <-chan error {
 	ch := make(chan error, 1)
 	go func() {
