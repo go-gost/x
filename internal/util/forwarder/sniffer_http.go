@@ -81,7 +81,9 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	if err != nil {
 		return err
 	}
-	defer cc.Close()
+	defer func() { cc.Close() }()
+
+	upstreamHost := normalizeHost(ro.HTTP.Host, "80")
 
 	ho.log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log = ho.log
@@ -110,6 +112,41 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpRequest(req, false)
 			log.Trace(string(dump))
+		}
+
+		// When DNS override directs multiple domains to the same proxy IP,
+		// the browser may reuse a keep-alive connection for a different host.
+		// Re-dial to ensure requests reach the correct upstream.
+		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" && reqHost != upstreamHost {
+			cc.Close()
+			newNode, res, resolveErr := resolveHTTPNode(ctx, reqHost, req, &ho)
+			if resolveErr != nil {
+				ro.HTTP.StatusCode = res.StatusCode
+				res.Write(conn)
+				return resolveErr
+			}
+			dial := ho.dial
+			if dial == nil {
+				dial = (&net.Dialer{}).DialContext
+			}
+			newCC, dialErr := dial(ctx, "tcp", newNode.Addr)
+			if dialErr != nil {
+				return dialErr
+			}
+			newCC = tlsWrapConn(newCC, newNode.Options().TLS)
+			upstreamHost = reqHost
+			node = newNode
+			cc = newCC
+			ro.Host = reqHost
+			ro.SrcAddr = cc.LocalAddr().String()
+			ro.DstAddr = cc.RemoteAddr().String()
+			log = log.WithFields(map[string]any{
+				"host": reqHost,
+				"node": node.Name,
+				"dst":  node.Addr,
+				"src":  cc.LocalAddr().String(),
+			})
+			ho.log = log
 		}
 
 		if shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho); err != nil || shouldClose {

@@ -93,7 +93,9 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 	if err != nil {
 		return err
 	}
-	defer cc.Close()
+	defer func() { cc.Close() }()
+
+	upstreamHost := host
 
 	log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 
@@ -120,6 +122,26 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 		if log.IsLevelEnabled(logger.TraceLevel) {
 			dump, _ := httputil.DumpRequest(req, false)
 			log.Trace(string(dump))
+		}
+
+		// When DNS override directs multiple domains to the same proxy IP,
+		// the browser may reuse a keep-alive connection for a different host.
+		// Re-dial to ensure requests reach the correct upstream.
+		if reqHost := normalizeHost(req.Host, "80"); reqHost != upstreamHost {
+			cc.Close()
+			cc, err = dial(ctx, network, reqHost)
+			if err != nil {
+				return err
+			}
+			upstreamHost = reqHost
+			ro.Host = reqHost
+			ro.SrcAddr = cc.LocalAddr().String()
+			ro.DstAddr = cc.RemoteAddr().String()
+			log = log.WithFields(map[string]any{
+				"host": reqHost,
+				"src":  cc.LocalAddr().String(),
+				"dst":  cc.RemoteAddr().String(),
+			})
 		}
 
 		if shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, req, readTimeout, ro, &pStats, log); err != nil || shouldClose {
