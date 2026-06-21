@@ -466,6 +466,17 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		}
 	}
 
+	// stdio listener uses url.Host as the forwarding target.
+	if listener == "stdio" && len(nodes) == 0 && url.Host != "" {
+		nodes = append(nodes, &config.ForwardNodeConfig{
+			Name: fmt.Sprintf("%starget-0", namePrefix),
+			Addr: url.Host,
+		})
+		if handler == "auto" {
+			handler = "tcp"
+		}
+	}
+
 	if len(nodes) > 0 {
 		if len(services) == 1 {
 			services[0].Forwarder = &config.ForwarderConfig{
