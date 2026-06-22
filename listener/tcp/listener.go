@@ -56,6 +56,9 @@ func (l *tcpListener) Init(md md.Metadata) (err error) {
 		lc.SetMultipathTCP(true)
 		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())
 	}
+	if l.md.reuseport {
+		lc.Control = l.setReusePort
+	}
 	ln, err := lc.Listen(context.Background(), network, l.options.Addr)
 	if err != nil {
 		return

@@ -53,7 +53,7 @@ func (l *redirectListener) Init(md md.Metadata) (err error) {
 		network = "tcp4"
 	}
 	lc := net.ListenConfig{}
-	if l.md.tproxy {
+	if l.md.tproxy || l.md.reuseport {
 		lc.Control = l.control
 	}
 	if l.md.mptcp {

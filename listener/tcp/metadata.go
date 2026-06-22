@@ -8,7 +8,8 @@ import (
 )
 
 type metadata struct {
-	mptcp bool
+	mptcp     bool
+	reuseport bool
 
 	keepalive         bool
 	keepaliveIdle     time.Duration
@@ -18,6 +19,7 @@ type metadata struct {
 
 func (l *tcpListener) parseMetadata(md md.Metadata) (err error) {
 	l.md.mptcp = mdutil.GetBool(md, "mptcp")
+	l.md.reuseport = mdutil.GetBool(md, "reuseport")
 
 	l.md.keepalive = mdutil.GetBool(md, "keepalive")
 	l.md.keepaliveIdle = mdutil.GetDuration(md, "keepalive.idle")
