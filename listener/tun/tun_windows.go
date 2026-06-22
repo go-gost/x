@@ -52,8 +52,17 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 		}
 	}
 
-	if len(l.md.config.Net) > 0 {
-		ipNet := l.md.config.Net[0]
+	// Loop over every configured address so dual-stack (IPv4+IPv6) setups
+	// install both addresses, selecting the netsh context by family: "ip"
+	// for IPv4, "ipv6" for IPv6. A failing address is logged and skipped so
+	// one bad entry doesn't prevent the rest from being applied; the first
+	// successfully installed address is reported as the interface IP.
+	//
+	// Caveat: unlike Linux's netlink.AddrAdd, "netsh interface ip set
+	// address" replaces rather than adds, so only a single IPv4 address is
+	// supported (one IPv4 + one IPv6 works; multiple IPv4 addresses
+	// silently overwrite).
+	for _, ipNet := range l.md.config.Net {
 		cmd := fmt.Sprintf("netsh interface ip set address name=%s "+
 			"source=static addr=%s mask=%s gateway=none",
 			name, ipNet.IP.String(), ipMask(ipNet.Mask))
@@ -65,10 +74,19 @@ func (l *tunListener) createTun() (ifce io.ReadWriteCloser, name string, ip net.
 
 		args := strings.Split(cmd, " ")
 		if er := exec.Command(args[0], args[1:]...).Run(); er != nil {
-			err = fmt.Errorf("%s: %v", cmd, er)
-			return
+			l.log.Errorf("%s: %v", cmd, er)
+			continue
 		}
-		ip = ipNet.IP
+		if ip == nil {
+			ip = ipNet.IP
+		}
+	}
+
+	// If not a single address could be configured, surface an error rather
+	// than returning a nil IP (and thus a nil peer address) to the caller.
+	if ip == nil && len(l.md.config.Net) > 0 {
+		err = fmt.Errorf("failed to configure any address on interface %s", name)
+		return
 	}
 
 	if err = l.addRoutes(name, l.md.config.Gateway); err != nil {
