@@ -40,6 +40,21 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+// plaintextListeners are listener types that never terminate TLS on their
+// accepted connections, so any certFile/keyFile/caFile configured for them is
+// silently ignored. This catches the common footgun where a user writes e.g.
+// `tls+mws://...?certFile=...` expecting TLS: the "tls+" prefix is parsed as
+// the handler scheme (see x/config/cmd/cmd.go buildServiceConfig), not a TLS
+// wrapper, so the underlying mws listener stays plaintext. Extend this set when
+// new plaintext listeners are added.
+var plaintextListeners = map[string]bool{
+	"tcp": true, "udp": true,
+	"ws": true, "mws": true,
+	"redirect": true, "tproxy": true,
+	"rtcp": true, "rudp": true,
+	"unix": true, "runix": true, "serial": true, "stdio": true,
+}
+
 // ParseService constructs a fully-wired service.Service from a ServiceConfig.
 // It defaults the listener to "tcp" and the handler to "auto", resolves named
 // components from the registry (authers, admissions, bypasses, resolvers,
@@ -87,6 +102,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		tlsConfig = parsing.DefaultTLSConfig().Clone()
 		tls_util.SetTLSOptions(tlsConfig, tlsCfg.Options)
 		tls_util.RejectUnknownSNIConfig(tlsConfig, tlsCfg.RejectUnknownSNI, tlsCfg.ServerNames)
+	}
+
+	if (tlsCfg.CertFile != "" || tlsCfg.KeyFile != "" || tlsCfg.CAFile != "") && plaintextListeners[cfg.Listener.Type] {
+		serviceLogger.Warnf("TLS certificate options are configured but the %q listener does not use TLS and will ignore them; the connection will be plaintext. Use a TLS-capable listener (e.g. mwss, wss, tls, quic, grpc, http2, http3) to enable TLS.",
+			cfg.Listener.Type)
 	}
 
 	authers := auth_parser.List(cfg.Listener.Auther, cfg.Listener.Authers...)
