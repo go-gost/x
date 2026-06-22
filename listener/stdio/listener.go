@@ -24,14 +24,15 @@ func init() {
 
 type (
 	stdioListener struct {
-		conn    net.Conn
-		done    chan struct{}
+		conn     net.Conn
+		done     chan struct{}
+		once     sync.Once
 		accepted bool
-		mu      sync.Mutex
-		laddr   net.Addr
-		logger  logger.Logger
-		md      metadata
-		options listener.Options
+		mu       sync.Mutex
+		laddr    net.Addr
+		logger   logger.Logger
+		md       metadata
+		options  listener.Options
 	}
 )
 
@@ -54,8 +55,8 @@ func (l *stdioListener) Init(md md.Metadata) (err error) {
 	}
 
 	l.laddr = &stdioAddr{addr: "stdio"}
-	l.conn = &stdioConn{}
 	l.done = make(chan struct{})
+	l.conn = &stdioConn{l: l}
 
 	return
 }
@@ -80,23 +81,41 @@ func (l *stdioListener) Addr() net.Addr {
 }
 
 func (l *stdioListener) Close() error {
-	select {
-	case <-l.done:
-	default:
-		close(l.done)
-	}
+	l.close()
 	return nil
 }
 
+// close signals listener completion. Idempotent and safe for concurrent use.
+func (l *stdioListener) close() {
+	l.once.Do(func() { close(l.done) })
+}
+
 // stdioConn implements net.Conn over os.Stdin and os.Stdout.
-type stdioConn struct{}
+type stdioConn struct {
+	l *stdioListener
+}
 
 func (c *stdioConn) Read(b []byte) (int, error)  { return os.Stdin.Read(b) }
 func (c *stdioConn) Write(b []byte) (int, error) { return os.Stdout.Write(b) }
 
-// Close is a no-op: stdin/stdout are owned by the process and will be
-// closed by the parent when the session ends.
-func (c *stdioConn) Close() error { return nil }
+// Close terminates the process.
+//
+// A stdio listener serves exactly one connection: the process's own
+// stdin/stdout, piped from a parent such as SSH's ProxyCommand. When that
+// connection ends the parent has closed the pipe and there is nothing left
+// to serve, so the whole process must exit.
+//
+// Closing the listener alone is not enough: the service's accept loop runs
+// in a fire-and-forget goroutine (see x/service.Serve) and the process
+// blocks on the go-svc signal wait (see gost/cmd/gost/main.go), so it would
+// linger forever after the parent quits. os.Exit is the only reliable way
+// to terminate here. The handler's deferred stats/recording/logging already
+// ran before this Close (LIFO order), so nothing is lost.
+func (c *stdioConn) Close() error {
+	c.l.close()
+	os.Exit(0)
+	return nil
+}
 
 func (c *stdioConn) LocalAddr() net.Addr  { return &stdioAddr{addr: "stdio"} }
 func (c *stdioConn) RemoteAddr() net.Addr { return &stdioAddr{addr: "pipe"} }
