@@ -100,6 +100,26 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 	return
 }
 
+// networkAddr derives the network string from the SOCKS5 address type.
+// For IPv4 addresses it returns "tcp4"/"udp4" to prevent dual-stack
+// (IPv4-mapped-IPv6) socket creation on Linux, which would cause the
+// listener to bind on [::]:port instead of 0.0.0.0:port.
+// For IPv6 addresses it returns "tcp6"/"udp6".
+// For domain addresses it returns the unmodified network.
+func networkAddr(network string, addr *gosocks5.Addr) string {
+	if addr == nil {
+		return network
+	}
+	switch addr.Type {
+	case gosocks5.AddrIPv4:
+		return network + "4"
+	case gosocks5.AddrIPv6:
+		return network + "6"
+	default:
+		return network
+	}
+}
+
 func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
@@ -179,15 +199,15 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	case gosocks5.CmdConnect:
 		return h.handleConnect(ctx, conn, "tcp", address, ro, log)
 	case gosocks5.CmdBind:
-		return h.handleBind(ctx, conn, "tcp", address, ro, log)
+		return h.handleBind(ctx, conn, networkAddr("tcp", req.Addr), address, ro, log)
 	case socks.CmdMuxBind:
-		return h.handleMuxBind(ctx, conn, "tcp", address, ro, log)
+		return h.handleMuxBind(ctx, conn, networkAddr("tcp", req.Addr), address, ro, log)
 	case gosocks5.CmdUdp:
 		ro.Network = "udp"
 		return h.handleUDP(ctx, conn, "udp", ro, log)
 	case socks.CmdUDPTun:
 		ro.Network = "udp"
-		return h.handleUDPTun(ctx, conn, "udp", address, ro, log)
+		return h.handleUDPTun(ctx, conn, networkAddr("udp", req.Addr), address, ro, log)
 	default:
 		err = ErrUnknownCmd
 		log.Error(err)
