@@ -445,20 +445,9 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 		ro.HTTP.Response.Header = resp.Header
 	}()
 
-	// HTTP/2 connection preface "PRI * HTTP/2.0" is rejected, as are
-	// non-CONNECT requests without an http:// scheme.
-	if req.Method == "PRI" ||
-		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
-		resp.StatusCode = http.StatusBadRequest
-
-		if log.IsLevelEnabled(logger.TraceLevel) {
-			dump, _ := httputil.DumpResponse(resp, false)
-			log.Trace(string(dump))
-		}
-
-		return resp.Write(conn)
-	}
-
+	// Authenticate before request validation so that probe resistance
+	// can intercept non-proxy-form requests (e.g., browser/scanner probes
+	// that send "GET / HTTP/1.1" instead of proxy-form URLs).
 	result := h.auth.Authenticate(ctx, req)
 	if !result.OK {
 		if result.PipeTo != "" {
@@ -475,6 +464,20 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 			log.Error("write auth response: ", err)
 		}
 		return errors.New("authentication failed")
+	}
+
+	// HTTP/2 connection preface "PRI * HTTP/2.0" is rejected, as are
+	// non-CONNECT requests without an http:// scheme.
+	if req.Method == "PRI" ||
+		(req.Method != http.MethodConnect && req.URL.Scheme != "http") {
+		resp.StatusCode = http.StatusBadRequest
+
+		if log.IsLevelEnabled(logger.TraceLevel) {
+			dump, _ := httputil.DumpResponse(resp, false)
+			log.Trace(string(dump))
+		}
+
+		return resp.Write(conn)
 	}
 
 	log = log.WithFields(map[string]any{"clientID": result.ClientID})
