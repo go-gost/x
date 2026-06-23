@@ -12,6 +12,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +25,24 @@ import (
 var (
 	defaultTLSConfig atomic.Value
 )
+
+// testDefaultCertDir overrides the default certificate directory in tests.
+// It is set only from same-package test code and left empty in production.
+var testDefaultCertDir string
+
+// defaultCertDir returns the directory used for persisting auto-generated
+// certificates. It uses testDefaultCertDir when set (for testing), otherwise
+// returns $HOME/.gost/.
+func defaultCertDir() string {
+	if testDefaultCertDir != "" {
+		return testDefaultCertDir
+	}
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return ".gost"
+	}
+	return filepath.Join(dir, ".gost")
+}
 
 // DefaultTLSConfig returns the global default TLS configuration used as a
 // fallback when a listener or handler does not specify its own TLS settings.
@@ -40,44 +60,99 @@ func SetDefaultTLSConfig(cfg *tls.Config) {
 }
 
 // BuildDefaultTLSConfig loads or generates the default TLS certificate and key
-// from the given config. If cfg is nil it attempts to load well-known files
-// ("cert.pem", "key.pem", "ca.pem"). On failure it generates a self-signed
-// ECDSA P-256 certificate valid for one year.
+// from the given config.
+//
+// When explicit certificate files are configured (CertFile, KeyFile, or CAFile
+// is non-empty) it loads them via tls_util.LoadDefaultConfig — the original
+// behaviour preserved for backward compatibility.
+//
+// When no certificate files are configured (all three empty), it tries sources
+// in this order:
+//  1. cert.pem / key.pem in the current working directory (backward compatible)
+//  2. auto-ca-cert.pem / auto-ca-key.pem under $HOME/.gost/ (persisted)
+//  3. If none found, generates a new ECDSA P-256 CA certificate, persists it
+//     to $HOME/.gost/, and uses it.
+//
+// If cfg is nil an empty TLSConfig is used (equivalent to no explicit files),
+// so the CWD → persisted → generate path is taken.
 func BuildDefaultTLSConfig(cfg *config.TLSConfig) (*tls.Config, error) {
 	log := logger.Default()
 
 	if cfg == nil {
-		cfg = &config.TLSConfig{
-			CertFile: "cert.pem",
-			KeyFile:  "key.pem",
-			CAFile:   "ca.pem",
-		}
+		cfg = &config.TLSConfig{}
 	}
 
-	tlsConfig, err := tls_util.LoadDefaultConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
-	if err != nil {
-		// generate random self-signed certificate.
-		cert, err := genCertificate(cfg.Validity, cfg.Organization, cfg.CommonName)
+	if cfg.CertFile != "" || cfg.KeyFile != "" || cfg.CAFile != "" {
+		tlsConfig, err := tls_util.LoadDefaultConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-		}
-		log.Debug("load global TLS certificate files failed, use random generated certificate")
-	} else {
 		log.Debug("load global TLS certificate files OK")
+		return tlsConfig, nil
 	}
 
+	tlsConfig, err := loadOrGeneratePersistentTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return tlsConfig, nil
 }
 
-func genCertificate(validity time.Duration, org string, cn string) (cert tls.Certificate, err error) {
-	rawCert, rawKey, err := generateKeyPair(validity, org, cn)
-	if err != nil {
-		return
+// loadOrGeneratePersistentTLSConfig tries loading an auto-generated CA
+// certificate from these locations (in order):
+//  1. cert.pem / key.pem in the current working directory (backward compatible)
+//  2. auto-ca-cert.pem / auto-ca-key.pem under defaultCertDir() (persisted)
+//
+// If none is found it generates a new one, persists it to defaultCertDir()
+// (best-effort), and returns it.
+func loadOrGeneratePersistentTLSConfig(cfg *config.TLSConfig) (*tls.Config, error) {
+	log := logger.Default()
+
+	// 1. Try CWD cert.pem / key.pem first (backward compatible).
+	cwdCert, cwdErr := tls.LoadX509KeyPair("cert.pem", "key.pem")
+	if cwdErr == nil {
+		log.Debug("loaded default certificate from current working directory (cert.pem / key.pem)")
+		return &tls.Config{Certificates: []tls.Certificate{cwdCert}}, nil
 	}
-	return tls.X509KeyPair(rawCert, rawKey)
+
+	// 2. Try persisted certificate in defaultCertDir().
+	dir := defaultCertDir()
+	certFile := filepath.Join(dir, "auto-ca-cert.pem")
+	keyFile := filepath.Join(dir, "auto-ca-key.pem")
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err == nil {
+		log.Debugf("loaded persisted default certificate from %s", dir)
+		return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
+	}
+
+	log.Debug("generating new default certificate (no persisted certificate found)")
+
+	// 3. Generate a new certificate.
+	rawCert, rawKey, err := generateKeyPair(cfg.Validity, cfg.Organization, cfg.CommonName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Best-effort persist to disk. If it fails the in-memory certificate is
+	// still usable.
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		log.Warnf("failed to create certificate directory %s: %v", dir, err)
+	} else {
+		if err := os.WriteFile(certFile, rawCert, 0644); err != nil {
+			log.Warnf("failed to persist certificate: %v", err)
+		} else if err := os.WriteFile(keyFile, rawKey, 0600); err != nil {
+			log.Warnf("failed to persist private key: %v", err)
+		} else {
+			log.Debugf("persisted default certificate to %s", dir)
+		}
+	}
+
+	cert, err = tls.X509KeyPair(rawCert, rawKey)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
 }
 
 func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, rawKey []byte, err error) {
@@ -124,6 +199,7 @@ func generateKeyPair(validity time.Duration, org string, cn string) (rawCert, ra
 			x509.ExtKeyUsageServerAuth,
 		},
 		BasicConstraintsValid: true,
+		IsCA:                  true,
 	}
 	if _, isRSA := priv.(*rsa.PrivateKey); isRSA {
 		template.KeyUsage |= x509.KeyUsageKeyEncipherment
