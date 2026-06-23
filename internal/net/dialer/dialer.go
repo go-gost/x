@@ -76,13 +76,14 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 		ifce = strings.TrimSuffix(ifce, "!")
 		var ifceName string
 		var ifAddrs []net.Addr
-		ifceName, ifAddrs, err = xnet.ParseInterfaceAddr(ifce, network)
+		var isIP bool
+		ifceName, ifAddrs, isIP, err = xnet.ParseInterfaceAddr(ifce, network)
 		if err != nil && strict {
 			return
 		}
 
 		for _, ifAddr := range ifAddrs {
-			conn, err = d.dialOnce(ctx, network, addr, ifceName, ifAddr, log)
+			conn, err = d.dialOnce(ctx, network, addr, ifceName, ifAddr, !isIP, log)
 			if err == nil {
 				return
 			}
@@ -100,7 +101,7 @@ func (d *Dialer) Dial(ctx context.Context, network, addr string) (conn net.Conn,
 	return
 }
 
-func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, ifAddr net.Addr, log logger.Logger) (net.Conn, error) {
+func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, ifAddr net.Addr, bindToDevice bool, log logger.Logger) (net.Conn, error) {
 	if ifceName != "" {
 		log.Debugf("dial %s/%s via interface %s@%s", addr, network, ifceName, ifAddr)
 	}
@@ -148,7 +149,7 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 		LocalAddr: ifAddr,
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				if ifceName != "" {
+				if ifceName != "" && bindToDevice {
 					if err := bindDevice(network, address, fd, ifceName); err != nil {
 						log.Warnf("%s/%s bind device: %v", address, network, err)
 					}

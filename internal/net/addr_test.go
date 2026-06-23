@@ -202,27 +202,33 @@ func Test_findInterfaceByIP(t *testing.T) {
 
 func TestParseInterfaceAddr(t *testing.T) {
 	// Empty interface name
-	ifce, addrs, err := ParseInterfaceAddr("", "tcp")
+	ifce, addrs, isIP, err := ParseInterfaceAddr("", "tcp")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 	if ifce != "" {
 		t.Errorf("expected empty ifce, got %s", ifce)
 	}
+	if isIP {
+		t.Errorf("expected isIP=false for empty string, got true")
+	}
 	if len(addrs) != 1 || addrs[0] != nil {
 		t.Errorf("expected [nil], got %v", addrs)
 	}
 
 	// Non-existent interface
-	_, _, err = ParseInterfaceAddr("nonexistent_interface_xyz", "tcp")
+	_, _, _, err = ParseInterfaceAddr("nonexistent_interface_xyz", "tcp")
 	if err == nil {
 		t.Error("expected error for non-existent interface")
 	}
 
-	// IP string as interface name
-	ifce, addrs, err = ParseInterfaceAddr("127.0.0.1", "tcp")
+	// IP string as interface name — isIP should be true
+	ifce, addrs, isIP, err = ParseInterfaceAddr("127.0.0.1", "tcp")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+	if !isIP {
+		t.Errorf("expected isIP=true for IP input, got false")
 	}
 	if ifce == "" {
 		t.Log("127.0.0.1 not found on any interface (may happen in containers)")
@@ -230,10 +236,13 @@ func TestParseInterfaceAddr(t *testing.T) {
 		t.Errorf("expected 1 addr, got %d", len(addrs))
 	}
 
-	// IP that doesn't exist on any interface
-	ifce, addrs, err = ParseInterfaceAddr("203.0.113.1", "udp")
+	// IP that doesn't exist on any interface — should still have isIP=true
+	ifce, addrs, isIP, err = ParseInterfaceAddr("203.0.113.1", "udp")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+	if !isIP {
+		t.Errorf("expected isIP=true for IP input, got false")
 	}
 	if ifce != "" {
 		t.Errorf("expected empty ifce for unassigned IP, got %s", ifce)
@@ -243,9 +252,12 @@ func TestParseInterfaceAddr(t *testing.T) {
 	}
 
 	// Test UDP network specific returns
-	ifce, addrs, err = ParseInterfaceAddr("127.0.0.1", "udp")
+	ifce, addrs, isIP, err = ParseInterfaceAddr("127.0.0.1", "udp")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+	if !isIP {
+		t.Errorf("expected isIP=true for IP input, got false")
 	}
 	if ifce != "" {
 		if len(addrs) != 1 {

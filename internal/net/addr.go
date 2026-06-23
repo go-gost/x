@@ -14,7 +14,11 @@ import (
 // addresses assigned to that interface. The network parameter determines the address
 // type (TCPAddr for "tcp"/"tcp4"/"tcp6", UDPAddr for "udp"/"udp4"/"udp6", IPAddr
 // otherwise).
-func ParseInterfaceAddr(ifceName, network string) (ifce string, addr []net.Addr, err error) {
+//
+// isIP reports whether ifceName was parsed as an IP address (true) rather than an
+// interface name (false). When isIP is true, callers should skip SO_BINDTODEVICE —
+// the user's intent is source IP binding for policy routing, not device binding.
+func ParseInterfaceAddr(ifceName, network string) (ifce string, addr []net.Addr, isIP bool, err error) {
 	if ifceName == "" {
 		addr = append(addr, nil)
 		return
@@ -43,6 +47,8 @@ func ParseInterfaceAddr(ifceName, network string) (ifce string, addr []net.Addr,
 			}
 		}
 	} else {
+		// ifceName is an IP address — skip SO_BINDTODEVICE, use LocalAddr only
+		isIP = true
 		ifce, err = findInterfaceByIP(ip)
 		if err != nil {
 			return
