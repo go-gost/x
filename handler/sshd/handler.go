@@ -209,6 +209,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, targetAddr str
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
@@ -217,6 +218,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, targetAddr str
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)

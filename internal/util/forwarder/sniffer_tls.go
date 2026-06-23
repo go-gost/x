@@ -321,6 +321,7 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 		}),
 		WithHTTPKeepalive(true),
 		WithNode(ho.node),
+		WithBypass(ho.bypass),
 		WithRecorderObject(ro),
 		WithLog(log),
 	}

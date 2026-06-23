@@ -310,6 +310,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
@@ -318,6 +319,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)

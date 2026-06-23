@@ -180,6 +180,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
@@ -188,6 +189,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)

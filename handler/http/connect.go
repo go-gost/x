@@ -15,9 +15,9 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/limiter"
-	"github.com/go-gost/core/recorder"
-	stats "github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/logger"
+	stats "github.com/go-gost/core/observer/stats"
+	"github.com/go-gost/core/recorder"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
@@ -132,6 +132,7 @@ func (h *httpHandler) sniffAndHandle(ctx context.Context, conn net.Conn, cc net.
 			sniffing.WithService(h.options.Service),
 			sniffing.WithDial(dial),
 			sniffing.WithDialTLS(dialTLS),
+			sniffing.WithBypass(h.options.Bypass),
 			sniffing.WithRecorderObject(ro),
 			sniffing.WithLog(log),
 		)
@@ -140,6 +141,7 @@ func (h *httpHandler) sniffAndHandle(ctx context.Context, conn net.Conn, cc net.
 			sniffing.WithService(h.options.Service),
 			sniffing.WithDial(dial),
 			sniffing.WithDialTLS(dialTLS),
+			sniffing.WithBypass(h.options.Bypass),
 			sniffing.WithRecorderObject(ro),
 			sniffing.WithLog(log),
 		)
@@ -233,7 +235,7 @@ type SnifferBuilder struct {
 	// ReadTimeout is the timeout for reading upstream HTTP response headers
 	// and TLS ServerHello during sniffing. Passed through to sniffing.Sniffer.
 	// See sniffing.Sniffer.ReadTimeout for details.
-	ReadTimeout         time.Duration
+	ReadTimeout time.Duration
 }
 
 // Build creates a new sniffing.Sniffer from the builder's configuration.

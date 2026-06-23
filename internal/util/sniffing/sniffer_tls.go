@@ -235,6 +235,7 @@ func (h *Sniffer) terminateTLS(ctx context.Context, network string, conn, cc net
 		WithDialTLS(func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
 			return clientConn, nil
 		}),
+		WithBypass(ho.bypass),
 		WithRecorderObject(ro),
 		WithLog(log),
 	}
