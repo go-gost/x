@@ -422,6 +422,43 @@ func TestSelect_MatcherDoesNotMatch(t *testing.T) {
 	}
 }
 
+func TestSelect_MatcherReceivesNetwork(t *testing.T) {
+	var capturedReq *routing.Request
+	n1 := chain.NewNode("n1", "127.0.0.1:8080",
+		chain.MatcherNodeOption(&requestCapturingMatcher{capture: &capturedReq, match: true}),
+	)
+	h := newTestHop(NodeOption(n1))
+	defer h.Close()
+
+	h.Select(context.Background(), hop.NetworkSelectOption("tcp"))
+
+	if capturedReq == nil {
+		t.Fatal("request was not passed to matcher")
+	}
+	if capturedReq.Network != "tcp" {
+		t.Errorf("matcher saw Network=%q, want %q", capturedReq.Network, "tcp")
+	}
+}
+
+func TestSelect_MatcherMatchNetwork(t *testing.T) {
+	n1 := chain.NewNode("n1", "127.0.0.1:8080",
+		chain.MatcherNodeOption(&testMatcher{match: false}),
+	)
+	n2 := chain.NewNode("n2", "127.0.0.1:9090",
+		chain.MatcherNodeOption(&testMatcher{match: true}),
+	)
+	h := newTestHop(NodeOption(n1, n2))
+	defer h.Close()
+
+	node := h.Select(context.Background(), hop.NetworkSelectOption("udp"))
+	if node == nil {
+		t.Fatal("expected selected node, got nil")
+	}
+	if node.Name != "n2" {
+		t.Errorf("expected 'n2' (match=true), got %q", node.Name)
+	}
+}
+
 func TestSelect_Priority_HighestWins(t *testing.T) {
 	n1 := chain.NewNode("n1", "127.0.0.1:8080", chain.PriorityNodeOption(5))
 	n2 := chain.NewNode("n2", "127.0.0.1:9090", chain.PriorityNodeOption(10))

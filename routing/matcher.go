@@ -144,6 +144,7 @@ func (m *matchersTree) addRule(rule *rules.Tree, funcs matcherFuncs) error {
 
 var httpFuncs = map[string]func(*matchersTree, ...string) error{
 	"ClientIP":     expectNParameters(clientIP, 1),
+	"Network":      expectNParameters(network, 1),
 	"Proto":        expectNParameters(proto, 1),
 	"Host":         expectNParameters(host, 1),
 	"HostRegexp":   expectNParameters(hostRegexp, 1),
@@ -201,6 +202,18 @@ func proto(tree *matchersTree, protos ...string) error {
 	tree.matcher = func(req *routing.Request) bool {
 		// logger.Default().Debugf("proto: %s %s", proto, req.Protocol)
 		return proto == req.Protocol
+	}
+
+	return nil
+}
+
+func network(tree *matchersTree, networks ...string) error {
+	network := strings.ToLower(networks[0])
+
+	tree.matcher = func(req *routing.Request) bool {
+		// Use prefix match so Network("tcp") matches "tcp", "tcp4", "tcp6"
+		// and Network("udp") matches "udp", "udp4", "udp6".
+		return strings.HasPrefix(req.Network, network)
 	}
 
 	return nil

@@ -140,6 +140,32 @@ func TestMatcherProto(t *testing.T) {
 	}
 }
 
+func TestMatcherNetwork(t *testing.T) {
+	m, err := NewMatcher(`Network("tcp")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc    string
+		network string
+		want    bool
+	}{
+		{"exact match", "tcp", true},
+		{"prefix match tcp4", "tcp4", true},
+		{"prefix match tcp6", "tcp6", true},
+		{"uppercase no match", "TCP", false},
+		{"wrong network udp", "udp", false},
+		{"wrong network udp4", "udp4", false},
+		{"empty", "", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Network: tc.network}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
 func TestMatcherMethod(t *testing.T) {
 	m, err := NewMatcher(`Method("GET")`)
 	require.NoError(t, err)

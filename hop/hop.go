@@ -176,6 +176,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		if matcher := node.Options().Matcher; matcher != nil {
 			req := routing.Request{
 				ClientIP: options.ClientIP,
+				Network:  options.Network,
 				Host:     options.Host,
 				Protocol: options.Protocol,
 				Method:   options.Method,
