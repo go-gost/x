@@ -2,6 +2,7 @@ package unix
 
 import (
 	"net"
+	"os"
 	"time"
 
 	"github.com/go-gost/core/limiter"
@@ -47,6 +48,12 @@ func (l *unixListener) Init(md md.Metadata) (err error) {
 	ln, err := net.Listen("unix", l.options.Addr)
 	if err != nil {
 		return
+	}
+	if l.md.fileMode > 0 {
+		if err = os.Chmod(l.options.Addr, l.md.fileMode); err != nil {
+			ln.Close()
+			return
+		}
 	}
 
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
