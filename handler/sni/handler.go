@@ -1,11 +1,47 @@
+// Package sni implements a TLS SNI-based forwarding handler for protocol-aware
+// routing. It sniffs every inbound TCP connection, parses the TLS ClientHello
+// (or HTTP request header) to extract the server name, and routes traffic
+// through the proxy chain.
+//
+// # How it differs from the "tcp" / "forward" handler
+//
+// The SNI handler is purpose-built for TLS SNI routing — it always sniffs
+// and only handles HTTP and TLS traffic:
+//
+//   - Non-HTTP/non-TLS connections are silently dropped (no raw forwarding
+//     fallback). If you need raw TCP fallback, use the "tcp" or "forward"
+//     handler instead.
+//   - It does not implement [handler.Forwarder], so it has no hop-based node
+//     selection, load balancing, or per-node authentication/rewrite settings.
+//     All routing uses the SNI hostname as the destination address through
+//     the configured chain.
+//
+// # Connection processing flow
+//
+// Each inbound net.Conn is processed by Handle:
+//
+//	Handle()
+//	  ├─ newRecorderObject (session metadata: service, SID, addresses)
+//	  ├─ checkRateLimit (connection rate limiter, if configured)
+//	  ├─ Router nil check → errRouterNotAvailable
+//	  ├─ sniffing.Sniff (peek buffer, detect protocol)
+//	  │     └─ handleSniffedProtocol()
+//	  │           ├─ sniffing.ProtoHTTP → SnifferBuilder.Build().HandleHTTP()
+//	  │           ├─ sniffing.ProtoTLS  → SnifferBuilder.Build().HandleTLS()
+//	  │           └─ default → silent drop
+//	  └─ unrecognised protocol → silently returns nil
+//
+// # SnifferBuilder pattern
+//
+// The sniffer configuration (MITM certs, WebSocket recording, bypass rules)
+// is immutable after Init. A [SnifferBuilder] is populated once during Init
+// and reused via [SnifferBuilder.Build] to create per-connection
+// [sniffing.Sniffer] instances.
 package sni
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"crypto/tls"
-	"errors"
 	"net"
 	"time"
 
@@ -13,8 +49,6 @@ import (
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
-	xctx "github.com/go-gost/x/ctx"
-	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -29,26 +63,32 @@ func init() {
 	registry.HandlerRegistry().Register("sni", NewHandler)
 }
 
+// sniHandler is a protocol-aware forwarding handler that routes by TLS SNI
+// or HTTP Host header. It always sniffs the initial bytes to determine the
+// protocol and delegates to [sniffing.Sniffer] for HTTP/TLS handling.
 type sniHandler struct {
 	md       metadata
 	options  handler.Options
 	recorder recorder.RecorderObject
 	certPool tls_util.CertPool
+	sniffer  *SnifferBuilder
 }
 
+// NewHandler creates an SNI handler with the given options.
+// The handler registers for the "sni" protocol.
 func NewHandler(opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	h := &sniHandler{
+	return &sniHandler{
 		options: options,
 	}
-
-	return h
 }
 
+// Init parses metadata and initialises the sniffer builder and TLS certificate
+// pool. It implements [handler.Handler].
 func (h *sniHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
@@ -65,26 +105,32 @@ func (h *sniHandler) Init(md md.Metadata) (err error) {
 		h.certPool = tls_util.NewMemoryCertPool()
 	}
 
+	h.sniffer = &SnifferBuilder{
+		Websocket:           h.md.sniffingWebsocket,
+		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
+		Recorder:            h.recorder.Recorder,
+		RecorderOptions:     h.recorder.Options,
+		Certificate:         h.md.certificate,
+		PrivateKey:          h.md.privateKey,
+		ALPN:                h.md.alpn,
+		CertPool:            h.certPool,
+		MitmBypass:          h.md.mitmBypass,
+		ReadTimeout:         h.md.readTimeout,
+	}
+
 	return nil
 }
 
+// Handle processes an inbound TCP connection. It always sniffs the initial
+// bytes to detect HTTP or TLS, then delegates to the protocol-specific
+// sniffer. Non-HTTP/non-TLS traffic is silently dropped.
+//
+// Handle implements [handler.Handler].
 func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) (err error) {
 	defer conn.Close()
 
 	start := time.Now()
-
-	ro := &xrecorder.HandlerRecorderObject{
-		Network:    "tcp",
-		Service:    h.options.Service,
-		RemoteAddr: conn.RemoteAddr().String(),
-		LocalAddr:  conn.LocalAddr().String(),
-		SID:        xctx.SidFromContext(ctx).String(),
-		Time:       start,
-	}
-
-	if srcAddr := xctx.SrcAddrFromContext(ctx); srcAddr != nil {
-		ro.ClientAddr = srcAddr.String()
-	}
+	ro := h.newRecorderObject(ctx, conn, start)
 
 	log := h.options.Logger.WithFields(map[string]any{
 		"network": ro.Network,
@@ -120,10 +166,17 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		return rate_limiter.ErrRateLimit
 	}
 
+	if h.options.Router == nil {
+		err := errRouterNotAvailable
+		log.Error(err)
+		return err
+	}
+
 	if h.md.readTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
 		defer conn.SetReadDeadline(time.Time{})
 	}
+
 	br := bufio.NewReader(conn)
 	proto, sniffErr := sniffing.Sniff(ctx, br)
 	if sniffErr != nil {
@@ -131,75 +184,12 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	}
 	ro.Proto = proto
 
-	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-		if h.options.Router == nil {
-			return nil, errors.New("sni: router not available")
-		}
-		var buf bytes.Buffer
-		cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
-		ro.Route = buf.String()
-
-		if cc != nil {
-			ro.SrcAddr = cc.LocalAddr().String()
-			ro.DstAddr = cc.RemoteAddr().String()
-		}
-		return cc, err
-	}
-	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-		cc, err := dial(ctx, network, address)
-		if err != nil {
-			return nil, err
-		}
-		cc = tls.Client(cc, cfg)
-		return cc, nil
-	}
-
-	sniffer := &sniffing.Sniffer{
-		Websocket:           h.md.sniffingWebsocket,
-		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
-		Recorder:            h.recorder.Recorder,
-		RecorderOptions:     h.recorder.Options,
-		Certificate:         h.md.certificate,
-		PrivateKey:          h.md.privateKey,
-		NegotiatedProtocol:  h.md.alpn,
-		CertPool:            h.certPool,
-		MitmBypass:          h.md.mitmBypass,
-		ReadTimeout:         h.md.readTimeout,
-	}
 	conn = xnet.NewReadWriteConn(br, conn, conn)
-	switch proto {
-	case sniffing.ProtoHTTP:
-		return sniffer.HandleHTTP(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithDialTLS(dialTLS),
-			sniffing.WithBypass(h.options.Bypass),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	case sniffing.ProtoTLS:
-		return sniffer.HandleTLS(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithDialTLS(dialTLS),
-			sniffing.WithBypass(h.options.Bypass),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	default:
-			log.Debugf("unrecognized traffic from %s", conn.RemoteAddr())
-			return nil
-	}
-}
-
-func (h *sniHandler) checkRateLimit(addr net.Addr) bool {
-	if h.options.RateLimiter == nil {
-		return true
-	}
-	host, _, _ := net.SplitHostPort(addr.String())
-	if limiter := h.options.RateLimiter.Limiter(host); limiter != nil {
-		return limiter.Allow(1)
+	handled, sniffErr := h.handleSniffedProtocol(ctx, conn, ro, log, proto)
+	if handled {
+		return sniffErr
 	}
 
-	return true
+	log.Debugf("unrecognized traffic from %s", conn.RemoteAddr())
+	return nil
 }

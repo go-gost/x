@@ -16,7 +16,7 @@ type metadata struct {
 	// readTimeout controls two behaviors:
 	// 1. A read deadline set on the client connection before sniffing the
 	//    TLS ClientHello / HTTP request (see handler.go Handle).
-	// 2. Passed to SnifferBuilder as the timeout for reading upstream
+	// 2. Passed to [sniffing.Sniffer] as the timeout for reading upstream
 	//    response headers during HTTP/TLS sniffing.
 	// 0 or negative defaults to 15s.
 	readTimeout time.Duration
