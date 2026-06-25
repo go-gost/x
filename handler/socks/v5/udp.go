@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -68,6 +69,30 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	})
 	ro.SrcAddr = cc.LocalAddr().String()
 
+	// Verify the upstream chain is reachable before replying Success,
+	// per RFC 1928 §7.
+	var buf bytes.Buffer
+	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, "") // UDP association
+	ro.Route = buf.String()
+	if err != nil {
+		log.Error(err)
+		reply := gosocks5.NewReply(gosocks5.Failure, nil)
+		log.Trace(reply)
+		reply.Write(conn)
+		return err
+	}
+	defer c.Close()
+
+	pc, ok := c.(net.PacketConn)
+	if !ok {
+		err := errors.New("socks5: wrong connection type")
+		log.Error(err)
+		reply := gosocks5.NewReply(gosocks5.Failure, nil)
+		log.Trace(reply)
+		reply.Write(conn)
+		return err
+	}
+
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(cc.LocalAddr().String())
 
@@ -84,23 +109,6 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	}
 
 	log.Debugf("bind on %s OK", cc.LocalAddr())
-
-	// obtain a udp connection
-	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, "") // UDP association
-	ro.Route = buf.String()
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	defer c.Close()
-
-	pc, ok := c.(net.PacketConn)
-	if !ok {
-		err := errors.New("socks5: wrong connection type")
-		log.Error(err)
-		return err
-	}
 	pc = metrics.WrapPacketConn(ro.Service, pc)
 
 	{
@@ -132,10 +140,16 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		}
 	}
 
+	tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		err := fmt.Errorf("socks5 udp: unexpected remote address type %T", conn.RemoteAddr())
+		log.Error(err)
+		return err
+	}
 	pc1 := socks.UDPConn(
 		&filteredPacketConn{
 			PacketConn: cc,
-			filterIP:   conn.RemoteAddr().(*net.TCPAddr).IP,
+			filterIP:   tcpAddr.IP,
 		},
 		h.md.udpBufferSize)
 
@@ -179,7 +193,11 @@ func (f *filteredPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error
 			return
 		}
 
-		if udpAddr := addr.(*net.UDPAddr); udpAddr.IP.Equal(f.filterIP) {
+		udpAddr, ok := addr.(*net.UDPAddr)
+		if !ok {
+			continue
+		}
+		if udpAddr.IP.Equal(f.filterIP) {
 			return
 		}
 	}
@@ -228,7 +246,10 @@ func (c *domainResolvePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) 
 		if c.log != nil {
 			c.log.Warnf("socks5 udp: dropping datagram to %s (DNS resolution failed)", host)
 		}
-		return 0, nil
+		if err == nil {
+			err = fmt.Errorf("socks5 udp: DNS resolution failed for %s", host)
+		}
+		return 0, err
 	}
 
 	// Pick the first IPv4 address from the result set, falling back to

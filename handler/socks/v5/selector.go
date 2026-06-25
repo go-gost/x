@@ -27,25 +27,42 @@ func (selector *serverSelector) Methods() []uint8 {
 
 func (s *serverSelector) Select(methods ...uint8) (method uint8) {
 	s.logger.Debugf("%d %d %v", gosocks5.Ver5, len(methods), methods)
-	method = gosocks5.MethodNoAuth
+
+	// Determine which methods the client offered.
+	var hasNoAuth, hasUserPass, hasTLS, hasTLSAuth bool
 	for _, m := range methods {
-		if m == socks.MethodTLS && !s.noTLS && s.TLSConfig != nil {
-			method = m
-			break
+		switch m {
+		case gosocks5.MethodNoAuth:
+			hasNoAuth = true
+		case gosocks5.MethodUserPass:
+			hasUserPass = true
+		case socks.MethodTLS:
+			hasTLS = true
+		case socks.MethodTLSAuth:
+			hasTLSAuth = true
 		}
 	}
 
-	// when Authenticator is set, auth is mandatory
+	// When Authenticator is set, authentication is mandatory.
 	if s.Authenticator != nil {
-		if method == gosocks5.MethodNoAuth {
-			method = gosocks5.MethodUserPass
+		if hasTLSAuth && !s.noTLS && s.TLSConfig != nil {
+			return socks.MethodTLSAuth
 		}
-		if method == socks.MethodTLS && !s.noTLS {
-			method = socks.MethodTLSAuth
+		if hasUserPass {
+			return gosocks5.MethodUserPass
 		}
+		return gosocks5.MethodNoAcceptable
 	}
 
-	return
+	// No authenticator — select the best unauthenticated method.
+	if hasTLS && !s.noTLS && s.TLSConfig != nil {
+		return socks.MethodTLS
+	}
+	if hasNoAuth {
+		return gosocks5.MethodNoAuth
+	}
+
+	return gosocks5.MethodNoAcceptable
 }
 
 func (s *serverSelector) OnSelected(method uint8, conn net.Conn) (string, net.Conn, error) {

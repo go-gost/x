@@ -82,7 +82,10 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
-	resp := gosocks5.NewReply(gosocks5.Succeeded, nil)
+	// Report the actual bound address (BND.ADDR) per RFC 1928 §6.
+	bndAddr := gosocks5.Addr{}
+	bndAddr.ParseFrom(cc.LocalAddr().String())
+	resp := gosocks5.NewReply(gosocks5.Succeeded, &bndAddr)
 	log.Trace(resp)
 	if err := resp.Write(conn); err != nil {
 		log.Error(err)
