@@ -146,6 +146,7 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 		return nil, fmt.Errorf("dial: unsupported network %s", network)
 	}
 	netd := net.Dialer{
+		Resolver:  &net.Resolver{PreferGo: true},
 		LocalAddr: ifAddr,
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
