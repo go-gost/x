@@ -98,16 +98,13 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 
 	br := bufio.NewReader(conn)
-	proto, _ := sniffing.Sniff(ctx, br)
 
-	conn = xnet.NewReadWriteConn(br, conn, conn)
-
-	if proto == sniffing.ProtoTLS {
-		return h.handleTLS(ctx, conn, log)
-	}
-
-	// Fall back to 1-byte peek for SOCKS4 (0x04) vs SOCKS5 (0x05) vs HTTP.
-	// Sniff() already read 5 bytes, but the buffered reader exposes them.
+	// Peek 1 byte first to detect small protocols (SOCKS4/SOCKS5)
+	// that send fewer bytes than the 5-byte TLS record header that
+	// Sniff() needs.  If we called Sniff() first, its Peek(5) would
+	// block indefinitely on a SOCKS5 greeting (3 bytes: VER, NMETHODS,
+	// METHODS), deadlocking with the client that is itself waiting for
+	// the server's method-selection reply.
 	b, err := br.Peek(1)
 	if err != nil {
 		log.Error(err)
@@ -116,18 +113,32 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	}
 
 	switch b[0] {
-	case gosocks4.Ver4: // socks4
+	case gosocks4.Ver4:
+		conn = xnet.NewReadWriteConn(br, conn, conn)
 		if h.socks4Handler != nil {
 			return h.socks4Handler.Handle(ctx, conn)
 		}
-	case gosocks5.Ver5: // socks5
+		return nil
+	case gosocks5.Ver5:
+		conn = xnet.NewReadWriteConn(br, conn, conn)
 		if h.socks5Handler != nil {
 			return h.socks5Handler.Handle(ctx, conn)
 		}
-	default: // http
-		if h.httpHandler != nil {
-			return h.httpHandler.Handle(ctx, conn)
-		}
+		return nil
+	}
+
+	// Not SOCKS — sniff for TLS, HTTP, or SSH.
+	proto, _ := sniffing.Sniff(ctx, br)
+
+	conn = xnet.NewReadWriteConn(br, conn, conn)
+
+	if proto == sniffing.ProtoTLS {
+		return h.handleTLS(ctx, conn, log)
+	}
+
+	// Default to HTTP.
+	if h.httpHandler != nil {
+		return h.httpHandler.Handle(ctx, conn)
 	}
 	return nil
 }
