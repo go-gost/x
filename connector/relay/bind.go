@@ -106,9 +106,11 @@ func (c *relayConnector) bind(conn net.Conn, cmd relay.CmdType, network, address
 	})
 	fa := &relay.AddrFeature{}
 	if network != "unix" {
-		if h, _, e := net.SplitHostPort(address); e == nil && h == "" {
-			address = net.JoinHostPort("0.0.0.0", address)
-		}
+		if address == "" {
+	        address = "0.0.0.0:0"
+	    } else if h, _, e := net.SplitHostPort(address); e == nil && h == "" {
+	        address = net.JoinHostPort("0.0.0.0", address)
+	    }
 	}
 	fa.ParseFrom(address)
 	req.Features = append(req.Features, fa)
