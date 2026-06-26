@@ -405,6 +405,15 @@ type NodeFilterConfig struct {
 	Path     string `yaml:",omitempty" json:"path,omitempty"`
 }
 
+// NodeMatcherConfig defines a routing-rule matcher for a hop node.
+//
+// Priority controls election among multiple matching nodes:
+//   - 0 (default): auto-computed from the rule string length — longer rules
+//     (more specific) get higher priority.
+//   - negative: the node participates in matching but priority short-circuit
+//     is disabled; the selector (round-robin, random, hash, etc.) always applies.
+//   - positive: explicit priority; when a single node has strictly higher
+//     priority than all others, it wins directly, bypassing the selector.
 type NodeMatcherConfig struct {
 	Rule     string `yaml:",omitempty" json:"rule,omitempty"`
 	Priority int    `yaml:",omitempty" json:"priority,omitempty"`

@@ -176,6 +176,10 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		if rule := strings.TrimSpace(cfg.Matcher.Rule); rule != "" {
 			if matcher, err := routing.NewMatcher(rule); err == nil {
 				log.Debugf("new matcher for node %s with rule %s", cfg.Name, cfg.Matcher.Rule)
+				// Priority 0 means "use default": automatically set to the
+				// rule length so longer (more specific) rules outrank shorter
+				// ones. Use a negative priority to opt out of this behavior
+				// and always go through the selector.
 				if priority == 0 {
 					priority = len(cfg.Matcher.Rule)
 				}

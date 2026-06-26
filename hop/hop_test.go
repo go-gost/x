@@ -522,6 +522,31 @@ func TestSelect_WithSelector(t *testing.T) {
 	}
 }
 
+func TestSelect_EqualPriorityDoesNotShortcut(t *testing.T) {
+	// Two nodes with identical matchers get the same default priority.
+	// The priority shortcut must NOT trigger when multiple nodes share
+	// the highest priority — the selector should still apply.
+	n1 := chain.NewNode("n1", "127.0.0.1:8080",
+		chain.MatcherNodeOption(&testMatcher{match: true}),
+		chain.PriorityNodeOption(50),
+	)
+	n2 := chain.NewNode("n2", "127.0.0.1:9090",
+		chain.MatcherNodeOption(&testMatcher{match: true}),
+		chain.PriorityNodeOption(50),
+	)
+	sel := &testNodeSelector{selectedIdx: 1} // picks n2
+	h := newTestHop(NodeOption(n1, n2), SelectorOption(sel))
+	defer h.Close()
+
+	node := h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected node, got nil")
+	}
+	if node.Name != "n2" {
+		t.Errorf("expected 'n2' (selected by selector, not shortcut), got %q", node.Name)
+	}
+}
+
 func TestSelect_NilNodesSkipped(t *testing.T) {
 	h := newTestHop()
 	defer h.Close()

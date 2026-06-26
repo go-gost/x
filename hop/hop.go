@@ -208,13 +208,17 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	})
 
 	if nodes[0].Options().Priority > 0 &&
-		!anyBackupNode(nodes) {
+		!anyBackupNode(nodes) &&
+		nodes[0].Options().Priority > nodes[1].Options().Priority {
 		// Priority short-circuit: highest-priority non-backup node wins.
 		// Conditions: (1) top priority > 0 means a matcher indicated routing
 		// specificity, so the top node is authoritative for this request;
 		// (2) no backup node is present, otherwise BackupFilter would be
-		// silently bypassed. When both hold the selector (FailFilter,
-		// BackupFilter, strategy) is skipped and the best node wins directly.
+		// silently bypassed; (3) the top priority is strictly higher than
+		// the second-highest — when multiple nodes share the same matcher
+		// rule they have equal priority and the selector (FailFilter,
+		// BackupFilter, strategy) should still apply for load balancing.
+		// When all three hold the selector is skipped and the best node wins directly.
 		p.logger.Debugf("priority shortcut: node %s selected", nodes[0].Name)
 		return nodes[0]
 	}
