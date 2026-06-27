@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-gost/core/auth"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
 )
@@ -1002,4 +1004,97 @@ type staticAuther struct {
 
 func (s *staticAuther) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
 	return s.id, s.ok
+}
+
+// --- whitelist tests ---
+
+func TestWhitelistedAuthenticator_IPMatch(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"192.168.1.100"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.100"), Port: 54321})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "" || !ok {
+		t.Fatalf("expected (\"\", true) for matched IP, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_IPNoMatch(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"192.168.1.100"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 12345})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "test" || !ok {
+		t.Fatalf("expected (\"test\", true) for non-matched IP, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_CIDRMatch(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"10.0.0.0/8"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 9999})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "" || !ok {
+		t.Fatalf("expected (\"\", true) for matched CIDR, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_CIDRNoMatch(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"10.0.0.0/8"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.1"), Port: 8080})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "test" || !ok {
+		t.Fatalf("expected (\"test\", true) for non-matched CIDR, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_EmptyPatterns(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.100"), Port: 54321})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "test" || !ok {
+		t.Fatalf("expected (\"test\", true) for empty patterns, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_NoSrcAddr(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"192.168.1.100"})
+	id, ok := w.Authenticate(context.Background(), "user", "pass")
+	if id != "test" || !ok {
+		t.Fatalf("expected (\"test\", true) with no src addr in context, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_NilAuther(t *testing.T) {
+	// When IP matches, the whitelist returns OK regardless of nil auther.
+	w := WhitelistedAuthenticator(nil, []string{"192.168.1.100"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.100"), Port: 54321})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "" || !ok {
+		t.Fatalf("expected (\"\", true) for matched whitelist even with nil auther, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_NilAutherNoMatch(t *testing.T) {
+	// When IP does not match and auther is nil, it falls through to ("", false).
+	w := WhitelistedAuthenticator(nil, []string{"192.168.1.100"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 54321})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "" || ok {
+		t.Fatalf("expected (\"\", false) for nil auther with non-matching IP, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_UnderlyingDenies(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: false}, []string{"10.0.0.0/8"})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.1"), Port: 8080})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "test" || ok {
+		t.Fatalf("expected (\"test\", false) when underlying auther denies, got (%q, %v)", id, ok)
+	}
+}
+
+func TestWhitelistedAuthenticator_InvalidPatterns(t *testing.T) {
+	w := WhitelistedAuthenticator(&staticAuther{id: "test", ok: true}, []string{"not-an-ip", "also-not-cidr/", ""})
+	ctx := xctx.ContextWithSrcAddr(context.Background(), &net.TCPAddr{IP: net.ParseIP("192.168.1.100"), Port: 54321})
+	id, ok := w.Authenticate(ctx, "user", "pass")
+	if id != "test" || !ok {
+		t.Fatalf("expected (\"test\", true) for all-invalid patterns, got (%q, %v)", id, ok)
+	}
 }

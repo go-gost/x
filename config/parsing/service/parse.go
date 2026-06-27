@@ -303,6 +303,32 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		auther = xauth.AuthenticatorGroup(authers...)
 	}
 
+	// Parse skipauth from handler metadata to whitelist client IPs that
+	// should bypass authentication. Accepts both YAML arrays
+	// (skipauth: ["10.0.0.0/8"]) and comma-separated URL query values
+	// (?skipauth=10.0.0.0/8,192.168.1.1).
+	if cfg.Handler.Metadata != nil {
+		hmd := metadata.NewMetadata(cfg.Handler.Metadata)
+		skipauth := mdutil.GetStrings(hmd, "skipauth")
+		if len(skipauth) == 0 {
+			if s := mdutil.GetString(hmd, "skipauth"); s != "" {
+				for _, p := range strings.Split(s, ",") {
+					if p = strings.TrimSpace(p); p != "" {
+						skipauth = append(skipauth, p)
+					}
+				}
+			}
+		}
+		if len(skipauth) > 0 {
+			if auther != nil {
+				auther = xauth.WhitelistedAuthenticator(auther, skipauth)
+				handlerLogger.Debugf("skipauth whitelist applied: %v", skipauth)
+			} else {
+				handlerLogger.Warnf("skipauth configured but no auther set — authentication is already disabled for all clients")
+			}
+		}
+	}
+
 	var recorders []recorder.RecorderObject
 	for _, r := range cfg.Recorders {
 		md := metadata.NewMetadata(r.Metadata)
