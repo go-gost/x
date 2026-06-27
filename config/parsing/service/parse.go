@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
+	"github.com/go-gost/core/rewriter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
@@ -353,6 +354,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		})
 	}
 
+	var rew rewriter.Rewriter
+	if cfg.Rewriter != "" {
+		rew = registry.RewriterRegistry().Get(cfg.Rewriter)
+	}
+
 	routerOpts = []chain.RouterOption{
 		chain.RetriesRouterOption(cfg.Handler.Retries),
 		chain.TimeoutRouterOption(dialTimeout),
@@ -382,6 +388,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
 			handler.ObserverOption(registry.ObserverRegistry().Get(cfg.Handler.Observer)),
 			handler.RecordersOption(recorders...),
+			handler.RewriterOption(rew),
 			handler.LoggerOption(handlerLogger),
 			handler.ServiceOption(cfg.Name),
 			handler.NetnsOption(netnsIn),

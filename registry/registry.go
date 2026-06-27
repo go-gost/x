@@ -21,6 +21,7 @@ import (
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/router"
+	"github.com/go-gost/core/rewriter"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/limiter/quota"
@@ -46,6 +47,7 @@ var (
 	resolverReg  reg.Registry[resolver.Resolver]   = new(resolverRegistry)
 	hostsReg     reg.Registry[hosts.HostMapper]    = new(hostsRegistry)
 	recorderReg  reg.Registry[recorder.Recorder]   = new(recorderRegistry)
+	rewriterReg  reg.Registry[rewriter.Rewriter]   = new(rewriterRegistry)
 
 	trafficLimiterReg reg.Registry[traffic.TrafficLimiter] = new(trafficLimiterRegistry)
 	connLimiterReg    reg.Registry[conn.ConnLimiter]       = new(connLimiterRegistry)
@@ -185,6 +187,11 @@ func HostsRegistry() reg.Registry[hosts.HostMapper] {
 // RecorderRegistry returns the global registry of recorder instances.
 func RecorderRegistry() reg.Registry[recorder.Recorder] {
 	return recorderReg
+}
+
+// RewriterRegistry returns the global registry of rewriter instances.
+func RewriterRegistry() reg.Registry[rewriter.Rewriter] {
+	return rewriterReg
 }
 
 // TrafficLimiterRegistry returns the global registry of traffic limiter instances.

@@ -22,6 +22,7 @@ import (
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/core/router"
+	"github.com/go-gost/core/rewriter"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
@@ -38,6 +39,7 @@ import (
 	quota_parser "github.com/go-gost/x/config/parsing/quota"
 	recorder_parser "github.com/go-gost/x/config/parsing/recorder"
 	resolver_parser "github.com/go-gost/x/config/parsing/resolver"
+	rewriter_parser "github.com/go-gost/x/config/parsing/rewriter"
 	router_parser "github.com/go-gost/x/config/parsing/router"
 	sd_parser "github.com/go-gost/x/config/parsing/sd"
 	service_parser "github.com/go-gost/x/config/parsing/service"
@@ -240,6 +242,16 @@ func register(cfg *config.Config) error {
 			entries = append(entries, named[recorder.Recorder]{c.Name, recorder_parser.ParseRecorder(c)})
 		}
 		if err := registerGroup(entries, registry.RecorderRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[rewriter.Rewriter]
+		for _, c := range cfg.Rewriters {
+			entries = append(entries, named[rewriter.Rewriter]{c.Name, rewriter_parser.ParseRewriter(c)})
+		}
+		if err := registerGroup(entries, registry.RewriterRegistry()); err != nil {
 			return err
 		}
 	}
