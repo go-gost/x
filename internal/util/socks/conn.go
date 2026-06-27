@@ -3,6 +3,7 @@ package socks
 import (
 	"bytes"
 	"net"
+	"strconv"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
@@ -106,6 +107,20 @@ func UDPConn(c net.PacketConn, bufferSize int) net.PacketConn {
 	}
 }
 
+// domainAddr is a net.Addr that preserves a domain name without resolving it.
+// Returned by udpConn.ReadFrom when a SOCKS5 UDP datagram carries
+// ATYP=DOMAINNAME, so that downstream consumers (e.g. relay-chain WriteTo) can
+// forward the domain verbatim instead of forcing a local DNS lookup that would
+// leak the query through the system resolver and bypass any configured resolver.
+type domainAddr struct {
+	network string
+	host    string
+	port    int
+}
+
+func (a *domainAddr) Network() string { return a.network }
+func (a *domainAddr) String() string  { return net.JoinHostPort(a.host, strconv.Itoa(a.port)) }
+
 // ReadFrom reads an UDP datagram.
 // NOTE: for server side,
 // the returned addr is the target address the client want to relay to.
@@ -128,7 +143,11 @@ func (c *udpConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	}
 	n = copy(b, buf[hlen:n])
 
-	addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	if net.ParseIP(socksAddr.Host) != nil {
+		addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	} else {
+		addr = &domainAddr{network: "udp", host: socksAddr.Host, port: int(socksAddr.Port)}
+	}
 	return
 }
 
