@@ -356,6 +356,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			if re.Pattern.MatchString(req.URL.Path) {
 				if s := re.Pattern.ReplaceAllString(req.URL.Path, re.Replacement); s != "" {
 					req.URL.Path = s
+					ro.HTTP.URI = req.URL.RequestURI()
 					break
 				}
 			}
