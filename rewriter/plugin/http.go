@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/go-gost/core/logger"
@@ -84,6 +85,7 @@ func (p *httpPlugin) Rewrite(ctx context.Context, b []byte, opts ...rewriter.Rew
 		return b, err
 	}
 	defer resp.Body.Close()
+	defer io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return b, nil

@@ -39,6 +39,7 @@ func ParseRewriter(cfg *config.RewriterConfig) rewriter.Rewriter {
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
+				plugin.TimeoutOption(cfg.Plugin.Timeout),
 			)
 		}
 	}

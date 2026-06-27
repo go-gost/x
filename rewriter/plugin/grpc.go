@@ -33,14 +33,15 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) rewriter.Rew
 	if err != nil {
 		log.Error(err)
 	}
+	if conn == nil {
+		return nil
+	}
 
 	p := &grpcPlugin{
 		conn: conn,
 		log:  log,
 	}
-	if conn != nil {
-		p.client = proto.NewRewriterClient(conn)
-	}
+	p.client = proto.NewRewriterClient(conn)
 	return p
 }
 

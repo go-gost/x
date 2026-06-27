@@ -41,7 +41,7 @@ func (h *Sniffer) handleUpgradeResponse(ctx context.Context, rw, cc io.ReadWrite
 	return xnet.Pipe(ctx, rw, cc)
 }
 
-func rewriteRespBody(resp *http.Response, rewrites ...chain.HTTPBodyRewriteSettings) error {
+func rewriteRespBody(ctx context.Context, resp *http.Response, rewrites ...chain.HTTPBodyRewriteSettings) error {
 	if resp == nil || len(rewrites) == 0 || resp.ContentLength <= 0 {
 		return nil
 	}
@@ -65,7 +65,12 @@ func rewriteRespBody(resp *http.Response, rewrites ...chain.HTTPBodyRewriteSetti
 			continue
 		}
 
-		if rewrite.Pattern != nil {
+		if rewrite.Rewriter != nil {
+			body, err = rewrite.Rewriter.Rewrite(ctx, body)
+			if err != nil {
+				return err
+			}
+		} else if rewrite.Pattern != nil {
 			body = rewrite.Pattern.ReplaceAll(body, rewrite.Replacement)
 		}
 	}
@@ -90,7 +95,7 @@ func drainBody(b io.ReadCloser) (body []byte, err error) {
 	return buf.Bytes(), nil
 }
 
-func rewriteReqBody(req *http.Request, rewrites ...chain.HTTPBodyRewriteSettings) error {
+func rewriteReqBody(ctx context.Context, req *http.Request, rewrites ...chain.HTTPBodyRewriteSettings) error {
 	if req == nil || len(rewrites) == 0 || req.Body == nil || req.ContentLength <= 0 {
 		return nil
 	}
@@ -114,7 +119,12 @@ func rewriteReqBody(req *http.Request, rewrites ...chain.HTTPBodyRewriteSettings
 			continue
 		}
 
-		if rewrite.Pattern != nil {
+		if rewrite.Rewriter != nil {
+			body, err = rewrite.Rewriter.Rewrite(ctx, body)
+			if err != nil {
+				return err
+			}
+		} else if rewrite.Pattern != nil {
 			body = rewrite.Pattern.ReplaceAll(body, rewrite.Replacement)
 		}
 	}

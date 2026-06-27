@@ -402,6 +402,8 @@ type HTTPBodyRewriteConfig struct {
 	Type        string
 	Match       string
 	Replacement string
+	// name of the rewriter plugin (via registry)
+	Rewriter string
 }
 
 type NodeFilterConfig struct {

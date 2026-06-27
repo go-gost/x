@@ -164,7 +164,7 @@ func TestRewriteReqBody(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req != nil {
-				_ = rewriteReqBody(tt.req, tt.rewrites...)
+				_ = rewriteReqBody(context.Background(), tt.req, tt.rewrites...)
 				if tt.req.Body != nil {
 					body, _ := io.ReadAll(tt.req.Body)
 					tt.req.Body.Close()
@@ -178,7 +178,7 @@ func TestRewriteReqBody(t *testing.T) {
 					t.Errorf("ContentLength = %d, want %d", tt.req.ContentLength, tt.wantCL)
 				}
 			} else {
-				_ = rewriteReqBody(nil) // should not panic
+				_ = rewriteReqBody(context.Background(), nil) // should not panic
 			}
 		})
 	}
@@ -344,8 +344,8 @@ func TestDrainBody(t *testing.T) {
 
 func TestRewriteRespBody(t *testing.T) {
 	t.Run("nil response", func(t *testing.T) {
-		if err := rewriteRespBody(nil); err != nil {
-			t.Errorf("rewriteRespBody(nil) = %v, want nil", err)
+		if err := rewriteRespBody(context.Background(), nil); err != nil {
+			t.Errorf("rewriteRespBody(context.Background(), nil) = %v, want nil", err)
 		}
 	})
 
@@ -354,7 +354,7 @@ func TestRewriteRespBody(t *testing.T) {
 			ContentLength: 100,
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
-		_ = rewriteRespBody(resp)
+		_ = rewriteRespBody(context.Background(), resp)
 		// Body unchanged
 		got, _ := io.ReadAll(resp.Body)
 		if string(got) != "original" {
@@ -367,7 +367,7 @@ func TestRewriteRespBody(t *testing.T) {
 			ContentLength: 0,
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
-		_ = rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 			Pattern:     regexp.MustCompile("."),
 			Type:        "*",
 			Replacement: []byte("replaced"),
@@ -385,7 +385,7 @@ func TestRewriteRespBody(t *testing.T) {
 			ContentLength: 100,
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
-		_ = rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 			Type:        "*",
 			Replacement: []byte("replaced"),
 		})
@@ -413,7 +413,7 @@ func TestRewriteRespBodyContentTypeFilter(t *testing.T) {
 			ContentLength: 100,
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
-		_ = rewriteRespBody(resp, makeRewrite("text/html", "replaced"))
+		_ = rewriteRespBody(context.Background(), resp, makeRewrite("text/html", "replaced"))
 		got, _ := io.ReadAll(resp.Body)
 		if string(got) != "replaced" {
 			t.Errorf("body = %q, want %q", string(got), "replaced")
@@ -426,7 +426,7 @@ func TestRewriteRespBodyContentTypeFilter(t *testing.T) {
 			ContentLength: 100,
 			Body:          io.NopCloser(strings.NewReader("hello")),
 		}
-		_ = rewriteRespBody(resp, makeRewrite("*", "world"))
+		_ = rewriteRespBody(context.Background(), resp, makeRewrite("*", "world"))
 		got, _ := io.ReadAll(resp.Body)
 		if string(got) != "world" {
 			t.Errorf("body = %q, want %q", string(got), "world")
@@ -439,7 +439,7 @@ func TestRewriteRespBodyContentTypeFilter(t *testing.T) {
 			ContentLength: 100,
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
-		_ = rewriteRespBody(resp, makeRewrite("text/html", "replaced"))
+		_ = rewriteRespBody(context.Background(), resp, makeRewrite("text/html", "replaced"))
 		got, _ := io.ReadAll(resp.Body)
 		if string(got) != "original" {
 			t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
@@ -454,7 +454,7 @@ func TestRewriteRespBodyContentTypeFilter(t *testing.T) {
 		}
 		// Empty type defaults to "text/html", and response has no Content-Type -> "" containing "text/html"? No.
 		// strings.Contains("text/html", "") is always true, so rewrite should happen.
-		_ = rewriteRespBody(resp, makeRewrite("", "replaced"))
+		_ = rewriteRespBody(context.Background(), resp, makeRewrite("", "replaced"))
 		got, _ := io.ReadAll(resp.Body)
 		if string(got) != "replaced" {
 			t.Errorf("body = %q, want %q (should be rewritten)", string(got), "replaced")
@@ -1146,7 +1146,7 @@ func TestRewriteRespBody_PatternReplacement(t *testing.T) {
 		ContentLength: 100,
 		Body:          io.NopCloser(strings.NewReader("<title>Old Title</title>")),
 	}
-	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 		Pattern:     regexp.MustCompile("Old"),
 		Type:        "text/html",
 		Replacement: []byte("New"),
@@ -1169,7 +1169,7 @@ func TestRewriteRespBody_MultipleRewrites(t *testing.T) {
 		ContentLength: 100,
 		Body:          io.NopCloser(strings.NewReader("hello")),
 	}
-	err := rewriteRespBody(resp,
+	err := rewriteRespBody(context.Background(), resp,
 		chain.HTTPBodyRewriteSettings{
 			Pattern:     regexp.MustCompile("h.*o"),
 			Type:        "text/html",
@@ -1196,7 +1196,7 @@ func TestRewriteRespBody_NilPattern(t *testing.T) {
 		ContentLength: 100,
 		Body:          io.NopCloser(strings.NewReader("original")),
 	}
-	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 		Pattern:     nil,
 		Type:        "*",
 		Replacement: []byte("replaced"),
@@ -1215,7 +1215,7 @@ func TestRewriteRespBody_EmptyContentTypeUsesDefault(t *testing.T) {
 		ContentLength: 100,
 		Body:          io.NopCloser(strings.NewReader("original")),
 	}
-	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 		Pattern:     regexp.MustCompile(".*"),
 		Type:        "",
 		Replacement: []byte("rewritten"),
@@ -1235,7 +1235,7 @@ func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
 		ContentLength: -1,
 		Body:          io.NopCloser(strings.NewReader("original")),
 	}
-	err := rewriteRespBody(resp, chain.HTTPBodyRewriteSettings{
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 		Pattern:     regexp.MustCompile(".*"),
 		Type:        "*",
 		Replacement: []byte("replaced"),

@@ -10,8 +10,8 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
-	"github.com/go-gost/core/rewriter"
 	"github.com/go-gost/core/listener"
+	"github.com/go-gost/core/rewriter"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
@@ -356,6 +356,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	var rew rewriter.Rewriter
 	if cfg.Rewriter != "" {
+		if !registry.RewriterRegistry().IsRegistered(cfg.Rewriter) {
+			serviceLogger.Warnf("rewriter %q not found in registry", cfg.Rewriter)
+		}
 		rew = registry.RewriterRegistry().Get(cfg.Rewriter)
 	}
 
