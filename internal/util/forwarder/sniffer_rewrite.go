@@ -65,12 +65,14 @@ func rewriteRespBody(ctx context.Context, resp *http.Response, rewrites ...chain
 			continue
 		}
 
-		if rewrite.Rewriter != nil {
-			body, err = rewrite.Rewriter.Rewrite(ctx, body)
-			if err != nil {
-				return err
-			}
-		} else if rewrite.Pattern != nil {
+			if rewrite.Rewriter != nil {
+				if rewrite.Pattern == nil || rewrite.Pattern.Match(body) {
+					body, err = rewrite.Rewriter.Rewrite(ctx, body)
+					if err != nil {
+						return err
+					}
+				}
+			} else if rewrite.Pattern != nil {
 			body = rewrite.Pattern.ReplaceAll(body, rewrite.Replacement)
 		}
 	}
@@ -119,12 +121,14 @@ func rewriteReqBody(ctx context.Context, req *http.Request, rewrites ...chain.HT
 			continue
 		}
 
-		if rewrite.Rewriter != nil {
-			body, err = rewrite.Rewriter.Rewrite(ctx, body)
-			if err != nil {
-				return err
-			}
-		} else if rewrite.Pattern != nil {
+			if rewrite.Rewriter != nil {
+				if rewrite.Pattern == nil || rewrite.Pattern.Match(body) {
+					body, err = rewrite.Rewriter.Rewrite(ctx, body)
+					if err != nil {
+						return err
+					}
+				}
+			} else if rewrite.Pattern != nil {
 			body = rewrite.Pattern.ReplaceAll(body, rewrite.Replacement)
 		}
 	}

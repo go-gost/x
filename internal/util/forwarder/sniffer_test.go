@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/recorder"
+	"github.com/go-gost/core/rewriter"
 	xlogger "github.com/go-gost/x/logger"
 	xrecorder "github.com/go-gost/x/recorder"
 )
@@ -1250,8 +1251,208 @@ func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
 }
 
 // =============================================================================
-// copyWebsocketFrame Additional Tests
+// Rewriter Plugin Tests
 // =============================================================================
+
+// mockRewriter is a simple rewriter.Rewriter for testing.
+type mockRewriter struct {
+	cb     func(b []byte) []byte
+	called bool
+}
+
+func (m *mockRewriter) Rewrite(_ context.Context, b []byte, _ ...rewriter.RewriteOption) ([]byte, error) {
+	m.called = true
+	if m.cb != nil {
+		return m.cb(b), nil
+	}
+	return b, nil
+}
+
+func TestRewriteRespBody_RewriterNilPattern(t *testing.T) {
+	rw := &mockRewriter{}
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("hello")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Type:     "*",
+		Rewriter: rw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rw.called {
+		t.Error("rewriter was not called")
+	}
+}
+
+func TestRewriteRespBody_RewriterMatchPass(t *testing.T) {
+	rw := &mockRewriter{
+		cb: func(b []byte) []byte {
+			return []byte("rewritten")
+		},
+	}
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("hello world")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Type:     "*",
+		Pattern:  regexp.MustCompile("hello"),
+		Rewriter: rw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rw.called {
+		t.Fatal("rewriter was not called")
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "rewritten" {
+		t.Errorf("body = %q, want %q", string(body), "rewritten")
+	}
+	if resp.ContentLength != int64(len("rewritten")) {
+		t.Errorf("ContentLength = %d, want %d", resp.ContentLength, len("rewritten"))
+	}
+}
+
+func TestRewriteRespBody_RewriterMatchSkip(t *testing.T) {
+	rw := &mockRewriter{}
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: 100,
+		Body:          io.NopCloser(strings.NewReader("hello world")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Type:     "*",
+		Pattern:  regexp.MustCompile("xyz"),
+		Rewriter: rw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rw.called {
+		t.Fatal("rewriter should not have been called: body did not match pattern")
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "hello world" {
+		t.Errorf("body = %q, want %q (unchanged)", string(body), "hello world")
+	}
+}
+
+func TestRewriteRespBody_RewriterContentTypeFilter(t *testing.T) {
+	rw := &mockRewriter{
+		cb: func(b []byte) []byte { return []byte("rewritten") },
+	}
+
+	t.Run("type matches calls rewriter", func(t *testing.T) {
+		rw.called = false
+		resp := &http.Response{
+			Header:        http.Header{"Content-Type": {"application/json"}},
+			ContentLength: 100,
+			Body:          io.NopCloser(strings.NewReader(`{"key":"value"}`)),
+		}
+		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+			Type:     "application/json",
+			Rewriter: rw,
+		})
+		if !rw.called {
+			t.Error("rewriter should have been called")
+		}
+	})
+
+	t.Run("type mismatch skips rewriter", func(t *testing.T) {
+		rw.called = false
+		resp := &http.Response{
+			Header:        http.Header{"Content-Type": {"text/plain"}},
+			ContentLength: 100,
+			Body:          io.NopCloser(strings.NewReader("hello")),
+		}
+		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+			Type:     "application/json",
+			Rewriter: rw,
+		})
+		if rw.called {
+			t.Error("rewriter should not have been called: content type mismatch")
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if string(body) != "hello" {
+			t.Errorf("body = %q, want %q (unchanged)", string(body), "hello")
+		}
+	})
+}
+
+func TestRewriteReqBody_Rewriter(t *testing.T) {
+	rw := &mockRewriter{
+		cb: func(b []byte) []byte {
+			return []byte("rewritten")
+		},
+	}
+
+	t.Run("nil pattern calls rewriter", func(t *testing.T) {
+		rw.called = false
+		req := &http.Request{
+			Body:          io.NopCloser(strings.NewReader("hello")),
+			ContentLength: 5,
+			Header:        http.Header{"Content-Type": {"text/plain"}},
+		}
+		_ = rewriteReqBody(context.Background(), req, chain.HTTPBodyRewriteSettings{
+			Type:     "*",
+			Rewriter: rw,
+		})
+		if !rw.called {
+			t.Fatal("rewriter was not called")
+		}
+		body, _ := io.ReadAll(req.Body)
+		if string(body) != "rewritten" {
+			t.Errorf("body = %q, want %q", string(body), "rewritten")
+		}
+	})
+
+	t.Run("match passes through to rewriter", func(t *testing.T) {
+		rw.called = false
+		req := &http.Request{
+			Body:          io.NopCloser(strings.NewReader("hello world")),
+			ContentLength: 11,
+			Header:        http.Header{"Content-Type": {"text/html"}},
+		}
+		_ = rewriteReqBody(context.Background(), req, chain.HTTPBodyRewriteSettings{
+			Type:     "text/html",
+			Pattern:  regexp.MustCompile("hello"),
+			Rewriter: rw,
+		})
+		if !rw.called {
+			t.Fatal("rewriter was not called")
+		}
+		body, _ := io.ReadAll(req.Body)
+		if string(body) != "rewritten" {
+			t.Errorf("body = %q, want %q", string(body), "rewritten")
+		}
+	})
+
+	t.Run("non-match skips rewriter", func(t *testing.T) {
+		rw.called = false
+		req := &http.Request{
+			Body:          io.NopCloser(strings.NewReader("hello world")),
+			ContentLength: 11,
+			Header:        http.Header{"Content-Type": {"text/html"}},
+		}
+		_ = rewriteReqBody(context.Background(), req, chain.HTTPBodyRewriteSettings{
+			Type:     "text/html",
+			Pattern:  regexp.MustCompile("xyz"),
+			Rewriter: rw,
+		})
+		if rw.called {
+			t.Fatal("rewriter should not have been called: body did not match pattern")
+		}
+		body, _ := io.ReadAll(req.Body)
+		if string(body) != "hello world" {
+			t.Errorf("body = %q, want %q (unchanged)", string(body), "hello world")
+		}
+	})
+}
 
 func TestCopyWebsocketFrame_EmptyPayload(t *testing.T) {
 	h := &Sniffer{
