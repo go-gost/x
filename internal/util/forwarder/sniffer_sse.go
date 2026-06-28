@@ -41,9 +41,20 @@ func scanSSEEvents(data []byte, atEOF bool) (advance int, token []byte, err erro
 }
 
 // rewriteBody wraps an io.ReadCloser and applies the rewrite chain.
-// For text/event-stream responses, each SSE event is rewritten independently
-// (streaming). For all other responses, the entire body is buffered and
-// rewritten at once, exposing the final ContentLength.
+//
+// Three processing modes:
+//
+// 1. Non-streaming (plain): eagerly buffer the entire body, rewrite once,
+//    expose the final ContentLength.
+//
+// 2. Non-streaming (compressed): decompress, rewrite, recompress, expose
+//    the final ContentLength.
+//
+// 3. SSE streaming: split on \n\n via bufio.Scanner, rewrite each event
+//    independently. The first event carries sse_phase:"start", subsequent
+//    events carry sse_phase:"event", and when the scanner hits EOF an
+//    empty-body apply(nil, sse_phase:"end") is emitted so Rewriter plugins
+//    can append a trailing event (e.g. message_stop for LLM API conversion).
 type rewriteBody struct {
 	ctx         context.Context
 	src         io.ReadCloser
@@ -151,26 +162,13 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		rb.src = io.NopCloser(bytes.NewReader(rewritten))
 		rb.contentLength = int64(len(rewritten))
 	} else {
-		// Streaming (SSE): split on \n\n and rewrite each event.
+		// SSE streaming: scan events split on \n\n and rewrite each one
+	// independently on Read. Lifecycle phases (first event = start,
+	// subsequent = event, EOF = end) are assigned in Read().
 		scanner := bufio.NewScanner(src)
 		scanner.Split(scanSSEEvents)
 		scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
 		rb.scanner = scanner
-
-		// Emit stream start phase to Rewriter — this produces
-		// Anthropic message_start + ping events that must be prepended
-		// to the output stream before any real events.
-		if sid != "" {
-			md := map[string]any{
-				"sid":       sid,
-				"sse_phase": "start",
-			}
-			rewritten, err := rb.apply(nil, rewriter.MetadataRewriteOption(md))
-			if err == nil && len(rewritten) > 0 {
-				rb.buf.Write(rewritten)
-				rb.buf.Write([]byte("\n\n"))
-			}
-		}
 	}
 
 	return rb, nil
@@ -194,6 +192,8 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				return 0, io.EOF
 			}
 			// End of upstream SSE events — emit stream end phase.
+			// This empty-body call lets Rewriter plugins append a
+			// trailing event (e.g. message_stop for LLM conversion).
 			b.ended = true
 			sid := xctx.SidFromContext(b.ctx).String()
 			md := map[string]any{
@@ -214,10 +214,18 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 	event := make([]byte, len(b.scanner.Bytes()))
 	copy(event, b.scanner.Bytes())
 
+	// SSE lifecycle phases — assigned to real events so the Rewriter
+	// can distinguish first (start), middle (event), and last event
+	// without synthetic signals. On EOF, apply(nil, end) produces any
+	// trailing event (e.g. message_stop for LLM API conversion).
 	sid := xctx.SidFromContext(b.ctx).String()
+	phase := "event"
+	if b.eventIndex == 0 {
+		phase = "start"
+	}
 	md := map[string]any{
 		"sid":          sid,
-		"sse_phase":    "event",
+		"sse_phase":    phase,
 		"event_index":  b.eventIndex,
 	}
 	b.eventIndex++
