@@ -71,7 +71,7 @@ func TestRewriteReqBody(t *testing.T) {
 			wantCL:   11,
 		},
 		{
-			name: "nil body skipped",
+			name: "nil body",
 			req: &http.Request{
 				Body:          nil,
 				ContentLength: 11,
@@ -80,10 +80,10 @@ func TestRewriteReqBody(t *testing.T) {
 				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
 			},
 			wantBody: "",
-			wantCL:   11,
+			wantCL:   0,
 		},
 		{
-			name: "zero content length skipped",
+			name: "zero content length",
 			req: &http.Request{
 				Body:          io.NopCloser(bytes.NewReader(hello)),
 				ContentLength: 0,
@@ -91,8 +91,8 @@ func TestRewriteReqBody(t *testing.T) {
 			rewrites: []chain.HTTPBodyRewriteSettings{
 				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
 			},
-			wantBody: "hello world",
-			wantCL:   0,
+			wantBody: "hi world",
+			wantCL:   8,
 		},
 		{
 			name: "content-encoding skips rewrite",
@@ -366,17 +366,17 @@ func TestRewriteRespBody(t *testing.T) {
 	t.Run("zero content length", func(t *testing.T) {
 		resp := &http.Response{
 			ContentLength: 0,
+			Header:        http.Header{"Content-Type": {"text/plain"}},
 			Body:          io.NopCloser(strings.NewReader("original")),
 		}
 		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
-			Pattern:     regexp.MustCompile("."),
+			Pattern:     regexp.MustCompile(".*"),
 			Type:        "*",
 			Replacement: []byte("replaced"),
 		})
 		got, _ := io.ReadAll(resp.Body)
-		// Content-Length was 0 (unknown), so no rewrite applied
-		if string(got) != "original" {
-			t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
+		if string(got) != "replaced" {
+			t.Errorf("body = %q, want %q", string(got), "replaced")
 		}
 	})
 
@@ -1237,16 +1237,16 @@ func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
 		Body:          io.NopCloser(strings.NewReader("original")),
 	}
 	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
-		Pattern:     regexp.MustCompile(".*"),
+		Pattern:     regexp.MustCompile("original"),
 		Type:        "*",
-		Replacement: []byte("replaced"),
+		Replacement: []byte("rewritten"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, _ := io.ReadAll(resp.Body)
 	if string(got) != "original" {
-		t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
+		t.Errorf("body = %q, want %q (unchanged, chunked body skipped)", string(got), "original")
 	}
 }
 
@@ -1593,4 +1593,242 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from invalid h2 preface, got nil")
 	}
+}
+
+// =============================================================================
+// SSE (Server-Sent Events) Tests
+// =============================================================================
+
+func TestIsStreamingResponse(t *testing.T) {
+	tests := []struct {
+		name   string
+		header http.Header
+		want   bool
+	}{
+		{"nil response", nil, false},
+		{"no content-type", http.Header{}, false},
+		{"event-stream", http.Header{"Content-Type": {"text/event-stream"}}, true},
+		{"event-stream with charset", http.Header{"Content-Type": {"text/event-stream; charset=utf-8"}}, true},
+		{"text/html", http.Header{"Content-Type": {"text/html"}}, false},
+		{"application/json", http.Header{"Content-Type": {"application/json"}}, false},
+		{"empty content-type", http.Header{"Content-Type": {""}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{Header: tt.header}
+			if got := isStreamingResponse(resp); got != tt.want {
+				t.Errorf("isStreamingResponse() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRewriteRespBody_SSE_ContentType(t *testing.T) {
+	// rewriteRespBody now rewrites SSE per-event via the universal wrapper.
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/event-stream"}},
+		ContentLength: -1,
+		Body:          io.NopCloser(strings.NewReader("data: hello\n\n")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Pattern:     regexp.MustCompile("data: hello"),
+		Type:        "*",
+		Replacement: []byte("data: world"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "data: world\n\n" {
+		t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
+	}
+}
+
+func TestNewRewriteBody(t *testing.T) {
+	makeRewrite := func(rewriteType, match, replace string) chain.HTTPBodyRewriteSettings {
+		return chain.HTTPBodyRewriteSettings{
+			Pattern:     regexp.MustCompile(match),
+			Type:        rewriteType,
+			Replacement: []byte(replace),
+		}
+	}
+
+	t.Run("regex replacement streaming", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "world"),
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "data: world\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
+		}
+	})
+
+	t.Run("multiple events streaming", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: a\n\ndata: b\n\ndata: c\n\n"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "data: [ab]$", "data: x"),
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		expected := "data: x\n\ndata: x\n\ndata: c\n\n"
+		if string(got) != expected {
+			t.Errorf("body = %q, want %q", string(got), expected)
+		}
+	})
+
+	t.Run("multiple rewrite rules streaming", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "world"),
+			makeRewrite("*", "world", "there"),
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "data: there\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: there\n\n")
+		}
+	})
+
+	t.Run("content type filter streaming", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
+		// text/html type rule — won't match text/event-stream.
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			{Type: "text/html", Pattern: regexp.MustCompile("hello"), Replacement: []byte("world")},
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "data: hello\n\n" {
+			t.Errorf("body = %q, want %q (unchanged)", string(got), "data: hello\n\n")
+		}
+	})
+
+	t.Run("no rewrites returns nil", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
+		body, err := newRewriteBody(context.Background(), src, nil, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body != nil {
+			t.Error("expected nil for no rewrites")
+		}
+	})
+
+	t.Run("content encoding returns nil", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "world"),
+		}, "text/event-stream", "gzip", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body != nil {
+			t.Error("expected nil for Content-Encoding")
+		}
+	})
+
+	t.Run("plugin rewriter streaming", func(t *testing.T) {
+		rw := &mockRewriter{
+			cb: func(b []byte) []byte { return []byte("data: rewritten") },
+		}
+		src := io.NopCloser(strings.NewReader("data: original\n\n"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			{Type: "*", Rewriter: rw},
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "data: rewritten\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: rewritten\n\n")
+		}
+	})
+
+	t.Run("incomplete final event flushed", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("data: hello"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "world"),
+		}, "text/event-stream", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "data: world\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
+		}
+	})
+
+	t.Run("non-streaming body rewritten", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("hello world"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "hi"),
+		}, "text/plain", "", 11)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "hi world" {
+			t.Errorf("body = %q, want %q", string(got), "hi world")
+		}
+		if body.contentLength != int64(len("hi world")) {
+			t.Errorf("contentLength = %d, want %d", body.contentLength, len("hi world"))
+		}
+	})
+
+	t.Run("chunked non-streaming returns nil", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader("hello world"))
+		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("*", "hello", "hi"),
+		}, "text/plain", "", -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body != nil {
+			t.Error("expected nil for chunked non-streaming body")
+		}
+	})
 }
