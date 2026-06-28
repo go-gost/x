@@ -165,7 +165,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 				"sid":       sid,
 				"sse_phase": "start",
 			}
-			rewritten, err := rb.apply([]byte(`{"sse_phase":"start"}`), rewriter.MetadataRewriteOption(md))
+			rewritten, err := rb.apply(nil, rewriter.MetadataRewriteOption(md))
 			if err == nil && len(rewritten) > 0 {
 				rb.buf.Write(rewritten)
 				rb.buf.Write([]byte("\n\n"))
@@ -200,7 +200,7 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				"sid":       sid,
 				"sse_phase": "end",
 			}
-			rewritten, endErr := b.apply([]byte(`{"sse_phase":"end"}`), rewriter.MetadataRewriteOption(md))
+			rewritten, endErr := b.apply(nil, rewriter.MetadataRewriteOption(md))
 			if endErr != nil {
 				return 0, endErr
 			}
@@ -326,7 +326,7 @@ func compressBody(data []byte, encoding string) ([]byte, error) {
 // apply runs the rewrite chain on body bytes.
 // Returns the (possibly unchanged) body and any error from a plugin Rewriter.
 func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte, error) {
-	if len(body) == 0 {
+	if len(body) == 0 && len(opts) == 0 {
 		return body, nil
 	}
 	for _, rw := range b.rewrites {

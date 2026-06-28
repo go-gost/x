@@ -1671,8 +1671,8 @@ func TestRewriteRespBody_SSE_ContentType(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := io.ReadAll(resp.Body)
-	if string(got) != "data: world\n\n{\"sse_phase\":\"end\"}" {
-		t.Errorf("body = %q, want %q", string(got), "data: world\n\n{\"sse_phase\":\"end\"}")
+	if string(got) != "data: world\n\n" {
+		t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
 	}
 }
 
@@ -1699,8 +1699,8 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		if string(got) != "data: world\n\n{\"sse_phase\":\"end\"}" {
-			t.Errorf("body = %q, want %q", string(got), "data: world\n\n{\"sse_phase\":\"end\"}")
+		if string(got) != "data: world\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
 		}
 	})
 
@@ -1718,7 +1718,7 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		expected := "data: x\n\ndata: x\n\ndata: c\n\n{\"sse_phase\":\"end\"}"
+		expected := "data: x\n\ndata: x\n\ndata: c\n\n"
 		if string(got) != expected {
 			t.Errorf("body = %q, want %q", string(got), expected)
 		}
@@ -1739,8 +1739,8 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		if string(got) != "data: there\n\n{\"sse_phase\":\"end\"}" {
-			t.Errorf("body = %q, want %q", string(got), "data: there\n\n{\"sse_phase\":\"end\"}")
+		if string(got) != "data: there\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: there\n\n")
 		}
 	})
 
@@ -1759,8 +1759,8 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		if string(got) != "data: hello\n\n{\"sse_phase\":\"end\"}" {
-			t.Errorf("body = %q, want %q (unchanged)", string(got), "data: hello\n\n{\"sse_phase\":\"end\"}")
+		if string(got) != "data: hello\n\n" {
+			t.Errorf("body = %q, want %q (unchanged)", string(got), "data: hello\n\n")
 		}
 	})
 
@@ -1824,8 +1824,8 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		if string(got) != "data: world\n\n{\"sse_phase\":\"end\"}" {
-			t.Errorf("body = %q, want %q", string(got), "data: world\n\n{\"sse_phase\":\"end\"}")
+		if string(got) != "data: world\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: world\n\n")
 		}
 	})
 
