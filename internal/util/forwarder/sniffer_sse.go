@@ -114,7 +114,11 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		for _, rw := range rewrites {
 			rt := rw.Type
 			if rt == "" {
-				rt = "text/html"
+				if rw.Rewriter != nil {
+					rt = "*"
+				} else {
+					rt = "text/html"
+				}
 			}
 			if rt == "*" || strings.Contains(rt, ct) {
 				hasTypeMatch = true
@@ -342,7 +346,11 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 	for _, rw := range b.rewrites {
 		rewriteType := rw.Type
 		if rewriteType == "" {
-			rewriteType = "text/html"
+			if rw.Rewriter != nil {
+				rewriteType = "*"
+			} else {
+				rewriteType = "text/html"
+			}
 		}
 		if rewriteType != "*" && !strings.Contains(rewriteType, b.contentType) {
 			continue
