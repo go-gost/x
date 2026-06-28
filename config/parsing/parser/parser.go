@@ -328,6 +328,7 @@ func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 		Ingresses:  append(cfg1.Ingresses, cfg2.Ingresses...),
 		SDs:        append(cfg1.SDs, cfg2.SDs...),
 		Recorders:  append(cfg1.Recorders, cfg2.Recorders...),
+		Rewriters:  append(cfg1.Rewriters, cfg2.Rewriters...),
 		Limiters:   append(cfg1.Limiters, cfg2.Limiters...),
 		Quotas:     append(cfg1.Quotas, cfg2.Quotas...),
 		CLimiters:  append(cfg1.CLimiters, cfg2.CLimiters...),

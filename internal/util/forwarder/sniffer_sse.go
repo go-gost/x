@@ -11,9 +11,10 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/rewriter"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/klauspost/compress/zstd"
 )
-
 
 // scanSSEEvents is a bufio.SplitFunc that splits SSE events on \n\n (or \r\n\r\n).
 // The delimiter is consumed but not included in the token.
@@ -53,6 +54,10 @@ type rewriteBody struct {
 	scanner       *bufio.Scanner
 	buf           bytes.Buffer
 	contentLength int64 // >= 0 for non-streaming bodies; -1 for streaming
+
+	// SSE stream lifecycle state.
+	eventIndex int  // incremented per SSE event for the "event" phase
+	ended      bool // true after the stream-end phase has been emitted
 }
 
 // newRewriteBody returns an io.ReadCloser that rewrites data read from src
@@ -83,6 +88,9 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		streaming:     streaming,
 		contentLength: -1,
 	}
+
+	sid := xctx.SidFromContext(ctx).String()
+	mdOpts := sidMetadata(sid)
 
 	if contentEncoding != "" {
 		if streaming {
@@ -116,7 +124,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		if err != nil {
 			return nil, err
 		}
-		rewritten, err := rb.apply(decoded)
+		rewritten, err := rb.apply(decoded, mdOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +144,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		if err != nil {
 			return nil, err
 		}
-		rewritten, err := rb.apply(body)
+		rewritten, err := rb.apply(body, mdOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +156,21 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		scanner.Split(scanSSEEvents)
 		scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
 		rb.scanner = scanner
+
+		// Emit stream start phase to Rewriter — this produces
+		// Anthropic message_start + ping events that must be prepended
+		// to the output stream before any real events.
+		if sid != "" {
+			md := map[string]any{
+				"sid":       sid,
+				"sse_phase": "start",
+			}
+			rewritten, err := rb.apply([]byte(`{"sse_phase":"start"}`), rewriter.MetadataRewriteOption(md))
+			if err == nil && len(rewritten) > 0 {
+				rb.buf.Write(rewritten)
+				rb.buf.Write([]byte("\n\n"))
+			}
+		}
 	}
 
 	return rb, nil
@@ -167,7 +190,22 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 	if !b.scanner.Scan() {
 		err = b.scanner.Err()
 		if err == nil {
-			err = io.EOF
+			if b.ended {
+				return 0, io.EOF
+			}
+			// End of upstream SSE events — emit stream end phase.
+			b.ended = true
+			sid := xctx.SidFromContext(b.ctx).String()
+			md := map[string]any{
+				"sid":       sid,
+				"sse_phase": "end",
+			}
+			rewritten, endErr := b.apply([]byte(`{"sse_phase":"end"}`), rewriter.MetadataRewriteOption(md))
+			if endErr != nil {
+				return 0, endErr
+			}
+			b.buf.Write(rewritten)
+			return b.buf.Read(p)
 		}
 		return 0, err
 	}
@@ -176,18 +214,38 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 	event := make([]byte, len(b.scanner.Bytes()))
 	copy(event, b.scanner.Bytes())
 
-	rewritten, err := b.apply(event)
+	sid := xctx.SidFromContext(b.ctx).String()
+	md := map[string]any{
+		"sid":          sid,
+		"sse_phase":    "event",
+		"event_index":  b.eventIndex,
+	}
+	b.eventIndex++
+
+	rewritten, err := b.apply(event, rewriter.MetadataRewriteOption(md))
 	if err != nil {
 		return 0, err
 	}
-	b.buf.Write(rewritten)
-	b.buf.Write([]byte("\n\n"))
-
-	return b.buf.Read(p)
+	if len(rewritten) > 0 {
+		b.buf.Write(rewritten)
+		b.buf.Write([]byte("\n\n"))
+	}
+	return b.Read(p)
 }
 
 func (b *rewriteBody) Close() error {
 	return b.src.Close()
+}
+
+// sidMetadata returns rewriter options carrying the session ID when available.
+// This lets plugin Rewriters correlate rewrite operations with sessions.
+func sidMetadata(sid string) []rewriter.RewriteOption {
+	if sid == "" {
+		return nil
+	}
+	return []rewriter.RewriteOption{
+		rewriter.MetadataRewriteOption(map[string]any{"sid": sid}),
+	}
 }
 
 func decompressBody(data []byte, encoding string) ([]byte, error) {
@@ -267,7 +325,7 @@ func compressBody(data []byte, encoding string) ([]byte, error) {
 
 // apply runs the rewrite chain on body bytes.
 // Returns the (possibly unchanged) body and any error from a plugin Rewriter.
-func (b *rewriteBody) apply(body []byte) ([]byte, error) {
+func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte, error) {
 	if len(body) == 0 {
 		return body, nil
 	}
@@ -282,7 +340,7 @@ func (b *rewriteBody) apply(body []byte) ([]byte, error) {
 
 		if rw.Rewriter != nil {
 			if rw.Pattern == nil || rw.Pattern.Match(body) {
-				rewritten, err := rw.Rewriter.Rewrite(b.ctx, body)
+				rewritten, err := rw.Rewriter.Rewrite(b.ctx, body, opts...)
 				if err != nil {
 					return body, err
 				}
