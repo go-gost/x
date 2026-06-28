@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
+	github.com/andybalholm/brotli v1.0.6
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.10.1
@@ -20,6 +21,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/klauspost/compress v1.17.4
 	github.com/miekg/dns v1.1.61
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -59,9 +61,7 @@ require (
 )
 
 require (
-	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect

@@ -3,6 +3,8 @@ package forwarder
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"io"
 	"net"
@@ -13,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/rewriter"
+	"github.com/klauspost/compress/zstd"
 	xlogger "github.com/go-gost/x/logger"
 	xrecorder "github.com/go-gost/x/recorder"
 )
@@ -43,6 +47,32 @@ func (m *mockBypass) Contains(_ context.Context, _, _ string, _ ...bypass.Option
 }
 
 func (m *mockBypass) IsWhitelist() bool { return m.whitelist }
+
+// compressTestData compresses data with the given encoding for test purposes.
+func compressTestData(data []byte, encoding string) []byte {
+	var buf bytes.Buffer
+	switch encoding {
+	case "gzip":
+		w := gzip.NewWriter(&buf)
+		w.Write(data)
+		w.Close()
+	case "deflate":
+		w := zlib.NewWriter(&buf)
+		w.Write(data)
+		w.Close()
+	case "br":
+		w := brotli.NewWriter(&buf)
+		w.Write(data)
+		w.Close()
+	case "zstd":
+		w, _ := zstd.NewWriter(&buf)
+		w.Write(data)
+		w.Close()
+	default:
+		return data
+	}
+	return buf.Bytes()
+}
 
 // =============================================================================
 // Pure Function Tests
@@ -93,19 +123,6 @@ func TestRewriteReqBody(t *testing.T) {
 			},
 			wantBody: "hi world",
 			wantCL:   8,
-		},
-		{
-			name: "content-encoding skips rewrite",
-			req: &http.Request{
-				Body:          io.NopCloser(bytes.NewReader(hello)),
-				ContentLength: int64(len(hello)),
-				Header:        http.Header{"Content-Encoding": {"gzip"}},
-			},
-			rewrites: []chain.HTTPBodyRewriteSettings{
-				{Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
-			},
-			wantBody: "hello world",
-			wantCL:   11,
 		},
 		{
 			name: "content type does not match default text/html",
@@ -184,6 +201,35 @@ func TestRewriteReqBody(t *testing.T) {
 		})
 	}
 }
+func TestRewriteReqBody_Gzip(t *testing.T) {
+	t.Run("gzip content-encoding rewrite", func(t *testing.T) {
+		hello := []byte("hello world")
+		gzipHello := compressTestData(hello, "gzip")
+		req := &http.Request{
+			Body:          io.NopCloser(bytes.NewReader(gzipHello)),
+			ContentLength: int64(len(gzipHello)),
+			Header:        http.Header{"Content-Encoding": {"gzip"}, "Content-Type": {"text/html"}},
+		}
+		_ = rewriteReqBody(context.Background(), req, []chain.HTTPBodyRewriteSettings{
+			{Type: "*", Pattern: regexp.MustCompile("hello"), Replacement: []byte("hi")},
+		}...)
+		body, _ := io.ReadAll(req.Body)
+		req.Body.Close()
+		r, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("expected valid gzip output: %v", err)
+		}
+		decoded, _ := io.ReadAll(r)
+		r.Close()
+		if string(decoded) != "hi world" {
+			t.Errorf("decompressed body = %q, want %q", string(decoded), "hi world")
+		}
+		if req.ContentLength != int64(len(body)) {
+			t.Errorf("ContentLength = %d, want %d", req.ContentLength, len(body))
+		}
+	})
+}
+
 
 func TestClampBodySize(t *testing.T) {
 	tests := []struct {
@@ -381,19 +427,28 @@ func TestRewriteRespBody(t *testing.T) {
 	})
 
 	t.Run("with content encoding", func(t *testing.T) {
+		original := []byte("original")
+		compressed := compressTestData(original, "gzip")
 		resp := &http.Response{
 			Header:        http.Header{"Content-Encoding": {"gzip"}},
-			ContentLength: 100,
-			Body:          io.NopCloser(strings.NewReader("original")),
+			ContentLength: int64(len(compressed)),
+			Body:          io.NopCloser(bytes.NewReader(compressed)),
 		}
 		_ = rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
 			Type:        "*",
+			Pattern:     regexp.MustCompile(".*"),
 			Replacement: []byte("replaced"),
 		})
 		got, _ := io.ReadAll(resp.Body)
-		// Content-Encoding present, rewrite skipped
-		if string(got) != "original" {
-			t.Errorf("body = %q, want %q (unchanged)", string(got), "original")
+		// Output is gzip-compressed, decompress to verify.
+		r, err := gzip.NewReader(bytes.NewReader(got))
+		if err != nil {
+			t.Fatalf("expected valid gzip output: %v", err)
+		}
+		decoded, _ := io.ReadAll(r)
+		r.Close()
+		if string(decoded) != "replaced" {
+			t.Errorf("decompressed body = %q, want %q", string(decoded), "replaced")
 		}
 	})
 }
@@ -1599,29 +1654,6 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 // SSE (Server-Sent Events) Tests
 // =============================================================================
 
-func TestIsStreamingResponse(t *testing.T) {
-	tests := []struct {
-		name   string
-		header http.Header
-		want   bool
-	}{
-		{"nil response", nil, false},
-		{"no content-type", http.Header{}, false},
-		{"event-stream", http.Header{"Content-Type": {"text/event-stream"}}, true},
-		{"event-stream with charset", http.Header{"Content-Type": {"text/event-stream; charset=utf-8"}}, true},
-		{"text/html", http.Header{"Content-Type": {"text/html"}}, false},
-		{"application/json", http.Header{"Content-Type": {"application/json"}}, false},
-		{"empty content-type", http.Header{"Content-Type": {""}}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp := &http.Response{Header: tt.header}
-			if got := isStreamingResponse(resp); got != tt.want {
-				t.Errorf("isStreamingResponse() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func TestRewriteRespBody_SSE_ContentType(t *testing.T) {
 	// rewriteRespBody now rewrites SSE per-event via the universal wrapper.
@@ -1831,4 +1863,49 @@ func TestNewRewriteBody(t *testing.T) {
 			t.Error("expected nil for chunked non-streaming body")
 		}
 	})
+}
+
+func TestRewriteRespBody_CompressedEncodings(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding string
+	}{
+		{"gzip", "gzip"},
+		{"deflate", "deflate"},
+		{"br", "br"},
+		{"zstd", "zstd"},
+	}
+
+	input := []byte("hello world")
+	rewrites := []chain.HTTPBodyRewriteSettings{
+		{
+			Type:        "*",
+			Pattern:     regexp.MustCompile("hello"),
+			Replacement: []byte("hi"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compressed := compressTestData(input, tt.encoding)
+			resp := &http.Response{
+				Header:        http.Header{"Content-Encoding": {tt.encoding}, "Content-Type": {"text/plain"}},
+				ContentLength: int64(len(compressed)),
+				Body:          io.NopCloser(bytes.NewReader(compressed)),
+			}
+			if err := rewriteRespBody(context.Background(), resp, rewrites...); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			// Output is recompressed; decompress to verify rewrite.
+			decoded, err := decompressBody(got, tt.encoding)
+			if err != nil {
+				t.Fatalf("decompress: %v", err)
+			}
+			if string(decoded) != "hi world" {
+				t.Errorf("decompressed body = %q, want %q", string(decoded), "hi world")
+			}
+		})
+	}
 }
