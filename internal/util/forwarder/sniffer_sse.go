@@ -69,6 +69,8 @@ type rewriteBody struct {
 	// SSE stream lifecycle state.
 	eventIndex int  // incremented per SSE event for the "event" phase
 	ended      bool // true after the stream-end phase has been emitted
+
+	sid string // session ID, cached from context at construction time
 }
 
 // newRewriteBody returns an io.ReadCloser that rewrites data read from src
@@ -99,9 +101,8 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		streaming:     streaming,
 		contentLength: -1,
 	}
-
-	sid := xctx.SidFromContext(ctx).String()
-	mdOpts := sidMetadata(sid)
+	rb.sid = xctx.SidFromContext(ctx).String()
+	mdOpts := sidMetadata(rb.sid)
 
 	if contentEncoding != "" {
 		if streaming {
@@ -175,70 +176,71 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 }
 
 func (b *rewriteBody) Read(p []byte) (n int, err error) {
-	if !b.streaming {
-		return b.src.Read(p)
-	}
+	for {
+		if !b.streaming {
+			return b.src.Read(p)
+		}
 
-	// SSE streaming: flush buffered rewritten event first.
-	if b.buf.Len() > 0 {
-		return b.buf.Read(p)
-	}
-
-	// Scan the next SSE event.
-	if !b.scanner.Scan() {
-		err = b.scanner.Err()
-		if err == nil {
-			if b.ended {
-				return 0, io.EOF
-			}
-			// End of upstream SSE events — emit stream end phase.
-			// This empty-body call lets Rewriter plugins append a
-			// trailing event (e.g. message_stop for LLM conversion).
-			b.ended = true
-			sid := xctx.SidFromContext(b.ctx).String()
-			md := map[string]any{
-				"sid":       sid,
-				"sse_phase": "end",
-			}
-			rewritten, endErr := b.apply(nil, rewriter.MetadataRewriteOption(md))
-			if endErr != nil {
-				return 0, endErr
-			}
-			b.buf.Write(rewritten)
+		// SSE streaming: flush buffered rewritten event first.
+		if b.buf.Len() > 0 {
 			return b.buf.Read(p)
 		}
-		return 0, err
-	}
 
-	// Copy token (scanner.Bytes() is only valid until next Scan()).
-	event := make([]byte, len(b.scanner.Bytes()))
-	copy(event, b.scanner.Bytes())
+		// Scan the next SSE event.
+		if !b.scanner.Scan() {
+			err = b.scanner.Err()
+			if err == nil {
+				if b.ended {
+					return 0, io.EOF
+				}
+				// End of upstream SSE events — emit stream end phase.
+				// This empty-body call lets Rewriter plugins append a
+				// trailing event (e.g. message_stop for LLM conversion).
+				b.ended = true
+				md := map[string]any{
+					"sid":         b.sid,
+					"sse_phase":   "end",
+					"event_index": b.eventIndex,
+				}
+				rewritten, endErr := b.apply(nil, rewriter.MetadataRewriteOption(md))
+				if endErr != nil {
+					return 0, endErr
+				}
+				b.buf.Write(rewritten)
+				return b.buf.Read(p)
+			}
+			return 0, err
+		}
 
-	// SSE lifecycle phases — assigned to real events so the Rewriter
-	// can distinguish first (start), middle (event), and last event
-	// without synthetic signals. On EOF, apply(nil, end) produces any
-	// trailing event (e.g. message_stop for LLM API conversion).
-	sid := xctx.SidFromContext(b.ctx).String()
-	phase := "event"
-	if b.eventIndex == 0 {
-		phase = "start"
-	}
-	md := map[string]any{
-		"sid":          sid,
-		"sse_phase":    phase,
-		"event_index":  b.eventIndex,
-	}
-	b.eventIndex++
+		// Copy token (scanner.Bytes() is only valid until next Scan()).
+		event := make([]byte, len(b.scanner.Bytes()))
+		copy(event, b.scanner.Bytes())
 
-	rewritten, err := b.apply(event, rewriter.MetadataRewriteOption(md))
-	if err != nil {
-		return 0, err
+		// SSE lifecycle phases — assigned to real events so the Rewriter
+		// can distinguish first (start), middle (event), and last event
+		// without synthetic signals. On EOF, apply(nil, end) produces any
+		// trailing event (e.g. message_stop for LLM API conversion).
+		phase := "event"
+		if b.eventIndex == 0 {
+			phase = "start"
+		}
+		md := map[string]any{
+			"sid":          b.sid,
+			"sse_phase":    phase,
+			"event_index":  b.eventIndex,
+		}
+		b.eventIndex++
+
+		rewritten, err := b.apply(event, rewriter.MetadataRewriteOption(md))
+		if err != nil {
+			return 0, err
+		}
+		if len(rewritten) > 0 {
+			b.buf.Write(rewritten)
+			b.buf.Write([]byte("\n\n"))
+		}
+		// Loop to flush the buffer or scan the next event.
 	}
-	if len(rewritten) > 0 {
-		b.buf.Write(rewritten)
-		b.buf.Write([]byte("\n\n"))
-	}
-	return b.Read(p)
 }
 
 func (b *rewriteBody) Close() error {
@@ -347,7 +349,7 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 		}
 
 		if rw.Rewriter != nil {
-			if rw.Pattern == nil || rw.Pattern.Match(body) {
+			if body == nil || rw.Pattern == nil || rw.Pattern.Match(body) {
 				rewritten, err := rw.Rewriter.Rewrite(b.ctx, body, opts...)
 				if err != nil {
 					return body, err
