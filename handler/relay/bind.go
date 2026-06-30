@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/limiter"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
+	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/relay"
 	ctxvalue "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
@@ -261,8 +264,25 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	})
 	ro.SrcAddr = pc.LocalAddr().String()
 
+	// lc.ListenPacket returns a raw *net.UDPConn which can't resolve
+	// domainAddr returned by UDPTunServerConn.ReadFrom for domain targets.
+	// Wrap it so domains resolve through hostMapper → configured resolver
+	// → system DNS instead of failing WriteTo with an unknown addr type.
+	if _, ok := pc.(*net.UDPConn); ok {
+		var r resolver.Resolver
+		var hm hosts.HostMapper
+		if h.options.Router != nil {
+			r = h.options.Router.Options().Resolver
+			hm = h.options.Router.Options().HostMapper
+		}
+		pc = &resolvePacketConn{
+			PacketConn: pc,
+			resolver:   r,
+			hostMapper: hm,
+		}
+	}
+
 	pc = metrics.WrapPacketConn(serviceName, pc)
-	// pc = admission.WrapPacketConn(l.options.Admission, pc)
 	// pc = limiter.WrapPacketConn(l.options.TrafficLimiter, pc)
 
 	defer pc.Close()
@@ -293,4 +313,50 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 		"duration": time.Since(t),
 	}).Debugf("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
 	return nil
+}
+
+// resolvePacketConn wraps a net.PacketConn and resolves domain addresses
+// in WriteTo calls through hostMapper → configured resolver → system DNS.
+//
+// After udpTunConn.ReadFrom returns a domainAddr for ATYP=DOMAINNAME
+// datagrams, a raw *net.UDPConn cannot consume it (WriteTo needs *net.UDPAddr).
+// This wrapper resolves the domain before forwarding.
+type resolvePacketConn struct {
+	net.PacketConn
+	resolver   resolver.Resolver
+	hostMapper hosts.HostMapper
+}
+
+func (c *resolvePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	host, portStr, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return c.PacketConn.WriteTo(b, addr)
+	}
+	if net.ParseIP(host) != nil {
+		return c.PacketConn.WriteTo(b, addr)
+	}
+
+	var ips []net.IP
+	if c.hostMapper != nil {
+		ips, _ = c.hostMapper.Lookup(context.Background(), "ip", host)
+	}
+	if len(ips) == 0 && c.resolver != nil {
+		ips, _ = c.resolver.Resolve(context.Background(), "ip", host)
+	}
+	if len(ips) == 0 {
+		ips, _ = net.LookupIP(host)
+	}
+	if len(ips) == 0 {
+		return 0, fmt.Errorf("relay udp: cannot resolve %s", host)
+	}
+
+	ip := ips[0]
+	for _, candidate := range ips {
+		if candidate.To4() != nil {
+			ip = candidate
+			break
+		}
+	}
+	port, _ := strconv.Atoi(portStr)
+	return c.PacketConn.WriteTo(b, &net.UDPAddr{IP: ip, Port: port})
 }

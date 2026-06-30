@@ -109,6 +109,17 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	}
 	defer pc.Close()
 
+	// If the upstream is a raw *net.UDPConn (direct dial or BIND mode),
+	// wrap it so domainAddr from socks.UDPTunServerConn.ReadFrom are
+	// resolved through the configured resolver instead of failing WriteTo.
+	if _, ok := pc.(*net.UDPConn); ok {
+		pc = &resolvePacketConn{
+			PacketConn:  pc,
+			resolver:    h.options.Router.Options().Resolver,
+			hostMapper:  h.options.Router.Options().HostMapper,
+		}
+	}
+
 	{
 		pStats := xstats.Stats{}
 		pc = stats_wrapper.WrapPacketConn(pc, &pStats)

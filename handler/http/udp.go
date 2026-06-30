@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"time"
 
+	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	stats "github.com/go-gost/core/observer/stats"
+	"github.com/go-gost/core/resolver"
 	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/udp"
 	"github.com/go-gost/x/internal/util/socks"
@@ -93,6 +97,16 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, clientID str
 		return err
 	}
 
+	// Wrap raw *net.UDPConn so domainAddr from socks.UDPTunServerConn.ReadFrom
+	// are resolved through the configured resolver instead of failing WriteTo.
+	if _, ok := pc.(*net.UDPConn); ok {
+		pc = &resolvePacketConn{
+			PacketConn: pc,
+			resolver:   h.options.Router.Options().Resolver,
+			hostMapper: h.options.Router.Options().HostMapper,
+		}
+	}
+
 	// Wrap the HTTP connection as a SOCKS5 UDP tunnel server conn so
 	// that the relay can read/write SOCKS5-encapsulated UDP datagrams.
 	relay := udp.NewRelay(socks.UDPTunServerConn(conn), pc).
@@ -109,4 +123,46 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, clientID str
 	}).Infof("%s >-< %s", conn.RemoteAddr(), pc.LocalAddr())
 
 	return nil
+}
+
+// resolvePacketConn wraps a net.PacketConn and resolves domain addresses
+// in WriteTo calls through hostMapper → configured resolver → system DNS.
+type resolvePacketConn struct {
+	net.PacketConn
+	resolver   resolver.Resolver
+	hostMapper hosts.HostMapper
+}
+
+func (c *resolvePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	host, portStr, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return c.PacketConn.WriteTo(b, addr)
+	}
+	if net.ParseIP(host) != nil {
+		return c.PacketConn.WriteTo(b, addr)
+	}
+
+	var ips []net.IP
+	if c.hostMapper != nil {
+		ips, _ = c.hostMapper.Lookup(context.Background(), "ip", host)
+	}
+	if len(ips) == 0 && c.resolver != nil {
+		ips, _ = c.resolver.Resolve(context.Background(), "ip", host)
+	}
+	if len(ips) == 0 {
+		ips, _ = net.LookupIP(host)
+	}
+	if len(ips) == 0 {
+		return 0, fmt.Errorf("http udp: cannot resolve %s", host)
+	}
+
+	ip := ips[0]
+	for _, candidate := range ips {
+		if candidate.To4() != nil {
+			ip = candidate
+			break
+		}
+	}
+	port, _ := strconv.Atoi(portStr)
+	return c.PacketConn.WriteTo(b, &net.UDPAddr{IP: ip, Port: port})
 }
