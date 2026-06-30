@@ -73,6 +73,21 @@ type rewriteBody struct {
 	sid string // session ID, cached from context at construction time
 }
 
+// multiReadCloser combines an io.Reader with an io.Closer, used when
+// replaying buffered prefix data followed by the original source.
+type multiReadCloser struct {
+	r io.Reader
+	c io.Closer
+}
+
+func (m *multiReadCloser) Read(p []byte) (int, error) { return m.r.Read(p) }
+func (m *multiReadCloser) Close() error               { return m.c.Close() }
+
+// defaultMaxChunkSize is the default MaxChunkSize for chunked non-streaming
+// bodies when no rewrite rule explicitly sets one. 1MB covers typical LLM
+// responses without risking OOM on unbounded bodies.
+const defaultMaxChunkSize = 1 << 20 // 1MB
+
 // newRewriteBody returns an io.ReadCloser that rewrites data read from src
 // through the given rewrite chain. Returns nil, nil when no rewrites are
 // configured, or for chunked/unknown-length non-streaming bodies.
@@ -88,9 +103,89 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 	ct = strings.TrimSpace(ct)
 	streaming := strings.HasPrefix(ct, "text/event-stream")
 
-	// Don't eagerly buffer chunked/unknown-length non-streaming bodies.
+	// Bounded buffering for chunked/unknown-length non-streaming bodies.
 	if !streaming && contentLength < 0 {
-		return nil, nil
+		var maxChunkSize int
+		for _, rw := range rewrites {
+			if rw.MaxChunkSize > maxChunkSize {
+				maxChunkSize = rw.MaxChunkSize
+			}
+		}
+		if maxChunkSize == 0 {
+			maxChunkSize = defaultMaxChunkSize
+		}
+		limited := io.LimitReader(src, int64(maxChunkSize+1))
+		buf, err := io.ReadAll(limited)
+		if err != nil {
+			return nil, err
+		}
+		if len(buf) > maxChunkSize {
+			// Overflow: passthrough without rewriting.
+			// ContentLength stays -1 so Go re-chunk-encodes on Write.
+			rb := &rewriteBody{
+				ctx:           ctx,
+				src:           &multiReadCloser{r: io.MultiReader(bytes.NewReader(buf), src), c: src},
+				contentType:   ct,
+				streaming:     false,
+				contentLength: -1,
+			}
+			rb.sid = xctx.SidFromContext(ctx).String()
+			return rb, nil
+		}
+		// Fits: rewrite and set ContentLength.
+		rb := &rewriteBody{
+			ctx:         ctx,
+			rewrites:    rewrites,
+			contentType: ct,
+			streaming:   false,
+			contentLength: -1,
+		}
+		rb.sid = xctx.SidFromContext(ctx).String()
+		if contentEncoding != "" {
+			// Compressed: decompress → rewrite → recompress.
+			var hasTypeMatch bool
+			for _, rw := range rewrites {
+				rt := rw.Type
+				if rt == "" {
+					if rw.Rewriter != nil {
+						rt = "*"
+					} else {
+						rt = "text/html"
+					}
+				}
+				if rt == "*" || strings.Contains(rt, ct) {
+					hasTypeMatch = true
+					break
+				}
+			}
+			if !hasTypeMatch {
+				rb.src = io.NopCloser(bytes.NewReader(buf))
+				rb.contentLength = int64(len(buf))
+				return rb, nil
+			}
+			decoded, err := decompressBody(buf, contentEncoding)
+			if err != nil {
+				return nil, err
+			}
+			rewritten, err := rb.apply(decoded, sidMetadata(rb.sid)...)
+			if err != nil {
+				return nil, err
+			}
+			recompressed, err := compressBody(rewritten, contentEncoding)
+			if err != nil {
+				return nil, err
+			}
+			rb.src = io.NopCloser(bytes.NewReader(recompressed))
+			rb.contentLength = int64(len(recompressed))
+		} else {
+			rewritten, err := rb.apply(buf, sidMetadata(rb.sid)...)
+			if err != nil {
+				return nil, err
+			}
+			rb.src = io.NopCloser(bytes.NewReader(rewritten))
+			rb.contentLength = int64(len(rewritten))
+		}
+		return rb, nil
 	}
 
 	rb := &rewriteBody{

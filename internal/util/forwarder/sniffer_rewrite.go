@@ -56,8 +56,10 @@ func rewriteRespBody(ctx context.Context, resp *http.Response, rewrites ...chain
 		return nil
 	}
 	resp.Body = rb
-	if !rb.streaming {
+	if !rb.streaming && rb.contentLength >= 0 {
 		resp.ContentLength = rb.contentLength
+		resp.TransferEncoding = nil
+		resp.Header.Del("Transfer-Encoding")
 	}
 	return nil
 }
@@ -91,8 +93,10 @@ func rewriteReqBody(ctx context.Context, req *http.Request, rewrites ...chain.HT
 		return nil
 	}
 	req.Body = rb
-	if !rb.streaming {
+	if !rb.streaming && rb.contentLength >= 0 {
 		req.ContentLength = rb.contentLength
+		req.TransferEncoding = nil
+		req.Header.Del("Transfer-Encoding")
 	}
 	return nil
 }

@@ -51,7 +51,11 @@ func (c *udpTunConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	if n > len(b) {
 		n = copy(b, dgram.Data)
 	}
-	addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	if net.ParseIP(socksAddr.Host) != nil {
+		addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	} else {
+		addr = &domainAddr{network: "udp", host: socksAddr.Host, port: int(socksAddr.Port)}
+	}
 
 	return
 }

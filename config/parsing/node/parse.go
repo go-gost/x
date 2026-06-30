@@ -38,6 +38,7 @@ func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []c
 			Type:        v.Type,
 			Pattern:     pattern,
 			Replacement: []byte(v.Replacement),
+			MaxChunkSize: v.MaxChunkSize,
 		}
 		if v.Rewriter != "" {
 			if !registry.RewriterRegistry().IsRegistered(v.Rewriter) {

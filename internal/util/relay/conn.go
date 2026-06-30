@@ -2,6 +2,7 @@ package relay
 
 import (
 	"net"
+	"strconv"
 
 	"github.com/go-gost/gosocks5"
 	"github.com/go-gost/relay"
@@ -54,6 +55,19 @@ func UDPTunServerConn(c net.Conn) net.PacketConn {
 	}
 }
 
+// domainAddr is a net.Addr that preserves a domain name without resolving it.
+// Returned by udpTunConn.ReadFrom when a relay UDP datagram carries
+// ATYP=DOMAINNAME, so the relay handler can resolve it through the configured
+// resolver instead of leaking the query through the system resolver.
+type domainAddr struct {
+	network string
+	host    string
+	port    int
+}
+
+func (a *domainAddr) Network() string { return a.network }
+func (a *domainAddr) String() string  { return net.JoinHostPort(a.host, strconv.Itoa(a.port)) }
+
 func (c *udpTunConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	socksAddr := gosocks5.Addr{}
 	header := gosocks5.UDPHeader{
@@ -72,7 +86,11 @@ func (c *udpTunConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	if n > len(b) {
 		n = copy(b, dgram.Data)
 	}
-	addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	if net.ParseIP(socksAddr.Host) != nil {
+		addr, err = net.ResolveUDPAddr("udp", socksAddr.String())
+	} else {
+		addr = &domainAddr{network: "udp", host: socksAddr.Host, port: int(socksAddr.Port)}
+	}
 
 	return
 }

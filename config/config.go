@@ -403,7 +403,8 @@ type HTTPBodyRewriteConfig struct {
 	Match       string
 	Replacement string
 	// name of the rewriter plugin (via registry)
-	Rewriter string
+	Rewriter    string `yaml:",omitempty" json:"rewriter,omitempty"`
+	MaxChunkSize int    `yaml:"maxChunkSize,omitempty" json:"maxChunkSize,omitempty"`
 }
 
 type NodeFilterConfig struct {

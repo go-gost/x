@@ -1285,7 +1285,7 @@ func TestRewriteRespBody_EmptyContentTypeUsesDefault(t *testing.T) {
 	}
 }
 
-func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
+func TestRewriteRespBody_DefaultMaxChunkSize(t *testing.T) {
 	resp := &http.Response{
 		Header:        http.Header{"Content-Type": {"text/html"}},
 		ContentLength: -1,
@@ -1300,8 +1300,98 @@ func TestRewriteRespBody_NegativeContentLength(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "rewritten" {
+		t.Errorf("body = %q, want %q (default 1MB maxChunkSize should buffer and rewrite)", string(got), "rewritten")
+	}
+	if resp.ContentLength != int64(len("rewritten")) {
+		t.Errorf("ContentLength = %d, want %d", resp.ContentLength, len("rewritten"))
+	}
+}
+
+func TestRewriteRespBody_MaxChunkSize_Fits(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: -1,
+		Body:          io.NopCloser(strings.NewReader("original")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Pattern:      regexp.MustCompile(".*"),
+		Type:         "*",
+		Replacement:  []byte("rewritten"),
+		MaxChunkSize: 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if string(got) != "rewritten" {
+		t.Errorf("body = %q, want %q", string(got), "rewritten")
+	}
+	if resp.ContentLength != int64(len("rewritten")) {
+		t.Errorf("ContentLength = %d, want %d", resp.ContentLength, len("rewritten"))
+	}
+	if resp.TransferEncoding != nil {
+		t.Errorf("TransferEncoding = %v, want nil", resp.TransferEncoding)
+	}
+}
+
+func TestRewriteRespBody_MaxChunkSize_Overflow(t *testing.T) {
+	resp := &http.Response{
+		Header:        http.Header{"Content-Type": {"text/html"}},
+		ContentLength: -1,
+		Body:          io.NopCloser(strings.NewReader("original")),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Pattern:      regexp.MustCompile(".*"),
+		Type:         "*",
+		Replacement:  []byte("rewritten"),
+		MaxChunkSize: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
 	if string(got) != "original" {
-		t.Errorf("body = %q, want %q (unchanged, chunked body skipped)", string(got), "original")
+		t.Errorf("body = %q, want %q (unchanged, overflow)", string(got), "original")
+	}
+	if resp.ContentLength != -1 {
+		t.Errorf("ContentLength = %d, want -1", resp.ContentLength)
+	}
+}
+
+func TestRewriteRespBody_MaxChunkSize_Compressed_Fits(t *testing.T) {
+	original := []byte("hello world")
+	compressed := compressTestData(original, "gzip")
+	resp := &http.Response{
+		Header:        http.Header{"Content-Encoding": {"gzip"}, "Content-Type": {"text/plain"}},
+		ContentLength: -1,
+		Body:          io.NopCloser(bytes.NewReader(compressed)),
+	}
+	err := rewriteRespBody(context.Background(), resp, chain.HTTPBodyRewriteSettings{
+		Pattern:      regexp.MustCompile("hello"),
+		Type:         "*",
+		Replacement:  []byte("hi"),
+		MaxChunkSize: 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Body should be decompressed → rewritten → recompressed.
+	got, _ := io.ReadAll(resp.Body)
+	gr, err := gzip.NewReader(bytes.NewReader(got))
+	if err != nil {
+		t.Fatalf("expected valid gzip output: %v", err)
+	}
+	decoded, _ := io.ReadAll(gr)
+	gr.Close()
+	if string(decoded) != "hi world" {
+		t.Errorf("decompressed body = %q, want %q", string(decoded), "hi world")
+	}
+	if resp.ContentLength != int64(len(got)) {
+		t.Errorf("ContentLength = %d, want %d", resp.ContentLength, len(got))
+	}
+	if resp.TransferEncoding != nil {
+		t.Errorf("TransferEncoding = %v, want nil", resp.TransferEncoding)
 	}
 }
 
@@ -1851,7 +1941,7 @@ func TestNewRewriteBody(t *testing.T) {
 		}
 	})
 
-	t.Run("chunked non-streaming returns nil", func(t *testing.T) {
+	t.Run("chunked non-streaming uses default maxChunkSize", func(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("hello world"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "hi"),
@@ -1859,8 +1949,13 @@ func TestNewRewriteBody(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if body != nil {
-			t.Error("expected nil for chunked non-streaming body")
+		if body == nil {
+			t.Fatal("expected non-nil body (default 1MB maxChunkSize)")
+		}
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != "hi world" {
+			t.Errorf("body = %q, want %q", string(got), "hi world")
 		}
 	})
 }
