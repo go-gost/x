@@ -1895,8 +1895,8 @@ func TestNewRewriteBody(t *testing.T) {
 
 		got, _ := io.ReadAll(body)
 		body.Close()
-		if string(got) != "data: rewritten\n\ndata: rewritten" {
-			t.Errorf("body = %q, want %q", string(got), "data: rewritten\n\ndata: rewritten")
+		if string(got) != "data: rewritten\n\ndata: rewritten\n\n" {
+			t.Errorf("body = %q, want %q", string(got), "data: rewritten\n\ndata: rewritten\n\n")
 		}
 	})
 

@@ -69,6 +69,7 @@ type rewriteBody struct {
 	// SSE stream lifecycle state.
 	eventIndex int  // incremented per SSE event for the "event" phase
 	ended      bool // true after the stream-end phase has been emitted
+	scannerErr error // non-nil when scanner terminated with an error
 
 	sid string // session ID, cached from context at construction time
 }
@@ -290,6 +291,9 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 			err = b.scanner.Err()
 			if err == nil {
 				if b.ended {
+					if b.scannerErr != nil {
+						return 0, b.scannerErr
+					}
 					return 0, io.EOF
 				}
 				// End of upstream SSE events — emit stream end phase.
@@ -305,8 +309,31 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				if endErr != nil {
 					return 0, endErr
 				}
-				b.buf.Write(rewritten)
+				if len(rewritten) > 0 {
+					b.buf.Write(rewritten)
+					writeSSEStreamDelim(&b.buf, rewritten)
+				}
 				return b.buf.Read(p)
+			}
+			// Scanner error (e.g. upstream connection reset): emit the end
+			// phase so Rewriter plugins can send a terminal event
+			// (response.failed / message_stop), then return the error
+			// after the buffer drains.
+			if !b.ended {
+				b.ended = true
+				b.scannerErr = err
+				md := map[string]any{
+					"sid":          b.sid,
+					"sse_phase":    "end",
+					"event_index":  b.eventIndex,
+					"stream_error": err.Error(),
+				}
+				rewritten, _ := b.apply(nil, rewriter.MetadataRewriteOption(md))
+				if len(rewritten) > 0 {
+					b.buf.Write(rewritten)
+					writeSSEStreamDelim(&b.buf, rewritten)
+					return b.buf.Read(p)
+				}
 			}
 			return 0, err
 		}
@@ -336,7 +363,7 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 		}
 		if len(rewritten) > 0 {
 			b.buf.Write(rewritten)
-			b.buf.Write([]byte("\n\n"))
+			writeSSEStreamDelim(&b.buf, rewritten)
 		}
 		// Loop to flush the buffer or scan the next event.
 	}
@@ -354,6 +381,13 @@ func sidMetadata(sid string) []rewriter.RewriteOption {
 	}
 	return []rewriter.RewriteOption{
 		rewriter.MetadataRewriteOption(map[string]any{"sid": sid}),
+	}
+}
+
+// ponytail: guard against plugin already having added \n\n delimiter
+func writeSSEStreamDelim(buf *bytes.Buffer, data []byte) {
+	if len(data) < 2 || data[len(data)-1] != '\n' || data[len(data)-2] != '\n' {
+		buf.Write([]byte("\n\n"))
 	}
 }
 
