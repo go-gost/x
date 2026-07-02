@@ -45,10 +45,14 @@ func rewriteRespBody(ctx context.Context, resp *http.Response, rewrites ...chain
 	if resp == nil {
 		return nil
 	}
+	uri := ""
+	if resp.Request != nil {
+		uri = resp.Request.RequestURI
+	}
 	rb, err := newRewriteBody(ctx, resp.Body, rewrites,
 		resp.Header.Get("Content-Type"),
 		resp.Header.Get("Content-Encoding"),
-		resp.ContentLength)
+		resp.ContentLength, "response", uri)
 	if err != nil {
 		return err
 	}
@@ -85,7 +89,7 @@ func rewriteReqBody(ctx context.Context, req *http.Request, rewrites ...chain.HT
 	rb, err := newRewriteBody(ctx, req.Body, rewrites,
 		req.Header.Get("Content-Type"),
 		req.Header.Get("Content-Encoding"),
-		req.ContentLength)
+		req.ContentLength, "request", req.RequestURI)
 	if err != nil {
 		return err
 	}

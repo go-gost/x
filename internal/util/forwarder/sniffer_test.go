@@ -1779,7 +1779,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "world"),
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1798,7 +1798,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: a\n\ndata: b\n\ndata: c\n\n"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "data: [ab]$", "data: x"),
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1819,7 +1819,7 @@ func TestNewRewriteBody(t *testing.T) {
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "world"),
 			makeRewrite("*", "world", "there"),
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1839,7 +1839,7 @@ func TestNewRewriteBody(t *testing.T) {
 		// text/html type rule — won't match text/event-stream.
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			{Type: "text/html", Pattern: regexp.MustCompile("hello"), Replacement: []byte("world")},
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1856,7 +1856,7 @@ func TestNewRewriteBody(t *testing.T) {
 
 	t.Run("no rewrites returns nil", func(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
-		body, err := newRewriteBody(context.Background(), src, nil, "text/event-stream", "", -1)
+		body, err := newRewriteBody(context.Background(), src, nil, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1869,7 +1869,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: hello\n\n"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "world"),
-		}, "text/event-stream", "gzip", -1)
+		}, "text/event-stream", "gzip", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1885,7 +1885,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: original\n\n"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			{Type: "*", Rewriter: rw},
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1904,7 +1904,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("data: hello"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "world"),
-		}, "text/event-stream", "", -1)
+		}, "text/event-stream", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1923,7 +1923,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("hello world"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "hi"),
-		}, "text/plain", "", 11)
+		}, "text/plain", "", 11, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1945,7 +1945,7 @@ func TestNewRewriteBody(t *testing.T) {
 		src := io.NopCloser(strings.NewReader("hello world"))
 		body, err := newRewriteBody(context.Background(), src, []chain.HTTPBodyRewriteSettings{
 			makeRewrite("*", "hello", "hi"),
-		}, "text/plain", "", -1)
+		}, "text/plain", "", -1, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}

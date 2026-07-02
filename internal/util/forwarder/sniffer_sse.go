@@ -72,6 +72,10 @@ type rewriteBody struct {
 	scannerErr error // non-nil when scanner terminated with an error
 
 	sid string // session ID, cached from context at construction time
+
+	// Protocol detection metadata for Rewriter plugins.
+	direction string // "request" or "response"
+	uri       string // HTTP request path (e.g. "/v1/messages")
 }
 
 // multiReadCloser combines an io.Reader with an io.Closer, used when
@@ -95,7 +99,7 @@ const defaultMaxChunkSize = 1 << 20 // 1MB
 // For compressed bodies (Content-Encoding set), the body is decompressed,
 // rewritten, and recompressed transparently. Returns nil, err when the
 // upstream body cannot be read or the rewrite chain fails.
-func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTTPBodyRewriteSettings, contentType, contentEncoding string, contentLength int64) (*rewriteBody, error) {
+func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTTPBodyRewriteSettings, contentType, contentEncoding string, contentLength int64, direction, uri string) (*rewriteBody, error) {
 	if len(rewrites) == 0 {
 		return nil, nil
 	}
@@ -131,6 +135,8 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 				contentLength: -1,
 			}
 			rb.sid = xctx.SidFromContext(ctx).String()
+			rb.direction = direction
+			rb.uri = uri
 			return rb, nil
 		}
 		// Fits: rewrite and set ContentLength.
@@ -142,6 +148,8 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 			contentLength: -1,
 		}
 		rb.sid = xctx.SidFromContext(ctx).String()
+		rb.direction = direction
+		rb.uri = uri
 		if contentEncoding != "" {
 			// Compressed: decompress → rewrite → recompress.
 			var hasTypeMatch bool
@@ -168,7 +176,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 			if err != nil {
 				return nil, err
 			}
-			rewritten, err := rb.apply(decoded, sidMetadata(rb.sid)...)
+			rewritten, err := rb.apply(decoded, rb.baseMetadataOpt())
 			if err != nil {
 				return nil, err
 			}
@@ -179,7 +187,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 			rb.src = io.NopCloser(bytes.NewReader(recompressed))
 			rb.contentLength = int64(len(recompressed))
 		} else {
-			rewritten, err := rb.apply(buf, sidMetadata(rb.sid)...)
+			rewritten, err := rb.apply(buf, rb.baseMetadataOpt())
 			if err != nil {
 				return nil, err
 			}
@@ -198,7 +206,9 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		contentLength: -1,
 	}
 	rb.sid = xctx.SidFromContext(ctx).String()
-	mdOpts := sidMetadata(rb.sid)
+	rb.direction = direction
+	rb.uri = uri
+	mdOpts := []rewriter.RewriteOption{rb.baseMetadataOpt()}
 
 	if contentEncoding != "" {
 		if streaming {
@@ -302,6 +312,8 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				b.ended = true
 				md := map[string]any{
 					"sid":         b.sid,
+			"direction": b.direction,
+			"uri":       b.uri,
 					"sse_phase":   "end",
 					"event_index": b.eventIndex,
 				}
@@ -324,6 +336,8 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				b.scannerErr = err
 				md := map[string]any{
 					"sid":          b.sid,
+			"direction": b.direction,
+			"uri":       b.uri,
 					"sse_phase":    "end",
 					"event_index":  b.eventIndex,
 					"stream_error": err.Error(),
@@ -352,6 +366,8 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 		}
 		md := map[string]any{
 			"sid":          b.sid,
+			"direction": b.direction,
+			"uri":       b.uri,
 			"sse_phase":    phase,
 			"event_index":  b.eventIndex,
 		}
@@ -373,15 +389,24 @@ func (b *rewriteBody) Close() error {
 	return b.src.Close()
 }
 
-// sidMetadata returns rewriter options carrying the session ID when available.
-// This lets plugin Rewriters correlate rewrite operations with sessions.
-func sidMetadata(sid string) []rewriter.RewriteOption {
-	if sid == "" {
-		return nil
+// baseMetadata returns rewriter metadata with all available fields.
+func (b *rewriteBody) baseMetadata() map[string]any {
+	md := map[string]any{}
+	if b.sid != "" {
+		md["sid"] = b.sid
 	}
-	return []rewriter.RewriteOption{
-		rewriter.MetadataRewriteOption(map[string]any{"sid": sid}),
+	if b.direction != "" {
+		md["direction"] = b.direction
 	}
+	if b.uri != "" {
+		md["uri"] = b.uri
+	}
+	return md
+}
+
+// baseMetadataOpt returns a RewriteOption wrapping baseMetadata.
+func (b *rewriteBody) baseMetadataOpt() rewriter.RewriteOption {
+	return rewriter.MetadataRewriteOption(b.baseMetadata())
 }
 
 // ponytail: guard against plugin already having added \n\n delimiter
