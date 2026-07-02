@@ -27,6 +27,8 @@ type metadata struct {
 	enableUDP         bool
 	udpBufferSize     int
 	udpResolveDomain  bool
+	udpBindMin        int
+	udpBindMax        int
 	compatibilityMode bool
 	hash              string
 	muxCfg            *mux.Config
@@ -60,6 +62,8 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.enableUDP = mdutil.GetBool(md, "udp")
 	h.md.udpBufferSize = mdutil.GetInt(md, "udp.bufferSize", "udpBufferSize")
 	h.md.udpResolveDomain = mdutil.GetBool(md, "udp.resolveDomain", "udpResolveDomain")
+	h.md.udpBindMin = mdutil.GetInt(md, "udp.bindRange.min", "udp.minPort")
+	h.md.udpBindMax = mdutil.GetInt(md, "udp.bindRange.max", "udp.maxPort")
 
 	h.md.compatibilityMode = mdutil.GetBool(md, "comp")
 	h.md.hash = mdutil.GetString(md, "hash")

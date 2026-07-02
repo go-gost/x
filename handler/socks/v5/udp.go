@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/go-gost/core/hosts"
@@ -53,7 +55,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		Netns: h.options.Netns,
 	}
 
-	cc, err := lc.ListenPacket(ctx, network, net.JoinHostPort(host, "0"))
+	cc, err := listenPacketInRange(ctx, &lc, network, host, h.md.udpBindMin, h.md.udpBindMax)
 	if err != nil {
 		log.Error(err)
 		reply := gosocks5.NewReply(gosocks5.Failure, nil)
@@ -192,6 +194,37 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 		Debugf("%s >-< %s", conn.RemoteAddr(), cc.LocalAddr())
 
 	return nil
+}
+
+// listenPacketInRange binds the client-facing UDP relay socket. When lo..hi is
+// a valid range (lo > 0, hi >= lo) it scans ports from a random offset within
+// [lo, hi] and retries on EADDRINUSE, so a NAT router can forward a small,
+// fixed port set to the SOCKS server. The random offset avoids every
+// association hammering port lo under concurrency; the rotation visits distinct
+// ports, so a free port is always found when the range fits the attempt cap.
+// RFC 1928 leaves relay-port selection to the server; the caller still reports
+// the actually-bound port via BND.PORT. With no range, the OS chooses (port 0).
+// A non-EADDRINUSE error fails fast.
+func listenPacketInRange(ctx context.Context, lc *xnet.ListenConfig, network, host string, lo, hi int) (net.PacketConn, error) {
+	if lo > 0 && hi >= lo {
+		span := hi - lo + 1
+		attempts := min(span, 64)
+		offset := rand.IntN(span)
+		var lastErr error
+		for i := range attempts {
+			port := lo + (offset+i)%span
+			cc, err := lc.ListenPacket(ctx, network, net.JoinHostPort(host, strconv.Itoa(port)))
+			if err == nil {
+				return cc, nil
+			}
+			lastErr = err
+			if !errors.Is(err, syscall.EADDRINUSE) {
+				return nil, err
+			}
+		}
+		return nil, lastErr
+	}
+	return lc.ListenPacket(ctx, network, net.JoinHostPort(host, "0"))
 }
 
 // filteredPacketConn implements SOCKS5 RFC 1928 UDP relay security by filtering
