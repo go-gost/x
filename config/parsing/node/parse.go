@@ -24,6 +24,11 @@ import (
 	"github.com/go-gost/x/routing"
 )
 
+// MaxMatcherBodySize bounds the request body prefix (in bytes) exposed to
+// body matchers via routing.Request.Body. It protects against unbounded
+// buffering when a node opts in to body matching.
+const MaxMatcherBodySize = 1 << 20 // 1MB
+
 // ParseNode converts a NodeConfig into a *chain.Node. It resolves the
 // connector and dialer from their registries, applies TLS settings, extracts
 // metadata-driven options (so_mark, interface, netns, proxy protocol), sets up
@@ -35,9 +40,9 @@ func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []c
 	for _, v := range vs {
 		pattern, _ := regexp.Compile(v.Match)
 		rw := chain.HTTPBodyRewriteSettings{
-			Type:        v.Type,
-			Pattern:     pattern,
-			Replacement: []byte(v.Replacement),
+			Type:         v.Type,
+			Pattern:      pattern,
+			Replacement:  []byte(v.Replacement),
 			MaxChunkSize: v.MaxChunkSize,
 		}
 		if v.Rewriter != "" {
@@ -212,6 +217,13 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 				log.Error(err)
 				priority = -1
 			}
+		}
+
+		if bodySize := cfg.Matcher.BodySize; bodySize > 0 {
+			if bodySize > MaxMatcherBodySize {
+				bodySize = MaxMatcherBodySize
+			}
+			opts = append(opts, chain.MatcherBodySizeNodeOption(bodySize))
 		}
 
 		opts = append(opts, chain.PriorityNodeOption(priority))

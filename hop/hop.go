@@ -183,6 +183,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 				Path:     options.Path,
 				Query:    options.Query,
 				Header:   options.Header,
+				Body:     options.Body,
 			}
 			if !matcher.Match(&req) {
 				continue

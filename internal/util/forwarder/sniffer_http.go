@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -180,6 +181,27 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
 			clientIP = clientAddr.IP
 		}
+
+		// If any node in the hop opts in to body matching, read a sized prefix
+		// of the request body now and restore it so the matcher can inspect it
+		// without consuming the stream that is still forwarded below.
+		var bodyPrefix []byte
+		var maxBodySize int
+		if nl, ok := ho.hop.(hop.NodeList); ok {
+			for _, n := range nl.Nodes() {
+				if n == nil {
+					continue
+				}
+				if s := n.Options().MatcherBodySize; s > maxBodySize {
+					maxBodySize = s
+				}
+			}
+		}
+		if maxBodySize > 0 && req.Body != nil {
+			bodyPrefix, _ = io.ReadAll(io.LimitReader(req.Body, int64(maxBodySize)))
+			req.Body = io.NopCloser(io.MultiReader(bytes.NewReader(bodyPrefix), req.Body))
+		}
+
 		node = ho.hop.Select(ctx,
 			hop.ClientIPSelectOption(clientIP),
 			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
@@ -188,6 +210,7 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 			hop.PathSelectOption(req.URL.Path),
 			hop.QuerySelectOption(req.URL.Query()),
 			hop.HeaderSelectOption(req.Header),
+			hop.BodySelectOption(bodyPrefix),
 		)
 	}
 	if node == nil {
@@ -472,4 +495,3 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	return
 }
-

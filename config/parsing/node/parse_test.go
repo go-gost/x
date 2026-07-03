@@ -132,9 +132,9 @@ func TestParseNode_ExplicitDialer(t *testing.T) {
 
 func TestParseNode_WithBypass(t *testing.T) {
 	n, err := ParseNode("test-hop", &config.NodeConfig{
-		Name:    "bypass-node",
-		Addr:    "example.com:8080",
-		Bypass:  "bp1",
+		Name:     "bypass-node",
+		Addr:     "example.com:8080",
+		Bypass:   "bp1",
 		Bypasses: []string{"bp2", "bp3"},
 	}, testLogger())
 	if err != nil {
@@ -288,6 +288,48 @@ func TestParseNode_WithMatcherAutoPriority(t *testing.T) {
 	}
 	if n == nil {
 		t.Fatal("expected non-nil node")
+	}
+}
+
+func TestParseNode_WithMatcherBodySize(t *testing.T) {
+	n, err := ParseNode("test-hop", &config.NodeConfig{
+		Name: "body-node",
+		Addr: "example.com:8080",
+		Matcher: &config.NodeMatcherConfig{
+			// Escaped predicate form; in YAML users write the backtick
+			// equivalent: BodyRegexp(`"model":"gpt-4"`).
+			Rule:     `BodyRegexp("\"model\":\"gpt-4\"")`,
+			BodySize: 65536,
+		},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n == nil {
+		t.Fatal("expected non-nil node")
+	}
+	if got := n.Options().MatcherBodySize; got != 65536 {
+		t.Errorf("MatcherBodySize = %d, want 65536", got)
+	}
+}
+
+func TestParseNode_WithMatcherBodySize_Clamped(t *testing.T) {
+	n, err := ParseNode("test-hop", &config.NodeConfig{
+		Name: "body-node",
+		Addr: "example.com:8080",
+		Matcher: &config.NodeMatcherConfig{
+			Rule:     `BodyRegexp("foo")`,
+			BodySize: 10 * 1024 * 1024, // 10MB, above the 1MB cap
+		},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n == nil {
+		t.Fatal("expected non-nil node")
+	}
+	if got := n.Options().MatcherBodySize; got != MaxMatcherBodySize {
+		t.Errorf("MatcherBodySize = %d, want %d (clamped)", got, MaxMatcherBodySize)
 	}
 }
 

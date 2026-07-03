@@ -677,3 +677,48 @@ func TestMatcherCaseInsensitiveMatcherName(t *testing.T) {
 		})
 	}
 }
+
+func TestMatcherBodyRegexp(t *testing.T) {
+	// Rule strings use the predicate parser (strconv.Unquote), so inner quotes
+	// are escaped. In YAML config users write the equivalent backtick form:
+	// BodyRegexp(`"model"\s*:\s*"gpt-4"`).
+	m, err := NewMatcher(`BodyRegexp("\"model\"\\s*:\\s*\"gpt-4\"")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc string
+		body string
+		want bool
+	}{
+		{"exact model", `{"model":"gpt-4"}`, true},
+		{"spaced model", `{"model": "gpt-4", "max_tokens": 1}`, true},
+		{"different model", `{"model":"claude"}`, false},
+		{"empty body", ``, false},
+		{"unrelated", `{"hello":"world"}`, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Body: []byte(tc.body)}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherBodyRegexp_NilBody(t *testing.T) {
+	m, err := NewMatcher(`BodyRegexp("foo")`)
+	require.NoError(t, err)
+	assert.False(t, m.Match(&routing.Request{}))
+}
+
+func TestMatcherBodyRegexp_Invalid(t *testing.T) {
+	_, err := NewMatcher(`BodyRegexp("[invalid")`)
+	assert.Error(t, err)
+}
+
+func TestMatcherBodyRegexp_CaseInsensitive(t *testing.T) {
+	m, err := NewMatcher(`BodyRegexp("(?i)\"content-type\"\\s*:\\s*\"application/json\"")`)
+	require.NoError(t, err)
+	req := &routing.Request{Body: []byte(`{"Content-Type": "application/json"}`)}
+	assert.True(t, m.Match(req))
+}

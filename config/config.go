@@ -403,7 +403,7 @@ type HTTPBodyRewriteConfig struct {
 	Match       string
 	Replacement string
 	// name of the rewriter plugin (via registry)
-	Rewriter    string `yaml:",omitempty" json:"rewriter,omitempty"`
+	Rewriter     string `yaml:",omitempty" json:"rewriter,omitempty"`
 	MaxChunkSize int    `yaml:"maxChunkSize,omitempty" json:"maxChunkSize,omitempty"`
 }
 
@@ -425,6 +425,11 @@ type NodeFilterConfig struct {
 type NodeMatcherConfig struct {
 	Rule     string `yaml:",omitempty" json:"rule,omitempty"`
 	Priority int    `yaml:",omitempty" json:"priority,omitempty"`
+	// BodySize is the max request body prefix (bytes) exposed to BodyRegexp
+	// matchers. 0 (default) disables body reading for this node. Capped at
+	// chain.MaxMatcherBodySize. Only takes effect under an HTTP sniffing handler
+	// whose sniffer reads the body prefix before node selection.
+	BodySize int `yaml:",omitempty" json:"bodySize,omitempty"`
 }
 
 type HTTPNodeConfig struct {
@@ -495,9 +500,9 @@ type ServiceConfig struct {
 	Logger     string            `yaml:",omitempty" json:"logger,omitempty"`
 	Loggers    []string          `yaml:",omitempty" json:"loggers,omitempty"`
 	Observer   string            `yaml:",omitempty" json:"observer,omitempty"`
-	Rewriter  string            `yaml:",omitempty" json:"rewriter,omitempty"`
-	Recorders []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
-	Handler   *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
+	Rewriter   string            `yaml:",omitempty" json:"rewriter,omitempty"`
+	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
+	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
 	Metadata   map[string]any    `yaml:",omitempty" json:"metadata,omitempty"`

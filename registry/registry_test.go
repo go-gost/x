@@ -505,13 +505,14 @@ func TestChainRegistry_NilUnderlying(t *testing.T) {
 // --- Hop wrapper tests ---
 
 type mockHop struct {
-	node *chain.Node
+	node  *chain.Node
+	nodes []*chain.Node
 }
 
 func (m *mockHop) Select(_ context.Context, _ ...hop.SelectOption) *chain.Node {
 	return m.node
 }
-func (m *mockHop) Nodes() []*chain.Node { return nil }
+func (m *mockHop) Nodes() []*chain.Node { return m.nodes }
 
 func TestHopRegistry_Delegate(t *testing.T) {
 	r := new(hopRegistry)
@@ -528,6 +529,34 @@ func TestHopRegistry_NilUnderlying(t *testing.T) {
 	w := r.Get("ghost")
 	if w.Select(context.Background()) != nil {
 		t.Fatal("nil underlying Select should return nil")
+	}
+}
+
+// TestHopRegistry_NodeListDelegate confirms the wrapper returned by Get
+// satisfies hop.NodeList and forwards Nodes() to the underlying hop. The
+// forwarder sniffer relies on this to compute body-size before selection for
+// named hops; without delegation, body matching silently never triggers.
+func TestHopRegistry_NodeListDelegate(t *testing.T) {
+	n1 := chain.NewNode("n1", "example.com:80")
+	n2 := chain.NewNode("n2", "example.com:81",
+		chain.MatcherBodySizeNodeOption(65536),
+	)
+	r := new(hopRegistry)
+	r.Register("h", &mockHop{nodes: []*chain.Node{n1, n2}})
+
+	w := r.Get("h")
+	nl, ok := w.(hop.NodeList)
+	if !ok {
+		t.Fatal("registry wrapper must satisfy hop.NodeList")
+	}
+	nodes := nl.Nodes()
+	if len(nodes) != 2 {
+		t.Fatalf("Nodes() returned %d nodes, want 2", len(nodes))
+	}
+	// Verify node options are visible through the wrapper (body-size aggregation
+	// depends on reading MatcherBodySize off the exposed nodes).
+	if got := nodes[1].Options().MatcherBodySize; got != 65536 {
+		t.Errorf("MatcherBodySize through wrapper = %d, want 65536", got)
 	}
 }
 
