@@ -58,6 +58,23 @@ type HTTPRecorderObject struct {
 	StatusCode int                        `json:"statusCode"`
 	Request    HTTPRequestRecorderObject  `json:"request"`
 	Response   HTTPResponseRecorderObject `json:"response"`
+
+	// The Original* fields below hold the pre-rewrite values captured by the
+	// forwarder HTTP path (x/internal/util/forwarder) when a node configures
+	// HTTP rewrites. They are empty/nil on non-forwarder paths or when no
+	// rewrite applies, so consumers must not rely on their presence.
+
+	// OriginalHost is the Host value before node HTTP rewrites were applied.
+	OriginalHost string `json:"originalHost,omitempty"`
+	// OriginalURI is the request URI before node URL/header rewrites were applied.
+	OriginalURI string `json:"originalUri,omitempty"`
+	// OriginalRequest holds the request header/body before node HTTP rewrites
+	// were applied. Nil when no request-side rewrite is configured.
+	OriginalRequest *HTTPRequestRecorderObject `json:"originalRequest,omitempty"`
+	// OriginalResponse holds the response header/body before node HTTP rewrites
+	// were applied. Nil when no response-side rewrite is configured. For a 101
+	// Switching Protocols response, only headers are captured (there is no body).
+	OriginalResponse *HTTPResponseRecorderObject `json:"originalResponse,omitempty"`
 }
 
 // WebsocketRecorderObject holds the recorded data of a WebSocket frame.

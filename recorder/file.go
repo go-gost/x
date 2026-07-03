@@ -62,18 +62,23 @@ func (r *fileRecorder) Record(ctx context.Context, b []byte, opts ...recorder.Re
 
 	xmetrics.GetCounter(xmetrics.MetricRecorderRecordsCounter, metrics.Labels{"recorder": r.recorder}).Inc()
 
-	if r.sep != "" {
-		r.mu.Lock() // mutex is used to prevent unordered writes to the file
-		defer r.mu.Unlock()
-	}
+	// ponytail: serializes every Record. Required for correctness: the underlying
+	// io.WriteCloser (bytes.Buffer, *os.File, ...) is not safe for concurrent Write,
+	// and Record is invoked concurrently from per-connection goroutines. If a single
+	// recorder ever becomes a hot bottleneck, the upgrade path is an async/batched
+	// writer — not per-record locking. Kept as a global lock because recorder write
+	// rate is low (one record per forwarded transaction).
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	if _, err := r.out.Write(b); err != nil {
 		return err
 	}
 
 	if r.sep != "" {
-		_, err := io.WriteString(r.out, r.sep)
-		return err
+		if _, err := io.WriteString(r.out, r.sep); err != nil {
+			return err
+		}
 	}
 
 	return nil

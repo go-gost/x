@@ -247,7 +247,8 @@ func TestFileRecorder_ConcurrentWrites_NoSeparator(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	// Without a separator, lines may be interleaved but shouldn't panic.
+	// Without a separator, concurrent writes are still serialized by Record's
+	// mutex (the underlying io.WriteCloser is not safe for concurrent Write).
 	if buf.Len() == 0 {
 		t.Error("buffer should contain data")
 	}

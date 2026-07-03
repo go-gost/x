@@ -3,7 +3,6 @@ package routing
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
@@ -465,7 +464,6 @@ func bodyRegexp(tree *matchersTree, patterns ...string) error {
 	}
 
 	tree.matcher = func(req *routing.Request) bool {
-		slog.Debug(fmt.Sprintf("bodyRegexp: %s, %s", patterns[0], string(req.Body)))
 		if len(req.Body) == 0 {
 			return false
 		}
