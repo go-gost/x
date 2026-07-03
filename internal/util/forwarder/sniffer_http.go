@@ -200,6 +200,15 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		if maxBodySize > 0 && req.Body != nil {
 			bodyPrefix, _ = io.ReadAll(io.LimitReader(req.Body, int64(maxBodySize)))
 			req.Body = io.NopCloser(io.MultiReader(bytes.NewReader(bodyPrefix), req.Body))
+			// The forwarded body keeps its original encoding; only the prefix shown
+			// to body matchers is decoded so BodyRegexp sees plaintext. Best-effort:
+			// a truncated compressed stream yields whatever decoded so far, which is
+			// where match patterns (e.g. leading JSON fields) live anyway.
+			if enc := req.Header.Get("Content-Encoding"); enc != "" && enc != "identity" && len(bodyPrefix) > 0 {
+				if decoded, _ := decompressBody(bodyPrefix, enc); len(decoded) > 0 {
+					bodyPrefix = decoded
+				}
+			}
 		}
 
 		node = ho.hop.Select(ctx,
