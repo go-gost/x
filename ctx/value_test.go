@@ -150,6 +150,49 @@ func TestClientIDFromContext_WrongType(t *testing.T) {
 	}
 }
 
+func TestPeerCertContext(t *testing.T) {
+	cert := &PeerCert{
+		CN:          "client.example.com",
+		SANs:        []string{"san1.example.com", "san2.example.com"},
+		Fingerprint: "abcdef1234567890",
+	}
+	ctx := ContextWithPeerCert(context.Background(), cert)
+
+	got := PeerCertFromContext(ctx)
+	if got == nil {
+		t.Fatal("PeerCertFromContext() = nil, want non-nil")
+	}
+	if got.CN != cert.CN {
+		t.Errorf("PeerCertFromContext().CN = %q, want %q", got.CN, cert.CN)
+	}
+	if len(got.SANs) != len(cert.SANs) || got.SANs[0] != cert.SANs[0] {
+		t.Errorf("PeerCertFromContext().SANs = %v, want %v", got.SANs, cert.SANs)
+	}
+	if got.Fingerprint != cert.Fingerprint {
+		t.Errorf("PeerCertFromContext().Fingerprint = %q, want %q", got.Fingerprint, cert.Fingerprint)
+	}
+}
+
+func TestPeerCertFromContext_Empty(t *testing.T) {
+	if got := PeerCertFromContext(context.Background()); got != nil {
+		t.Errorf("PeerCertFromContext(empty) = %v, want nil", got)
+	}
+}
+
+func TestPeerCertFromContext_WrongType(t *testing.T) {
+	ctx := context.WithValue(context.Background(), peerCertKey{}, "not-a-cert")
+	if got := PeerCertFromContext(ctx); got != nil {
+		t.Errorf("PeerCertFromContext(wrong type) = %v, want nil", got)
+	}
+}
+
+func TestPeerCertFromContext_Nil(t *testing.T) {
+	ctx := ContextWithPeerCert(context.Background(), nil)
+	if got := PeerCertFromContext(ctx); got != nil {
+		t.Errorf("PeerCertFromContext(nil) = %v, want nil", got)
+	}
+}
+
 func TestContextWithLabels(t *testing.T) {
 	labels := map[string]string{"tenant": "acme", "region": "eu"}
 	ctx := ContextWithLabels(context.Background(), labels)

@@ -14,10 +14,13 @@ import (
 )
 
 type httpPluginRequest struct {
-	Service  string `json:"service"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Client   string `json:"client"`
+	Service              string   `json:"service"`
+	Username             string   `json:"username"`
+	Password             string   `json:"password"`
+	Client               string   `json:"client"`
+	ClientCn             string   `json:"clientCn,omitempty"`
+	ClientSan            []string `json:"clientSan,omitempty"`
+	ClientCertFingerprint string  `json:"clientCertFingerprint,omitempty"`
 }
 
 type httpPluginResponse struct {
@@ -70,6 +73,11 @@ func (p *httpPlugin) Authenticate(ctx context.Context, user, password string, op
 		Username: user,
 		Password: password,
 		Client:   clientAddr,
+	}
+	if v := xctx.PeerCertFromContext(ctx); v != nil {
+		rb.ClientCn = v.CN
+		rb.ClientSan = v.SANs
+		rb.ClientCertFingerprint = v.Fingerprint
 	}
 	v, err := json.Marshal(&rb)
 	if err != nil {

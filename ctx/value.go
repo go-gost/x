@@ -101,6 +101,26 @@ func ClientIDFromContext(ctx context.Context) ClientID {
 	return v
 }
 
+type peerCertKey struct{}
+
+// PeerCert carries the verified mTLS client certificate identity.
+type PeerCert struct {
+	CN          string
+	SANs        []string
+	Fingerprint string // SHA-256 hex of cert.Raw
+}
+
+// ContextWithPeerCert returns a copy of ctx that carries the peer cert.
+func ContextWithPeerCert(ctx context.Context, cert *PeerCert) context.Context {
+	return context.WithValue(ctx, peerCertKey{}, cert)
+}
+
+// PeerCertFromContext returns the peer cert stored in ctx, or nil.
+func PeerCertFromContext(ctx context.Context) *PeerCert {
+	v, _ := ctx.Value(peerCertKey{}).(*PeerCert)
+	return v
+}
+
 // labelsKey saves the static service labels.
 type labelsKey struct{}
 

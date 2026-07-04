@@ -60,13 +60,18 @@ func (p *grpcPlugin) Authenticate(ctx context.Context, user, password string, op
 	if v := xctx.SrcAddrFromContext(ctx); v != nil {
 		clientAddr = v.String()
 	}
-	r, err := p.client.Authenticate(ctx,
-		&proto.AuthenticateRequest{
-			Service:  options.Service,
-			Username: user,
-			Password: password,
-			Client:   clientAddr,
-		})
+	req := &proto.AuthenticateRequest{
+		Service:  options.Service,
+		Username: user,
+		Password: password,
+		Client:   clientAddr,
+	}
+	if v := xctx.PeerCertFromContext(ctx); v != nil {
+		req.ClientCn = v.CN
+		req.ClientSan = v.SANs
+		req.ClientCertFingerprint = v.Fingerprint
+	}
+	r, err := p.client.Authenticate(ctx, req)
 	if err != nil {
 		p.log.Error(err)
 		return "", false

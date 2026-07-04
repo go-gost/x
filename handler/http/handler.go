@@ -190,6 +190,9 @@ package http
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/http"
@@ -353,6 +356,9 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	})
 	log.Infof("%s <> %s", conn.RemoteAddr(), conn.LocalAddr())
 
+	// Save the raw conn before stats wrapping to preserve TLS metadata.
+	rawConn := conn
+
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
@@ -385,6 +391,11 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return err
 	}
 	defer req.Body.Close()
+
+	// Extract mTLS peer certificate from the raw connection.
+	if peerCert := getTLSPeerCert(rawConn); peerCert != nil {
+		ctx = xctx.ContextWithPeerCert(ctx, peerCert)
+	}
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
@@ -543,6 +554,39 @@ func buildHTTPRecorder(req *http.Request) *xrecorder.HTTPRecorderObject {
 			ContentLength: req.ContentLength,
 			Header:        req.Header.Clone(),
 		},
+	}
+}
+
+// getTLSPeerCert extracts the verified mTLS client certificate identity from
+// a connection by walking wrapper layers (traffic limiter, etc.) to reach the
+// underlying *tls.Conn, then reading ConnectionState().VerifiedChains.
+// It returns nil if the connection has no TLS peer certificate.
+func getTLSPeerCert(conn net.Conn) *xctx.PeerCert {
+	for {
+		if tc, ok := conn.(interface{ ConnectionState() tls.ConnectionState }); ok {
+			cs := tc.ConnectionState()
+			if cs.HandshakeComplete && len(cs.VerifiedChains) > 0 && len(cs.VerifiedChains[0]) > 0 {
+				cert := cs.VerifiedChains[0][0]
+				fpr := sha256.Sum256(cert.Raw)
+				sans := make([]string, 0, len(cert.DNSNames)+len(cert.EmailAddresses)+len(cert.URIs))
+				sans = append(sans, cert.DNSNames...)
+				sans = append(sans, cert.EmailAddresses...)
+				for _, u := range cert.URIs {
+					sans = append(sans, u.String())
+				}
+				return &xctx.PeerCert{
+					CN:          cert.Subject.CommonName,
+					SANs:        sans,
+					Fingerprint: hex.EncodeToString(fpr[:]),
+				}
+			}
+			return nil
+		}
+		if uw, ok := conn.(interface{ UnwrapConn() net.Conn }); ok {
+			conn = uw.UnwrapConn()
+			continue
+		}
+		return nil
 	}
 }
 
