@@ -148,6 +148,26 @@ func (p *chainHop) Nodes() []*chain.Node {
 	return p.nodes
 }
 
+// Select chooses a node from the hop group for the given request context.
+//
+// Selection pipeline:
+//
+//  1. Hop-level bypass         — entire hop skipped if bypass matches (addr/host)
+//  2. Per-node filter (pool)   — each candidate must pass at least one gate:
+//       a. routing.Matcher     — boolean expression (Host/Protocol/Method/Path/
+//                                  Query/Header/Body). Match → non-zero Priority.
+//       b. isEligible fallback — when no Matcher set, checks node Options.Filter:
+//                                  checkHost(Host), checkProtocol(Protocol),
+//                                  checkPath(Path prefix).
+//     Nodes that fail all gates or hit a node-level bypass are excluded.
+//  3. Priority short-circuit   — if the top node has strictly higher Priority
+//                                (>0) than the rest and no backup flag is present,
+//                                it wins directly (selector skipped).
+//  4. Selector                 — Filters (FailFilter, BackupFilter) cull the pool,
+//                                then Strategy (roundRobin/random/fifo/hash/parallel)
+//                                picks one.
+//
+// Returns nil when no node survives all stages.
 func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
 	var options hop.SelectOptions
 	for _, opt := range opts {
@@ -156,12 +176,13 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 
 	log := p.logger
 
-	// hop level bypass
+	// Stage 1: hop-level bypass.
 	if p.options.bypass != nil &&
 		p.options.bypass.Contains(ctx, options.Network, options.Addr, bypass.WithHostOption(options.Host)) {
 		return nil
 	}
 
+	// Stage 2: build candidate pool — each node must pass one of two gates.
 	var nodes []*chain.Node
 	for _, node := range p.Nodes() {
 		if node == nil {
@@ -174,6 +195,8 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		}
 
 		if matcher := node.Options().Matcher; matcher != nil {
+			// Gate 2a: routing.Matcher — boolean expression on HTTP-level fields.
+			// A match assigns a non-zero Priority (from rule specificity).
 			req := routing.Request{
 				ClientIP: options.ClientIP,
 				Network:  options.Network,
@@ -190,6 +213,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 			}
 			log.Debugf("node %s match request %s %s, priority %d", node.Name, req.Protocol, req.Host, node.Options().Priority)
 		} else {
+			// Gate 2b: fallback eligibility — simple host/protocol/path filters.
 			if !p.isEligible(node, &options) {
 				continue
 			}
@@ -204,6 +228,8 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[0]
 	}
 
+	// Stage 3: priority short-circuit.
+	// Sort descending so the highest priority node is at index 0.
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Options().Priority > nodes[j].Options().Priority
 	})
@@ -224,6 +250,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 		return nodes[0]
 	}
 
+	// Stage 4: selector — filters then strategy.
 	if s := p.options.selector; s != nil {
 		return s.Select(ctx, nodes...)
 	}

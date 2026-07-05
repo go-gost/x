@@ -414,14 +414,26 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			req.Host = httpSettings.Host
 		}
 		for k, v := range httpSettings.RequestHeader {
-			req.Header.Set(k, v)
+			if v == "" {
+				req.Header.Del(k)
+			} else {
+				req.Header.Set(k, v)
+			}
 			ro.HTTP.Request.Header = req.Header.Clone()
 		}
 
 		for _, re := range httpSettings.RewriteURL {
 			if re.Pattern.MatchString(req.URL.Path) {
 				if s := re.Pattern.ReplaceAllString(req.URL.Path, re.Replacement); s != "" {
-					req.URL.Path = s
+					// Split replacement at '?' so the query portion
+					// goes into RawQuery rather than being percent-encoded
+					// as part of Path (%3F for '?').
+					if path, query, hasQuery := strings.Cut(s, "?"); hasQuery {
+						req.URL.Path = path
+						req.URL.RawQuery = query
+					} else {
+						req.URL.Path = s
+					}
 					ro.HTTP.URI = req.URL.RequestURI()
 					break
 				}

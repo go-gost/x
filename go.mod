@@ -12,7 +12,7 @@ require (
 	github.com/go-gost/go-shadowsocks2 v0.1.3
 	github.com/go-gost/gosocks4 v0.1.0
 	github.com/go-gost/gosocks5 v0.5.0
-	github.com/go-gost/plugin v0.4.0
+	github.com/go-gost/plugin v0.5.0
 	github.com/go-gost/relay v0.6.1
 	github.com/go-gost/tls-dissector v0.2.0
 	github.com/go-redis/redis/v8 v8.11.5
