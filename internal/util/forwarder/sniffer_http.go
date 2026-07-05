@@ -504,18 +504,12 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		}
 	}
 
-	if len(responseHeader) > 0 {
-		if resp.Header == nil {
-			resp.Header = http.Header{}
-		}
-		for k, v := range responseHeader {
-			resp.Header.Set(k, v)
-		}
-	}
+	// Reminder: apply responseHeader AFTER body rewrite, not before —
+	// if responseHeader overrides Content-Type, the rewrite must first
+	// read the original upstream Content-Type to decide
+	// streaming vs non-streaming.
 
 	ro.HTTP.StatusCode = resp.StatusCode
-	ro.HTTP.Response.Header = resp.Header.Clone()
-	ro.HTTP.Response.ContentLength = resp.ContentLength
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
@@ -552,6 +546,19 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		log.Errorf("rewrite body: %v", err)
 		return
 	}
+
+	// Apply response header overrides after body rewrite so Content-Type
+	// doesn't affect rewriteRespBody's streaming/non-streaming decision.
+	if len(responseHeader) > 0 {
+		if resp.Header == nil {
+			resp.Header = http.Header{}
+		}
+		for k, v := range responseHeader {
+			resp.Header.Set(k, v)
+		}
+	}
+	ro.HTTP.Response.Header = resp.Header.Clone()
+	ro.HTTP.Response.ContentLength = resp.ContentLength
 
 	if bodySize > 0 {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
