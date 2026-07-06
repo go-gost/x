@@ -3,6 +3,7 @@ package pht
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -24,6 +25,8 @@ type clientConn struct {
 	rxc        chan []byte
 	closed     chan struct{}
 	mu         sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	logger     logger.Logger
@@ -33,6 +36,10 @@ func (c *clientConn) Read(b []byte) (n int, err error) {
 	if len(c.buf) == 0 {
 		select {
 		case c.buf = <-c.rxc:
+			if c.buf == nil {
+				err = io.EOF
+				return
+			}
 		case <-c.closed:
 			err = io.ErrClosedPipe
 			return
@@ -53,11 +60,6 @@ func (c *clientConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *clientConn) write(b []byte) (n int, err error) {
-	if c.isClosed() {
-		err = io.ErrClosedPipe
-		return
-	}
-
 	var r io.Reader
 	if len(b) > 0 {
 		buf := bytes.NewBufferString(base64.StdEncoding.EncodeToString(b))
@@ -65,7 +67,7 @@ func (c *clientConn) write(b []byte) (n int, err error) {
 		r = buf
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.pushURL, r)
+	req, err := http.NewRequestWithContext(c.ctx, http.MethodPost, c.pushURL, r)
 	if err != nil {
 		return
 	}
@@ -107,6 +109,8 @@ func (c *clientConn) write(b []byte) (n int, err error) {
 }
 
 func (c *clientConn) readLoop() {
+	defer close(c.rxc)
+
 	for {
 		if c.isClosed() {
 			return
@@ -114,7 +118,7 @@ func (c *clientConn) readLoop() {
 
 		done := true
 		err := func() error {
-			r, err := http.NewRequest(http.MethodGet, c.pullURL, nil)
+			r, err := http.NewRequestWithContext(c.ctx, http.MethodGet, c.pullURL, nil)
 			if err != nil {
 				return err
 			}
@@ -171,7 +175,9 @@ func (c *clientConn) readLoop() {
 		}()
 
 		if err != nil {
-			c.Close()
+			// Don't call Close() here — it would close(c.closed) again
+			// and the two callers (Dial and Close) already own that.
+			// Just stop the read loop; the caller holds the close.
 			return
 		}
 
@@ -202,9 +208,14 @@ func (c *clientConn) Close() error {
 
 	c.mu.Unlock()
 
-	_, err := c.write(nil)
+	// Send empty POST to notify server the tunnel is closed.
+	_, _ = c.write(nil)
 
-	return err
+	// Cancel readLoop after sending the close notification so the
+	// HTTP GET is canceled once the notification is delivered.
+	c.cancel()
+
+	return nil
 }
 
 func (c *clientConn) isClosed() bool {

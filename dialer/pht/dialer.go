@@ -105,12 +105,11 @@ func (d *phtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 				// Timeout:   60 * time.Second,
 				Transport: tr,
 			},
-			AuthorizePath: d.md.authorizePath,
-			PushPath:      d.md.pushPath,
-			PullPath:      d.md.pullPath,
-			TLSEnabled:    d.tlsEnabled,
-			Header:        d.md.header,
-			Logger:        d.options.Logger,
+			PushPath:   d.md.pushPath,
+			PullPath:   d.md.pullPath,
+			TLSEnabled: d.tlsEnabled,
+			Header:     d.md.header,
+			Logger:     d.options.Logger,
 		}
 		d.clients[addr] = client
 	}

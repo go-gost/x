@@ -9,33 +9,25 @@ import (
 )
 
 const (
-	dialTimeout          = "dialTimeout"
-	defaultAuthorizePath = "/authorize"
-	defaultPushPath      = "/push"
-	defaultPullPath      = "/pull"
+	defaultPushPath = "/push"
+	defaultPullPath = "/pull"
 )
 
 type metadata struct {
-	authorizePath string
-	pushPath      string
-	pullPath      string
-	host          string
-	header        http.Header
+	pushPath string
+	pullPath string
+	host     string
+	header   http.Header
 }
 
 func (d *phtDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		authorizePath = "authorizePath"
-		pushPath      = "pushPath"
-		pullPath      = "pullPath"
-		host          = "host"
-		header        = "header"
+		pushPath = "pushPath"
+		pullPath = "pullPath"
+		host     = "host"
+		header   = "header"
 	)
 
-	d.md.authorizePath = mdutil.GetString(md, authorizePath)
-	if !strings.HasPrefix(d.md.authorizePath, "/") {
-		d.md.authorizePath = defaultAuthorizePath
-	}
 	d.md.pushPath = mdutil.GetString(md, pushPath)
 	if !strings.HasPrefix(d.md.pushPath, "/") {
 		d.md.pushPath = defaultPushPath

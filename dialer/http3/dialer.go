@@ -97,11 +97,10 @@ func (d *http3Dialer) Dial(ctx context.Context, addr string, opts ...dialer.Dial
 					},
 				},
 			},
-			AuthorizePath: d.md.authorizePath,
-			PushPath:      d.md.pushPath,
-			PullPath:      d.md.pullPath,
-			TLSEnabled:    true,
-			Logger:        d.options.Logger,
+			PushPath:   d.md.pushPath,
+			PullPath:   d.md.pullPath,
+			TLSEnabled: true,
+			Logger:     d.options.Logger,
 		}
 
 		d.clients[addr] = client

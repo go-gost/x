@@ -252,9 +252,22 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		raddr = &net.TCPAddr{}
 	}
 
-	// connection id
 	cid := xid.New().String()
+	if _, err := s.createPipe(cid, raddr); err != nil {
+		s.options.logger.Warnf("connection queue is full, client %s discarded", r.RemoteAddr)
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
 
+	w.Write([]byte(fmt.Sprintf("token=%s", cid)))
+}
+
+// createPipe creates a net.Pipe pair, enqueues the client side to the Accept
+// queue, and stores the server side in conns under cid. It returns the server
+// side (c2). On a full accept queue it closes both ends and returns an error.
+// Uses LoadOrStore to avoid a second pipe pair when concurrent push/pull
+// requests arrive for the same CID before either stores into conns.
+func (s *Server) createPipe(cid string, raddr net.Addr) (net.Conn, error) {
 	c1, c2 := net.Pipe()
 	c := &serverConn{
 		Conn:       c1,
@@ -262,17 +275,38 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		remoteAddr: raddr,
 	}
 
+	existing, loaded := s.conns.LoadOrStore(cid, c2)
+	if loaded {
+		// Another goroutine already created the pipe for this CID.
+		c.Close()
+		c2.Close()
+		return existing.(net.Conn), nil
+	}
+
 	select {
 	case s.cqueue <- c:
 	default:
+		s.conns.Delete(cid)
 		c.Close()
-		s.options.logger.Warnf("connection queue is full, client %s discarded", r.RemoteAddr)
-		w.WriteHeader(http.StatusTooManyRequests)
+		c2.Close()
+		return nil, errors.New("connection queue full")
+	}
+	return c2, nil
+}
+
+// getOrCreateConn returns the pipe for cid, creating it lazily if needed.
+func (s *Server) getOrCreateConn(cid string, r *http.Request) (conn net.Conn, err error) {
+	v, ok := s.conns.Load(cid)
+	if ok {
+		conn = v.(net.Conn)
 		return
 	}
-
-	w.Write([]byte(fmt.Sprintf("token=%s", cid)))
-	s.conns.Store(cid, c2)
+	raddr, _ := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+	if raddr == nil {
+		raddr = &net.TCPAddr{}
+	}
+	conn, err = s.createPipe(cid, raddr)
+	return
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
@@ -294,12 +328,11 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cid := r.Form.Get("token")
-	v, ok := s.conns.Load(cid)
-	if !ok {
-		w.WriteHeader(http.StatusForbidden)
+	conn, err := s.getOrCreateConn(cid, r)
+	if err != nil {
+		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
-	conn := v.(net.Conn)
 
 	br := bufio.NewReader(r.Body)
 	data, err := br.ReadString('\n')
@@ -315,6 +348,8 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 
 	data = strings.TrimSuffix(data, "\n")
 	if len(data) == 0 {
+		conn.Close()
+		s.conns.Delete(cid)
 		return
 	}
 
@@ -357,13 +392,11 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cid := r.Form.Get("token")
-	v, ok := s.conns.Load(cid)
-	if !ok {
-		w.WriteHeader(http.StatusForbidden)
+	conn, err := s.getOrCreateConn(cid, r)
+	if err != nil {
+		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
-
-	conn := v.(net.Conn)
 
 	// Disable per-response buffering so streaming proxies forward each flushed
 	// chunk immediately. Without this, Nginx with proxy_buffering on (the
@@ -386,7 +419,7 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 			bw.WriteString(base64.StdEncoding.EncodeToString(b[:n]))
 			bw.WriteString("\n")
 			if err := bw.Flush(); err != nil {
-				return
+				break
 			}
 			if fw, ok := w.(http.Flusher); ok {
 				fw.Flush()
@@ -394,18 +427,21 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				b[0] = '\n' // no data
-				w.Write(b[:1])
-			} else if errors.Is(err, io.EOF) {
-				// server connection closed
-			} else {
-				if !errors.Is(err, io.ErrClosedPipe) {
-					s.options.logger.Error(err)
+				if _, werr := w.Write([]byte{'\n'}); werr != nil {
+					break // heartbeat write failed, client disconnected
 				}
-				s.conns.Delete(cid)
-				conn.Close()
+				if fw, ok := w.(http.Flusher); ok {
+					fw.Flush()
+				}
+				continue
 			}
-			return
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) {
+				s.options.logger.Error(err)
+			}
+			break
 		}
 	}
+
+	s.conns.Delete(cid)
+	conn.Close()
 }
