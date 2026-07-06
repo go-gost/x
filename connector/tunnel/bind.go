@@ -69,8 +69,8 @@ func (c *tunnelConnector) initTunnel(conn net.Conn, network, address string) (ad
 	req.Features = append(req.Features, af)
 
 	af = &relay.AddrFeature{}
-	if h, _, e := net.SplitHostPort(address); e == nil && h == "" {
-		address = net.JoinHostPort("0.0.0.0", address)
+	if h, p, e := net.SplitHostPort(address); e == nil && h == "" {
+		address = net.JoinHostPort("0.0.0.0", p)
 	}
 	af.ParseFrom(address)
 	req.Features = append(req.Features, af) // dst address

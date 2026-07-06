@@ -66,7 +66,7 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	endpoint := hex.EncodeToString(v[:8])
 
 	host, port, _ := net.SplitHostPort(address)
-	if host == "" || h.md.ingress == nil {
+	if host == "" || isUnspecified(host) || h.md.ingress == nil {
 		host = endpoint
 	} else if host != endpoint {
 		if rule := h.md.ingress.GetRule(ctx, host, ingress.WithService(h.options.Service)); rule != nil && rule.Endpoint != tunnelID.String() {
@@ -137,4 +137,10 @@ func (h *tunnelHandler) handleBind(ctx context.Context, conn net.Conn, network, 
 	log.Debugf("%s/%s: tunnel=%s, connector=%s, weight=%d established", addr, network, tunnelID, connectorID, connectorID.Weight())
 
 	return
+}
+
+// isUnspecified reports whether the host is an unspecified IP address
+// (0.0.0.0 or ::) that should be treated the same as an empty host.
+func isUnspecified(host string) bool {
+	return host == "0.0.0.0" || host == "::"
 }
