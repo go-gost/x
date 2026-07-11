@@ -24,6 +24,7 @@ type metadata struct {
 	sniffing                    bool
 	sniffingTimeout             time.Duration
 	sniffingFallback            bool
+	sniffingDialOriginalDst     bool
 	sniffingWebsocket           bool
 	sniffingWebsocketSampleRate float64
 
@@ -43,6 +44,7 @@ func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.sniffing = mdutil.GetBool(md, "sniffing")
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingFallback = mdutil.GetBool(md, "sniffing.fallback")
+	h.md.sniffingDialOriginalDst = mdutil.GetBool(md, "sniffing.dialOriginalDst")
 	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
 	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
 
