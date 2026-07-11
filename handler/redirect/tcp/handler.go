@@ -142,6 +142,14 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		"host": dstAddr.String(),
 	})
 
+	// Check bypass on dstAddr before sniffing — the sniffer only matches the
+	// sniffed req.Host, so IP/CIDR rules miss connections carrying a hostname.
+	if h.options.Bypass != nil &&
+		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
+		log.Debug("bypass: ", dstAddr)
+		return xbypass.ErrBypass
+	}
+
 	if h.md.sniffing {
 		if h.md.sniffingTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
@@ -228,12 +236,6 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	}
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
-
-	if h.options.Bypass != nil &&
-		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
-		log.Debug("bypass: ", dstAddr)
-		return xbypass.ErrBypass
-	}
 
 	var buf bytes.Buffer
 	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), dstAddr.Network(), dstAddr.String())
