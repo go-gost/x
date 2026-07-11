@@ -195,6 +195,18 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 			return cc, err
 		}
+
+		// Dial the original dst instead of the sniffed host; sniffing's
+		// hostname bypass and recording still run beforehand.
+		if h.md.sniffingDialOriginalDst {
+			dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+				var buf bytes.Buffer
+				cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				ro.Route = buf.String()
+				return cc, err
+			}
+		}
+
 		dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
 			return dial(ctx, network, address)
 		}
