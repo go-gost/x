@@ -178,13 +178,34 @@ func toUTLSCertificates(certs []tls.Certificate) []utls.Certificate {
 	return out
 }
 
+// utlsCurves maps the crypto/tls curve IDs that utls understands.
+//
+// crypto/tls and utls use separate CurveID enumerations. Go has added
+// post-quantum hybrid curves (X25519MLKEM768, SecP256r1MLKEM768,
+// SecP384r1MLKEM1024) whose numeric IDs utls does not recognise, so a
+// blind utls.CurveID(id) cast turns them into unsupported curve IDs and
+// aborts the handshake with "CurvePreferences includes unsupported curve".
+// We keep only the curves utls can actually use and drop the rest; if none
+// survive, return nil so utls falls back to the fingerprint's defaults.
+var utlsCurves = map[tls.CurveID]utls.CurveID{
+	tls.X25519:   utls.X25519,
+	tls.CurveP256: utls.CurveP256,
+	tls.CurveP384: utls.CurveP384,
+	tls.CurveP521: utls.CurveP521,
+}
+
 func toUTLSCurveIDs(ids []tls.CurveID) []utls.CurveID {
-	if ids == nil {
+	if len(ids) == 0 {
 		return nil
 	}
-	out := make([]utls.CurveID, len(ids))
-	for i, id := range ids {
-		out[i] = utls.CurveID(id)
+	out := make([]utls.CurveID, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := utlsCurves[id]; ok {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
