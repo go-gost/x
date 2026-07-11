@@ -90,6 +90,23 @@ func TestServerConn_Close_ReleasesLimiter(t *testing.T) {
 	}
 }
 
+func TestServerConn_Close_DoubleClose_ReleasesLimiterOnce(t *testing.T) {
+	c := &mockConn{}
+	lim := &allowLimiter{limit: 2}
+	lim.Allow(2) // acquire both slots
+
+	sc := &serverConn{Conn: c, limiter: lim}
+	sc.Close() // first close: releases one slot
+	sc.Close() // second close: must NOT release the second slot
+
+	if !lim.Allow(1) {
+		t.Fatal("first close should have released a slot")
+	}
+	if lim.Allow(1) {
+		t.Fatal("second close released another slot: double-release bug")
+	}
+}
+
 func TestServerConn_CloseRead_Supported(t *testing.T) {
 	inner := &connWithCloseRead{Conn: &mockConn{}}
 	sc := &serverConn{Conn: inner}
