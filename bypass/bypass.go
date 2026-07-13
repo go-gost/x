@@ -12,8 +12,8 @@
 // Matching modes:
 //   - Blacklist (whitelist=false): matching addresses bypass the proxy.
 //     This is the default.
-//   - Whitelist (whitelist=true):  only matching addresses bypass the proxy;
-//     all other addresses go through the proxy chain.
+//   - Whitelist (whitelist=true):  matching addresses go through the proxy
+//     chain; all other addresses bypass the proxy.
 package bypass
 
 import (
@@ -80,8 +80,8 @@ type options struct {
 type Option func(opts *options)
 
 // WhitelistOption sets whether the bypass operates in whitelist mode.
-// In whitelist mode, only matching addresses bypass the proxy;
-// all others go through the proxy chain.
+// In whitelist mode, matching addresses go through the proxy chain;
+// all others bypass the proxy.
 func WhitelistOption(whitelist bool) Option {
 	return func(opts *options) {
 		opts.whitelist = whitelist
@@ -214,8 +214,8 @@ type localBypass struct {
 // NewBypass creates and initializes a local Bypass instance.
 //
 // In blacklist mode (the default), addresses matching any pattern bypass the
-// proxy. In whitelist mode (set via WhitelistOption(true)), only matching
-// addresses bypass the proxy and all others go through the chain.
+// proxy. In whitelist mode (set via WhitelistOption(true)), matching addresses
+// go through the proxy chain and all others bypass the proxy.
 //
 // If a reload period is configured, patterns from external loaders are
 // refreshed automatically in the background.
