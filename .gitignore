@@ -1,0 +1,22 @@
+# Build & test artifacts
+*.test
+coverage.out
+coverage*.out
+coverage*.tmp
+
+# Generated local TLS cert
+cert.pem
+
+# Stray Node tooling in a Go module
+package.json
+package-lock.json
+
+# Index / IDE / agent state
+.codegraph/
+.claude/
+.remember/
+.build/
+__pycache__/
+
+# Local test configs
+play/
