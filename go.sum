@@ -61,8 +61,6 @@ github.com/go-gost/gosocks5 v0.5.0 h1:YE37l1MJwde8diIQdynStqogMotG5enoTdborhA5yi
 github.com/go-gost/gosocks5 v0.5.0/go.mod h1:1G6I7HP7VFVxveGkoK8mnprnJqSqJjdcASKsdUn4Pp4=
 github.com/go-gost/plugin v0.5.0 h1:zK3Ezcv+z6bz6aUhaFZcZiJc42w44ohybzrj5tnWzcM=
 github.com/go-gost/plugin v0.5.0/go.mod h1:oN23l+yGDCIP9G3KnDl/I/0zVGOobZUDCB2Z5yYYXts=
-github.com/go-gost/relay v0.6.1 h1:7SqnHFbY8x/DzvjpK03a5zcVH9+TbJAcnW/RT6s1ecc=
-github.com/go-gost/relay v0.6.1/go.mod h1:Dku0f5sfjOClrZFiDmQUrYYJ4uof7rnkCUBfsl0PSAI=
 github.com/go-gost/relay v0.6.2 h1:0Rgm1TOZvrilAKj6zn+UMvAGWtS0H08e2wBX03Y6g+I=
 github.com/go-gost/relay v0.6.2/go.mod h1:Dku0f5sfjOClrZFiDmQUrYYJ4uof7rnkCUBfsl0PSAI=
 github.com/go-gost/tls-dissector v0.2.0 h1:9tE6WOzzpurATTBWn60DU4R8gibpGNY8/qVcc1SicVg=
@@ -128,6 +126,8 @@ github.com/gravitational/trace v1.1.16-0.20220114165159-14a9a7dd6aaf h1:C1GPyPJr
 github.com/gravitational/trace v1.1.16-0.20220114165159-14a9a7dd6aaf/go.mod h1:zXqxTI6jXDdKnlf8s+nT+3c8LrwUEy3yNpO4XJL90lA=
 github.com/hashicorp/hcl v1.0.0 h1:0Anlzjpi4vEasTeNFn2mLJgTSwt0+6sfsiTG8qcWGx4=
 github.com/hashicorp/hcl v1.0.0/go.mod h1:E5yfLk+7swimpb2L/Alb/PJmXilQ/rhwaUYs4T20WEQ=
+github.com/hashicorp/yamux v0.1.1 h1:yrQxtgseBDrq9Y652vSRDvsKCJKOUD+GzTS4Y0Y8pvE=
+github.com/hashicorp/yamux v0.1.1/go.mod h1:CtWFDAQgb7dxtzFs4tWbplKIe2jSi3+5vKbgIO0SLnQ=
 github.com/jonboulle/clockwork v0.2.2 h1:UOGuzwb1PwsrDAObMuhUnj0p5ULPj8V/xJ7Kx9qUBdQ=
 github.com/jonboulle/clockwork v0.2.2/go.mod h1:Pkfl5aHPm1nk2H9h0bjmnJD/BcgbGXUBGnn1kMkgxc8=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=

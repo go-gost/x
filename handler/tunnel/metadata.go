@@ -42,18 +42,18 @@ type metadata struct {
 	entryPoint string
 	// entryPointID is the parsed tunnel ID that identifies public
 	// entrypoint visitors in handleConnect.
-	entryPointID                relay.TunnelID
-	entryPointProxyProtocol     int
-	entryPointKeepalive         bool
-	entryPointCompression       bool
+	entryPointID            relay.TunnelID
+	entryPointProxyProtocol int
+	entryPointKeepalive     bool
+	entryPointCompression   bool
 	// entryPointReadTimeout is the deadline for reading upstream HTTP
 	// response headers in the entrypoint's http.Transport.ResponseHeaderTimeout.
 	// Also passed as readTimeout to the entrypoint dialer for SetReadDeadline
 	// on the upstream connection. 0 or negative defaults to 15s.
-	entryPointReadTimeout       time.Duration
+	entryPointReadTimeout time.Duration
 	// sniffingWebsocket enables WebSocket frame-level recording in the
 	// entrypoint HTTP handler.
-	sniffingWebsocket           bool
+	sniffingWebsocket bool
 	// sniffingWebsocketSampleRate controls the rate for WebSocket frame
 	// recording. 0 defaults to DefaultSampleRate.
 	sniffingWebsocketSampleRate float64
@@ -62,10 +62,10 @@ type metadata struct {
 	// ingress routing (the tunnel ID from the relay request is used directly).
 	directTunnel bool
 	// tunnelTTL is the TTL for the Tunnel's clean goroutine. Defaults to defaultTTL.
-	tunnelTTL    time.Duration
-	ingress      ingress.Ingress
-	sd           sd.SD
-	muxCfg       *mux.Config
+	tunnelTTL time.Duration
+	ingress   ingress.Ingress
+	sd        sd.SD
+	muxCfg    *mux.Config
 
 	observerPeriod       time.Duration
 	observerResetTraffic bool
@@ -164,6 +164,8 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+		Type:              mdutil.GetString(md, "mux.type"),
+		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
 	}
 	if h.md.muxCfg.Version == 0 {
 		h.md.muxCfg.Version = 2
@@ -192,9 +194,9 @@ func (h *tunnelHandler) parseMetadata(md mdata.Metadata) (err error) {
 // "entrypoints" metadata key as a JSON array.
 type entrypointConfig struct {
 	// Name is an optional label for this entrypoint (used in logs).
-	Name    string
+	Name string
 	// Addr is the TCP address to listen on (e.g. "0.0.0.0:80").
-	Addr    string
+	Addr string
 	// Ingress is the ingress rule table for this entrypoint. If nil,
 	// the handler's default ingress is used.
 	Ingress ingress.Ingress

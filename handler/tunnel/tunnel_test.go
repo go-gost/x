@@ -33,7 +33,7 @@ func newTestConnectorID(t *testing.T, udp bool, weight uint8) relay.ConnectorID 
 }
 
 // newTestSession creates a real mux.Session backed by a pipe for testing.
-func newTestSession(t *testing.T) (*mux.Session, net.Conn) {
+func newTestSession(t *testing.T) (mux.Session, net.Conn) {
 	t.Helper()
 	client, server := net.Pipe()
 	t.Cleanup(func() { client.Close(); server.Close() })
@@ -47,7 +47,7 @@ func newTestSession(t *testing.T) (*mux.Session, net.Conn) {
 
 // newTestConnector creates a Connector with a test logger, avoiding
 // a nil logger.Default() panic.
-func newTestConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s *mux.Session, opts *ConnectorOptions) *Connector {
+func newTestConnector(id relay.ConnectorID, tid relay.TunnelID, node string, s mux.Session, opts *ConnectorOptions) *Connector {
 	if opts == nil {
 		opts = &ConnectorOptions{}
 	}

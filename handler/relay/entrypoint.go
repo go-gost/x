@@ -79,11 +79,11 @@ func (l *tcpListener) Close() error {
 // the client that requested BIND receives forwarded connections as
 // streams on the mux session.
 type tcpHandler struct {
-	session *mux.Session
+	session mux.Session
 	options handler.Options
 }
 
-func newTCPHandler(session *mux.Session, opts ...handler.Option) handler.Handler {
+func newTCPHandler(session mux.Session, opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
 		opt(&options)

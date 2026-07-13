@@ -49,7 +49,7 @@ func (p *tcpListener) Close() error {
 
 type tcpMuxListener struct {
 	addr    net.Addr
-	session *mux.Session
+	session mux.Session
 	logger  logger.Logger
 }
 

@@ -13,9 +13,9 @@ const (
 )
 
 type metadata struct {
-	mptcp     bool
-	reuseport bool
-	muxCfg    *mux.Config
+	mptcp             bool
+	reuseport         bool
+	muxCfg            *mux.Config
 	backlog           int
 	keepalive         bool
 	keepaliveIdle     time.Duration
@@ -35,6 +35,8 @@ func (l *mtcpListener) parseMetadata(md md.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+		Type:              mdutil.GetString(md, "mux.type"),
+		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
 	}
 	if l.md.muxCfg.Version == 0 {
 		l.md.muxCfg.Version = 2

@@ -280,6 +280,13 @@ func TestHandler_observeStats(t *testing.T) {
 		// First tick: Observe fails, events are stored as pending.
 		// Second tick: Observe succeeds on pending events, then also flushes new events.
 		<-observeC // first call (fails)
+
+
+		// Inject a fresh event so the recovery tick has new data to flush after
+		// the pending batch is retried (exercises the fall-through flush path).
+		s2 := h.stats.Stats("client2")
+		s2.Add(stats.KindTotalConns, 1)
+
 		<-observeC // second call (pending retry succeeds)
 		<-observeC // third call (new events flushed in same tick)
 

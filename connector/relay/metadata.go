@@ -4,8 +4,8 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/internal/util/mux"
+	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 type metadata struct {
@@ -31,6 +31,8 @@ func (c *relayConnector) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+		Type:              mdutil.GetString(md, "mux.type"),
+		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
 	}
 
 	return

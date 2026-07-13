@@ -14,7 +14,7 @@ import (
 )
 
 type metadata struct {
-	publicAddr        string
+	publicAddr string
 	// readTimeout is the deadline for reading the initial SOCKS5
 	// handshake (auth + connect/associate/udp request) from the client
 	// connection. The deadline is cleared after the handshake, so it
@@ -76,6 +76,8 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+		Type:              mdutil.GetString(md, "mux.type"),
+		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
 	}
 
 	h.md.observerPeriod = mdutil.GetDuration(md, "observePeriod", "observer.period", "observer.observePeriod")

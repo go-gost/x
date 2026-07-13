@@ -8,7 +8,7 @@ import (
 
 type muxSession struct {
 	conn    net.Conn
-	session *mux.Session
+	session mux.Session
 }
 
 func (session *muxSession) GetConn() (net.Conn, error) {
@@ -31,8 +31,4 @@ func (session *muxSession) IsClosed() bool {
 		return true
 	}
 	return session.session.IsClosed()
-}
-
-func (session *muxSession) NumStreams() int {
-	return session.session.NumStreams()
 }

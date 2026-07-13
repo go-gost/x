@@ -15,7 +15,7 @@ import (
 type bindListener struct {
 	network string
 	addr    net.Addr
-	session *mux.Session
+	session mux.Session
 	logger  logger.Logger
 }
 

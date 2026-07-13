@@ -60,6 +60,8 @@ func (l *mwsListener) parseMetadata(md mdata.Metadata) (err error) {
 		MaxFrameSize:      mdutil.GetInt(md, "mux.maxFrameSize"),
 		MaxReceiveBuffer:  mdutil.GetInt(md, "mux.maxReceiveBuffer"),
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
+		Type:              mdutil.GetString(md, "mux.type"),
+		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
 	}
 
 	if mm := mdutil.GetStringMapString(md, "ws.header", "header"); len(mm) > 0 {

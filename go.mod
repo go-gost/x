@@ -21,6 +21,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/yamux v0.1.1
 	github.com/klauspost/compress v1.19.0
 	github.com/miekg/dns v1.1.61
 	github.com/mitchellh/go-homedir v1.1.0
