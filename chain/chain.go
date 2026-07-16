@@ -30,6 +30,7 @@ package chain
 
 import (
 	"context"
+	"io"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
@@ -109,6 +110,17 @@ func (c *Chain) Marker() selector.Marker {
 
 func (c *Chain) Name() string {
 	return c.name
+}
+
+// Close stops all probe goroutines by cascading to each hop's Close,
+// which in turn cascades to node.Close() for every node.
+func (c *Chain) Close() error {
+	for _, h := range c.hops {
+		if closer, ok := h.(io.Closer); ok {
+			closer.Close()
+		}
+	}
+	return nil
 }
 
 // Route builds a route by selecting one node from each hop. If a node

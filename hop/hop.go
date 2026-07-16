@@ -443,6 +443,11 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 
 func (p *chainHop) Close() error {
 	p.cancelFunc()
+	for _, n := range p.Nodes() {
+		if n != nil {
+			n.Close()
+		}
+	}
 	if p.options.fileLoader != nil {
 		p.options.fileLoader.Close()
 	}

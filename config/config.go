@@ -157,6 +157,7 @@ type SelectorConfig struct {
 	Strategy    string        `json:"strategy"`
 	MaxFails    int           `yaml:"maxFails" json:"maxFails"`
 	FailTimeout time.Duration `yaml:"failTimeout" json:"failTimeout"`
+	MaxLatency  time.Duration `yaml:"maxLatency,omitempty" json:"maxLatency,omitempty"`
 }
 
 type AdmissionConfig struct {
@@ -389,6 +390,7 @@ type ForwardNodeConfig struct {
 	Auth     *AuthConfig     `yaml:",omitempty" json:"auth,omitempty"`
 	HTTP     *HTTPNodeConfig `yaml:",omitempty" json:"http,omitempty"`
 	TLS      *TLSNodeConfig  `yaml:",omitempty" json:"tls,omitempty"`
+	Probe    *ProbeConfig    `yaml:",omitempty" json:"probe,omitempty"`
 	Metadata map[string]any  `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
@@ -430,6 +432,18 @@ type NodeMatcherConfig struct {
 	// chain.MaxMatcherBodySize. Only takes effect under an HTTP sniffing handler
 	// whose sniffer reads the body prefix before node selection.
 	BodySize int `yaml:",omitempty" json:"bodySize,omitempty"`
+}
+
+// ProbeConfig holds the configuration for a node-level liveness probe.
+type ProbeConfig struct {
+	Type           string            `json:"type"`
+	Addr           string            `json:"addr,omitempty"`
+	Interval       time.Duration     `json:"interval"`
+	Timeout        time.Duration     `json:"timeout"`
+	HTTPPath       string            `yaml:"httpPath,omitempty" json:"httpPath,omitempty"`
+	HTTPHost       string            `yaml:"httpHost,omitempty" json:"httpHost,omitempty"`
+	HTTPHeaders    map[string]string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
+	ExpectedStatus int               `yaml:"expectedStatus,omitempty" json:"expectedStatus,omitempty"`
 }
 
 type HTTPNodeConfig struct {
@@ -635,6 +649,7 @@ type NodeConfig struct {
 	Matcher  *NodeMatcherConfig `yaml:",omitempty" json:"matcher,omitempty"`
 	HTTP     *HTTPNodeConfig    `yaml:",omitempty" json:"http,omitempty"`
 	TLS      *TLSNodeConfig     `yaml:",omitempty" json:"tls,omitempty"`
+	Probe    *ProbeConfig       `yaml:",omitempty" json:"probe,omitempty"`
 	Metadata map[string]any     `yaml:",omitempty" json:"metadata,omitempty"`
 }
 

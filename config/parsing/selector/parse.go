@@ -55,15 +55,21 @@ func ParseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node
 		strategy = xs.HashStrategy[*chain.Node]()
 	case "parallel":
 		strategy = xs.ParallelStrategy[*chain.Node]()
+	case "lowestlatency", "lowest", "ll":
+		strategy = xs.LowestLatencyStrategy[*chain.Node]()
 	default:
 		strategy = xs.RoundRobinStrategy[*chain.Node]()
 	}
 
-	return xs.NewSelector(
-		strategy,
+	filters := []selector.Filter[*chain.Node]{
 		xs.FailFilter[*chain.Node](cfg.MaxFails, cfg.FailTimeout),
 		xs.BackupFilter[*chain.Node](),
-	)
+	}
+	if cfg.MaxLatency > 0 {
+		filters = append(filters, xs.LatencyFilter[*chain.Node](cfg.MaxLatency))
+	}
+
+	return xs.NewSelector(strategy, filters...)
 }
 
 // DefaultNodeSelector returns a node selector using round-robin strategy with
