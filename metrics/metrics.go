@@ -29,6 +29,8 @@ const (
 	MetricChainErrorsCounter metrics.MetricName = "gost_chain_errors_total"
 	// Total recorder records. Labels: host, recorder.
 	MetricRecorderRecordsCounter metrics.MetricName = "gost_recorder_records_total"
+	// Number of services in each state. Labels: host, state.
+	MetricServiceStatusGauge metrics.MetricName = "gost_service_status"
 )
 
 var (
