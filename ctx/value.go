@@ -121,6 +121,22 @@ func PeerCertFromContext(ctx context.Context) *PeerCert {
 	return v
 }
 
+type socks5CmdKey struct{}
+
+// ContextWithSocks5Cmd returns a copy of ctx that carries a SOCKS5 command
+// override. Connectors use this to send a non-CONNECT command (e.g. Tor
+// RESOLVE/RESOLVE_PTR) to the upstream proxy.
+func ContextWithSocks5Cmd(ctx context.Context, cmd uint8) context.Context {
+	return context.WithValue(ctx, socks5CmdKey{}, cmd)
+}
+
+// Socks5CmdFromContext returns the SOCKS5 command override stored in ctx.
+// The bool is false if no override is present.
+func Socks5CmdFromContext(ctx context.Context) (uint8, bool) {
+	v, ok := ctx.Value(socks5CmdKey{}).(uint8)
+	return v, ok
+}
+
 // labelsKey saves the static service labels.
 type labelsKey struct{}
 

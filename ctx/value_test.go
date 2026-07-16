@@ -261,6 +261,33 @@ func (c *testContextConn) Context() context.Context {
 	return c.ctx
 }
 
+func TestContextWithSocks5Cmd(t *testing.T) {
+	ctx := ContextWithSocks5Cmd(context.Background(), 0xF0)
+
+	cmd, ok := Socks5CmdFromContext(ctx)
+	if !ok {
+		t.Fatal("Socks5CmdFromContext() ok = false, want true")
+	}
+	if cmd != 0xF0 {
+		t.Errorf("Socks5CmdFromContext() = 0x%02X, want 0xF0", cmd)
+	}
+}
+
+func TestSocks5CmdFromContext_Empty(t *testing.T) {
+	_, ok := Socks5CmdFromContext(context.Background())
+	if ok {
+		t.Error("Socks5CmdFromContext(empty) ok = true, want false")
+	}
+}
+
+func TestSocks5CmdFromContext_WrongType(t *testing.T) {
+	ctx := context.WithValue(context.Background(), socks5CmdKey{}, "not-a-uint8")
+	_, ok := Socks5CmdFromContext(ctx)
+	if ok {
+		t.Error("Socks5CmdFromContext(wrong type) ok = true, want false")
+	}
+}
+
 func TestContextInterface(t *testing.T) {
 	ctx := context.Background()
 	ctx = ContextWithSid(ctx, Sid("iface-test"))

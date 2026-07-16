@@ -208,6 +208,10 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	case socks.CmdUDPTun:
 		ro.Network = "udp"
 		return h.handleUDPTun(ctx, conn, networkAddr("udp", req.Addr), address, ro, log)
+	case socks.CmdResolve:
+		return h.handleResolve(ctx, conn, address, log)
+	case socks.CmdResolvePTR:
+		return h.handleResolvePTR(ctx, conn, address, log)
 	default:
 		err = ErrUnknownCmd
 		log.Error(err)

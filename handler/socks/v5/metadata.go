@@ -31,6 +31,7 @@ type metadata struct {
 	udpBindMax        int
 	compatibilityMode bool
 	hash              string
+	enableTor         bool
 	muxCfg            *mux.Config
 
 	observerPeriod       time.Duration
@@ -67,6 +68,7 @@ func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.compatibilityMode = mdutil.GetBool(md, "comp")
 	h.md.hash = mdutil.GetString(md, "hash")
+	h.md.enableTor = mdutil.GetBool(md, "tor", "enableTor", "socks5.tor")
 
 	h.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),

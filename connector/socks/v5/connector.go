@@ -137,7 +137,12 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		addr.Host = "127.0.0.1"
 	}
 
-	req := gosocks5.NewRequest(gosocks5.CmdConnect, &addr)
+	cmd := gosocks5.CmdConnect
+	if c, ok := ctxvalue.Socks5CmdFromContext(ctx); ok {
+		cmd = c
+	}
+
+	req := gosocks5.NewRequest(cmd, &addr)
 	log.Trace(req)
 	if err := req.Write(conn); err != nil {
 		log.Error(err)
@@ -155,6 +160,10 @@ func (c *socks5Connector) Connect(ctx context.Context, conn net.Conn, network, a
 		err = errors.New("host unreachable")
 		log.Error(err)
 		return nil, err
+	}
+
+	if cmd == socks.CmdResolve || cmd == socks.CmdResolvePTR {
+		return &resolveConn{Conn: conn, resolvedAddr: reply.Addr}, nil
 	}
 
 	return conn, nil
