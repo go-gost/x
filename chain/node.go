@@ -13,7 +13,13 @@ import (
 // node's transport. On success the node's marker is reset; on failure the
 // marker is incremented. cfg may be nil (no-op).
 func StartNodeProbe(node *chain.Node, cfg *chain.ProbeConfig, log logger.Logger) {
-	if cfg == nil || cfg.Addr == "" {
+	if cfg == nil {
+		return
+	}
+	if cfg.Addr == "" && cfg.Type != chain.ProbeTypeCmd {
+		return
+	}
+	if cfg.Type == chain.ProbeTypeCmd && cfg.Command == "" {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -41,6 +47,23 @@ func runNodeProbe(ctx context.Context, node *chain.Node, cfg *chain.ProbeConfig,
 }
 
 func probeNode(node *chain.Node, cfg *chain.ProbeConfig, log logger.Logger) {
+	// cmd probe runs a shell command directly — no transport connection needed.
+	if cfg.Type == chain.ProbeTypeCmd {
+		timeout := cfg.Timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		start := time.Now()
+		err := (&probe.CmdProber{Command: cfg.Command, Timeout: timeout}).Probe()
+		latency := time.Since(start)
+		if err != nil {
+			recordProbe(node, false, latency, err.Error(), log)
+		} else {
+			recordProbe(node, true, latency, "", log)
+		}
+		return
+	}
+
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second

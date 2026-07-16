@@ -444,6 +444,7 @@ type ProbeConfig struct {
 	HTTPHost       string            `yaml:"httpHost,omitempty" json:"httpHost,omitempty"`
 	HTTPHeaders    map[string]string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
 	ExpectedStatus int               `yaml:"expectedStatus,omitempty" json:"expectedStatus,omitempty"`
+	Command        string            `yaml:"command,omitempty" json:"command,omitempty"`
 }
 
 type HTTPNodeConfig struct {

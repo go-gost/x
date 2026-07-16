@@ -159,6 +159,63 @@ func TestNodeProbeDisabled(t *testing.T) {
 	}
 }
 
+func TestNodeProbeCmd(t *testing.T) {
+	// Cmd probe doesn't need a transport — StartNodeProbe skips the addr check.
+	node := chain.NewNode("cmd-test", "")
+	cfg := &chain.ProbeConfig{
+		Type:     chain.ProbeTypeCmd,
+		Command:  "true",
+		Interval: 100 * time.Millisecond,
+		Timeout:  2 * time.Second,
+	}
+
+	StartNodeProbe(node, cfg, xlogger.Nop())
+	time.Sleep(300 * time.Millisecond)
+
+	pr := node.ProbeResult()
+	if pr == nil || !pr.Success {
+		t.Fatalf("expected cmd probe success, got %+v", pr)
+	}
+	if node.Marker().Count() != 0 {
+		t.Errorf("expected marker count 0 after success, got %d", node.Marker().Count())
+	}
+
+	// Switch to failing command
+	cfg2 := &chain.ProbeConfig{
+		Type:     chain.ProbeTypeCmd,
+		Command:  "false",
+		Interval: 100 * time.Millisecond,
+		Timeout:  2 * time.Second,
+	}
+	node.Close() // stop old probe
+	node2 := chain.NewNode("cmd-test-2", "")
+	StartNodeProbe(node2, cfg2, xlogger.Nop())
+	time.Sleep(300 * time.Millisecond)
+
+	pr2 := node2.ProbeResult()
+	if pr2 == nil || pr2.Success {
+		t.Fatalf("expected cmd probe failure for exit 1, got %+v", pr2)
+	}
+	if node2.Marker().Count() == 0 {
+		t.Error("expected marker count > 0 after cmd failure")
+	}
+
+	node2.Close()
+}
+
+func TestNodeProbeCmdDisabled(t *testing.T) {
+	// cmd probe without command → no-op
+	node := chain.NewNode("cmd-disabled", "")
+	cfg := &chain.ProbeConfig{
+		Type:    chain.ProbeTypeCmd,
+		Command: "",
+	}
+	StartNodeProbe(node, cfg, xlogger.Nop())
+	if pr := node.ProbeResult(); pr != nil {
+		t.Error("expected nil probe result for empty command")
+	}
+}
+
 func TestNodeProbeHTTP(t *testing.T) {
 	// Start a small HTTP server
 	mux := &httpTestMux{}

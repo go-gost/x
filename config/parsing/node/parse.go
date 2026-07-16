@@ -295,12 +295,18 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 // parseProbeConfig converts a config.ProbeConfig into a chain.ProbeConfig.
 // Returns nil when the config is invalid (e.g. empty addr).
 func parseProbeConfig(cfg *config.ProbeConfig) *chain.ProbeConfig {
-	if cfg == nil || cfg.Addr == "" {
+	if cfg == nil || (cfg.Addr == "" && cfg.Type != "cmd") {
+		return nil
+	}
+	if cfg.Type == "cmd" && cfg.Command == "" {
 		return nil
 	}
 	pt := chain.ProbeTypeTCP
-	if cfg.Type == "http" {
+	switch cfg.Type {
+	case "http":
 		pt = chain.ProbeTypeHTTP
+	case "cmd":
+		pt = chain.ProbeTypeCmd
 	}
 	interval := cfg.Interval
 	if interval <= 0 {
@@ -319,5 +325,6 @@ func parseProbeConfig(cfg *config.ProbeConfig) *chain.ProbeConfig {
 		HTTPHost:       cfg.HTTPHost,
 		HTTPHeaders:    cfg.HTTPHeaders,
 		ExpectedStatus: cfg.ExpectedStatus,
+		Command:        cfg.Command,
 	}
 }
