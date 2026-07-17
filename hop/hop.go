@@ -22,6 +22,7 @@ import (
 	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/x/config"
+	mdutil "github.com/go-gost/x/metadata/util"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
@@ -183,7 +184,15 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	}
 
 	// Stage 2: build candidate pool — each node must pass one of two gates.
-	var nodes []*chain.Node
+	// Track priority stats and backup presence during the scan so we can
+	// skip a separate sort/scan in the common all-equal-priority case.
+	var (
+		nodes        []*chain.Node
+		maxPriority  int
+		maxPriCount  int
+		maxPriNode   *chain.Node
+		hasBackup    bool
+	)
 	for _, node := range p.Nodes() {
 		if node == nil {
 			continue
@@ -219,6 +228,19 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 			}
 		}
 
+		pri := node.Options().Priority
+		if pri > maxPriority {
+			maxPriority = pri
+			maxPriCount = 1
+			maxPriNode = node
+		} else if pri == maxPriority {
+			maxPriCount++
+		}
+
+		if !hasBackup && mdutil.GetBool(node.Options().Metadata, "backup") {
+			hasBackup = true
+		}
+
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {
@@ -229,40 +251,45 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	}
 
 	// Stage 3: priority short-circuit.
-	// Sort descending so the highest priority node is at index 0.
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].Options().Priority > nodes[j].Options().Priority
-	})
-
-	if nodes[0].Options().Priority > 0 &&
-		!anyBackupNode(nodes) &&
-		nodes[0].Options().Priority > nodes[1].Options().Priority {
-		// Priority short-circuit: highest-priority non-backup node wins.
-		// Conditions: (1) top priority > 0 means a matcher indicated routing
-		// specificity, so the top node is authoritative for this request;
-		// (2) no backup node is present, otherwise BackupFilter would be
-		// silently bypassed; (3) the top priority is strictly higher than
-		// the second-highest — when multiple nodes share the same matcher
-		// rule they have equal priority and the selector (FailFilter,
-		// BackupFilter, strategy) should still apply for load balancing.
-		// When all three hold the selector is skipped and the best node wins directly.
-		p.logger.Debugf("priority shortcut: node %s selected", nodes[0].Name)
-		return nodes[0]
+	// maxPriCount == 1 means the top-priority node is strictly higher than
+	// all others (no tie). We already tracked maxPriority, hasBackup, and
+	// maxPriCount during Stage 2 — no separate scan needed.
+	if maxPriority > 0 && !hasBackup && maxPriCount == 1 {
+		p.logger.Debugf("priority shortcut: node %s selected", maxPriNode.Name)
+		return maxPriNode
 	}
 
 	// Stage 4: selector — filters then strategy.
-	// When nodes have different priorities, try each priority tier in
-	// descending order, falling through to the next tier only when the
-	// current one has no surviving node after filters (e.g. all failed).
-	if s := p.options.selector; s != nil {
-		for _, tier := range partitionByPriority(nodes) {
-			if v := s.Select(ctx, tier...); v != nil {
+	s := p.options.selector
+
+	// All same priority (the common case — e.g. no matchers configured).
+	// Skip the sort and tier partition entirely.
+	if maxPriCount == len(nodes) {
+		if s != nil {
+			return s.Select(ctx, nodes...)
+		}
+		return nodes[0]
+	}
+
+	// Mixed priorities. Sort descending, then feed each priority tier to
+	// the selector, falling through when a tier yields nothing.
+	if s == nil {
+		return maxPriNode
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Options().Priority > nodes[j].Options().Priority
+	})
+	start := 0
+	for i := 1; i <= len(nodes); i++ {
+		if i == len(nodes) || nodes[i].Options().Priority != nodes[start].Options().Priority {
+			if v := s.Select(ctx, nodes[start:i]...); v != nil {
 				return v
 			}
+			start = i
 		}
-		return nil
 	}
-	return nodes[0]
+	return nil
 }
 
 func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {
@@ -468,38 +495,3 @@ func (p *chainHop) Close() error {
 	return nil
 }
 
-// partitionByPriority groups nodes by descending priority. Nodes are already
-// sorted. Returns each contiguous priority tier as a separate slice.
-func partitionByPriority(nodes []*chain.Node) [][]*chain.Node {
-	if len(nodes) == 0 {
-		return nil
-	}
-	var tiers [][]*chain.Node
-	start := 0
-	for i := 1; i < len(nodes); i++ {
-		if nodes[i].Options().Priority != nodes[start].Options().Priority {
-			tiers = append(tiers, nodes[start:i])
-			start = i
-		}
-	}
-	tiers = append(tiers, nodes[start:])
-	return tiers
-}
-
-// anyBackupNode reports whether any node in the list has the backup metadata
-// flag set. Used to ensure that when backup nodes are in the candidate pool
-// the priority short-circuit is disabled, forcing selection through the
-// selector where BackupFilter can separate primary from failover nodes.
-// Without this gate, nodes with equal non-zero priority (auto-assigned from
-// matcher rule length) would skip BackupFilter entirely via the priority
-// short-circuit at Select, making backup metadata a no-op.
-func anyBackupNode(nodes []*chain.Node) bool {
-	for _, node := range nodes {
-		if md := node.Options().Metadata; md != nil && md.IsExists("backup") {
-			if md.Get("backup") == true {
-				return true
-			}
-		}
-	}
-	return false
-}
