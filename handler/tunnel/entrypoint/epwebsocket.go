@@ -120,7 +120,7 @@ func (ep *Entrypoint) copyWebsocketFrame(w io.Writer, r io.Reader, buf *bytes.Bu
 		MaskKey: fr.Header.MaskKey,
 		Length:  fr.Header.PayloadLength,
 	}
-	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		bodySize := opts.MaxBodySize
 		if bodySize <= 0 {
 			bodySize = sniffing.DefaultBodySize

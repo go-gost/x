@@ -159,6 +159,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	*ro2 = *ro
 	ro = ro2
 
+	if v := req.Header.Get("Gost-Record"); v != "" {
+		ro.RecordMode = strings.ToLower(v)
+	}
+	req.Header.Del("Gost-Record")
+
 	ro.Time = time.Now()
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
@@ -201,7 +206,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	var reqBody *xhttp.Body
-	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 && req.Body != nil {
+	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 && req.Body != nil && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		reqBody = xhttp.NewBody(req.Body, bodySize)
 		req.Body = reqBody
 	}
@@ -261,7 +266,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	var respBody *xhttp.Body
-	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 {
+	if bodySize := ClampBodySize(h.RecorderOptions); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}

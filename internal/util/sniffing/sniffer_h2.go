@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -87,6 +88,12 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ro := &xrecorder.HandlerRecorderObject{}
 	*ro = *h.recorderObject
+
+	if v := r.Header.Get("Gost-Record"); v != "" {
+		ro.RecordMode = strings.ToLower(v)
+	}
+	r.Header.Del("Gost-Record")
+
 	ro.Time = time.Now()
 
 	var err error
@@ -139,7 +146,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var reqBody *xhttp.Body
-	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && req.Body != nil {
+	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && req.Body != nil && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		reqBody = xhttp.NewBody(req.Body, bodySize)
 		req.Body = reqBody
 	}
@@ -169,7 +176,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.setHeader(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
-	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 {
+	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 		io.Copy(w, resp.Body)

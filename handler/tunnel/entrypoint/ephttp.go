@@ -114,6 +114,11 @@ func (ep *Entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	*ro2 = *ro
 	ro = ro2
 
+	if v := req.Header.Get("Gost-Record"); v != "" {
+		ro.RecordMode = strings.ToLower(v)
+	}
+	req.Header.Del("Gost-Record")
+
 	if sid := req.Header.Get(httpHeaderSID); sid != "" {
 		ro.SID = sid
 	} else {
@@ -196,7 +201,7 @@ func (ep *Entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	ro.HTTP.StatusCode = res.StatusCode
 
 	var reqBody *xhttp.Body
-	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		if req.Body != nil {
 			bodySize := opts.MaxBodySize
 			if bodySize <= 0 {
@@ -249,7 +254,7 @@ func (ep *Entrypoint) httpRoundTrip(ctx context.Context, rw io.ReadWriteCloser, 
 	}
 
 	var respBody *xhttp.Body
-	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody {
+	if opts := ep.recorder.Options; opts != nil && opts.HTTPBody && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		bodySize := opts.MaxBodySize
 		if bodySize <= 0 {
 			bodySize = sniffing.DefaultBodySize

@@ -142,12 +142,13 @@ type HandlerRecorderObject struct {
 	SID         string                   `json:"sid"`
 	Duration    time.Duration            `json:"duration"`
 	Time        time.Time                `json:"time"`
+	RecordMode  string                   `json:"-"` // "" = full, "headers" = metadata only, "off" = no recording
 }
 
 // Record serializes the HandlerRecorderObject as JSON and writes it to r.
 // It returns nil if p or r is nil or if p.Time is the zero value.
 func (p *HandlerRecorderObject) Record(ctx context.Context, r recorder.Recorder) error {
-	if p == nil || r == nil || p.Time.IsZero() {
+	if p == nil || r == nil || p.Time.IsZero() || p.RecordMode == "off" {
 		return nil
 	}
 

@@ -93,6 +93,11 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	*ro2 = *ro
 	ro = ro2
 
+	if v := req.Header.Get("Gost-Record"); v != "" {
+		ro.RecordMode = strings.ToLower(v)
+	}
+	req.Header.Del("Gost-Record")
+
 	host := normalizeHostPort(req.Host, "80")
 	ro.Host = host
 	ro.Time = time.Now()
@@ -177,7 +182,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	// Optionally intercept the request body for recording. The original
 	// body is replaced with a tee reader so the transport still sees it.
 	var reqBody *xhttp.Body
-	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 && req.Body != nil {
+	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 && req.Body != nil && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		reqBody = xhttp.NewBody(req.Body, bodySize)
 		req.Body = reqBody
 	}
@@ -226,7 +231,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 
 	// Optionally intercept the response body for recording.
 	var respBody *xhttp.Body
-	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 {
+	if bodySize := sniffing.ClampBodySize(h.recorder.Options); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody = xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
 	}
