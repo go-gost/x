@@ -251,8 +251,16 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	}
 
 	// Stage 4: selector — filters then strategy.
+	// When nodes have different priorities, try each priority tier in
+	// descending order, falling through to the next tier only when the
+	// current one has no surviving node after filters (e.g. all failed).
 	if s := p.options.selector; s != nil {
-		return s.Select(ctx, nodes...)
+		for _, tier := range partitionByPriority(nodes) {
+			if v := s.Select(ctx, tier...); v != nil {
+				return v
+			}
+		}
+		return nil
 	}
 	return nodes[0]
 }
@@ -458,6 +466,24 @@ func (p *chainHop) Close() error {
 		p.options.httpLoader.Close()
 	}
 	return nil
+}
+
+// partitionByPriority groups nodes by descending priority. Nodes are already
+// sorted. Returns each contiguous priority tier as a separate slice.
+func partitionByPriority(nodes []*chain.Node) [][]*chain.Node {
+	if len(nodes) == 0 {
+		return nil
+	}
+	var tiers [][]*chain.Node
+	start := 0
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i].Options().Priority != nodes[start].Options().Priority {
+			tiers = append(tiers, nodes[start:i])
+			start = i
+		}
+	}
+	tiers = append(tiers, nodes[start:])
+	return tiers
 }
 
 // anyBackupNode reports whether any node in the list has the backup metadata
