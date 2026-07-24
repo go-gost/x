@@ -46,6 +46,8 @@ type Tunnel struct {
 	mu    sync.RWMutex
 	// ttl is the interval between clean() ticks. Defaults to defaultTTL.
 	ttl time.Duration
+	// metadata carries key-value pairs set during tunnel bind (e.g. recording prefs).
+	metadata map[string]string
 }
 
 func NewTunnel(node string, tid relay.TunnelID, ttl time.Duration) *Tunnel {
@@ -147,6 +149,18 @@ func (t *Tunnel) CloseOnIdle() bool {
 		}
 	}
 	return false
+}
+
+func (t *Tunnel) SetMetadata(md map[string]string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.metadata = md
+}
+
+func (t *Tunnel) Metadata() map[string]string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.metadata
 }
 
 func (t *Tunnel) clean() {

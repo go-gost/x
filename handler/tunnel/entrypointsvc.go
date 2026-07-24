@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xrecorder "github.com/go-gost/x/recorder"
 	xservice "github.com/go-gost/x/service"
@@ -76,6 +77,18 @@ func (h *tunnelHandler) createEntrypointService(addr string, ing ingress.Ingress
 	}
 
 	dialFn := func(ctx epkg.DialContext, network, tid string) (net.Conn, string, string, error) {
+		realCtx := ctx.(context.Context)
+
+		// Apply connector-level recording preferences to the recorder object.
+		// Per-request Gost-Record header takes precedence — only set when empty.
+		if md := h.pool.GetMetadata(tid); len(md) > 0 {
+			if ro := ictx.RecorderObjectFromContext(realCtx); ro != nil && ro.RecordMode == "" {
+				if mode, ok := md["record.mode"]; ok {
+					ro.RecordMode = mode
+				}
+			}
+		}
+
 		d := &Dialer{
 			Node:    h.id,
 			Pool:    h.pool,

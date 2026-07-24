@@ -250,6 +250,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	var srcAddr, dstAddr string
 	network := "tcp"
 	var tunnelID relay.TunnelID
+	var connMetadata map[string]string
 	for _, f := range req.Features {
 		switch f.Type() {
 		case relay.FeatureUserAuth:
@@ -272,6 +273,10 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		case relay.FeatureNetwork:
 			if feature, _ := f.(*relay.NetworkFeature); feature != nil {
 				network = feature.Network.String()
+			}
+		case relay.FeatureMetadata:
+			if feature, _ := f.(*relay.MetadataFeature); feature != nil {
+				connMetadata = feature.KVs
 			}
 		}
 	}
@@ -305,7 +310,7 @@ func (h *tunnelHandler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 
 	case relay.CmdBind:
 		log.Debugf("bind: %s >> %s/%s", srcAddr, dstAddr, network)
-		return h.handleBind(ctx, conn, network, dstAddr, tunnelID, log)
+		return h.handleBind(ctx, conn, network, dstAddr, tunnelID, connMetadata, log)
 	default:
 		resp.Status = relay.StatusBadRequest
 		resp.WriteTo(conn) // write error ignored — conn is about to be closed

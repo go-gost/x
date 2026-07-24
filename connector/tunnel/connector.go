@@ -89,6 +89,11 @@ func (c *tunnelConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	req.Features = append(req.Features, &relay.TunnelFeature{
 		ID: c.md.tunnelID,
 	})
+	if c.md.recordMode != "" {
+		req.Features = append(req.Features, &relay.MetadataFeature{
+			KVs: map[string]string{"record.mode": c.md.recordMode},
+		})
+	}
 
 	if _, err := req.WriteTo(conn); err != nil {
 		return nil, err

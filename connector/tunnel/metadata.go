@@ -19,6 +19,7 @@ type metadata struct {
 	connectTimeout time.Duration
 	tunnelID       relay.TunnelID
 	muxCfg         *mux.Config
+	recordMode     string
 }
 
 func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
@@ -43,6 +44,8 @@ func (c *tunnelConnector) parseMetadata(md mdata.Metadata) (err error) {
 	if weight := mdutil.GetInt(md, "tunnel.weight"); weight > 0 {
 		c.md.tunnelID = c.md.tunnelID.SetWeight(uint8(weight))
 	}
+
+	c.md.recordMode = mdutil.GetString(md, "record.mode")
 
 	c.md.muxCfg = &mux.Config{
 		Version:           mdutil.GetInt(md, "mux.version"),

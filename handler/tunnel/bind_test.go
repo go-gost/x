@@ -39,7 +39,7 @@ func TestHandleBind_ResponseWritten(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, nil, testLogger())
 	}()
 
 	// Read the relay response from the client side of the pipe.
@@ -110,7 +110,7 @@ func TestHandleBind_WithIngress(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, nil, testLogger())
 	}()
 
 	_, _ = (&relay.Response{}).ReadFrom(client)
@@ -164,7 +164,7 @@ func TestHandleBind_WithSD(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "0.0.0.0:0", tid, nil, testLogger())
 	}()
 
 	// Read the response from client side.
@@ -223,7 +223,7 @@ func TestHandleBind_UDPConnector(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "udp", "0.0.0.0:0", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "udp", "0.0.0.0:0", tid, nil, testLogger())
 	}()
 
 	resp := &relay.Response{}
@@ -362,7 +362,7 @@ func TestConnectWithBindEndToEnd(t *testing.T) {
 
 	bindResult := make(chan error, 1)
 	go func() {
-		bindResult <- h.handleBind(context.Background(), bindServer, "tcp", "0.0.0.0:0", tid, testLogger())
+		bindResult <- h.handleBind(context.Background(), bindServer, "tcp", "0.0.0.0:0", tid, nil, testLogger())
 	}()
 
 	// Read the bind response from client side.
@@ -423,7 +423,7 @@ func TestHandleBind_WithHostEndpoint(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "myapp.example.com:8080", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "myapp.example.com:8080", tid, nil, testLogger())
 	}()
 
 	_, _ = (&relay.Response{}).ReadFrom(client)
@@ -467,7 +467,7 @@ func TestHandleBind_CustomHost(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, nil, testLogger())
 	}()
 
 	resp := &relay.Response{}
@@ -533,7 +533,7 @@ func TestHandleBind_CustomHostConflict(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, testLogger())
+		errCh <- h.handleBind(context.Background(), server, "tcp", "dash:8081", tid, nil, testLogger())
 	}()
 
 	resp := &relay.Response{}

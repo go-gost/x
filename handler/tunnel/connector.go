@@ -227,6 +227,23 @@ func (p *ConnectorPool) Close() error {
 	return nil
 }
 
+func (p *ConnectorPool) SetMetadata(tid relay.TunnelID, md map[string]string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if t := p.tunnels[tid.String()]; t != nil {
+		t.SetMetadata(md)
+	}
+}
+
+func (p *ConnectorPool) GetMetadata(tid string) map[string]string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if t := p.tunnels[tid]; t != nil {
+		return t.Metadata()
+	}
+	return nil
+}
+
 func (p *ConnectorPool) closeIdles(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
