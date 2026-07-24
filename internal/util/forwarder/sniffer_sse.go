@@ -14,6 +14,8 @@ import (
 	"github.com/go-gost/core/rewriter"
 	xctx "github.com/go-gost/x/ctx"
 	"github.com/klauspost/compress/zstd"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // scanSSEEvents is a bufio.SplitFunc that splits SSE events on \n\n (or \r\n\r\n).
@@ -154,15 +156,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 			// Compressed: decompress → rewrite → recompress.
 			var hasTypeMatch bool
 			for _, rw := range rewrites {
-				rt := rw.Type
-				if rt == "" {
-					if rw.Rewriter != nil {
-						rt = "*"
-					} else {
-						rt = "text/html"
-					}
-				}
-				if rt == "*" || strings.Contains(rt, ct) {
+				if shouldApply(rw.Type, ct, rw.Rewriter != nil) {
 					hasTypeMatch = true
 					break
 				}
@@ -218,15 +212,7 @@ func newRewriteBody(ctx context.Context, src io.ReadCloser, rewrites []chain.HTT
 		// (avoids unnecessary decompress-recompress cycle).
 		var hasTypeMatch bool
 		for _, rw := range rewrites {
-			rt := rw.Type
-			if rt == "" {
-				if rw.Rewriter != nil {
-					rt = "*"
-				} else {
-					rt = "text/html"
-				}
-			}
-			if rt == "*" || strings.Contains(rt, ct) {
+			if shouldApply(rw.Type, ct, rw.Rewriter != nil) {
 				hasTypeMatch = true
 				break
 			}
@@ -498,17 +484,9 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 		return body, nil
 	}
 	for _, rw := range b.rewrites {
-		rewriteType := rw.Type
-		if rewriteType == "" {
-			if rw.Rewriter != nil {
-				rewriteType = "*"
-			} else {
-				rewriteType = "text/html"
+			if !shouldApply(rw.Type, b.contentType, rw.Rewriter != nil) {
+				continue
 			}
-		}
-		if rewriteType != "*" && !strings.Contains(rewriteType, b.contentType) {
-			continue
-		}
 
 		if rw.Rewriter != nil {
 			if body == nil || rw.Pattern == nil || rw.Pattern.Match(body) {
@@ -519,8 +497,37 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 				body = rewritten
 			}
 		} else if rw.Pattern != nil {
-			body = rw.Pattern.ReplaceAll(body, rw.Replacement)
+			if strings.HasPrefix(rw.Type, "json:") {
+				path := rw.Type[5:]
+				if rw.Pattern.MatchString(gjson.GetBytes(body, path).String()) {
+					replaced, err := sjson.SetBytes(body, path, string(rw.Replacement))
+					if err == nil {
+						body = replaced
+					}
+				}
+			} else {
+				body = rw.Pattern.ReplaceAll(body, rw.Replacement)
+			}
 		}
 	}
 	return body, nil
+}
+
+// shouldApply reports whether a rewrite rule's configured type matches the
+// actual request Content-Type. A type prefix "json:" matches only
+// "application/json" content. An empty type defaults to "text/html", or "*"
+// when a Rewriter is set.
+func shouldApply(configuredType, actualContentType string, hasRewriter bool) bool {
+	t := configuredType
+	if t == "" {
+		if hasRewriter {
+			t = "*"
+		} else {
+			t = "text/html"
+		}
+	}
+	if strings.HasPrefix(t, "json:") {
+		return actualContentType == "application/json"
+	}
+	return t == "*" || strings.Contains(t, actualContentType)
 }

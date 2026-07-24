@@ -39,9 +39,31 @@ const MaxMatcherBodySize = 1 << 20 // 1MB
 func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []chain.HTTPBodyRewriteSettings {
 	var out []chain.HTTPBodyRewriteSettings
 	for _, v := range vs {
-		pattern, _ := regexp.Compile(v.Match)
+		var pattern *regexp.Regexp
+		var rewriteType string
+
+		if js, ok := strings.CutPrefix(v.Match, "json:"); ok {
+			// json:<path> or json:<path>=<value-regex>
+			path, valRegex, _ := strings.Cut(js, "=")
+			if valRegex == "" {
+				valRegex = ".*"
+			}
+			var err error
+			pattern, err = regexp.Compile(valRegex)
+			if err != nil {
+				log.Warnf("invalid JSON value regex %q for path %q: %v", valRegex, path, err)
+				continue
+			}
+			rewriteType = "json:" + path
+		} else {
+			if v.Match != "" {
+				pattern, _ = regexp.Compile(v.Match)
+			}
+			rewriteType = v.Type
+		}
+
 		rw := chain.HTTPBodyRewriteSettings{
-			Type:         v.Type,
+			Type:         rewriteType,
 			Pattern:      pattern,
 			Replacement:  []byte(v.Replacement),
 			MaxChunkSize: v.MaxChunkSize,

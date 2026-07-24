@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/go-gost/core/routing"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/routing/rules"
@@ -156,6 +158,7 @@ var httpFuncs = map[string]func(*matchersTree, ...string) error{
 	"HeaderRegexp": expectNParameters(headerRegexp, 1, 2),
 	"Query":        expectNParameters(query, 1, 2),
 	"QueryRegexp":  expectNParameters(queryRegexp, 1, 2),
+	"BodyJSON":     expectNParameters(bodyJSON, 2),
 	"BodyRegexp":   expectNParameters(bodyRegexp, 1),
 	"Bypass":       expectNParameters(bypass, 1),
 	"Admission":    expectNParameters(admission, 1),
@@ -468,6 +471,23 @@ func bodyRegexp(tree *matchersTree, patterns ...string) error {
 			return false
 		}
 		return re.Match(req.Body)
+	}
+
+	return nil
+}
+
+func bodyJSON(tree *matchersTree, args ...string) error {
+	path := args[0]
+	re, err := regexp.Compile(args[1])
+	if err != nil {
+		return fmt.Errorf("compiling BodyJSON pattern: %w", err)
+	}
+
+	tree.matcher = func(req *routing.Request) bool {
+		if len(req.Body) == 0 {
+			return false
+		}
+		return re.MatchString(gjson.GetBytes(req.Body, path).String())
 	}
 
 	return nil
