@@ -126,6 +126,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 			log.Error(err)
 			return err
 		}
+		ro.Node = target.Name
 		log = log.WithFields(map[string]any{
 			"node": target.Name,
 			"dst":  target.Addr,

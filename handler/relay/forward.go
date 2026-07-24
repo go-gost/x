@@ -57,6 +57,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 		log.Error(err)
 		return err
 	}
+	ro.Node = target.Name
 
 	log = log.WithFields(map[string]any{
 		"dst": target.Addr,

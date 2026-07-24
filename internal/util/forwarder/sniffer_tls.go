@@ -142,6 +142,7 @@ func resolveTLSNode(ctx context.Context, host string, ho *HandleOptions) (node *
 	if node == nil {
 		return nil, errors.New("node not available")
 	}
+	ho.recorderObject.Node = node.Name
 	if node.Addr == "" {
 		node = &chain.Node{
 			Name: node.Name,

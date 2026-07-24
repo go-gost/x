@@ -239,6 +239,7 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		res.StatusCode = http.StatusBadGateway
 		return nil, res, errors.New("node not available")
 	}
+	ho.recorderObject.Node = node.Name
 	if node.Addr == "" {
 		node = &chain.Node{
 			Name: node.Name,

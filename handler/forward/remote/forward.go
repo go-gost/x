@@ -26,6 +26,7 @@ func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn,
 		log.Error(errNodeNotAvailable)
 		return errNodeNotAvailable
 	}
+	ro.Node = target.Name
 	addr := target.Addr
 	if opts := target.Options(); opts != nil {
 		if opts.Network != "" {

@@ -40,6 +40,7 @@ func (h *forwardHandler) dialTarget(ctx context.Context, conn net.Conn, ro *xrec
 		log.Error(errNodeNotAvailable)
 		return nil, errNodeNotAvailable
 	}
+	ro.Node = target.Name
 	addr := target.Addr
 	if opts := target.Options(); opts != nil {
 		if opts.Network != "" {
