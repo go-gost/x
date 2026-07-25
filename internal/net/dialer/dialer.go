@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -145,8 +146,19 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 	default:
 		return nil, fmt.Errorf("dial: unsupported network %s", network)
 	}
+	// Prefer the pure-Go resolver on most platforms to avoid cgo DNS
+	// lookups blocking OS threads. On Android this must NOT be forced:
+	// the pure-Go resolver reads /etc/resolv.conf, which does not exist
+	// on Android, so it falls back to localhost nameservers
+	// (127.0.0.1:53 / [::1]:53) and every lookup fails. Android's only
+	// working resolver is the cgo/getaddrinfo one (selected by the
+	// default Resolver on that GOOS), so leave PreferGo off there.
+	resolver := &net.Resolver{}
+	if runtime.GOOS != "android" {
+		resolver.PreferGo = true
+	}
 	netd := net.Dialer{
-		Resolver:  &net.Resolver{PreferGo: true},
+		Resolver:  resolver,
 		LocalAddr: ifAddr,
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
