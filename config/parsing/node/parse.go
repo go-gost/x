@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -288,6 +289,11 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		settings.RewriteResponseBody = append(settings.RewriteResponseBody, parseBodyRewrites(cfg.HTTP.RewriteBody, log)...)
 		settings.RewriteResponseBody = append(settings.RewriteResponseBody, parseBodyRewrites(cfg.HTTP.RewriteResponseBody, log)...)
 		settings.RewriteRequestBody = append(settings.RewriteRequestBody, parseBodyRewrites(cfg.HTTP.RewriteRequestBody, log)...)
+
+		if v := strings.TrimSpace(cfg.HTTP.FailCodes); v != "" {
+			settings.FailCodes = parseFailCodes(v, nodeLogger)
+		}
+
 		opts = append(opts, chain.HTTPNodeOption(settings))
 	}
 
@@ -349,4 +355,25 @@ func parseProbeConfig(cfg *config.ProbeConfig) *chain.ProbeConfig {
 		ExpectedStatus: cfg.ExpectedStatus,
 		Command:        cfg.Command,
 	}
+}
+
+// parseFailCodes parses a comma-separated status code list, e.g. "429,5xx".
+// Tokens ending in "xx" become hundred-level wildcards (5xx → 5, matching
+// 500-599). Invalid tokens are logged and skipped.
+func parseFailCodes(s string, log logger.Logger) chain.FailCodes {
+	var codes chain.FailCodes
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if len(part) == 3 && strings.HasSuffix(part, "xx") {
+			if prefix, err := strconv.Atoi(part[:1]); err == nil && prefix > 0 {
+				codes = append(codes, prefix) // < 100 → wildcard
+				continue
+			}
+		} else if code, err := strconv.Atoi(part); err == nil && code >= 100 {
+			codes = append(codes, code)
+			continue
+		}
+		log.Warnf("failCodes: invalid token %q", part)
+	}
+	return codes
 }

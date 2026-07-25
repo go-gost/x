@@ -467,6 +467,9 @@ type HTTPNodeConfig struct {
 	// rewrite response body
 	RewriteResponseBody []HTTPBodyRewriteConfig `yaml:"rewriteResponseBody,omitempty" json:"rewriteResponseBody,omitempty"`
 
+	// comma-separated response status codes marking the node failed, e.g. "429,5xx"
+	FailCodes string `yaml:"failCodes,omitempty" json:"failCodes,omitempty"`
+
 	// HTTP basic auth
 	Auth *AuthConfig `yaml:",omitempty" json:"auth,omitempty"`
 }

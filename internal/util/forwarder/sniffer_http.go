@@ -512,6 +512,17 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	ro.HTTP.StatusCode = resp.StatusCode
 
+	// failCodes: a matching upstream status marks the node failed so the
+	// selector's FailFilter skips it. The response still relays to the client;
+	// closing the connection makes the next client request re-select a node.
+	if hts := node.Options().HTTP; hts != nil && hts.FailCodes.Match(resp.StatusCode) {
+		log.Warnf("failCodes matched status %d for node %s", resp.StatusCode, node.Name)
+		if marker := node.Marker(); marker != nil {
+			marker.Mark()
+		}
+		shouldClose = true
+	}
+
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpResponse(resp, false)
 		log.Trace(string(dump))
