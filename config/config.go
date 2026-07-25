@@ -428,9 +428,9 @@ type NodeMatcherConfig struct {
 	Rule     string `yaml:",omitempty" json:"rule,omitempty"`
 	Priority int    `yaml:",omitempty" json:"priority,omitempty"`
 	// BodySize is the max request body prefix (bytes) exposed to BodyRegexp
-	// matchers. 0 (default) disables body reading for this node. Capped at
-	// chain.MaxMatcherBodySize. Only takes effect under an HTTP sniffing handler
-	// whose sniffer reads the body prefix before node selection.
+	// and BodyJSON matchers. 0 (default) uses DefaultMatcherBodySize (1MB).
+	// Capped at MaxMatcherBodySize (10MB). Only takes effect under an HTTP
+	// sniffing handler whose sniffer reads the body prefix before node selection.
 	BodySize int `yaml:",omitempty" json:"bodySize,omitempty"`
 }
 

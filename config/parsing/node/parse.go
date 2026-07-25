@@ -26,10 +26,15 @@ import (
 	"github.com/go-gost/x/routing"
 )
 
-// MaxMatcherBodySize bounds the request body prefix (in bytes) exposed to
-// body matchers via routing.Request.Body. It protects against unbounded
-// buffering when a node opts in to body matching.
-const MaxMatcherBodySize = 1 << 20 // 1MB
+// DefaultMatcherBodySize is the default request body prefix (in bytes) exposed
+// to body matchers when a node has BodyRegexp/BodyJSON matchers but no
+// explicit bodySize.
+const DefaultMatcherBodySize = 1 << 20 // 1MB
+
+// MaxMatcherBodySize is the hard cap for matcher body prefix. Values above
+// this are silently clamped. Protects against unbounded in-memory buffering
+// when a node opts in to body matching.
+const MaxMatcherBodySize = 10 << 20 // 10MB
 
 // ParseNode converts a NodeConfig into a *chain.Node. It resolves the
 // connector and dialer from their registries, applies TLS settings, extracts
@@ -243,12 +248,13 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			}
 		}
 
-		if bodySize := cfg.Matcher.BodySize; bodySize > 0 {
-			if bodySize > MaxMatcherBodySize {
-				bodySize = MaxMatcherBodySize
-			}
-			opts = append(opts, chain.MatcherBodySizeNodeOption(bodySize))
+		bodySize := cfg.Matcher.BodySize
+		if bodySize <= 0 {
+			bodySize = DefaultMatcherBodySize
+		} else if bodySize > MaxMatcherBodySize {
+			bodySize = MaxMatcherBodySize
 		}
+		opts = append(opts, chain.MatcherBodySizeNodeOption(bodySize))
 
 		opts = append(opts, chain.PriorityNodeOption(priority))
 	}
