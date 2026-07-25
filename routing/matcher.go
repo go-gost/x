@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -154,11 +155,11 @@ var httpFuncs = map[string]func(*matchersTree, ...string) error{
 	"Path":         expectNParameters(path, 1),
 	"PathRegexp":   expectNParameters(pathRegexp, 1),
 	"PathPrefix":   expectNParameters(pathPrefix, 1),
-	"Header":       expectNParameters(header, 1, 2),
+	"Header":       expectNParameters(header, 1, 2, 3),
 	"HeaderRegexp": expectNParameters(headerRegexp, 1, 2),
-	"Query":        expectNParameters(query, 1, 2),
+	"Query":        expectNParameters(query, 1, 2, 3),
 	"QueryRegexp":  expectNParameters(queryRegexp, 1, 2),
-	"BodyJSON":     expectNParameters(bodyJSON, 2),
+	"BodyJSON":     expectNParameters(bodyJSON, 2, 3),
 	"BodyRegexp":   expectNParameters(bodyRegexp, 1),
 	"Bypass":       expectNParameters(bypass, 1),
 	"Admission":    expectNParameters(admission, 1),
@@ -336,9 +337,32 @@ func pathPrefix(tree *matchersTree, paths ...string) error {
 func header(tree *matchersTree, headers ...string) error {
 	key := http.CanonicalHeaderKey(headers[0])
 
+	op, compVal, err := parseCompareParams(headers)
+	if err != nil {
+		return err
+	}
+	if op != "" {
+		tree.matcher = func(req *routing.Request) bool {
+			if req.Header == nil {
+				return false
+			}
+			for _, v := range req.Header[key] {
+				f, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					continue
+				}
+				if compareOp(f, compVal, op) {
+					return true
+				}
+			}
+			return false
+		}
+		return nil
+	}
+
 	var value string
 	var hasValue bool
-	if len(headers) == 2 {
+	if len(headers) >= 2 {
 		value = headers[1]
 		hasValue = true
 	}
@@ -401,9 +425,32 @@ func headerRegexp(tree *matchersTree, headers ...string) error {
 func query(tree *matchersTree, queries ...string) error {
 	key := queries[0]
 
+	op, compVal, err := parseCompareParams(queries)
+	if err != nil {
+		return err
+	}
+	if op != "" {
+		tree.matcher = func(req *routing.Request) bool {
+			if req.Query == nil {
+				return false
+			}
+			for _, v := range req.Query[key] {
+				f, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					continue
+				}
+				if compareOp(f, compVal, op) {
+					return true
+				}
+			}
+			return false
+		}
+		return nil
+	}
+
 	var value string
 	var hasValue bool
-	if len(queries) == 2 {
+	if len(queries) >= 2 {
 		value = queries[1]
 		hasValue = true
 	}
@@ -476,9 +523,64 @@ func bodyRegexp(tree *matchersTree, patterns ...string) error {
 	return nil
 }
 
+func compareOp(f, compVal float64, op string) bool {
+	switch op {
+	case "gt":
+		return f > compVal
+	case "ge":
+		return f >= compVal
+	case "lt":
+		return f < compVal
+	case "le":
+		return f <= compVal
+	case "eq":
+		return f == compVal
+	case "ne":
+		return f != compVal
+	}
+	return false
+}
+
+func parseCompareParams(args []string) (op string, compVal float64, err error) {
+	if len(args) < 3 {
+		return
+	}
+	op = args[1]
+	switch op {
+	case "gt", "ge", "lt", "le", "eq", "ne":
+	default:
+		return "", 0, fmt.Errorf("unknown comparison operator %q", op)
+	}
+	v, err := strconv.ParseFloat(args[2], 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid compare value %q: %w", args[2], err)
+	}
+	return op, v, nil
+}
+
 func bodyJSON(tree *matchersTree, args ...string) error {
 	path := args[0]
-	re, err := regexp.Compile(args[1])
+
+	op, compVal, err := parseCompareParams(args)
+	if err != nil {
+		return err
+	}
+	if op != "" {
+		tree.matcher = func(req *routing.Request) bool {
+			if len(req.Body) == 0 {
+				return false
+			}
+			f, err := strconv.ParseFloat(gjson.GetBytes(req.Body, path).String(), 64)
+			if err != nil {
+				return false
+			}
+			return compareOp(f, compVal, op)
+		}
+		return nil
+	}
+
+	pattern := args[1]
+	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return fmt.Errorf("compiling BodyJSON pattern: %w", err)
 	}

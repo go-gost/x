@@ -722,3 +722,291 @@ func TestMatcherBodyRegexp_CaseInsensitive(t *testing.T) {
 	req := &routing.Request{Body: []byte(`{"Content-Type": "application/json"}`)}
 	assert.True(t, m.Match(req))
 }
+
+func TestMatcherHeaderCompare_gt(t *testing.T) {
+	// 3-param form: Header(key, op, value) with op="gt"
+	m, err := NewMatcher(`Header("Content-Length", "gt", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"greater", http.Header{"Content-Length": {"2048"}}, true},
+		{"equal", http.Header{"Content-Length": {"1024"}}, false},
+		{"less", http.Header{"Content-Length": {"512"}}, false},
+		{"nil", nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherHeaderCompare_ge(t *testing.T) {
+	m, err := NewMatcher(`Header("Content-Length", "ge", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"greater", http.Header{"Content-Length": {"2048"}}, true},
+		{"equal", http.Header{"Content-Length": {"1024"}}, true},
+		{"less", http.Header{"Content-Length": {"512"}}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherHeaderCompare_lt(t *testing.T) {
+	m, err := NewMatcher(`Header("Content-Length", "lt", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"less", http.Header{"Content-Length": {"512"}}, true},
+		{"equal", http.Header{"Content-Length": {"1024"}}, false},
+		{"greater", http.Header{"Content-Length": {"2048"}}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherHeaderCompare_le(t *testing.T) {
+	m, err := NewMatcher(`Header("Content-Length", "le", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"less", http.Header{"Content-Length": {"512"}}, true},
+		{"equal", http.Header{"Content-Length": {"1024"}}, true},
+		{"greater", http.Header{"Content-Length": {"2048"}}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherHeaderCompare_MultiValue(t *testing.T) {
+	m, err := NewMatcher(`Header("X-Values", "gt", "100")`)
+	require.NoError(t, err)
+
+	req := &routing.Request{
+		Header: http.Header{"X-Values": {"50", "200"}},
+	}
+	assert.True(t, m.Match(req), "should match when any value satisfies")
+}
+
+func TestMatcherHeaderCompare_NonNumeric(t *testing.T) {
+	m, err := NewMatcher(`Header("X-Value", "gt", "100")`)
+	require.NoError(t, err)
+
+	req := &routing.Request{
+		Header: http.Header{"X-Value": {"abc"}},
+	}
+	assert.False(t, m.Match(req), "non-numeric value should not match")
+}
+
+func TestMatcherHeaderCompare_Missing(t *testing.T) {
+	m, err := NewMatcher(`Header("X-Missing", "gt", "100")`)
+	require.NoError(t, err)
+
+	req := &routing.Request{Header: http.Header{}}
+	assert.False(t, m.Match(req))
+}
+
+func TestMatcherHeaderCompare_eq(t *testing.T) {
+	m, err := NewMatcher(`Header("Content-Length", "eq", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"equal", http.Header{"Content-Length": {"1024"}}, true},
+		{"not equal", http.Header{"Content-Length": {"2048"}}, false},
+		{"nil", nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherHeaderCompare_ne(t *testing.T) {
+	m, err := NewMatcher(`Header("Content-Length", "ne", "1024")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		want   bool
+	}{
+		{"not equal", http.Header{"Content-Length": {"2048"}}, true},
+		{"equal", http.Header{"Content-Length": {"1024"}}, false},
+		{"nil", nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherQueryCompare(t *testing.T) {
+	// 3-param form: Query(key, op, value)
+	tests := []struct {
+		desc  string
+		rule  string
+		query url.Values
+		want  bool
+	}{
+		{"gt match", `Query("page", "gt", "2")`, url.Values{"page": {"3"}}, true},
+		{"gt equal", `Query("page", "gt", "2")`, url.Values{"page": {"2"}}, false},
+		{"ge match", `Query("page", "ge", "2")`, url.Values{"page": {"2"}}, true},
+		{"ge less", `Query("page", "ge", "2")`, url.Values{"page": {"1"}}, false},
+		{"lt match", `Query("page", "lt", "5")`, url.Values{"page": {"3"}}, true},
+		{"lt equal", `Query("page", "lt", "5")`, url.Values{"page": {"5"}}, false},
+		{"le match", `Query("page", "le", "5")`, url.Values{"page": {"5"}}, true},
+		{"le greater", `Query("page", "le", "5")`, url.Values{"page": {"6"}}, false},
+		{"eq match", `Query("page", "eq", "5")`, url.Values{"page": {"5"}}, true},
+		{"eq no match", `Query("page", "eq", "5")`, url.Values{"page": {"6"}}, false},
+		{"ne match", `Query("page", "ne", "5")`, url.Values{"page": {"6"}}, true},
+		{"ne no match", `Query("page", "ne", "5")`, url.Values{"page": {"5"}}, false},
+		{"missing key", `Query("nonexistent", "gt", "0")`, url.Values{"page": {"1"}}, false},
+		{"non-numeric", `Query("page", "gt", "0")`, url.Values{"page": {"abc"}}, false},
+		{"nil query", `Query("page", "gt", "0")`, nil, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			m, err := NewMatcher(tc.rule)
+			require.NoError(t, err)
+			req := &routing.Request{Query: tc.query}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherBodyJSONCompare(t *testing.T) {
+	// 3-param form: BodyJSON(path, op, value)
+	tests := []struct {
+		desc string
+		rule string
+		body string
+		want bool
+	}{
+		{"gt match", `BodyJSON("age", "gt", "18")`, `{"age":21}`, true},
+		{"gt equal", `BodyJSON("age", "gt", "18")`, `{"age":18}`, false},
+		{"ge match", `BodyJSON("age", "ge", "18")`, `{"age":18}`, true},
+		{"ge less", `BodyJSON("age", "ge", "18")`, `{"age":17}`, false},
+		{"eq match", `BodyJSON("age", "eq", "18")`, `{"age":18}`, true},
+		{"eq no match", `BodyJSON("age", "eq", "18")`, `{"age":17}`, false},
+		{"ne match", `BodyJSON("age", "ne", "18")`, `{"age":17}`, true},
+		{"ne no match", `BodyJSON("age", "ne", "18")`, `{"age":18}`, false},
+		{"lt match", `BodyJSON("price", "lt", "100")`, `{"price":50}`, true},
+		{"lt equal", `BodyJSON("price", "lt", "100")`, `{"price":100}`, false},
+		{"le match", `BodyJSON("price", "le", "100")`, `{"price":100}`, true},
+		{"le greater", `BodyJSON("price", "le", "100")`, `{"price":101}`, false},
+		{"nested path", `BodyJSON("user.age", "gt", "18")`, `{"user":{"age":25}}`, true},
+		{"empty body", `BodyJSON("age", "gt", "0")`, ``, false},
+		{"missing field", `BodyJSON("nonexistent", "gt", "0")`, `{"age":21}`, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			m, err := NewMatcher(tc.rule)
+			require.NoError(t, err)
+			req := &routing.Request{Body: []byte(tc.body)}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
+
+func TestMatcherCompareInvalidOp(t *testing.T) {
+	// Invalid operator in 3-param form → error
+	tests := []string{
+		`Header("X", "==", "100")`,
+		`Query("x", "==", "100")`,
+		`BodyJSON("x", "==", "100")`,
+	}
+
+	for _, rule := range tests {
+		t.Run(rule, func(t *testing.T) {
+			_, err := NewMatcher(rule)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestMatcherCompareInvalidValue(t *testing.T) {
+	// Non-numeric compare value in 3-param form → error
+	tests := []string{
+		`Header("Content-Length", "gt", "not-a-number")`,
+		`Query("page", "gt", "not-a-number")`,
+		`BodyJSON("age", "gt", "not-a-number")`,
+	}
+
+	for _, rule := range tests {
+		t.Run(rule, func(t *testing.T) {
+			_, err := NewMatcher(rule)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestMatcherCompareWithBoolean(t *testing.T) {
+	// 3-param Header combined with Path via &&
+	m, err := NewMatcher(`Header("Content-Length", "gt", "100") && Path("/upload")`)
+	require.NoError(t, err)
+
+	tests := []struct {
+		desc   string
+		header http.Header
+		path   string
+		want   bool
+	}{
+		{"both match", http.Header{"Content-Length": {"200"}}, "/upload", true},
+		{"header no match", http.Header{"Content-Length": {"50"}}, "/upload", false},
+		{"path no match", http.Header{"Content-Length": {"200"}}, "/download", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			req := &routing.Request{Header: tc.header, Path: tc.path}
+			assert.Equal(t, tc.want, m.Match(req))
+		})
+	}
+}
