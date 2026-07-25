@@ -24,13 +24,14 @@ func init() {
 }
 
 type rtcpListener struct {
-	laddr   net.Addr
-	ln      net.Listener
-	logger  logger.Logger
-	closed  chan struct{}
-	md      metadata
-	options listener.Options
-	mu      sync.Mutex
+	laddr    net.Addr // requested bind address (immutable after Init)
+	bindAddr net.Addr // server-negotiated address from the last successful Bind (guarded by mu)
+	ln       net.Listener
+	logger   logger.Logger
+	closed   chan struct{}
+	md       metadata
+	options  listener.Options
+	mu       sync.Mutex
 }
 
 func NewListener(opts ...listener.Option) listener.Listener {
@@ -81,6 +82,8 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 			return nil, listener.NewBindError(err)
 		}
 
+		l.setBindAddr(ln.Addr())
+
 		ln = metrics.WrapListener(l.options.Service, ln)
 		ln = stats.WrapListener(ln, l.options.Stats)
 		ln = admission.WrapListener(l.options.Service, l.options.Admission, ln)
@@ -116,7 +119,14 @@ func (l *rtcpListener) Accept() (conn net.Conn, err error) {
 	return
 }
 
+// Addr returns the server-negotiated bind address once the tunnel bind has
+// completed, falling back to the requested address before that.
 func (l *rtcpListener) Addr() net.Addr {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.bindAddr != nil {
+		return l.bindAddr
+	}
 	return l.laddr
 }
 
@@ -131,6 +141,14 @@ func (l *rtcpListener) Close() error {
 	}
 
 	return nil
+}
+
+func (l *rtcpListener) setBindAddr(addr net.Addr) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if addr != nil {
+		l.bindAddr = addr
+	}
 }
 
 func (l *rtcpListener) setListener(ln net.Listener) {
