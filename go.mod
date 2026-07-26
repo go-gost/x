@@ -14,7 +14,7 @@ require (
 	github.com/go-gost/gosocks5 v0.5.0
 	github.com/go-gost/plugin v0.5.0
 	github.com/go-gost/relay v0.7.0
-	github.com/go-gost/tls-dissector v0.3.0
+	github.com/go-gost/tls-dissector v0.3.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gobwas/glob v0.2.3
 	github.com/golang/snappy v0.0.4
@@ -29,8 +29,8 @@ require (
 	github.com/pion/dtls/v3 v3.1.1
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.19.1
-	github.com/quic-go/quic-go v0.59.1
-	github.com/quic-go/webtransport-go v0.10.0
+	github.com/quic-go/quic-go v0.60.0
+	github.com/quic-go/webtransport-go v0.11.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/xid v1.3.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
