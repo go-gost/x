@@ -76,6 +76,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
+	ho.recorderObject = ro2
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		clientAddr := &net.TCPAddr{IP: clientIP}
