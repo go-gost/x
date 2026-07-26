@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"strings"
 	"time"
@@ -224,11 +225,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			ReadTimeout:         h.md.readTimeout,
 		}
 
-		conn = xnet.NewReadWriteConn(br, conn, conn)
+		// Capture bytes consumed by the sniffer so we can replay
+		// them when sniffingFallback is enabled.
+		origConn := conn
+		capture := new(bytes.Buffer)
+		sniffConn := xnet.NewReadWriteConn(io.TeeReader(br, capture), origConn, origConn)
+
+		var sniffErr error
 		switch proto {
 		case sniffing.ProtoHTTP:
-			ro.Time = time.Time{}
-			return sniffer.HandleHTTP(ctx, "tcp", conn,
+			sniffErr = sniffer.HandleHTTP(ctx, "tcp", sniffConn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
@@ -236,8 +242,12 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
+			if sniffErr == nil {
+				ro.Time = time.Time{}
+				return nil
+			}
 		case sniffing.ProtoTLS:
-			return sniffer.HandleTLS(ctx, ro.Network, conn,
+			sniffErr = sniffer.HandleTLS(ctx, ro.Network, sniffConn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
 				sniffing.WithDialTLS(dialTLS),
@@ -245,6 +255,17 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
+			if sniffErr == nil {
+				return nil
+			}
+		}
+
+		if h.md.sniffingFallback {
+			log.Debugf("sniffing(%s) failed, falling back: %v", proto, sniffErr)
+			conn = xnet.NewReadWriteConn(io.MultiReader(capture, br), origConn, origConn)
+			// fall through to raw forwarding below
+		} else {
+			return sniffErr
 		}
 	}
 
