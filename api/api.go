@@ -163,4 +163,10 @@ func Register(r *gin.Engine, opts *Options) {
 	config.POST("/rlimiters", createRateLimiter)
 	config.PUT("/rlimiters/:limiter", updateRateLimiter)
 	config.DELETE("/rlimiters/:limiter", deleteRateLimiter)
+
+	config.GET("/caches", getCacheList)
+	config.GET("/caches/:cache", getCache)
+	config.POST("/caches", createCache)
+	config.PUT("/caches/:cache", updateCache)
+	config.DELETE("/caches/:cache", deleteCache)
 }
