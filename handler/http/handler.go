@@ -212,6 +212,7 @@ import (
 	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
+	"github.com/go-gost/x/internal/util/httpcache"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
@@ -305,6 +306,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		CertPool:            h.certPool,
 		MitmBypass:          h.md.mitmBypass,
 		ReadTimeout:         h.md.readTimeout,
+		Cache:               httpcache.FromMetadata(h.options.Cache, md),
 	}
 
 	if h.md.certificate != nil && h.md.privateKey != nil {

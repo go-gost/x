@@ -391,6 +391,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
 			handler.ObserverOption(registry.ObserverRegistry().Get(cfg.Handler.Observer)),
 			handler.RecordersOption(recorders...),
+			handler.CacheOption(registry.CacheRegistry().Get(cfg.Cache)),
 			handler.RewriterOption(rew),
 			handler.LoggerOption(handlerLogger),
 			handler.ServiceOption(cfg.Name),

@@ -15,6 +15,7 @@ import (
 	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/internal/util/forwarder"
+	"github.com/go-gost/x/internal/util/httpcache"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -36,6 +37,8 @@ type SnifferBuilder struct {
 	// and TLS ServerHello during sniffing. Passed through to forwarder.Sniffer.
 	// See forwarder.Sniffer.ReadTimeout for details.
 	ReadTimeout         time.Duration
+	// Cache is the HTTP response cache (nil when caching is disabled).
+	Cache *httpcache.Cache
 }
 
 // Build creates a new forwarder.Sniffer from the builder's configuration.
@@ -51,6 +54,7 @@ func (b *SnifferBuilder) Build() *forwarder.Sniffer {
 		CertPool:            b.CertPool,
 		MitmBypass:          b.MitmBypass,
 		ReadTimeout:         b.ReadTimeout,
+		Cache:               b.Cache,
 	}
 }
 

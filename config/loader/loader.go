@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/cache"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/hosts"
@@ -29,6 +30,7 @@ import (
 	admission_parser "github.com/go-gost/x/config/parsing/admission"
 	auth_parser "github.com/go-gost/x/config/parsing/auth"
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
+	cache_parser "github.com/go-gost/x/config/parsing/cache"
 	chain_parser "github.com/go-gost/x/config/parsing/chain"
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	hosts_parser "github.com/go-gost/x/config/parsing/hosts"
@@ -252,6 +254,16 @@ func register(cfg *config.Config) error {
 			entries = append(entries, named[rewriter.Rewriter]{c.Name, rewriter_parser.ParseRewriter(c)})
 		}
 		if err := registerGroup(entries, registry.RewriterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[cache.Cache]
+		for _, c := range cfg.Caches {
+			entries = append(entries, named[cache.Cache]{c.Name, cache_parser.ParseCache(c)})
+		}
+		if err := registerGroup(entries, registry.CacheRegistry()); err != nil {
 			return err
 		}
 	}

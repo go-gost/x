@@ -16,6 +16,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/x/config"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	"github.com/go-gost/x/internal/util/httpcache"
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
@@ -130,6 +131,11 @@ type Sniffer struct {
 	// connection or the response body transfer.
 	// Default: DefaultReadTimeout (30s) if not set.
 	ReadTimeout time.Duration
+
+	// Cache, when non-nil, caches upstream HTTP responses. It is shared across
+	// connections (built once per service), so all connections referencing the
+	// same named cache share one store.
+	Cache *httpcache.Cache
 }
 
 // clampBodySize returns the effective body capture size from recorder options,

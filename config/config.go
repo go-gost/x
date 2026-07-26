@@ -322,6 +322,22 @@ type RewriterConfig struct {
 	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
+// CacheConfig defines a named cache store. Only the Memory backend is
+// currently supported; other backends (Redis, file, plugin) are follow-ups.
+type CacheConfig struct {
+	Name   string       `json:"name"`
+	Memory *MemoryCache `yaml:",omitempty" json:"memory,omitempty"`
+}
+
+// MemoryCache configures the in-memory cache backend.
+type MemoryCache struct {
+	TTL             time.Duration `yaml:",omitempty" json:"ttl,omitempty"`
+	MaxSize         int           `yaml:"maxSize,omitempty" json:"maxSize,omitempty"`
+	MaxBytes        int64         `yaml:"maxBytes,omitempty" json:"maxBytes,omitempty"`
+	CleanupInterval time.Duration `yaml:"cleanupInterval,omitempty" json:"cleanupInterval,omitempty"`
+	Eviction        string        `yaml:",omitempty" json:"eviction,omitempty"` // "oldest" | "lru"
+}
+
 type LimiterConfig struct {
 	Name   string        `json:"name"`
 	Limits []string      `yaml:",omitempty" json:"limits,omitempty"`
@@ -520,6 +536,7 @@ type ServiceConfig struct {
 	Observer   string            `yaml:",omitempty" json:"observer,omitempty"`
 	Rewriter   string            `yaml:",omitempty" json:"rewriter,omitempty"`
 	Recorders  []*RecorderObject `yaml:",omitempty" json:"recorders,omitempty"`
+	Cache      string            `yaml:",omitempty" json:"cache,omitempty"`
 	Handler    *HandlerConfig    `yaml:",omitempty" json:"handler,omitempty"`
 	Listener   *ListenerConfig   `yaml:",omitempty" json:"listener,omitempty"`
 	Forwarder  *ForwarderConfig  `yaml:",omitempty" json:"forwarder,omitempty"`
@@ -671,6 +688,7 @@ type Config struct {
 	SDs        []*SDConfig        `yaml:"sds,omitempty" json:"sds,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Rewriters  []*RewriterConfig  `yaml:",omitempty" json:"rewriters,omitempty"`
+	Caches     []*CacheConfig     `yaml:",omitempty" json:"caches,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	Quotas     []*QuotaConfig     `yaml:",omitempty" json:"quotas,omitempty"`
 	CLimiters  []*LimiterConfig   `yaml:"climiters,omitempty" json:"climiters,omitempty"`

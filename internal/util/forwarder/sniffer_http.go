@@ -23,6 +23,7 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
+	"github.com/go-gost/x/internal/util/httpcache"
 	"github.com/go-gost/x/internal/util/sniffing"
 	xstats "github.com/go-gost/x/observer/stats"
 	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
@@ -68,17 +69,6 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	}
 
 	ro := ho.recorderObject
-	ro.HTTP = &xrecorder.HTTPRecorderObject{
-		Host:   req.Host,
-		Proto:  req.Proto,
-		Scheme: req.URL.Scheme,
-		Method: req.Method,
-		URI:    req.RequestURI,
-		Request: xrecorder.HTTPRequestRecorderObject{
-			ContentLength: req.ContentLength,
-			Header:        req.Header.Clone(),
-		},
-	}
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		clientAddr := &net.TCPAddr{IP: clientIP}
@@ -91,31 +81,77 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		return h.serveH2(ctx, xnet.NewReadWriteConn(br, conn, conn), &ho)
 	}
 
-	node, cc, err := h.dial(ctx, conn, req, &ho)
-	if err != nil {
-		return err
-	}
-	defer func() { cc.Close() }()
-
-	upstreamHost := normalizeHost(ro.HTTP.Host, "80")
-
-	ho.log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-	log = ho.log
-	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
-
-	ro.SrcAddr = cc.LocalAddr().String()
-	ro.DstAddr = cc.RemoteAddr().String()
-	ro.Time = time.Time{}
-
-	shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho)
-	if err != nil || shouldClose {
-		return err
-	}
+	var (
+		cc           net.Conn
+		node         *chain.Node
+		upstreamHost string
+	)
 
 	for {
-		pStats.Reset()
+		// Initialize HTTP recorder fields for this request.
+		ro.HTTP = &xrecorder.HTTPRecorderObject{
+			Host:   req.Host,
+			Proto:  req.Proto,
+			Scheme: req.URL.Scheme,
+			Method: req.Method,
+			URI:    req.RequestURI,
+			Request: xrecorder.HTTPRequestRecorderObject{
+				ContentLength: req.ContentLength,
+				Header:        req.Header.Clone(),
+			},
+		}
 
-		req, err := http.ReadRequest(br)
+		// --- Cache check before any upstream dial ---
+		var (
+			staleResp *http.Response
+			freshHit  bool
+		)
+		if h.Cache != nil && h.Cache.CacheableRequest(req) {
+			if cachedResp, stale, ok := h.Cache.Lookup(ctx, req); ok {
+				if !stale {
+					if h.serveCachedResponse(ctx, conn, req, cachedResp, ro, log) {
+						return nil
+					}
+					freshHit = true
+				} else {
+					staleResp = cachedResp
+				}
+			}
+		}
+
+		// --- Dial upstream (miss or stale; fresh cache hit with keep-alive skips) ---
+		if !freshHit {
+			if cc == nil {
+				node, cc, err = h.dial(ctx, conn, req, &ho)
+				if err != nil {
+					// h.dial already wrote the error response to conn.
+					if staleResp != nil && staleResp.Body != nil {
+						staleResp.Body.Close()
+					}
+					return err
+				}
+				upstreamHost = normalizeHost(ro.HTTP.Host, "80")
+
+				ho.log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+				log = ho.log
+				log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
+
+				ro.SrcAddr = cc.LocalAddr().String()
+				ro.DstAddr = cc.RemoteAddr().String()
+			}
+
+			// --- Forward request and cache response ---
+			shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho, staleResp)
+			if staleResp != nil && staleResp.Body != nil {
+				staleResp.Body.Close()
+			}
+			if err != nil || shouldClose {
+				return err
+			}
+		}
+
+		// --- Read next request (keep-alive) ---
+		req, err = http.ReadRequest(br)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				return nil
@@ -128,45 +164,48 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			log.Trace(string(dump))
 		}
 
-		// When DNS override directs multiple domains to the same proxy IP,
-		// the browser may reuse a keep-alive connection for a different host.
-		// Re-dial to ensure requests reach the correct upstream.
+		// Re-dial on host change (DNS override reuses same conn for same host).
 		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" && reqHost != upstreamHost {
 			cc.Close()
-			newNode, res, resolveErr := resolveHTTPNode(ctx, reqHost, req, &ho)
-			if resolveErr != nil {
-				ro.HTTP.StatusCode = res.StatusCode
-				res.Write(conn)
-				return resolveErr
-			}
-			dial := ho.dial
-			if dial == nil {
-				dial = (&net.Dialer{}).DialContext
-			}
-			newCC, dialErr := dial(ctx, "tcp", newNode.Addr)
-			if dialErr != nil {
-				return dialErr
-			}
-			newCC = tlsWrapConn(newCC, newNode.Options().TLS)
-			upstreamHost = reqHost
-			node = newNode
-			cc = newCC
+			cc = nil
 			ro.Host = reqHost
-			ro.SrcAddr = cc.LocalAddr().String()
-			ro.DstAddr = cc.RemoteAddr().String()
-			log = log.WithFields(map[string]any{
-				"host": reqHost,
-				"node": node.Name,
-				"dst":  node.Addr,
-				"src":  cc.LocalAddr().String(),
-			})
+
+			log = log.WithFields(map[string]any{"host": reqHost})
 			ho.log = log
 		}
-
-		if shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho); err != nil || shouldClose {
-			return err
-		}
 	}
+}
+
+// serveCachedResponse writes resp to conn, records the cache hit in ro, and
+// returns whether the client connection should close after the response.
+func (h *Sniffer) serveCachedResponse(ctx context.Context, rw io.Writer, req *http.Request, resp *http.Response, ro *xrecorder.HandlerRecorderObject, log logger.Logger) bool {
+	defer resp.Body.Close()
+	ro.Time = time.Now()
+	ro.HTTP.StatusCode = resp.StatusCode
+	ro.HTTP.Response.Header = resp.Header.Clone()
+	ro.HTTP.Response.ContentLength = resp.ContentLength
+	log.Debugf("cache hit: %s", httpcache.Key(req.Method, req.Host, req.RequestURI))
+	if err := resp.Write(rw); err != nil {
+		log.Errorf("write cached response: %v", err)
+		return true
+	}
+	close := true
+	if resp.ContentLength >= 0 {
+		close = resp.Close
+	}
+	if cl := ro.HTTP.Response.ContentLength; cl > 0 {
+		ro.OutputBytes = uint64(cl)
+	}
+	ro.Duration = time.Since(ro.Time)
+	if rerr := ro.Record(ctx, h.Recorder); rerr != nil {
+		log.Errorf("record: %v", rerr)
+	}
+	log.WithFields(map[string]any{
+		"duration":    ro.Duration,
+		"inputBytes":  ro.InputBytes,
+		"outputBytes": ro.OutputBytes,
+	}).Infof("%s >-< %s", ro.RemoteAddr, req.Host)
+	return close
 }
 
 // resolveHTTPNode selects a node for an HTTP request by applying bypass rules
@@ -315,7 +354,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 
 // httpRoundTrip forwards a single HTTP request/response pair and records
 // traffic metadata. Returns whether the connection should be closed.
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions) (shouldClose bool, err error) {
+// staleResp, when non-nil, is written to the client on upstream read failure
+// when the cache policy enables serve-stale.
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions, staleResp *http.Response) (shouldClose bool, err error) {
 	shouldClose = true
 
 	log := ho.log
@@ -473,6 +514,10 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	if err != nil {
+		if h.serveStale(rw, staleResp, ro, &shouldClose, ho, log) {
+			err = nil
+			return
+		}
 		res.Write(rw)
 		return
 	}
@@ -484,6 +529,10 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		resp, err = http.ReadResponse(br, req)
 		if err != nil {
 			log.Errorf("read response: %v", err)
+			if h.serveStale(rw, staleResp, ro, &shouldClose, ho, log) {
+				err = nil
+				return
+			}
 			res.Write(rw)
 			return
 		}
@@ -572,14 +621,23 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	ro.HTTP.Response.Header = resp.Header.Clone()
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 
+	// Response cache: tee the final (post-rewrite) response so a copy is
+	// captured while it streams to the client, then store it on success.
+	var writeTarget io.Writer = rw
+	var tee *httpcache.TeeWriter
+	if h.Cache != nil && h.Cache.Cacheable(req, resp) {
+		tee = h.Cache.TeeWriter(rw)
+		writeTarget = tee
+	}
+
 	if bodySize > 0 {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
-		err = resp.Write(rw)
+		err = resp.Write(writeTarget)
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	} else {
-		err = resp.Write(rw)
+		err = resp.Write(writeTarget)
 	}
 
 	if err != nil {
@@ -587,9 +645,42 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		return
 	}
 
+	if tee != nil {
+		if data := tee.Captured(); data != nil {
+			if serr := h.Cache.Store(ctx, req, data, resp.StatusCode); serr != nil {
+				log.Warnf("cache store: %v", serr)
+			} else {
+				log.Debugf("cache store: %s", httpcache.Key(req.Method, req.Host, req.RequestURI))
+			}
+		}
+	}
+
 	if resp.ContentLength >= 0 {
 		shouldClose = resp.Close
 	}
 
 	return
+}
+
+// serveStale writes a stale (expired) cached response to the client when the
+// upstream fetch failed and the cache policy allows serving stale. It reports
+// whether a stale response was served. shouldClose is set from the stale
+// response so the keep-alive loop behaves consistently.
+func (h *Sniffer) serveStale(rw io.Writer, staleResp *http.Response, ro *xrecorder.HandlerRecorderObject, shouldClose *bool, ho *HandleOptions, log logger.Logger) bool {
+	if h.Cache == nil || staleResp == nil || !h.Cache.ServeStale() {
+		return false
+	}
+	if !ho.httpKeepalive {
+		staleResp.Header.Set("Connection", "close")
+	}
+	ro.HTTP.StatusCode = staleResp.StatusCode
+	log.Debugf("cache serve-stale: %d", staleResp.StatusCode)
+	if werr := staleResp.Write(rw); werr != nil {
+		log.Errorf("write stale response: %v", werr)
+		return false
+	}
+	if staleResp.ContentLength >= 0 {
+		*shouldClose = staleResp.Close
+	}
+	return true
 }

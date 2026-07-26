@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
+	"github.com/go-gost/x/internal/util/httpcache"
 	"github.com/go-gost/x/internal/util/sniffing"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -36,6 +37,8 @@ type SnifferBuilder struct {
 	// and TLS ServerHello during sniffing. Passed through to [sniffing.Sniffer].
 	// See sniffing.Sniffer.ReadTimeout for details.
 	ReadTimeout time.Duration
+	// Cache is the HTTP response cache (nil when caching is disabled).
+	Cache *httpcache.Cache
 }
 
 // Build creates a new [sniffing.Sniffer] from the builder's configuration.
@@ -52,6 +55,7 @@ func (b *SnifferBuilder) Build() *sniffing.Sniffer {
 		CertPool:            b.CertPool,
 		MitmBypass:          b.MitmBypass,
 		ReadTimeout:         b.ReadTimeout,
+		Cache:               b.Cache,
 	}
 }
 
