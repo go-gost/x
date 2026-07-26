@@ -44,7 +44,7 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 		l.md.cipherKey = []byte(key)
 	}
 
-	if mdutil.GetBool(md, keepAlive) {
+	if md == nil || !md.IsExists(keepAlive) || mdutil.GetBool(md, keepAlive) {
 		l.md.keepAlivePeriod = mdutil.GetDuration(md, keepAlivePeriod)
 		if l.md.keepAlivePeriod <= 0 {
 			l.md.keepAlivePeriod = 10 * time.Second
@@ -52,6 +52,9 @@ func (l *quicListener) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	l.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	l.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	if l.md.maxIdleTimeout <= 0 {
+		l.md.maxIdleTimeout = 90 * time.Second
+	}
 	l.md.maxStreams = mdutil.GetInt(md, maxStreams)
 	l.md.enableDatagram = mdutil.GetBool(md, "quic.enableDatagram", "enableDatagram")
 

@@ -98,7 +98,7 @@ func (d *quicDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 	}
 	d.sessionMutex.Unlock()
 
-	conn, err = session.GetConn()
+	conn, err = session.GetConn(ctx)
 	if err != nil {
 		d.sessionMutex.Lock()
 		if d.sessions[addr] == session {

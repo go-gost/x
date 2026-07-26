@@ -12,8 +12,8 @@ type quicSession struct {
 	session *quic.Conn
 }
 
-func (session *quicSession) GetConn() (*quicConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (session *quicSession) GetConn(ctx context.Context) (*quicConn, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	stream, err := session.session.OpenStreamSync(ctx)
 	if err != nil {

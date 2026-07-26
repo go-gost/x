@@ -40,6 +40,9 @@ func (d *quicDialer) parseMetadata(md mdata.Metadata) (err error) {
 	}
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
+	if d.md.maxIdleTimeout <= 0 {
+		d.md.maxIdleTimeout = 90 * time.Second
+	}
 	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
 	d.md.enableDatagram = mdutil.GetBool(md, "quic.enableDatagram", "enableDatagram")
 
