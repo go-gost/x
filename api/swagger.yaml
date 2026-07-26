@@ -2,24 +2,6 @@ basePath: /
 consumes:
     - application/json
 definitions:
-    APIConfig:
-        properties:
-            accesslog:
-                type: boolean
-                x-go-name: AccessLog
-            addr:
-                type: string
-                x-go-name: Addr
-            auth:
-                $ref: '#/definitions/AuthConfig'
-            auther:
-                type: string
-                x-go-name: Auther
-            pathPrefix:
-                type: string
-                x-go-name: PathPrefix
-        type: object
-        x-go-package: github.com/go-gost/x/config
     AdmissionConfig:
         properties:
             file:
@@ -43,6 +25,7 @@ definitions:
             reverse:
                 description: 'Deprecated: use whitelist instead'
                 type: boolean
+                x-deprecated: true
                 x-go-name: Reverse
             whitelist:
                 type: boolean
@@ -98,6 +81,9 @@ definitions:
             name:
                 type: string
                 x-go-name: Name
+            network:
+                type: string
+                x-go-name: Network
             plugin:
                 $ref: '#/definitions/PluginConfig'
             redis:
@@ -107,10 +93,23 @@ definitions:
             reverse:
                 description: 'Deprecated: use whitelist instead'
                 type: boolean
+                x-deprecated: true
                 x-go-name: Reverse
             whitelist:
                 type: boolean
                 x-go-name: Whitelist
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    CacheConfig:
+        description: |-
+            CacheConfig defines a named cache store. Only the Memory backend is
+            currently supported; other backends (Redis, file, plugin) are follow-ups.
+        properties:
+            memory:
+                $ref: '#/definitions/MemoryCache'
+            name:
+                type: string
+                x-go-name: Name
         type: object
         x-go-package: github.com/go-gost/x/config
     ChainConfig:
@@ -138,105 +137,6 @@ definitions:
                 x-go-name: Chains
             selector:
                 $ref: '#/definitions/SelectorConfig'
-        type: object
-        x-go-package: github.com/go-gost/x/config
-    Config:
-        properties:
-            admissions:
-                items:
-                    $ref: '#/definitions/AdmissionConfig'
-                type: array
-                x-go-name: Admissions
-            api:
-                $ref: '#/definitions/APIConfig'
-            authers:
-                items:
-                    $ref: '#/definitions/AutherConfig'
-                type: array
-                x-go-name: Authers
-            bypasses:
-                items:
-                    $ref: '#/definitions/BypassConfig'
-                type: array
-                x-go-name: Bypasses
-            chains:
-                items:
-                    $ref: '#/definitions/ChainConfig'
-                type: array
-                x-go-name: Chains
-            climiters:
-                items:
-                    $ref: '#/definitions/LimiterConfig'
-                type: array
-                x-go-name: CLimiters
-            hops:
-                items:
-                    $ref: '#/definitions/HopConfig'
-                type: array
-                x-go-name: Hops
-            hosts:
-                items:
-                    $ref: '#/definitions/HostsConfig'
-                type: array
-                x-go-name: Hosts
-            ingresses:
-                items:
-                    $ref: '#/definitions/IngressConfig'
-                type: array
-                x-go-name: Ingresses
-            limiters:
-                items:
-                    $ref: '#/definitions/LimiterConfig'
-                type: array
-                x-go-name: Limiters
-            log:
-                $ref: '#/definitions/LogConfig'
-            loggers:
-                items:
-                    $ref: '#/definitions/LoggerConfig'
-                type: array
-                x-go-name: Loggers
-            metrics:
-                $ref: '#/definitions/MetricsConfig'
-            observers:
-                items:
-                    $ref: '#/definitions/ObserverConfig'
-                type: array
-                x-go-name: Observers
-            profiling:
-                $ref: '#/definitions/ProfilingConfig'
-            recorders:
-                items:
-                    $ref: '#/definitions/RecorderConfig'
-                type: array
-                x-go-name: Recorders
-            resolvers:
-                items:
-                    $ref: '#/definitions/ResolverConfig'
-                type: array
-                x-go-name: Resolvers
-            rlimiters:
-                items:
-                    $ref: '#/definitions/LimiterConfig'
-                type: array
-                x-go-name: RLimiters
-            routers:
-                items:
-                    $ref: '#/definitions/RouterConfig'
-                type: array
-                x-go-name: Routers
-            sds:
-                items:
-                    $ref: '#/definitions/SDConfig'
-                type: array
-                x-go-name: SDs
-            services:
-                items:
-                    $ref: '#/definitions/ServiceConfig'
-                type: array
-                x-go-name: Services
-            tls:
-                $ref: '#/definitions/TLSConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
     ConnectorConfig:
@@ -316,6 +216,7 @@ definitions:
             host:
                 description: 'Deprecated: use matcher instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Host
             http:
                 $ref: '#/definitions/HTTPNodeConfig'
@@ -334,10 +235,14 @@ definitions:
             path:
                 description: 'Deprecated: use matcher instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Path
+            probe:
+                $ref: '#/definitions/ProbeConfig'
             protocol:
                 description: 'Deprecated: use matcher instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Protocol
             tls:
                 $ref: '#/definitions/TLSNodeConfig'
@@ -352,6 +257,7 @@ definitions:
             name:
                 description: 'Deprecated: use hop instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Name
             nodes:
                 items:
@@ -371,6 +277,14 @@ definitions:
             Type:
                 description: filter by MIME types
                 type: string
+            maxChunkSize:
+                format: int64
+                type: integer
+                x-go-name: MaxChunkSize
+            rewriter:
+                description: name of the rewriter plugin (via registry)
+                type: string
+                x-go-name: Rewriter
         type: object
         x-go-package: github.com/go-gost/x/config
     HTTPLoader:
@@ -386,11 +300,16 @@ definitions:
         properties:
             auth:
                 $ref: '#/definitions/AuthConfig'
+            failCodes:
+                description: comma-separated response status codes marking the node failed, e.g. "429,5xx"
+                type: string
+                x-go-name: FailCodes
             header:
                 additionalProperties:
                     type: string
                 description: 'Deprecated: use requestHeader instead'
                 type: object
+                x-deprecated: true
                 x-go-name: Header
             host:
                 description: rewrite host header
@@ -413,13 +332,27 @@ definitions:
                 items:
                     $ref: '#/definitions/HTTPURLRewriteConfig'
                 type: array
+                x-deprecated: true
                 x-go-name: Rewrite
             rewriteBody:
+                description: 'Deprecated: use rewriteResponseBody instead'
+                items:
+                    $ref: '#/definitions/HTTPBodyRewriteConfig'
+                type: array
+                x-deprecated: true
+                x-go-name: RewriteBody
+            rewriteRequestBody:
+                description: rewrite request body
+                items:
+                    $ref: '#/definitions/HTTPBodyRewriteConfig'
+                type: array
+                x-go-name: RewriteRequestBody
+            rewriteResponseBody:
                 description: rewrite response body
                 items:
                     $ref: '#/definitions/HTTPBodyRewriteConfig'
                 type: array
-                x-go-name: RewriteBody
+                x-go-name: RewriteResponseBody
             rewriteURL:
                 description: rewrite URL
                 items:
@@ -506,7 +439,9 @@ definitions:
             http:
                 $ref: '#/definitions/HTTPLoader'
             interface:
+                description: 'Deprecated: use metadata.interface instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Interface
             metadata:
                 additionalProperties: {}
@@ -654,21 +589,6 @@ definitions:
                 x-go-name: Type
         type: object
         x-go-package: github.com/go-gost/x/config
-    LogConfig:
-        properties:
-            format:
-                type: string
-                x-go-name: Format
-            level:
-                type: string
-                x-go-name: Level
-            output:
-                type: string
-                x-go-name: Output
-            rotation:
-                $ref: '#/definitions/LogRotationConfig'
-        type: object
-        x-go-package: github.com/go-gost/x/config
     LogRotationConfig:
         properties:
             compress:
@@ -711,28 +631,24 @@ definitions:
                 x-go-name: MaxSize
         type: object
         x-go-package: github.com/go-gost/x/config
-    LoggerConfig:
+    MemoryCache:
         properties:
-            log:
-                $ref: '#/definitions/LogConfig'
-            name:
+            cleanupInterval:
+                $ref: '#/definitions/Duration'
+            eviction:
                 type: string
-                x-go-name: Name
-        type: object
-        x-go-package: github.com/go-gost/x/config
-    MetricsConfig:
-        properties:
-            addr:
-                type: string
-                x-go-name: Addr
-            auth:
-                $ref: '#/definitions/AuthConfig'
-            auther:
-                type: string
-                x-go-name: Auther
-            path:
-                type: string
-                x-go-name: Path
+                x-go-name: Eviction
+            maxBytes:
+                format: int64
+                type: integer
+                x-go-name: MaxBytes
+            maxSize:
+                format: int64
+                type: integer
+                x-go-name: MaxSize
+            ttl:
+                $ref: '#/definitions/Duration'
+        title: MemoryCache configures the in-memory cache backend.
         type: object
         x-go-package: github.com/go-gost/x/config
     NameserverConfig:
@@ -789,7 +705,9 @@ definitions:
             http:
                 $ref: '#/definitions/HTTPNodeConfig'
             interface:
+                description: 'Deprecated: use metadata.interface instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Interface
             matcher:
                 $ref: '#/definitions/NodeMatcherConfig'
@@ -801,11 +719,15 @@ definitions:
                 type: string
                 x-go-name: Name
             netns:
+                description: 'Deprecated: use metadata.netns instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Netns
             network:
                 type: string
                 x-go-name: Network
+            probe:
+                $ref: '#/definitions/ProbeConfig'
             resolver:
                 type: string
                 x-go-name: Resolver
@@ -829,7 +751,24 @@ definitions:
         type: object
         x-go-package: github.com/go-gost/x/config
     NodeMatcherConfig:
+        description: |-
+            Priority controls election among multiple matching nodes:
+            - 0 (default): auto-computed from the rule string length — longer rules
+            (more specific) get higher priority.
+            - negative: the node participates in matching but priority short-circuit
+            is disabled; the selector (round-robin, random, hash, etc.) always applies.
+            - positive: explicit priority; when a single node has strictly higher
+            priority than all others, it wins directly, bypassing the selector.
         properties:
+            bodySize:
+                description: |-
+                    BodySize is the max request body prefix (bytes) exposed to BodyRegexp
+                    and BodyJSON matchers. 0 (default) uses DefaultMatcherBodySize (1MB).
+                    Capped at MaxMatcherBodySize (10MB). Only takes effect under an HTTP
+                    sniffing handler whose sniffer reads the body prefix before node selection.
+                format: int64
+                type: integer
+                x-go-name: BodySize
             priority:
                 format: int64
                 type: integer
@@ -837,6 +776,7 @@ definitions:
             rule:
                 type: string
                 x-go-name: Rule
+        title: NodeMatcherConfig defines a routing-rule matcher for a hop node.
         type: object
         x-go-package: github.com/go-gost/x/config
     ObserverConfig:
@@ -865,11 +805,130 @@ definitions:
                 x-go-name: Type
         type: object
         x-go-package: github.com/go-gost/x/config
-    ProfilingConfig:
+    ProbeConfig:
         properties:
             addr:
                 type: string
                 x-go-name: Addr
+            command:
+                type: string
+                x-go-name: Command
+            expectedStatus:
+                format: int64
+                type: integer
+                x-go-name: ExpectedStatus
+            httpHeaders:
+                additionalProperties:
+                    type: string
+                type: object
+                x-go-name: HTTPHeaders
+            httpHost:
+                type: string
+                x-go-name: HTTPHost
+            httpPath:
+                type: string
+                x-go-name: HTTPPath
+            interval:
+                $ref: '#/definitions/Duration'
+            timeout:
+                $ref: '#/definitions/Duration'
+            type:
+                type: string
+                x-go-name: Type
+        title: ProbeConfig holds the configuration for a node-level liveness probe.
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    QuotaConfig:
+        description: |-
+            QuotaConfig is a named cumulative traffic-volume limiter; the same name
+            referenced by several services (ServiceConfig.Quotas) shares one counter.
+        properties:
+            direction:
+                type: string
+                x-go-name: Direction
+            expiresAt:
+                type: string
+                x-go-name: ExpiresAt
+            flush:
+                type: string
+                x-go-name: Flush
+            limit:
+                type: string
+                x-go-name: Limit
+            name:
+                type: string
+                x-go-name: Name
+            startsAt:
+                type: string
+                x-go-name: StartsAt
+            status:
+                $ref: '#/definitions/QuotaStatus'
+            store:
+                $ref: '#/definitions/QuotaStoreConfig'
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    QuotaRedisConfig:
+        properties:
+            addr:
+                type: string
+                x-go-name: Addr
+            db:
+                format: int64
+                type: integer
+                x-go-name: DB
+            key:
+                type: string
+                x-go-name: Key
+            password:
+                type: string
+                x-go-name: Password
+            username:
+                type: string
+                x-go-name: Username
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    QuotaStatus:
+        properties:
+            active:
+                type: boolean
+                x-go-name: Active
+            blocked:
+                type: boolean
+                x-go-name: Blocked
+            direction:
+                type: string
+                x-go-name: Direction
+            expired:
+                type: boolean
+                x-go-name: Expired
+            expiresAt:
+                format: int64
+                type: integer
+                x-go-name: ExpiresAt
+            limit:
+                format: uint64
+                type: integer
+                x-go-name: Limit
+            startsAt:
+                format: int64
+                type: integer
+                x-go-name: StartsAt
+            used:
+                format: uint64
+                type: integer
+                x-go-name: Used
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    QuotaStoreConfig:
+        properties:
+            file:
+                type: string
+                x-go-name: File
+            redis:
+                $ref: '#/definitions/QuotaRedisConfig'
+            type:
+                type: string
+                x-go-name: Type
         type: object
         x-go-package: github.com/go-gost/x/config
     RecorderConfig:
@@ -963,19 +1022,6 @@ definitions:
                 $ref: '#/definitions/PluginConfig'
         type: object
         x-go-package: github.com/go-gost/x/config
-    Response:
-        properties:
-            code:
-                format: int64
-                type: integer
-                x-go-name: Code
-            data:
-                x-go-name: Data
-            msg:
-                type: string
-                x-go-name: Msg
-        type: object
-        x-go-package: github.com/go-gost/x/api
     RouterConfig:
         properties:
             file:
@@ -1009,6 +1055,7 @@ definitions:
             net:
                 description: 'Deprecated: use dst instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Net
         type: object
         x-go-package: github.com/go-gost/x/config
@@ -1029,6 +1076,8 @@ definitions:
                 format: int64
                 type: integer
                 x-go-name: MaxFails
+            maxLatency:
+                $ref: '#/definitions/Duration'
             strategy:
                 type: string
                 x-go-name: Strategy
@@ -1055,6 +1104,9 @@ definitions:
                     type: string
                 type: array
                 x-go-name: Bypasses
+            cache:
+                type: string
+                x-go-name: Cache
             climiter:
                 type: string
                 x-go-name: CLimiter
@@ -1068,6 +1120,7 @@ definitions:
             interface:
                 description: 'Deprecated: use metadata.interface instead'
                 type: string
+                x-deprecated: true
                 x-go-name: Interface
             limiter:
                 type: string
@@ -1092,6 +1145,11 @@ definitions:
             observer:
                 type: string
                 x-go-name: Observer
+            quotas:
+                items:
+                    type: string
+                type: array
+                x-go-name: Quotas
             recorders:
                 items:
                     $ref: '#/definitions/RecorderObject'
@@ -1100,6 +1158,9 @@ definitions:
             resolver:
                 type: string
                 x-go-name: Resolver
+            rewriter:
+                type: string
+                x-go-name: Rewriter
             rlimiter:
                 type: string
                 x-go-name: RLimiter
@@ -1118,6 +1179,41 @@ definitions:
                 format: int64
                 type: integer
                 x-go-name: Time
+        type: object
+        x-go-package: github.com/go-gost/x/config
+    ServiceQuota:
+        properties:
+            active:
+                type: boolean
+                x-go-name: Active
+            blocked:
+                type: boolean
+                x-go-name: Blocked
+            direction:
+                type: string
+                x-go-name: Direction
+            expired:
+                type: boolean
+                x-go-name: Expired
+            expiresAt:
+                format: int64
+                type: integer
+                x-go-name: ExpiresAt
+            limit:
+                format: uint64
+                type: integer
+                x-go-name: Limit
+            name:
+                type: string
+                x-go-name: Name
+            startsAt:
+                format: int64
+                type: integer
+                x-go-name: StartsAt
+            used:
+                format: uint64
+                type: integer
+                x-go-name: Used
         type: object
         x-go-package: github.com/go-gost/x/config
     ServiceStats:
@@ -1155,11 +1251,19 @@ definitions:
                     $ref: '#/definitions/ServiceEvent'
                 type: array
                 x-go-name: Events
+            quotas:
+                items:
+                    $ref: '#/definitions/ServiceQuota'
+                type: array
+                x-go-name: Quotas
             state:
                 type: string
                 x-go-name: State
             stats:
                 $ref: '#/definitions/ServiceStats'
+            stoppedByLimit:
+                type: boolean
+                x-go-name: StoppedByLimit
         type: object
         x-go-package: github.com/go-gost/x/config
     SockOptsConfig:
@@ -1198,12 +1302,20 @@ definitions:
             organization:
                 type: string
                 x-go-name: Organization
+            rejectUnknownSNI:
+                type: boolean
+                x-go-name: RejectUnknownSNI
             secure:
                 type: boolean
                 x-go-name: Secure
             serverName:
                 type: string
                 x-go-name: ServerName
+            serverNames:
+                items:
+                    type: string
+                type: array
+                x-go-name: ServerNames
             validity:
                 $ref: '#/definitions/Duration'
         type: object
@@ -1275,6 +1387,19 @@ definitions:
             list:
                 items:
                     $ref: '#/definitions/BypassConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    cacheList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/CacheConfig'
                 type: array
                 x-go-name: List
         type: object
@@ -1370,6 +1495,19 @@ definitions:
                 x-go-name: List
         type: object
         x-go-package: github.com/go-gost/x/api
+    quotaList:
+        properties:
+            count:
+                format: int64
+                type: integer
+                x-go-name: Count
+            list:
+                items:
+                    $ref: '#/definitions/QuotaConfig'
+                type: array
+                x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
     rateLimiterList:
         properties:
             count:
@@ -1394,6 +1532,14 @@ definitions:
                     $ref: '#/definitions/RecorderConfig'
                 type: array
                 x-go-name: List
+        type: object
+        x-go-package: github.com/go-gost/x/api
+    resetQuotaData:
+        properties:
+            used:
+                format: uint64
+                type: integer
+                x-go-name: Used
         type: object
         x-go-package: github.com/go-gost/x/api
     resolverList:
@@ -1465,8 +1611,7 @@ paths:
                 "200":
                     $ref: '#/responses/getConfigResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get current config.
             tags:
                 - Config
@@ -1487,8 +1632,7 @@ paths:
                 "200":
                     $ref: '#/responses/saveConfigResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Save current config to file (gost.yaml or gost.json).
             tags:
                 - Config
@@ -1499,8 +1643,7 @@ paths:
                 "200":
                     $ref: '#/responses/getAdmissionListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get admission list.
             tags:
                 - Admission
@@ -1516,8 +1659,7 @@ paths:
                 "200":
                     $ref: '#/responses/createAdmissionResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new admission, the name of admission must be unique in admission list.
             tags:
                 - Admission
@@ -1534,8 +1676,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteAdmissionResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete admission by name.
             tags:
                 - Admission
@@ -1551,8 +1692,7 @@ paths:
                 "200":
                     $ref: '#/responses/getAdmissionResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get admission.
             tags:
                 - Admission
@@ -1573,8 +1713,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateAdmissionResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update admission by name, the admission must already exist.
             tags:
                 - Admission
@@ -1585,8 +1724,7 @@ paths:
                 "200":
                     $ref: '#/responses/getAutherListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get auther list.
             tags:
                 - Auther
@@ -1602,8 +1740,7 @@ paths:
                 "200":
                     $ref: '#/responses/createAutherResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new auther, the name of the auther must be unique in auther list.
             tags:
                 - Auther
@@ -1620,8 +1757,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteAutherResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete auther by name.
             tags:
                 - Auther
@@ -1637,8 +1773,7 @@ paths:
                 "200":
                     $ref: '#/responses/getAutherResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get auther.
             tags:
                 - Auther
@@ -1659,8 +1794,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateAutherResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update auther by name, the auther must already exist.
             tags:
                 - Auther
@@ -1671,8 +1805,7 @@ paths:
                 "200":
                     $ref: '#/responses/getBypassListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get bypass list.
             tags:
                 - Bypass
@@ -1688,8 +1821,7 @@ paths:
                 "200":
                     $ref: '#/responses/createBypassResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new bypass, the name of bypass must be unique in bypass list.
             tags:
                 - Bypass
@@ -1706,8 +1838,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteBypassResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete bypass by name.
             tags:
                 - Bypass
@@ -1723,8 +1854,7 @@ paths:
                 "200":
                     $ref: '#/responses/getBypassResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get bypass.
             tags:
                 - Bypass
@@ -1745,11 +1875,91 @@ paths:
                 "200":
                     $ref: '#/responses/updateBypassResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update bypass by name, the bypass must already exist.
             tags:
                 - Bypass
+    /config/caches:
+        get:
+            operationId: getCacheListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getCacheListResponse'
+            security:
+                - basicAuth: []
+            summary: Get cache list.
+            tags:
+                - Cache
+        post:
+            operationId: createCacheRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/CacheConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createCacheResponse'
+            security:
+                - basicAuth: []
+            summary: Create a new cache, the name of the cache must be unique in cache list.
+            tags:
+                - Cache
+    /config/caches/{cache}:
+        delete:
+            operationId: deleteCacheRequest
+            parameters:
+                - in: path
+                  name: cache
+                  required: true
+                  type: string
+                  x-go-name: Cache
+            responses:
+                "200":
+                    $ref: '#/responses/deleteCacheResponse'
+            security:
+                - basicAuth: []
+            summary: Delete cache by name.
+            tags:
+                - Cache
+        get:
+            operationId: getCacheRequest
+            parameters:
+                - in: path
+                  name: cache
+                  required: true
+                  type: string
+                  x-go-name: Cache
+            responses:
+                "200":
+                    $ref: '#/responses/getCacheResponse'
+            security:
+                - basicAuth: []
+            summary: Get cache.
+            tags:
+                - Cache
+        put:
+            operationId: updateCacheRequest
+            parameters:
+                - in: path
+                  name: cache
+                  required: true
+                  type: string
+                  x-go-name: Cache
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/CacheConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateCacheResponse'
+            security:
+                - basicAuth: []
+            summary: Update cache by name, the cache must already exist.
+            tags:
+                - Cache
     /config/chains:
         get:
             operationId: getChainListRequest
@@ -1757,8 +1967,7 @@ paths:
                 "200":
                     $ref: '#/responses/getChainListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get chain list.
             tags:
                 - Chain
@@ -1774,8 +1983,7 @@ paths:
                 "200":
                     $ref: '#/responses/createChainResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new chain, the name of chain must be unique in chain list.
             tags:
                 - Chain
@@ -1792,8 +2000,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteChainResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete chain by name.
             tags:
                 - Chain
@@ -1809,15 +2016,15 @@ paths:
                 "200":
                     $ref: '#/responses/getChainResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get chain.
             tags:
                 - Chain
         put:
             operationId: updateChainRequest
             parameters:
-                - in: path
+                - description: chain name
+                  in: path
                   name: chain
                   required: true
                   type: string
@@ -1831,8 +2038,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateChainResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update chain by name, the chain must already exist.
             tags:
                 - Chain
@@ -1843,8 +2049,7 @@ paths:
                 "200":
                     $ref: '#/responses/getConnLimiterListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get conn limiter list.
             tags:
                 - Limiter
@@ -1860,8 +2065,7 @@ paths:
                 "200":
                     $ref: '#/responses/createConnLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new conn limiter, the name of limiter must be unique in limiter list.
             tags:
                 - Limiter
@@ -1878,8 +2082,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteConnLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete conn limiter by name.
             tags:
                 - Limiter
@@ -1895,8 +2098,7 @@ paths:
                 "200":
                     $ref: '#/responses/getConnLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get conn limiter.
             tags:
                 - Limiter
@@ -1917,8 +2119,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateConnLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update conn limiter by name, the limiter must already exist.
             tags:
                 - Limiter
@@ -1929,8 +2130,7 @@ paths:
                 "200":
                     $ref: '#/responses/getHopListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get hop list.
             tags:
                 - Hop
@@ -1946,8 +2146,7 @@ paths:
                 "200":
                     $ref: '#/responses/createHopResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new hop, the name of hop must be unique in hop list.
             tags:
                 - Hop
@@ -1964,8 +2163,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteHopResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete hop by name.
             tags:
                 - Hop
@@ -1981,15 +2179,15 @@ paths:
                 "200":
                     $ref: '#/responses/getHopResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get hop.
             tags:
                 - Hop
         put:
             operationId: updateHopRequest
             parameters:
-                - in: path
+                - description: hop name
+                  in: path
                   name: hop
                   required: true
                   type: string
@@ -2003,8 +2201,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateHopResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update hop by name, the hop must already exist.
             tags:
                 - Hop
@@ -2015,8 +2212,7 @@ paths:
                 "200":
                     $ref: '#/responses/getHostsListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get hosts list.
             tags:
                 - Hosts
@@ -2032,8 +2228,7 @@ paths:
                 "200":
                     $ref: '#/responses/createHostsResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new hosts, the name of the hosts must be unique in hosts list.
             tags:
                 - Hosts
@@ -2050,8 +2245,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteHostsResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete hosts by name.
             tags:
                 - Hosts
@@ -2067,8 +2261,7 @@ paths:
                 "200":
                     $ref: '#/responses/getHostsResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get hosts.
             tags:
                 - Hosts
@@ -2089,8 +2282,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateHostsResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update hosts by name, the hosts must already exist.
             tags:
                 - Hosts
@@ -2101,8 +2293,7 @@ paths:
                 "200":
                     $ref: '#/responses/getIngressListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get ingress list.
             tags:
                 - Ingress
@@ -2118,8 +2309,7 @@ paths:
                 "200":
                     $ref: '#/responses/createIngressResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new ingress, the name of the ingress must be unique in ingress list.
             tags:
                 - Ingress
@@ -2136,8 +2326,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteIngressResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete ingress by name.
             tags:
                 - Ingress
@@ -2153,8 +2342,7 @@ paths:
                 "200":
                     $ref: '#/responses/getIngressResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get ingress.
             tags:
                 - Ingress
@@ -2175,8 +2363,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateIngressResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update ingress by name, the ingress must already exist.
             tags:
                 - Ingress
@@ -2187,8 +2374,7 @@ paths:
                 "200":
                     $ref: '#/responses/getLimiterListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get limiter list.
             tags:
                 - Limiter
@@ -2204,8 +2390,7 @@ paths:
                 "200":
                     $ref: '#/responses/createLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new limiter, the name of limiter must be unique in limiter list.
             tags:
                 - Limiter
@@ -2222,8 +2407,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete limiter by name.
             tags:
                 - Limiter
@@ -2239,8 +2423,7 @@ paths:
                 "200":
                     $ref: '#/responses/getLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get limiter.
             tags:
                 - Limiter
@@ -2261,8 +2444,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update limiter by name, the limiter must already exist.
             tags:
                 - Limiter
@@ -2273,8 +2455,7 @@ paths:
                 "200":
                     $ref: '#/responses/getObserverListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get observer list.
             tags:
                 - Observer
@@ -2290,8 +2471,7 @@ paths:
                 "200":
                     $ref: '#/responses/createObserverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new observer, the name of the observer must be unique in observer list.
             tags:
                 - Observer
@@ -2308,8 +2488,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteObserverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete observer by name.
             tags:
                 - Observer
@@ -2325,8 +2504,7 @@ paths:
                 "200":
                     $ref: '#/responses/getObserverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get observer.
             tags:
                 - Observer
@@ -2347,11 +2525,118 @@ paths:
                 "200":
                     $ref: '#/responses/updateObserverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update observer by name, the observer must already exist.
             tags:
                 - Observer
+    /config/quotas:
+        get:
+            operationId: getQuotaListRequest
+            responses:
+                "200":
+                    $ref: '#/responses/getQuotaListResponse'
+            security:
+                - basicAuth: []
+            summary: Get quota list.
+            tags:
+                - Quota
+        post:
+            operationId: createQuotaRequest
+            parameters:
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/QuotaConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/createQuotaResponse'
+            security:
+                - basicAuth: []
+            summary: Create a new quota, the name of the quota must be unique in quota list.
+            tags:
+                - Quota
+    /config/quotas/{quota}:
+        delete:
+            operationId: deleteQuotaRequest
+            parameters:
+                - in: path
+                  name: quota
+                  required: true
+                  type: string
+                  x-go-name: Quota
+            responses:
+                "200":
+                    $ref: '#/responses/deleteQuotaResponse'
+            security:
+                - basicAuth: []
+            summary: Delete quota by name. Services referencing it stop being limited (fail-open).
+            tags:
+                - Quota
+        get:
+            operationId: getQuotaRequest
+            parameters:
+                - in: path
+                  name: quota
+                  required: true
+                  type: string
+                  x-go-name: Quota
+            responses:
+                "200":
+                    $ref: '#/responses/getQuotaResponse'
+            security:
+                - basicAuth: []
+            summary: Get quota.
+            tags:
+                - Quota
+        put:
+            description: |-
+                Update quota by name, the quota must already exist. The cumulative counter
+                is preserved across the update as long as the window is unchanged.
+            operationId: updateQuotaRequest
+            parameters:
+                - in: path
+                  name: quota
+                  required: true
+                  type: string
+                  x-go-name: Quota
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/QuotaConfig'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/updateQuotaResponse'
+            security:
+                - basicAuth: []
+            tags:
+                - Quota
+    /config/quotas/{quota}/reset:
+        post:
+            description: |-
+                Overwrite the cumulative counter of a quota (defaults to 0). The new value
+                is applied immediately and persisted; if the quota was blocking, services
+                resume once the value is below the limit.
+            operationId: resetQuotaRequest
+            parameters:
+                - in: path
+                  name: quota
+                  required: true
+                  type: string
+                  x-go-name: Quota
+                - in: body
+                  name: data
+                  schema:
+                    $ref: '#/definitions/resetQuotaData'
+                  x-go-name: Data
+            responses:
+                "200":
+                    $ref: '#/responses/resetQuotaResponse'
+            security:
+                - basicAuth: []
+            tags:
+                - Quota
     /config/recorders:
         get:
             operationId: getRecorderListRequest
@@ -2359,8 +2644,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRecorderListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get recorder list.
             tags:
                 - Recorder
@@ -2376,8 +2660,7 @@ paths:
                 "200":
                     $ref: '#/responses/createRecorderResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new recorder, the name of the recorder must be unique in recorder list.
             tags:
                 - Recorder
@@ -2394,8 +2677,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteRecorderResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete recorder by name.
             tags:
                 - Recorder
@@ -2411,8 +2693,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRecorderResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get recorder.
             tags:
                 - Recorder
@@ -2433,8 +2714,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateRecorderResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update recorder by name, the recorder must already exist.
             tags:
                 - Recorder
@@ -2445,8 +2725,7 @@ paths:
                 "200":
                     $ref: '#/responses/reloadConfigResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Hot reload config.
             tags:
                 - Reload
@@ -2457,8 +2736,7 @@ paths:
                 "200":
                     $ref: '#/responses/getResolverListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get resolver list.
             tags:
                 - Resolver
@@ -2474,8 +2752,7 @@ paths:
                 "200":
                     $ref: '#/responses/createResolverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new resolver, the name of the resolver must be unique in resolver list.
             tags:
                 - Resolver
@@ -2492,8 +2769,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteResolverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete resolver by name.
             tags:
                 - Resolver
@@ -2509,8 +2785,7 @@ paths:
                 "200":
                     $ref: '#/responses/getResolverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get resolver.
             tags:
                 - Resolver
@@ -2531,8 +2806,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateResolverResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update resolver by name, the resolver must already exist.
             tags:
                 - Resolver
@@ -2543,8 +2817,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRateLimiterListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get rate limiter list.
             tags:
                 - Limiter
@@ -2560,8 +2833,7 @@ paths:
                 "200":
                     $ref: '#/responses/createRateLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new rate limiter, the name of limiter must be unique in limiter list.
             tags:
                 - Limiter
@@ -2578,8 +2850,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteRateLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete rate limiter by name.
             tags:
                 - Limiter
@@ -2595,8 +2866,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRateLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get conn limiter.
             tags:
                 - Limiter
@@ -2617,8 +2887,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateRateLimiterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update rate limiter by name, the limiter must already exist.
             tags:
                 - Limiter
@@ -2629,8 +2898,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRouterListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get router list.
             tags:
                 - Router
@@ -2646,8 +2914,7 @@ paths:
                 "200":
                     $ref: '#/responses/createRouterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new router, the name of the router must be unique in router list.
             tags:
                 - Router
@@ -2664,8 +2931,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteRouterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete router by name.
             tags:
                 - Router
@@ -2681,8 +2947,7 @@ paths:
                 "200":
                     $ref: '#/responses/getRouterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get router.
             tags:
                 - Router
@@ -2703,8 +2968,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateRouterResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update router by name, the router must already exist.
             tags:
                 - Router
@@ -2715,8 +2979,7 @@ paths:
                 "200":
                     $ref: '#/responses/getSDListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get sd list.
             tags:
                 - SD
@@ -2732,8 +2995,7 @@ paths:
                 "200":
                     $ref: '#/responses/createSDResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new SD, the name of the SD must be unique in SD list.
             tags:
                 - SD
@@ -2750,8 +3012,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteSDResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete SD by name.
             tags:
                 - SD
@@ -2767,8 +3028,7 @@ paths:
                 "200":
                     $ref: '#/responses/getSDResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get sd.
             tags:
                 - SD
@@ -2789,8 +3049,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateSDResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update SD by name, the SD must already exist.
             tags:
                 - SD
@@ -2801,8 +3060,7 @@ paths:
                 "200":
                     $ref: '#/responses/getServiceListResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get service list.
             tags:
                 - Service
@@ -2818,8 +3076,7 @@ paths:
                 "200":
                     $ref: '#/responses/createServiceResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Create a new service, the name of the service must be unique in service list.
             tags:
                 - Service
@@ -2836,8 +3093,7 @@ paths:
                 "200":
                     $ref: '#/responses/deleteServiceResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Delete service by name.
             tags:
                 - Service
@@ -2853,8 +3109,7 @@ paths:
                 "200":
                     $ref: '#/responses/getServiceResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Get service.
             tags:
                 - Service
@@ -2875,8 +3130,7 @@ paths:
                 "200":
                     $ref: '#/responses/updateServiceResponse'
             security:
-                - basicAuth:
-                    - '[]'
+                - basicAuth: []
             summary: Update service by name, the service must already exist.
             tags:
                 - Service
@@ -2887,194 +3141,146 @@ responses:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createAutherResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createBypassResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    createCacheResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     createChainResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createConnLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createHopResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createHostsResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createIngressResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createObserverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    createQuotaResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     createRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createRecorderResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createResolverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createRouterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createSDResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     createServiceResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteAdmissionResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteAutherResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteBypassResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    deleteCacheResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     deleteChainResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteConnLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteHopResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteHostsResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteIngressResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteObserverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    deleteQuotaResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     deleteRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteRecorderResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteResolverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteRouterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteSDResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     deleteServiceResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     getAdmissionListResponse:
         description: successful operation.
         schema:
@@ -3099,6 +3305,14 @@ responses:
         description: successful operation.
         schema:
             $ref: '#/definitions/BypassConfig'
+    getCacheListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/cacheList'
+    getCacheResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/CacheConfig'
     getChainListResponse:
         description: successful operation.
         schema:
@@ -3111,8 +3325,6 @@ responses:
         description: successful operation.
         headers:
             Config: {}
-        schema:
-            $ref: '#/definitions/Config'
     getConnLimiterListResponse:
         description: successful operation.
         schema:
@@ -3161,6 +3373,14 @@ responses:
         description: successful operation.
         schema:
             $ref: '#/definitions/ObserverConfig'
+    getQuotaListResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/quotaList'
+    getQuotaResponse:
+        description: successful operation.
+        schema:
+            $ref: '#/definitions/QuotaConfig'
     getRateLimiterListResponse:
         description: successful operation.
         schema:
@@ -3213,110 +3433,86 @@ responses:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    resetQuotaResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     saveConfigResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateAdmissionResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateAutherResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateBypassResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    updateCacheResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     updateChainResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateConnLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateHopResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateHostsResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateIngressResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateObserverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
+    updateQuotaResponse:
+        description: successful operation.
+        headers:
+            Data: {}
     updateRateLimiterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateRecorderResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateResolverResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateRouterResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateSDResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
     updateServiceResponse:
         description: successful operation.
         headers:
             Data: {}
-        schema:
-            $ref: '#/definitions/Response'
 schemes:
     - https
     - http
