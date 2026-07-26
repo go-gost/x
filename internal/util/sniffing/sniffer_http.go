@@ -52,6 +52,13 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 
 	ro := ho.recorderObject
 
+	// Copy ro so that all internal recording (cache-hit serveCachedResponse
+	// and cache-miss httpRoundTrip) happens on a local clone, preventing
+	// double-record when the caller's defer also records ro.
+	ro2 := &xrecorder.HandlerRecorderObject{}
+	*ro2 = *ro
+	ro = ro2
+
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		ro.ClientIP = clientIP.String()
 		ctx = xctx.ContextWithSrcAddr(ctx, &net.TCPAddr{IP: clientIP})

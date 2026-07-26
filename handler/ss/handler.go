@@ -233,6 +233,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		switch proto {
 		case sniffing.ProtoHTTP:
+			ro.Time = time.Time{}
 			return sniffer.HandleHTTP(ctx, "tcp", conn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
@@ -242,6 +243,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 				sniffing.WithLog(log),
 			)
 		case sniffing.ProtoTLS:
+			ro.Time = time.Time{}
 			return sniffer.HandleTLS(ctx, "tcp", conn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),

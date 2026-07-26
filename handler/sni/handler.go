@@ -189,6 +189,7 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 	conn = xnet.NewReadWriteConn(br, conn, conn)
 	handled, sniffErr := h.handleSniffedProtocol(ctx, conn, ro, log, proto)
 	if handled {
+		ro.Time = time.Time{}
 		return sniffErr
 	}
 

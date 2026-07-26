@@ -232,6 +232,7 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 		conn = xnet.NewReadWriteConn(br, conn, conn)
 		handled, sniffErr := h.handleSniffedProtocol(ctx, conn, ro, log, proto)
 		if handled {
+			ro.Time = time.Time{}
 			return sniffErr
 		}
 	}

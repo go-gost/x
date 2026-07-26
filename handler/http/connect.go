@@ -80,6 +80,7 @@ func (h *httpHandler) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 	if h.md.sniffing {
 		snifferHandled, err = h.sniffAndHandle(ctx, conn, cc, ro, log)
 		if snifferHandled {
+			ro.Time = time.Time{}
 			return err
 		}
 	}
