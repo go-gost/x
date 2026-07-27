@@ -382,9 +382,21 @@ type ForwarderConfig struct {
 	// Deprecated: use hop instead
 	Name string `yaml:",omitempty" json:"name,omitempty"`
 	// the referenced hop name
-	Hop      string               `yaml:",omitempty" json:"hop,omitempty"`
-	Selector *SelectorConfig      `yaml:",omitempty" json:"selector,omitempty"`
-	Nodes    []*ForwardNodeConfig `json:"nodes"`
+	Hop      string                   `yaml:",omitempty" json:"hop,omitempty"`
+	Selector *SelectorConfig          `yaml:",omitempty" json:"selector,omitempty"`
+	Nodes    []*ForwardNodeConfig     `json:"nodes"`
+	HopGroup *ForwardHopGroupConfig   `yaml:"hopGroup,omitempty" json:"hopGroup,omitempty"`
+}
+
+type ForwardHopGroupConfig struct {
+	Hops     []*ForwardHopConfig `yaml:",omitempty" json:"hops,omitempty"`
+	Selector *SelectorConfig     `yaml:",omitempty" json:"selector,omitempty"`
+}
+
+type ForwardHopConfig struct {
+	Hop     string             `yaml:",omitempty" json:"hop,omitempty"`
+	Matcher *NodeMatcherConfig `yaml:",omitempty" json:"matcher,omitempty"`
+	Probe   *ProbeConfig       `yaml:",omitempty" json:"probe,omitempty"`
 }
 
 type ForwardNodeConfig struct {

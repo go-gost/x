@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/rewriter"
+	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
@@ -28,8 +29,12 @@ import (
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
 	hop_parser "github.com/go-gost/x/config/parsing/hop"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
+	node_parser "github.com/go-gost/x/config/parsing/node"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
+	xhop "github.com/go-gost/x/hop"
 	tls_util "github.com/go-gost/x/internal/util/tls"
+	xrouting "github.com/go-gost/x/routing"
+	xs "github.com/go-gost/x/selector"
 	quota_wrapper "github.com/go-gost/x/limiter/quota/wrapper"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	"github.com/go-gost/x/metadata"
@@ -441,6 +446,11 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 		return nil, nil
 	}
 
+	// HopGroup takes precedence over Hop / Name / Nodes.
+	if cfg.HopGroup != nil {
+		return parseHopGroup(cfg.HopGroup, log)
+	}
+
 	hopName := cfg.Hop
 	if hopName == "" {
 		hopName = cfg.Name
@@ -493,6 +503,78 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 		})
 	}
 	return hop_parser.ParseHop(&hc, log)
+}
+
+func parseHopGroup(cfg *config.ForwardHopGroupConfig, log logger.Logger) (hop.Hop, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	var entries []*xhop.HopEntry
+	for _, hc := range cfg.Hops {
+		if hc == nil {
+			continue
+		}
+		h := registry.HopRegistry().Get(hc.Hop)
+		if h == nil {
+			log.Warnf("hop %q not found in hopGroup, skipping", hc.Hop)
+			continue
+		}
+
+		var m routing.Matcher
+		if hc.Matcher != nil && hc.Matcher.Rule != "" {
+			var err error
+			m, err = xrouting.NewMatcher(hc.Matcher.Rule)
+			if err != nil {
+				log.Warnf("hop %q: bad matcher rule %q: %v, skipping", hc.Hop, hc.Matcher.Rule, err)
+				continue
+			}
+		}
+
+		entries = append(entries, xhop.NewHopEntry(h, m, node_parser.ParseProbeConfig(hc.Probe)))
+	}
+
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	var hopSelector selector.Selector[hop.Hop]
+	if cfg.Selector != nil {
+		var strategy selector.Strategy[hop.Hop]
+		switch cfg.Selector.Strategy {
+		case "round", "rr":
+			strategy = xs.RoundRobinStrategy[hop.Hop]()
+		case "random", "rand":
+			strategy = xs.RandomStrategy[hop.Hop]()
+		case "fifo", "ha":
+			strategy = xs.FIFOStrategy[hop.Hop]()
+		case "hash":
+			strategy = xs.HashStrategy[hop.Hop]()
+		default:
+			strategy = xs.RoundRobinStrategy[hop.Hop]()
+		}
+		hopSelector = xs.NewSelector(
+			strategy,
+			xs.FailFilter[hop.Hop](cfg.Selector.MaxFails, cfg.Selector.FailTimeout),
+			xs.BackupFilter[hop.Hop](),
+		)
+	}
+	if hopSelector == nil {
+		hopSelector = xs.NewSelector(
+			xs.RoundRobinStrategy[hop.Hop](),
+			xs.FailFilter[hop.Hop](xs.DefaultMaxFails, xs.DefaultFailTimeout),
+			xs.BackupFilter[hop.Hop](),
+		)
+	}
+
+	return xhop.NewHopGroup(
+		xhop.WithEntriesOption(entries...),
+		xhop.WithGroupSelectorOption(hopSelector),
+		xhop.WithGroupLoggerOption(log.WithFields(map[string]any{
+			"kind":    "hopGroup",
+			"service": "forwarder",
+		})),
+	), nil
 }
 
 func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {

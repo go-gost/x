@@ -319,16 +319,16 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 
 	node := chain.NewNode(cfg.Name, cfg.Addr, opts...)
 	if cfg.Probe != nil {
-		if pc := parseProbeConfig(cfg.Probe); pc != nil {
+		if pc := ParseProbeConfig(cfg.Probe); pc != nil {
 			xchain.StartNodeProbe(node, pc, nodeLogger)
 		}
 	}
 	return node, nil
 }
 
-// parseProbeConfig converts a config.ProbeConfig into a chain.ProbeConfig.
+// ParseProbeConfig converts a config.ProbeConfig into a chain.ProbeConfig.
 // Returns nil when the config is invalid (e.g. empty addr).
-func parseProbeConfig(cfg *config.ProbeConfig) *chain.ProbeConfig {
+func ParseProbeConfig(cfg *config.ProbeConfig) *chain.ProbeConfig {
 	if cfg == nil || (cfg.Addr == "" && cfg.Type != "cmd") {
 		return nil
 	}
