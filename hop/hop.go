@@ -252,9 +252,10 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 
 	// Stage 3: priority short-circuit.
 	// maxPriCount == 1 means the top-priority node is strictly higher than
-	// all others (no tie). We already tracked maxPriority, hasBackup, and
-	// maxPriCount during Stage 2 — no separate scan needed.
-	if maxPriority > 0 && !hasBackup && maxPriCount == 1 {
+	// all others (no tie). Only fire when the top node itself is a primary —
+	// if it's a backup we must fall through to Stage 4 so the selector can
+	// prefer any lower-priority primary.
+	if maxPriority > 0 && maxPriCount == 1 && !isBackupNode(maxPriNode) {
 		p.logger.Debugf("priority shortcut: node %s selected", maxPriNode.Name)
 		return maxPriNode
 	}
@@ -273,8 +274,18 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 
 	// Mixed priorities. Sort descending, then feed each priority tier to
 	// the selector, falling through when a tier yields nothing.
-	if s == nil {
-		return maxPriNode
+
+	// Scan once: does the candidate pool contain at least one primary?
+	// When it does, skip backup-only tiers entirely — a lower-priority
+	// primary always beats a higher-priority backup.
+	var hasAnyPrimary bool
+	if hasBackup {
+		for _, n := range nodes {
+			if !mdutil.GetBool(n.Options().Metadata, "backup") {
+				hasAnyPrimary = true
+				break
+			}
+		}
 	}
 
 	sort.Slice(nodes, func(i, j int) bool {
@@ -283,13 +294,37 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	start := 0
 	for i := 1; i <= len(nodes); i++ {
 		if i == len(nodes) || nodes[i].Options().Priority != nodes[start].Options().Priority {
-			if v := s.Select(ctx, nodes[start:i]...); v != nil {
-				return v
+			// Skip backup-only tier when primaries exist in the pool.
+			if hasAnyPrimary && isAllBackup(nodes[start:i]) {
+				start = i
+				continue
+			}
+			if s != nil {
+				if v := s.Select(ctx, nodes[start:i]...); v != nil {
+					return v
+				}
+			} else {
+				return nodes[start]
 			}
 			start = i
 		}
 	}
 	return nil
+}
+
+// isBackupNode reports whether a node is marked as backup in its metadata.
+func isBackupNode(node *chain.Node) bool {
+	return mdutil.GetBool(node.Options().Metadata, "backup")
+}
+
+// isAllBackup reports whether all nodes in the slice are backup nodes.
+func isAllBackup(nodes []*chain.Node) bool {
+	for _, n := range nodes {
+		if !mdutil.GetBool(n.Options().Metadata, "backup") {
+			return false
+		}
+	}
+	return len(nodes) > 0
 }
 
 func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {

@@ -17,8 +17,9 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/routing"
-	"github.com/go-gost/x/registry"
+	xmd "github.com/go-gost/x/metadata"
 	xlogger "github.com/go-gost/x/logger"
+	"github.com/go-gost/x/registry"
 )
 
 // --- Mock types ---
@@ -28,8 +29,8 @@ type testBypass struct {
 	contains  bool
 }
 
-func (b *testBypass) IsWhitelist() bool                     { return b.whitelist }
-func (b *testBypass) Init(md metadata.Metadata) error         { return nil }
+func (b *testBypass) IsWhitelist() bool               { return b.whitelist }
+func (b *testBypass) Init(md metadata.Metadata) error { return nil }
 func (b *testBypass) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	return b.contains
 }
@@ -113,13 +114,13 @@ func (d *stubDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 type stubConn struct{}
 
 func (c *stubConn) Read(b []byte) (n int, err error)   { return 0, io.EOF }
-func (c *stubConn) Write(b []byte) (n int, err error)   { return len(b), nil }
-func (c *stubConn) Close() error                         { return nil }
-func (c *stubConn) LocalAddr() net.Addr                  { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0} }
-func (c *stubConn) RemoteAddr() net.Addr                 { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0} }
-func (c *stubConn) SetDeadline(t time.Time) error        { return nil }
-func (c *stubConn) SetReadDeadline(t time.Time) error    { return nil }
-func (c *stubConn) SetWriteDeadline(t time.Time) error   { return nil }
+func (c *stubConn) Write(b []byte) (n int, err error)  { return len(b), nil }
+func (c *stubConn) Close() error                       { return nil }
+func (c *stubConn) LocalAddr() net.Addr                { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0} }
+func (c *stubConn) RemoteAddr() net.Addr               { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0} }
+func (c *stubConn) SetDeadline(t time.Time) error      { return nil }
+func (c *stubConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *stubConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func init() {
 	logger.SetDefault(xlogger.Nop())
@@ -1351,6 +1352,31 @@ func TestSelect_SpecificHostNodeWins(t *testing.T) {
 	}
 }
 
+func TestSelect_BackupPriority_LowerPriorityPrimaryWins(t *testing.T) {
+	// A lower-priority primary must beat a higher-priority backup.
+	//   Node A: priority=100, backup=true  (high-priority backup)
+	//   Node B: priority=10,  backup=false (low-priority primary)
+	// Expected: B wins — primary always beats backup regardless of priority.
+	n1 := chain.NewNode("backup-high",
+		"127.0.0.1:8080",
+		chain.PriorityNodeOption(100),
+		chain.MetadataNodeOption(xmd.NewMetadata(map[string]any{"backup": true})),
+	)
+	n2 := chain.NewNode("primary-low",
+		"127.0.0.1:9090",
+		chain.PriorityNodeOption(10),
+	)
+	h := newTestHop(NodeOption(n1, n2))
+	defer h.Close()
+
+	node := h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected node, got nil")
+	}
+	if node.Name != "primary-low" {
+		t.Errorf("expected 'primary-low' (lower-priority primary beats higher-priority backup), got %q", node.Name)
+	}
+}
 // =============================================================================
 // Interface satisfaction
 // =============================================================================
