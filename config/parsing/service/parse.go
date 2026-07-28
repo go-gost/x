@@ -207,10 +207,24 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			chain.ChainRouterOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup, log)),
 		)
 	}
+	lnRouter := xchain.NewRouter(routerOpts...)
+
+	// The routers may hold a chainGroup running probe goroutines; make sure
+	// they are closed if service construction fails after this point.
+	var hRouter *xchain.Router
+	success := false
+	defer func() {
+		if !success {
+			lnRouter.Close()
+			if hRouter != nil {
+				hRouter.Close()
+			}
+		}
+	}()
 
 	listenOpts := []listener.Option{
 		listener.AddrOption(cfg.Addr),
-		listener.RouterOption(xchain.NewRouter(routerOpts...)),
+		listener.RouterOption(lnRouter),
 		listener.AutherOption(auther),
 		listener.AuthOption(auth_parser.Info(cfg.Listener.Auth)),
 		listener.TLSConfigOption(tlsConfig),
@@ -386,8 +400,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 
 	var h handler.Handler
 	if rf := registry.HandlerRegistry().Get(cfg.Handler.Type); rf != nil {
+		hRouter = xchain.NewRouter(routerOpts...)
 		h = rf(
-			handler.RouterOption(xchain.NewRouter(routerOpts...)),
+			handler.RouterOption(hRouter),
 			handler.AutherOption(auther),
 			handler.AuthOption(auth_parser.Info(cfg.Handler.Auth)),
 			handler.BypassOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
@@ -435,7 +450,9 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.ObserverPeriodOption(observerPeriod),
 		xservice.LoggerOption(serviceLogger),
 		xservice.LabelsOption(labels),
+		xservice.ClosersOption(lnRouter, hRouter),
 	)
+	success = true
 
 	serviceLogger.Infof("listening on %s/%s", s.Addr().String(), s.Addr().Network())
 	return s, nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"time"
@@ -47,6 +48,19 @@ func (r *Router) Options() *chain.RouterOptions {
 		return nil
 	}
 	return &r.options
+}
+
+// Close releases resources held by the router's chain. A chain that owns
+// background goroutines (e.g. a chainGroup running liveness probes) is closed
+// here so its goroutines stop when the service shuts down or is reloaded.
+func (r *Router) Close() error {
+	if r == nil {
+		return nil
+	}
+	if c, ok := r.options.Chain.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 // Dial establishes a connection to the target address through the configured

@@ -44,6 +44,7 @@ type options struct {
 	observerPeriod time.Duration
 	logger         logger.Logger
 	labels         map[string]string
+	closers        []io.Closer
 }
 
 // Option is a functional option for configuring a service.
@@ -119,6 +120,13 @@ func ObserverPeriodOption(period time.Duration) Option {
 func LabelsOption(labels map[string]string) Option {
 	return func(opts *options) {
 		opts.labels = labels
+	}
+}
+
+// ClosersOption registers io.Closers that are called on service shutdown.
+func ClosersOption(closers ...io.Closer) Option {
+	return func(opts *options) {
+		opts.closers = append(opts.closers, closers...)
 	}
 }
 
@@ -362,6 +370,11 @@ func (s *defaultService) Close() error {
 			if err := closer.Close(); err != nil {
 				errs = append(errs, err)
 			}
+		}
+	}
+	for _, c := range s.options.closers {
+		if err := c.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	if err := s.listener.Close(); err != nil {

@@ -585,12 +585,33 @@ func TestCloseJoinsErrors(t *testing.T) {
 type closeErrHandler struct {
 	err error
 }
-
 func (h *closeErrHandler) Init(metadata.Metadata) error                { return nil }
 func (h *closeErrHandler) Handle(context.Context, net.Conn, ...handler.HandleOption) error {
 	return nil
 }
 func (h *closeErrHandler) Close() error { return h.err }
+
+type mockCloser struct {
+	closed atomic.Bool
+}
+
+func (c *mockCloser) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+func TestCloseClosesClosers(t *testing.T) {
+	ln := newMockListener()
+	c1, c2 := &mockCloser{}, &mockCloser{}
+	svc := NewService("test", ln, newMockHandler(nil), ClosersOption(c1, c2)).(*defaultService)
+
+	if err := svc.Close(); err != nil {
+		t.Errorf("Close() = %v", err)
+	}
+	if !c1.closed.Load() || !c2.closed.Load() {
+		t.Error("closers were not closed")
+	}
+}
 
 // --- Status tests ---
 
