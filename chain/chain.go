@@ -276,21 +276,21 @@ func (p *chainGroup) runEntryProbe(ctx context.Context, e *ChainEntry) {
 		interval = 30 * time.Second
 	}
 
-	p.probeEntry(e, cfg) // first probe immediately
+	p.probeEntry(ctx, e, cfg) // first probe immediately
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			p.probeEntry(e, cfg)
+			p.probeEntry(ctx, e, cfg)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *chainGroup) probeEntry(e *ChainEntry, cfg *chain.ProbeConfig) {
+func (p *chainGroup) probeEntry(ctx context.Context, e *ChainEntry, cfg *chain.ProbeConfig) {
 	// cmd probe runs a shell command — no chain routing needed.
 	if cfg.Type == chain.ProbeTypeCmd {
 		timeout := cfg.Timeout
@@ -319,7 +319,9 @@ func (p *chainGroup) probeEntry(e *ChainEntry, cfg *chain.ProbeConfig) {
 		return
 	}
 
-	route := e.chainer.Route(context.Background(), "tcp", addr)
+	// Route through the probe lifecycle context so cancellation (reload/close)
+	// aborts an in-flight probe instead of blocking forever on a stuck route.
+	route := e.chainer.Route(ctx, "tcp", addr)
 	if route == nil {
 		e.marker.Mark()
 		if p.logger != nil {
