@@ -226,13 +226,31 @@ func (p *chainGroup) selectChain(ctx context.Context, network, address string, o
 		opt(&options)
 	}
 
+	// When no entry has a matcher, the eligible pool equals all entries; the
+	// selector must still run (FailFilter excludes probe-failed chains), so
+	// skip the per-call allocation and pass entries directly.
+	anyMatcher := false
+	for _, e := range p.entries {
+		if e.matcher != nil {
+			anyMatcher = true
+			break
+		}
+	}
+	if !anyMatcher {
+		eligible := make([]chain.Chainer, len(p.entries))
+		for i, e := range p.entries {
+			eligible[i] = e
+		}
+		return p.selectFrom(ctx, eligible...)
+	}
+
 	// Stage 1: matcher filter — build eligible pool.
 	req := routing.Request{
 		Network: network,
 		Host:    options.Host,
 	}
 
-	var eligible []chain.Chainer
+	eligible := make([]chain.Chainer, 0, len(p.entries))
 	for _, e := range p.entries {
 		if e.matcher != nil {
 			if !e.matcher.Match(&req) {
@@ -248,11 +266,12 @@ func (p *chainGroup) selectChain(ctx context.Context, network, address string, o
 	if len(eligible) == 0 {
 		return nil
 	}
-	if len(eligible) == 1 {
-		return eligible[0]
-	}
 
 	// Stage 2: group selector — FailFilter + strategy.
+	return p.selectFrom(ctx, eligible...)
+}
+
+func (p *chainGroup) selectFrom(ctx context.Context, eligible ...chain.Chainer) chain.Chainer {
 	if p.selector != nil {
 		return p.selector.Select(ctx, eligible...)
 	}
