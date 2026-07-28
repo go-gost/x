@@ -31,12 +31,15 @@ package chain
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
+	"github.com/go-gost/x/internal/probe"
 )
 
 var (
@@ -160,14 +163,20 @@ func (c *Chain) Route(ctx context.Context, network, address string, opts ...chai
 }
 
 type chainGroup struct {
-	chains   []chain.Chainer
-	selector selector.Selector[chain.Chainer]
+	entries    []*ChainEntry
+	selector   selector.Selector[chain.Chainer]
+	logger     logger.Logger
+	cancelFunc context.CancelFunc
 }
 
 // NewChainGroup creates a chain group that selects one Chainer from the
 // given list using the configured selector (round-robin by default).
 func NewChainGroup(chains ...chain.Chainer) *chainGroup {
-	return &chainGroup{chains: chains}
+	entries := make([]*ChainEntry, len(chains))
+	for i, c := range chains {
+		entries[i] = NewChainEntry(c, nil, nil)
+	}
+	return &chainGroup{entries: entries}
 }
 
 func (p *chainGroup) WithSelector(s selector.Selector[chain.Chainer]) *chainGroup {
@@ -175,17 +184,176 @@ func (p *chainGroup) WithSelector(s selector.Selector[chain.Chainer]) *chainGrou
 	return p
 }
 
+// WithGroupEntries sets the chain entries for the group (replaces defaults)
+// and starts probe goroutines for entries that have probe configurations.
+func (p *chainGroup) WithGroupEntries(entries ...*ChainEntry) *chainGroup {
+	// Cancel any previous probe goroutines before replacing entries.
+	if p.cancelFunc != nil {
+		p.cancelFunc()
+	}
+	p.entries = entries
+
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelFunc = cancel
+	for _, e := range entries {
+		if e.probe != nil {
+			go p.runEntryProbe(ctx, e)
+		}
+	}
+	return p
+}
+
+// WithGroupLogger sets the logger for the group.
+func (p *chainGroup) WithGroupLogger(log logger.Logger) *chainGroup {
+	p.logger = log
+	return p
+}
+
 func (p *chainGroup) Route(ctx context.Context, network, address string, opts ...chain.RouteOption) chain.Route {
-	if chain := p.next(ctx); chain != nil {
-		return chain.Route(ctx, network, address, opts...)
+	if c := p.selectChain(ctx, network, address, opts...); c != nil {
+		return c.Route(ctx, network, address, opts...)
 	}
 	return nil
 }
 
-func (p *chainGroup) next(ctx context.Context) chain.Chainer {
-	if p == nil || len(p.chains) == 0 {
+func (p *chainGroup) selectChain(ctx context.Context, network, address string, opts ...chain.RouteOption) chain.Chainer {
+	if p == nil || len(p.entries) == 0 {
 		return nil
 	}
 
-	return p.selector.Select(ctx, p.chains...)
+	var options chain.RouteOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	// Stage 1: matcher filter — build eligible pool.
+	req := routing.Request{
+		Network: network,
+		Host:    options.Host,
+	}
+
+	var eligible []chain.Chainer
+	for _, e := range p.entries {
+		if e.matcher != nil {
+			if !e.matcher.Match(&req) {
+				continue
+			}
+			if p.logger != nil {
+				p.logger.Debugf("chain entry matched request %s %s", req.Network, req.Host)
+			}
+		}
+		eligible = append(eligible, e) // *ChainEntry as chain.Chainer, FailFilter reads e.Marker()
+	}
+
+	if len(eligible) == 0 {
+		return nil
+	}
+	if len(eligible) == 1 {
+		return eligible[0]
+	}
+
+	// Stage 2: group selector — FailFilter + strategy.
+	if p.selector != nil {
+		return p.selector.Select(ctx, eligible...)
+	}
+	return eligible[0]
+}
+
+// Close stops all probe goroutines.
+func (p *chainGroup) Close() error {
+	if p.cancelFunc != nil {
+		p.cancelFunc()
+	}
+	return nil
+}
+
+// runEntryProbe periodically probes a chain and marks
+// the chain entry (not the chain's nodes) on failure.
+func (p *chainGroup) runEntryProbe(ctx context.Context, e *ChainEntry) {
+	cfg := e.probe
+	interval := cfg.Interval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	p.probeEntry(e, cfg) // first probe immediately
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			p.probeEntry(e, cfg)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (p *chainGroup) probeEntry(e *ChainEntry, cfg *chain.ProbeConfig) {
+	// cmd probe runs a shell command — no chain routing needed.
+	if cfg.Type == chain.ProbeTypeCmd {
+		timeout := cfg.Timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		err := (&probe.CmdProber{Command: cfg.Command, Timeout: timeout}).Probe()
+		if err != nil {
+			e.marker.Mark()
+			if p.logger != nil {
+				p.logger.Debugf("chain entry cmd probe failed: %v", err)
+			}
+		} else {
+			e.marker.Reset()
+		}
+		return
+	}
+
+	// TCP/HTTP probe: route through the chain to probe target.
+	addr := cfg.Addr
+	if addr == "" {
+		e.marker.Mark()
+		if p.logger != nil {
+			p.logger.Debug("chain entry probe: no probe address configured")
+		}
+		return
+	}
+
+	route := e.chainer.Route(context.Background(), "tcp", addr)
+	if route == nil {
+		e.marker.Mark()
+		if p.logger != nil {
+			p.logger.Debug("chain entry probe: no route available")
+		}
+		return
+	}
+
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	probeCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	conn, err := route.Dial(probeCtx, "tcp", addr)
+	if err != nil {
+		e.marker.Mark()
+		if p.logger != nil {
+			p.logger.Debugf("chain entry probe dial %s failed: %v", addr, err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	if cfg.Type == chain.ProbeTypeHTTP {
+		if err := probe.NewHTTPProber(cfg).Probe(conn); err != nil {
+			e.marker.Mark()
+			if p.logger != nil {
+				p.logger.Debugf("chain entry probe http %s failed: %v", addr, err)
+			}
+			return
+		}
+	}
+
+	e.marker.Reset()
 }

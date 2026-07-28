@@ -787,7 +787,7 @@ func TestNewChainGroup(t *testing.T) {
 	ch2 := NewChain("ch2")
 	g := NewChainGroup(ch1, ch2)
 	require.NotNil(t, g)
-	assert.Len(t, g.chains, 2)
+	assert.Len(t, g.entries, 2)
 }
 
 func TestChainGroup_Route_NoChains(t *testing.T) {
@@ -1758,12 +1758,12 @@ func TestChainGroup_WithSelector(t *testing.T) {
 	assert.Len(t, rt.Nodes(), 1)
 }
 
-func TestChainGroup_Next_NilReceiver(t *testing.T) {
+func TestChainGroup_SelectChain_NilReceiver(t *testing.T) {
 	var g *chainGroup
-	assert.Nil(t, g.next(context.Background()))
+	assert.Nil(t, g.selectChain(context.Background(), "", ""))
 }
 
-func TestChainGroup_Next_EmptyChains(t *testing.T) {
+func TestChainGroup_SelectChain_EmptyChains(t *testing.T) {
 	g := NewChainGroup()
-	assert.Nil(t, g.next(context.Background()))
+	assert.Nil(t, g.selectChain(context.Background(), "", ""))
 }

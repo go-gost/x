@@ -204,7 +204,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	if !ignoreChain {
 		routerOpts = append(routerOpts,
-			chain.ChainRouterOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup)),
+			chain.ChainRouterOption(chainGroup(cfg.Listener.Chain, cfg.Listener.ChainGroup, log)),
 		)
 	}
 
@@ -380,7 +380,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	if !ignoreChain {
 		routerOpts = append(routerOpts,
-			chain.ChainRouterOption(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup)),
+			chain.ChainRouterOption(chainGroup(cfg.Handler.Chain, cfg.Handler.ChainGroup, log)),
 		)
 	}
 
@@ -577,29 +577,47 @@ func parseHopGroup(cfg *config.ForwardHopGroupConfig, log logger.Logger) (hop.Ho
 	), nil
 }
 
-func chainGroup(name string, group *config.ChainGroupConfig) chain.Chainer {
-	var chains []chain.Chainer
-	var sel selector.Selector[chain.Chainer]
+func chainGroup(name string, group *config.ChainGroupConfig, log logger.Logger) chain.Chainer {
+	var entries []*xchain.ChainEntry
 
 	if c := registry.ChainRegistry().Get(name); c != nil {
-		chains = append(chains, c)
+		entries = append(entries, xchain.NewChainEntry(c, nil, nil))
 	}
 	if group != nil {
-		for _, s := range group.Chains {
-			if c := registry.ChainRegistry().Get(s); c != nil {
-				chains = append(chains, c)
+		for _, ge := range group.Chains {
+			c := registry.ChainRegistry().Get(ge.Chain)
+			if c == nil {
+				log.Warnf("chain %q not found in chainGroup, skipping", ge.Chain)
+				continue
 			}
+
+			var m routing.Matcher
+			if ge.Matcher != nil && ge.Matcher.Rule != "" {
+				var err error
+				m, err = xrouting.NewMatcher(ge.Matcher.Rule)
+				if err != nil {
+					log.Warnf("chain %q: bad matcher rule %q: %v, skipping", ge.Chain, ge.Matcher.Rule, err)
+					continue
+				}
+			}
+
+			entries = append(entries, xchain.NewChainEntry(c, m, node_parser.ParseProbeConfig(ge.Probe)))
 		}
-		sel = selector_parser.ParseChainSelector(group.Selector)
 	}
-	if len(chains) == 0 {
+	if len(entries) == 0 {
 		return nil
 	}
 
+	var sel selector.Selector[chain.Chainer]
+	if group != nil {
+		sel = selector_parser.ParseChainSelector(group.Selector)
+	}
 	if sel == nil {
 		sel = selector_parser.DefaultChainSelector()
 	}
 
-	return xchain.NewChainGroup(chains...).
-		WithSelector(sel)
+	return xchain.NewChainGroup().
+		WithGroupEntries(entries...).
+		WithSelector(sel).
+		WithGroupLogger(log)
 }

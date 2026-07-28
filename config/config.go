@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"io"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
@@ -382,10 +384,10 @@ type ForwarderConfig struct {
 	// Deprecated: use hop instead
 	Name string `yaml:",omitempty" json:"name,omitempty"`
 	// the referenced hop name
-	Hop      string                   `yaml:",omitempty" json:"hop,omitempty"`
-	Selector *SelectorConfig          `yaml:",omitempty" json:"selector,omitempty"`
-	Nodes    []*ForwardNodeConfig     `json:"nodes"`
-	HopGroup *ForwardHopGroupConfig   `yaml:"hopGroup,omitempty" json:"hopGroup,omitempty"`
+	Hop      string                 `yaml:",omitempty" json:"hop,omitempty"`
+	Selector *SelectorConfig        `yaml:",omitempty" json:"selector,omitempty"`
+	Nodes    []*ForwardNodeConfig   `json:"nodes"`
+	HopGroup *ForwardHopGroupConfig `yaml:"hopGroup,omitempty" json:"hopGroup,omitempty"`
 }
 
 type ForwardHopGroupConfig struct {
@@ -636,9 +638,39 @@ type ChainConfig struct {
 	Metadata map[string]any `yaml:",omitempty" json:"metadata,omitempty"`
 }
 
+type ChainGroupEntry struct {
+	Chain   string             `yaml:",omitempty" json:"chain,omitempty"`
+	Matcher *NodeMatcherConfig `yaml:",omitempty" json:"matcher,omitempty"`
+	Probe   *ProbeConfig       `yaml:",omitempty" json:"probe,omitempty"`
+}
+
+// gostDecodeHook is a composite mapstructure decode hook that handles custom
+// type conversions needed by GOST config fields. viper's internal unmarshalling
+// never calls yaml.Unmarshaler / json.Unmarshaler on leaf types, so the hook is
+// the only way to support these.
+func gostDecodeHook() mapstructure.DecodeHookFunc {
+	return func(f, t reflect.Type, data any) (any, error) {
+		// Plain string → ChainGroupEntry: backward compat for "chains: [a, b]".
+		if t == reflect.TypeOf(ChainGroupEntry{}) {
+			if s, ok := data.(string); ok {
+				return ChainGroupEntry{Chain: s}, nil
+			}
+			return data, nil
+		}
+		// String → time.Duration: accept "10s", "1m", etc. in YAML/JSON.
+		if t == reflect.TypeOf(time.Duration(0)) {
+			if s, ok := data.(string); ok {
+				return time.ParseDuration(s)
+			}
+			return data, nil
+		}
+		return data, nil
+	}
+}
+
 type ChainGroupConfig struct {
-	Chains   []string        `yaml:",omitempty" json:"chains,omitempty"`
-	Selector *SelectorConfig `yaml:",omitempty" json:"selector,omitempty"`
+	Chains   []*ChainGroupEntry `yaml:",omitempty" json:"chains,omitempty"`
+	Selector *SelectorConfig    `yaml:",omitempty" json:"selector,omitempty"`
 }
 
 type HopConfig struct {
@@ -719,7 +751,7 @@ func (c *Config) Load() error {
 		return err
 	}
 
-	return v.Unmarshal(c)
+	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
 }
 
 func (c *Config) Read(r io.Reader, configType string) error {
@@ -728,7 +760,7 @@ func (c *Config) Read(r io.Reader, configType string) error {
 		return err
 	}
 
-	return v.Unmarshal(c)
+	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
 }
 
 func (c *Config) ReadFile(file string) error {
@@ -737,7 +769,7 @@ func (c *Config) ReadFile(file string) error {
 	if err := v.ReadInConfig(); err != nil {
 		return err
 	}
-	return v.Unmarshal(c)
+	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
 }
 
 func (c *Config) Write(w io.Writer, format string) error {
