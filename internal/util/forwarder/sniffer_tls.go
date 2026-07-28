@@ -54,7 +54,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		if ho.log != nil {
 			ho.log.Debugf("no sni in clienthello from %s", conn.RemoteAddr())
 		}
-		return errors.New("tls: sni is empty, closing connection")
+		host, _ = conn.LocalAddr().String(), ""
 	}
 	ro.Host = host
 
