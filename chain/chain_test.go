@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/recorder"
+	"github.com/go-gost/core/routing"
 	xlogger "github.com/go-gost/x/logger"
 	xmetadata "github.com/go-gost/x/metadata"
 	"github.com/stretchr/testify/assert"
@@ -1766,4 +1767,75 @@ func TestChainGroup_SelectChain_NilReceiver(t *testing.T) {
 func TestChainGroup_SelectChain_EmptyChains(t *testing.T) {
 	g := NewChainGroup()
 	assert.Nil(t, g.selectChain(context.Background(), "", ""))
+}
+
+// hostMatcher matches requests whose Host equals the configured value.
+type hostMatcher struct {
+	host string
+}
+
+func (m *hostMatcher) Match(req *routing.Request) bool {
+	return req != nil && req.Host == m.host
+}
+
+func TestChainGroup_SelectChain_MatcherFilter(t *testing.T) {
+	matchChain := NewChain("match")
+	skipChain := NewChain("skip")
+
+	entries := []*ChainEntry{
+		NewChainEntry(matchChain, &hostMatcher{host: "a.example.com"}, nil),
+		NewChainEntry(skipChain, &hostMatcher{host: "b.example.com"}, nil),
+	}
+	g := NewChainGroup().WithGroupEntries(entries...)
+
+	// Only the entry matching "a.example.com" should be eligible.
+	got := g.selectChain(context.Background(), "tcp", "a.example.com:80", chain.WithHostRouteOption("a.example.com"))
+	require.NotNil(t, got)
+	// selectChain returns the *ChainEntry (so the FailFilter can read its marker),
+	// not the inner *Chain.
+	ce, ok := got.(*ChainEntry)
+	require.True(t, ok)
+	assert.Equal(t, matchChain, ce.chainer)
+
+	// Non-matching host → no eligible entry → nil.
+	assert.Nil(t, g.selectChain(context.Background(), "tcp", "x.example.com:80", chain.WithHostRouteOption("x.example.com")))
+}
+
+func TestChainGroup_Close_StopsProbeGoroutines(t *testing.T) {
+	ch := NewChain("ch")
+	// cmd probe with a short interval; the entry marker count is the observable
+	// signal that the probe goroutine is (or is not) still running.
+	entry := NewChainEntry(ch, nil, &chain.ProbeConfig{
+		Type:     chain.ProbeTypeCmd,
+		Command:  "true",
+		Interval: 10 * time.Millisecond,
+	})
+	g := NewChainGroup().WithGroupEntries(entry)
+
+	// Let the probe tick a few times, then Close().
+	time.Sleep(50 * time.Millisecond)
+	require.NoError(t, g.Close())
+
+	before := entry.Marker().Count()
+	time.Sleep(60 * time.Millisecond)
+	after := entry.Marker().Count()
+
+	// A succeeding cmd probe ("true") never marks, so the count must stay
+	// stable after Close(): the goroutine has stopped ticking.
+	assert.Equal(t, before, after, "probe goroutine should stop ticking after Close()")
+}
+
+func TestChainGroup_Probe_MarksEntryOnCmdFailure(t *testing.T) {
+	ch := NewChain("ch")
+	entry := NewChainEntry(ch, nil, &chain.ProbeConfig{
+		Type:     chain.ProbeTypeCmd,
+		Command:  "false", // always exits non-zero → probe failure
+		Interval: time.Second,
+	})
+	g := NewChainGroup().WithGroupEntries(entry)
+
+	// First probe runs immediately; give it time to mark.
+	time.Sleep(50 * time.Millisecond)
+	assert.NotZero(t, entry.Marker().Count(), "failing cmd probe should mark the entry")
+	require.NoError(t, g.Close())
 }
