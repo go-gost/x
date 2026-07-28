@@ -187,14 +187,11 @@ func (g *hopGroup) Nodes() []*chain.Node {
 	return nodes
 }
 
-// Close stops all probe goroutines and closes each hop entry.
+// Close stops all probe goroutines. It does NOT close the underlying hops:
+// they come from the HopRegistry and are shared — the registry closes them
+// on unregister.
 func (g *hopGroup) Close() error {
 	g.cancelFunc()
-	for _, e := range g.entries {
-		if closer, ok := e.hop.(interface{ Close() error }); ok {
-			closer.Close()
-		}
-	}
 	return nil
 }
 

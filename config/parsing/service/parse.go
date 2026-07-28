@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"time"
@@ -209,15 +210,20 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 	lnRouter := xchain.NewRouter(routerOpts...)
 
-	// The routers may hold a chainGroup running probe goroutines; make sure
-	// they are closed if service construction fails after this point.
+	// The routers may hold a chainGroup running probe goroutines, and the
+	// forwarder hop may run probe goroutines of its own; make sure they are
+	// closed if service construction fails after this point.
 	var hRouter *xchain.Router
+	var fwdCloser io.Closer
 	success := false
 	defer func() {
 		if !success {
 			lnRouter.Close()
 			if hRouter != nil {
 				hRouter.Close()
+			}
+			if fwdCloser != nil {
+				fwdCloser.Close()
 			}
 		}
 	}()
@@ -422,10 +428,11 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	}
 
 	if forwarder, ok := h.(handler.Forwarder); ok {
-		hop, err := parseForwarder(cfg.Forwarder, log)
+		hop, closer, err := parseForwarder(cfg.Forwarder, log)
 		if err != nil {
 			return nil, err
 		}
+		fwdCloser = closer
 		forwarder.Forward(hop)
 	}
 
@@ -438,6 +445,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		return nil, err
 	}
 
+	closers := []io.Closer{lnRouter, hRouter}
+	if fwdCloser != nil {
+		closers = append(closers, fwdCloser)
+	}
 	s := xservice.NewService(cfg.Name, ln, h,
 		xservice.AdmissionOption(xadmission.AdmissionGroup(admissions...)),
 		xservice.PreUpOption(preUp),
@@ -450,7 +461,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.ObserverPeriodOption(observerPeriod),
 		xservice.LoggerOption(serviceLogger),
 		xservice.LabelsOption(labels),
-		xservice.ClosersOption(lnRouter, hRouter),
+		xservice.ClosersOption(closers...),
 	)
 	success = true
 
@@ -458,14 +469,23 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	return s, nil
 }
 
-func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, error) {
+// parseForwarder builds the forwarder hop for a service. The returned
+// io.Closer is non-nil only when the hop is owned by the service (inline
+// nodes or a hop group) and must be closed on service shutdown; hops from
+// the HopRegistry are closed by the registry on unregister.
+func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, io.Closer, error) {
 	if cfg == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// HopGroup takes precedence over Hop / Name / Nodes.
 	if cfg.HopGroup != nil {
-		return parseHopGroup(cfg.HopGroup, log)
+		group, err := parseHopGroup(cfg.HopGroup, log)
+		if err != nil || group == nil {
+			return nil, nil, err
+		}
+		closer, _ := group.(io.Closer)
+		return group, closer, nil
 	}
 
 	hopName := cfg.Hop
@@ -473,7 +493,7 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 		hopName = cfg.Name
 	}
 	if hopName != "" {
-		return registry.HopRegistry().Get(hopName), nil
+		return registry.HopRegistry().Get(hopName), nil, nil
 	}
 
 	hc := config.HopConfig{
@@ -519,7 +539,13 @@ func parseForwarder(cfg *config.ForwarderConfig, log logger.Logger) (hop.Hop, er
 			Metadata: node.Metadata,
 		})
 	}
-	return hop_parser.ParseHop(&hc, log)
+	// Inline nodes build a per-service hop, owned (and closed) by the service.
+	h, err := hop_parser.ParseHop(&hc, log)
+	if err != nil || h == nil {
+		return nil, nil, err
+	}
+	closer, _ := h.(io.Closer)
+	return h, closer, nil
 }
 
 func parseHopGroup(cfg *config.ForwardHopGroupConfig, log logger.Logger) (hop.Hop, error) {
