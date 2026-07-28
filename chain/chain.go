@@ -312,19 +312,7 @@ func (p *chainGroup) runEntryProbe(ctx context.Context, e *ChainEntry) {
 func (p *chainGroup) probeEntry(ctx context.Context, e *ChainEntry, cfg *chain.ProbeConfig) {
 	// cmd probe runs a shell command — no chain routing needed.
 	if cfg.Type == chain.ProbeTypeCmd {
-		timeout := cfg.Timeout
-		if timeout <= 0 {
-			timeout = 10 * time.Second
-		}
-		err := (&probe.CmdProber{Command: cfg.Command, Timeout: timeout}).Probe()
-		if err != nil {
-			e.marker.Mark()
-			if p.logger != nil {
-				p.logger.Debugf("chain entry cmd probe failed: %v", err)
-			}
-		} else {
-			e.marker.Reset()
-		}
+		probe.RunCmdProbe(cfg, e.marker, p.logger)
 		return
 	}
 

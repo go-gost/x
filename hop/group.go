@@ -226,17 +226,7 @@ func (g *hopGroup) runEntryProbe(ctx context.Context, e *HopEntry) {
 func (g *hopGroup) probeEntry(e *HopEntry, cfg *chain.ProbeConfig) {
 	// cmd probe runs a shell command — no node selection needed.
 	if cfg.Type == chain.ProbeTypeCmd {
-		timeout := cfg.Timeout
-		if timeout <= 0 {
-			timeout = 10 * time.Second
-		}
-		err := (&probe.CmdProber{Command: cfg.Command, Timeout: timeout}).Probe()
-		if err != nil {
-			e.marker.Mark()
-			g.logger.Debugf("hop entry cmd probe failed: %v", err)
-		} else {
-			e.marker.Reset()
-		}
+		probe.RunCmdProbe(cfg, e.marker, g.logger)
 		return
 	}
 

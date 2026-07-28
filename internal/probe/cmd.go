@@ -6,6 +6,10 @@ import (
 	"os/exec"
 	"runtime"
 	"time"
+
+	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/selector"
 )
 
 // CmdProber runs a shell command to determine node health.
@@ -30,6 +34,23 @@ func (p *CmdProber) Probe() error {
 		return fmt.Errorf("cmd probe: %w", err)
 	}
 	return nil
+}
+
+// RunCmdProbe runs a cmd probe and updates the entry marker on success/failure.
+// It is shared by chainGroup and hopGroup probe loops to avoid duplicated code.
+func RunCmdProbe(cfg *chain.ProbeConfig, marker selector.Marker, log logger.Logger) {
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	if err := (&CmdProber{Command: cfg.Command, Timeout: timeout}).Probe(); err != nil {
+		marker.Mark()
+		if log != nil {
+			log.Debugf("cmd probe failed: %v", err)
+		}
+	} else {
+		marker.Reset()
+	}
 }
 
 // shellCmd returns the platform shell and its flag for passing a command string.
