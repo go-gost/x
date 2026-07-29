@@ -324,11 +324,22 @@ type RewriterConfig struct {
 	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
-// CacheConfig defines a named cache store. Only the Memory backend is
-// currently supported; other backends (Redis, file, plugin) are follow-ups.
+// CacheConfig defines a named cache store. Memory and Redis backends are
+// supported; other backends (file, plugin) are follow-ups.
 type CacheConfig struct {
 	Name   string       `json:"name"`
 	Memory *MemoryCache `yaml:",omitempty" json:"memory,omitempty"`
+	Redis  *RedisCache  `yaml:",omitempty" json:"redis,omitempty"`
+}
+
+// RedisCache configures the Redis cache backend.
+type RedisCache struct {
+	Addr     string        `json:"addr"`
+	DB       int           `yaml:",omitempty" json:"db,omitempty"`
+	Username string        `yaml:",omitempty" json:"username,omitempty"`
+	Password string        `yaml:",omitempty" json:"password,omitempty"`
+	TTL      time.Duration `yaml:",omitempty" json:"ttl,omitempty"`
+	Key      string        `yaml:",omitempty" json:"key,omitempty"` // key prefix, default "gost:cache:"
 }
 
 // MemoryCache configures the in-memory cache backend.
