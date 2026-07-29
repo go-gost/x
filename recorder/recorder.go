@@ -55,6 +55,7 @@ type HTTPRecorderObject struct {
 	Proto      string                     `json:"proto"`
 	Scheme     string                     `json:"scheme"`
 	URI        string                     `json:"uri"`
+	Cached     bool                       `json:"cached"`
 	StatusCode int                        `json:"statusCode"`
 	Request    HTTPRequestRecorderObject  `json:"request"`
 	Response   HTTPResponseRecorderObject `json:"response"`

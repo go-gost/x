@@ -195,6 +195,7 @@ func (h *Sniffer) serveCachedResponse(ctx context.Context, rw io.Writer, req *ht
 	defer resp.Body.Close()
 	ro.Time = time.Now()
 	ro.HTTP.StatusCode = resp.StatusCode
+	ro.HTTP.Cached = true
 	ro.HTTP.Response.Header = resp.Header.Clone()
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 	log.Debugf("cache hit: %s", httpcache.Key(req.Method, req.Host, req.RequestURI))
