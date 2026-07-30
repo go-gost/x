@@ -15,6 +15,7 @@ const (
 	ProtoHTTP = "http"
 	ProtoTLS  = "tls"
 	ProtoSSH  = "ssh"
+	ProtoQUIC = "quic"
 )
 
 func Sniff(ctx context.Context, r *bufio.Reader) (proto string, err error) {

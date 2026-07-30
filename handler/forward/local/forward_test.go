@@ -25,7 +25,7 @@ func TestHandleRawForwarding_NilHop(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err == nil {
 		t.Fatal("expected error when hop is nil")
 	}
@@ -41,7 +41,7 @@ func TestHandleRawForwarding_NodeUnavailable(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err == nil {
 		t.Fatal("expected error when node is nil")
 	}
@@ -65,7 +65,7 @@ func TestHandleRawForwarding_DialError(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err == nil {
 		t.Fatal("expected error when dial fails")
 	}
@@ -93,7 +93,7 @@ func TestHandleRawForwarding_Success(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestHandleRawForwarding_AddrWithoutPort(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestHandleRawForwarding_UnixSocket(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestHandleRawForwarding_MarkerReset(t *testing.T) {
 	conn := newStringConn(nil)
 	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "")
+	err := h.handleRawForwarding(context.Background(), conn, ro, nopLog(), "tcp", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

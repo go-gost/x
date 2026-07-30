@@ -62,16 +62,22 @@ package local
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"io"
 	"net"
 	"sync"
 	"time"
 
+	quicdissector "github.com/go-gost/quic-dissector"
+
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
+	xbypass "github.com/go-gost/x/bypass"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/httpcache"
 	"github.com/go-gost/x/internal/util/sniffing"
@@ -209,33 +215,77 @@ func (h *forwardHandler) Handle(ctx context.Context, conn net.Conn, opts ...hand
 	}
 
 	if h.md.stateless {
-		return h.handleRawDatagram(ctx, conn, ro, log, network, "udp")
+		return h.handleRawDatagram(ctx, conn, ro, log, network)
 	}
 
 	var proto string
-	if network == "tcp" && h.md.sniffing {
-		if h.md.sniffingTimeout > 0 {
-			conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
-		}
+	var clientDgram []byte
 
-		br := bufio.NewReader(conn)
-		proto, err = sniffing.Sniff(ctx, br)
-		ro.Proto = proto
-		if err != nil {
-			log.Debugf("sniff: %v", err)
-		}
+	if h.md.sniffing {
+		if network == "tcp" {
+			if h.md.sniffingTimeout > 0 {
+				conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+			}
 
-		if h.md.sniffingTimeout > 0 {
-			conn.SetReadDeadline(time.Time{})
-		}
+			br := bufio.NewReader(conn)
+			proto, err = sniffing.Sniff(ctx, br)
+			ro.Proto = proto
+			if err != nil {
+				log.Debugf("sniff: %v", err)
+			}
 
-		conn = xnet.NewReadWriteConn(br, conn, conn)
-		handled, sniffErr := h.handleSniffedProtocol(ctx, conn, ro, log, proto)
-		if handled {
-			ro.Time = time.Time{}
-			return sniffErr
+			if h.md.sniffingTimeout > 0 {
+				conn.SetReadDeadline(time.Time{})
+			}
+
+			conn = xnet.NewReadWriteConn(br, conn, conn)
+			handled, sniffErr := h.handleSniffedProtocol(ctx, conn, ro, log, proto)
+			if handled {
+				ro.Time = time.Time{}
+				return sniffErr
+			}
+		} else {
+			// UDP QUIC ClientHello sniff.
+			if h.md.sniffingTimeout > 0 {
+				conn.SetReadDeadline(time.Now().Add(h.md.sniffingTimeout))
+			}
+
+			dgram := make([]byte, h.md.bufferSize)
+			n, readErr := conn.Read(dgram)
+
+			if h.md.sniffingTimeout > 0 {
+				conn.SetReadDeadline(time.Time{})
+			}
+
+			if readErr != nil {
+				log.Debugf("udp sniff read: %v", readErr)
+				return readErr
+			}
+			dgram = dgram[:n]
+
+			if info, sniffErr := quicdissector.SniffQUIC(dgram); sniffErr == nil {
+				clientDgram = dgram
+				proto = sniffing.ProtoQUIC
+				sniffing.PopulateQUICClientHello(dgram, info, ro)
+
+				if info.ServerName != "" {
+					ro.Host = net.JoinHostPort(info.ServerName, "443")
+					log = log.WithFields(map[string]any{
+						"host":  ro.Host,
+						"proto": ro.Proto,
+					})
+
+					if h.options.Bypass != nil &&
+						h.options.Bypass.Contains(ctx, "udp", ro.Host, bypass.WithService(h.options.Service)) {
+						log.Debug("bypass: ", ro.Host)
+						return xbypass.ErrBypass
+					}
+				}
+			}
+
+			conn = xnet.NewReadWriteConn(io.MultiReader(bytes.NewReader(dgram), conn), conn, conn)
 		}
 	}
 
-	return h.handleRawForwarding(ctx, conn, ro, log, network, proto)
+	return h.handleRawForwarding(ctx, conn, ro, log, network, proto, clientDgram)
 }
