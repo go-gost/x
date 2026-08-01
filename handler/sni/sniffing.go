@@ -98,7 +98,7 @@ func (h *sniHandler) sniffingDialTLS(ctx context.Context, network, address strin
 // connection directly (which for the SNI handler means silently dropping it).
 func (h *sniHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, proto string) (handled bool, err error) {
 	switch proto {
-	case sniffing.ProtoHTTP, sniffing.ProtoTLS:
+	case sniffing.ProtoHTTP, sniffing.ProtoTLS, sniffing.ProtoRedis:
 		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			return h.sniffingDial(ctx, network, address, ro)
 		}
@@ -116,11 +116,19 @@ func (h *sniHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, r
 				sniffing.WithLog(log),
 			)
 		}
-		return true, sniffer.HandleTLS(ctx, "tcp", conn,
+		if proto == sniffing.ProtoTLS {
+			return true, sniffer.HandleTLS(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
+				sniffing.WithDial(dial),
+				sniffing.WithDialTLS(dialTLS),
+				sniffing.WithBypass(h.options.Bypass),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
+		}
+		return true, sniffer.HandleRedis(ctx, "tcp", conn,
 			sniffing.WithService(h.options.Service),
 			sniffing.WithDial(dial),
-			sniffing.WithDialTLS(dialTLS),
-			sniffing.WithBypass(h.options.Bypass),
 			sniffing.WithRecorderObject(ro),
 			sniffing.WithLog(log),
 		)

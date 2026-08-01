@@ -252,6 +252,14 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 				sniffing.WithRecorderObject(ro),
 				sniffing.WithLog(log),
 			)
+		case sniffing.ProtoRedis:
+			ro.Time = time.Time{}
+			return sniffer.HandleRedis(ctx, "tcp", conn,
+				sniffing.WithService(h.options.Service),
+				sniffing.WithDial(dial),
+				sniffing.WithRecorderObject(ro),
+				sniffing.WithLog(log),
+			)
 		}
 	}
 

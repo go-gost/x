@@ -114,6 +114,12 @@ type DNSRecorderObject struct {
 	Cached   bool   `json:"cached"`
 }
 
+// RedisRecorderObject holds the recorded data of a sniffed Redis command.
+type RedisRecorderObject struct {
+	Command string `json:"command"`
+	Key     string `json:"key"`
+}
+
 // HandlerRecorderObject bundles traffic metadata recorded at the handler
 // level — addresses, protocols, transferred bytes, and optional sub-records
 // for HTTP, WebSocket, TLS, and DNS traffic.
@@ -135,6 +141,7 @@ type HandlerRecorderObject struct {
 	Websocket   *WebsocketRecorderObject `json:"websocket,omitempty"`
 	TLS         *TLSRecorderObject       `json:"tls,omitempty"`
 	DNS         *DNSRecorderObject       `json:"dns,omitempty"`
+	Redis       *RedisRecorderObject     `json:"redis,omitempty"`
 	Route       string                   `json:"route,omitempty"`
 	InputBytes  uint64                   `json:"inputBytes"`
 	OutputBytes uint64                   `json:"outputBytes"`

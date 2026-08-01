@@ -12,13 +12,26 @@ import (
 )
 
 const (
-	ProtoHTTP = "http"
-	ProtoTLS  = "tls"
-	ProtoSSH  = "ssh"
-	ProtoQUIC = "quic"
+	ProtoHTTP  = "http"
+	ProtoTLS   = "tls"
+	ProtoSSH   = "ssh"
+	ProtoQUIC  = "quic"
+	ProtoRedis = "redis"
 )
 
 func Sniff(ctx context.Context, r *bufio.Reader) (proto string, err error) {
+	// Tier 1: Peek 1 byte to detect protocols identifiable by first byte.
+	// Peek(1) does not block (unless the connection has zero bytes).
+	b, err := r.Peek(1)
+	if err != nil {
+		return
+	}
+	switch b[0] {
+	case '*', '+', '-', ':', '$':
+		return ProtoRedis, nil
+	}
+
+	// Tier 2: Peek 5 bytes for TLS/HTTP/SSH (existing behavior).
 	hdr, err := r.Peek(dissector.RecordHeaderLen)
 	if err != nil {
 		return

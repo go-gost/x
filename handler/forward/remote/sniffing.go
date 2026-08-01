@@ -76,7 +76,7 @@ func (h *forwardHandler) sniffingDial(ctx context.Context, network, address stri
 // handled and (false, nil) when the caller should fall through to raw forwarding.
 func (h *forwardHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, proto string) (handled bool, err error) {
 	switch proto {
-	case sniffing.ProtoHTTP, sniffing.ProtoTLS:
+	case sniffing.ProtoHTTP, sniffing.ProtoTLS, sniffing.ProtoRedis:
 		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			return h.sniffingDial(ctx, network, address, ro)
 		}
@@ -92,7 +92,17 @@ func (h *forwardHandler) handleSniffedProtocol(ctx context.Context, conn net.Con
 				forwarder.WithLog(log),
 			)
 		}
-		return true, sniffer.HandleTLS(ctx, conn,
+		if proto == sniffing.ProtoTLS {
+			return true, sniffer.HandleTLS(ctx, conn,
+				forwarder.WithService(h.options.Service),
+				forwarder.WithDial(dial),
+				forwarder.WithHop(h.getHop()),
+				forwarder.WithBypass(h.options.Bypass),
+				forwarder.WithRecorderObject(ro),
+				forwarder.WithLog(log),
+			)
+		}
+		return true, sniffer.HandleRedis(ctx, conn,
 			forwarder.WithService(h.options.Service),
 			forwarder.WithDial(dial),
 			forwarder.WithHop(h.getHop()),

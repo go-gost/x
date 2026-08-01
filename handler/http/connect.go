@@ -147,6 +147,13 @@ func (h *httpHandler) sniffAndHandle(ctx context.Context, conn net.Conn, cc net.
 			sniffing.WithRecorderObject(ro),
 			sniffing.WithLog(log),
 		)
+	case sniffing.ProtoRedis:
+		return true, sniffer.HandleRedis(ctx, "tcp", conn,
+			sniffing.WithService(h.options.Service),
+			sniffing.WithDial(dial),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(log),
+		)
 	}
 
 	return false, nil
