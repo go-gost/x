@@ -69,6 +69,9 @@ func ParseAuthorizedKeysFile(name string) (map[string]bool, error) {
 			return nil, err
 		}
 		authorizedKeysMap[string(pubKey.Marshal())] = true
+		if len(rest) == 0 {
+			break
+		}
 		authorizedKeysBytes = rest
 	}
 
