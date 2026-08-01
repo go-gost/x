@@ -65,6 +65,8 @@ func (d *wsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 		d.options.Logger.Error(err)
 	}
 
+	xnet.ApplyNoDelay(conn)
+
 	if d.md.tcpKeepalive {
 		xnet.ApplyKeepalive(conn, net.KeepAliveConfig{
 			Enable:   true,

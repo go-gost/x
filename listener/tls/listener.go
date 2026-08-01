@@ -71,6 +71,7 @@ func (l *tlsListener) Init(md md.Metadata) (err error) {
 		l.logger.Debugf("tcp keepalive enabled: idle=%v interval=%v count=%d",
 			l.md.keepaliveIdle, l.md.keepaliveInterval, l.md.keepaliveCount)
 	}
+	ln = xnet.WrapNoDelayListener(ln)
 	ln = proxyproto.WrapListener(l.options.ProxyProtocol, ln, 10*time.Second)
 	ln = metrics.WrapListener(l.options.Service, ln)
 	ln = stats.WrapListener(ln, l.options.Stats)

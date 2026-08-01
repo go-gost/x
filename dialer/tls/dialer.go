@@ -52,6 +52,8 @@ func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 		d.log.Error(err)
 	}
 
+	xnet.ApplyNoDelay(conn)
+
 	if d.md.keepalive {
 		xnet.ApplyKeepalive(conn, net.KeepAliveConfig{
 			Enable:   true,
