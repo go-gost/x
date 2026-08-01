@@ -32,7 +32,7 @@ func (c *Client) Dial(ctx context.Context, addr string) (net.Conn, error) {
 		addr = net.JoinHostPort(c.Host, strconv.Itoa(raddr.Port))
 	}
 
-	connCtx, cancel := context.WithCancel(ctx)
+	connCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	cid := xid.New().String()
 	cn := &clientConn{
 		client:     c.Client,
