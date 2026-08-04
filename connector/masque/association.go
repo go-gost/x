@@ -168,7 +168,7 @@ func (c *udpAssociationConn) tunnel(addr net.Addr) (*udpAssociationTunnel, error
 func (c *udpAssociationConn) readTunnel(key string, tunnel *udpAssociationTunnel) {
 	buf := make([]byte, udpAssociationBufferSize)
 	for {
-		n, _, err := tunnel.conn.ReadFrom(buf)
+		n, addr, err := tunnel.conn.ReadFrom(buf)
 		if err != nil {
 			select {
 			case <-c.closed:
@@ -183,9 +183,12 @@ func (c *udpAssociationConn) readTunnel(key string, tunnel *udpAssociationTunnel
 			return
 		}
 
+		if addr == nil {
+			addr = tunnel.addr
+		}
 		data := append([]byte(nil), buf[:n]...)
 		select {
-		case c.results <- udpAssociationResult{data: data, addr: tunnel.addr}:
+		case c.results <- udpAssociationResult{data: data, addr: addr}:
 		case <-c.closed:
 			return
 		}

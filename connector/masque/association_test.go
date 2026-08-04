@@ -60,7 +60,8 @@ func TestUDPAssociationConnRoutesByDestination(t *testing.T) {
 		t.Fatalf("unexpected writes for second destination: %q", got)
 	}
 
-	gotCalls[1].conn.queueRead([]byte("reply"), &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1})
+	replyAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1}
+	gotCalls[1].conn.queueRead([]byte("reply"), replyAddr)
 	buf := make([]byte, 32)
 	n, addr, err := conn.ReadFrom(buf)
 	if err != nil {
@@ -69,8 +70,8 @@ func TestUDPAssociationConnRoutesByDestination(t *testing.T) {
 	if string(buf[:n]) != "reply" {
 		t.Fatalf("unexpected reply: %q", buf[:n])
 	}
-	if addr.String() != addr2.String() {
-		t.Fatalf("expected reply from %s, got %s", addr2, addr)
+	if addr.String() != replyAddr.String() {
+		t.Fatalf("expected reply from %s, got %s", replyAddr, addr)
 	}
 }
 

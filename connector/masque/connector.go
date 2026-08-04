@@ -75,6 +75,16 @@ func (c *masqueConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedNetwork, network)
 }
 
+func newTCPConnectRequest(address string) *http.Request {
+	return &http.Request{
+		Method:     http.MethodConnect,
+		URL:        &url.URL{},
+		Host:       address,
+		Header:     http.Header{},
+		ProtoMajor: 3,
+	}
+}
+
 func (c *masqueConnector) connectTCP(ctx context.Context, conn net.Conn, address string, log logger.Logger) (net.Conn, error) {
 	log.Debugf("connect-tcp %s", address)
 
@@ -105,13 +115,7 @@ func (c *masqueConnector) connectTCP(ctx context.Context, conn net.Conn, address
 
 	// Create standard HTTP/3 CONNECT request (RFC 9114)
 	// No :protocol pseudo-header for standard CONNECT
-	req := &http.Request{
-		Method: http.MethodConnect,
-		URL:    &url.URL{},
-		Host:   address, // Target address goes in :authority
-		Header: http.Header{},
-		Proto:  "HTTP/3.0",
-	}
+	req := newTCPConnectRequest(address)
 
 	// Add proxy authentication if configured
 	if c.options.Auth != nil {
@@ -222,7 +226,7 @@ func (c *masqueConnector) connectUDPAssociation(ctx context.Context, conn *masqu
 		if err != nil {
 			return nil, err
 		}
-		return c.connectUDPTarget(ctx, conn.LocalAddr(), conn.GetHost(), stream, addr.String(), addr, log)
+		return c.connectUDPTarget(ctx, conn.LocalAddr(), conn.GetHost(), stream, addr.String(), nil, log)
 	}
 
 	return newUDPAssociationConn(ctx, conn.LocalAddr(), dial, closeIdle)
