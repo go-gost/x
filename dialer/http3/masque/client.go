@@ -102,6 +102,15 @@ func (c *MasqueConn) GetRequestStream() *http3.RequestStream {
 	return c.reqStream
 }
 
+// OpenRequestStream opens another request stream on the shared HTTP/3 connection.
+// CONNECT-UDP associations use one stream per destination.
+func (c *MasqueConn) OpenRequestStream(ctx context.Context) (*http3.RequestStream, error) {
+	if c.clientConn == nil {
+		return nil, errors.New("masque: connection is closed")
+	}
+	return c.clientConn.OpenRequestStream(ctx)
+}
+
 // GetHost returns the proxy host.
 func (c *MasqueConn) GetHost() string {
 	return c.host
