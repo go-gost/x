@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/go-gost/core/logger"
 )
 
 const udpAssociationBufferSize = 64 * 1024
@@ -18,12 +20,10 @@ type udpAssociationDialFunc func(ctx context.Context, addr net.Addr) (net.Packet
 type udpAssociationResult struct {
 	data []byte
 	addr net.Addr
-	err  error
 }
 
 type udpAssociationTunnel struct {
 	conn net.PacketConn
-	addr net.Addr
 }
 
 type udpAssociationConn struct {
@@ -32,6 +32,8 @@ type udpAssociationConn struct {
 	localAddr net.Addr
 	dial      udpAssociationDialFunc
 	closeIdle func() error
+	log       logger.Logger
+	timeout   time.Duration
 
 	closed    chan struct{}
 	closeOnce sync.Once
@@ -42,14 +44,15 @@ type udpAssociationConn struct {
 	tunnels             map[string]*udpAssociationTunnel
 	readDeadline        time.Time
 	readDeadlineChanged chan struct{}
-	writeDeadline       time.Time
 }
 
 func newUDPAssociationConn(
 	ctx context.Context,
 	localAddr net.Addr,
+	timeout time.Duration,
 	dial udpAssociationDialFunc,
 	closeIdle func() error,
+	log logger.Logger,
 ) *udpAssociationConn {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	c := &udpAssociationConn{
@@ -58,6 +61,8 @@ func newUDPAssociationConn(
 		localAddr:           localAddr,
 		dial:                dial,
 		closeIdle:           closeIdle,
+		log:                 log,
+		timeout:             timeout,
 		closed:              make(chan struct{}),
 		results:             make(chan udpAssociationResult, 32),
 		tunnels:             make(map[string]*udpAssociationTunnel),
@@ -97,9 +102,6 @@ func (c *udpAssociationConn) ReadFrom(b []byte) (n int, addr net.Addr, err error
 			if timer != nil {
 				timer.Stop()
 			}
-			if result.err != nil {
-				return 0, nil, result.err
-			}
 			return copy(b, result.data), result.addr, nil
 		case <-deadlineChanged:
 			if timer != nil {
@@ -124,43 +126,72 @@ func (c *udpAssociationConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 	tunnel, err := c.tunnel(addr)
 	if err != nil {
-		return 0, err
+		if c.isClosed() {
+			return 0, net.ErrClosed
+		}
+		c.logError(addr, err)
+		return len(b), nil
 	}
-	return tunnel.conn.WriteTo(b, addr)
+	n, err := tunnel.conn.WriteTo(b, addr)
+	if err == nil {
+		return n, nil
+	}
+	if c.isClosed() {
+		return 0, net.ErrClosed
+	}
+	if c.removeTunnel(addr.String(), tunnel) {
+		c.logError(addr, err)
+	}
+	return len(b), nil
 }
 
 func (c *udpAssociationConn) tunnel(addr net.Addr) (*udpAssociationTunnel, error) {
 	key := addr.String()
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	select {
 	case <-c.closed:
+		c.mu.Unlock()
 		return nil, net.ErrClosed
 	default:
 	}
 
 	if tunnel := c.tunnels[key]; tunnel != nil {
+		c.mu.Unlock()
 		return tunnel, nil
 	}
+	c.mu.Unlock()
 
-	conn, err := c.dial(c.ctx, addr)
+	ctx := c.ctx
+	if c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+	conn, err := c.dial(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
 	if conn == nil {
 		return nil, errors.New("masque: nil UDP tunnel")
 	}
-	if !c.writeDeadline.IsZero() {
-		if err := conn.SetWriteDeadline(c.writeDeadline); err != nil {
-			conn.Close()
-			return nil, err
-		}
-	}
 
-	tunnel := &udpAssociationTunnel{conn: conn, addr: addr}
+	tunnel := &udpAssociationTunnel{conn: conn}
+	c.mu.Lock()
+	select {
+	case <-c.closed:
+		c.mu.Unlock()
+		conn.Close()
+		return nil, net.ErrClosed
+	default:
+	}
+	if current := c.tunnels[key]; current != nil {
+		c.mu.Unlock()
+		conn.Close()
+		return current, nil
+	}
 	c.tunnels[key] = tunnel
+	c.mu.Unlock()
 	go c.readTunnel(key, tunnel)
 	return tunnel, nil
 }
@@ -170,22 +201,15 @@ func (c *udpAssociationConn) readTunnel(key string, tunnel *udpAssociationTunnel
 	for {
 		n, addr, err := tunnel.conn.ReadFrom(buf)
 		if err != nil {
-			select {
-			case <-c.closed:
+			if c.isClosed() {
 				return
-			default:
 			}
-			c.removeTunnel(key, tunnel)
-			select {
-			case c.results <- udpAssociationResult{err: err}:
-			case <-c.closed:
+			if c.removeTunnel(key, tunnel) {
+				c.logError(key, err)
 			}
 			return
 		}
 
-		if addr == nil {
-			addr = tunnel.addr
-		}
 		data := append([]byte(nil), buf[:n]...)
 		select {
 		case c.results <- udpAssociationResult{data: data, addr: addr}:
@@ -195,13 +219,30 @@ func (c *udpAssociationConn) readTunnel(key string, tunnel *udpAssociationTunnel
 	}
 }
 
-func (c *udpAssociationConn) removeTunnel(key string, tunnel *udpAssociationTunnel) {
+func (c *udpAssociationConn) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *udpAssociationConn) logError(addr any, err error) {
+	if c.log != nil {
+		c.log.Warnf("masque: UDP tunnel %v: %v", addr, err)
+	}
+}
+
+func (c *udpAssociationConn) removeTunnel(key string, tunnel *udpAssociationTunnel) bool {
 	c.mu.Lock()
+	removed := c.tunnels[key] == tunnel
 	if c.tunnels[key] == tunnel {
 		delete(c.tunnels, key)
 	}
 	c.mu.Unlock()
 	tunnel.conn.Close()
+	return removed
 }
 
 func (c *udpAssociationConn) Read(b []byte) (int, error) {
@@ -273,18 +314,10 @@ func (c *udpAssociationConn) SetReadDeadline(t time.Time) error {
 }
 
 func (c *udpAssociationConn) SetWriteDeadline(t time.Time) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	select {
 	case <-c.closed:
 		return net.ErrClosed
 	default:
-	}
-	c.writeDeadline = t
-	for _, tunnel := range c.tunnels {
-		if err := tunnel.conn.SetWriteDeadline(t); err != nil {
-			return err
-		}
 	}
 	return nil
 }

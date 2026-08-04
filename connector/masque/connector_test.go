@@ -15,6 +15,7 @@ func TestNewTCPConnectRequestUsesStandardConnect(t *testing.T) {
 		t.Fatalf("expected target authority, got %s", req.Host)
 	}
 	if req.Proto != "" {
+		// quic-go treats any non-empty Proto as an extended CONNECT :protocol.
 		t.Fatalf("standard CONNECT must not set :protocol, got %q", req.Proto)
 	}
 	if req.ProtoMajor != 3 {

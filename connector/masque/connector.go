@@ -226,10 +226,10 @@ func (c *masqueConnector) connectUDPAssociation(ctx context.Context, conn *masqu
 		if err != nil {
 			return nil, err
 		}
-		return c.connectUDPTarget(ctx, conn.LocalAddr(), conn.GetHost(), stream, addr.String(), nil, log)
+		return c.connectUDPTarget(ctx, conn.LocalAddr(), conn.GetHost(), stream, addr.String(), addr, log)
 	}
 
-	return newUDPAssociationConn(ctx, conn.LocalAddr(), dial, closeIdle)
+	return newUDPAssociationConn(ctx, conn.LocalAddr(), c.md.connectTimeout, dial, closeIdle, log)
 }
 
 func (c *masqueConnector) connectUDPTarget(
