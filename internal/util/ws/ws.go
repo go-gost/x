@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ type WebsocketConn interface {
 
 type websocketConn struct {
 	*websocket.Conn
-	rb  []byte
+	r   io.Reader
 	ctx context.Context
 	mux sync.Mutex
 }
@@ -44,12 +45,24 @@ func ContextConn(ctx context.Context, conn *websocket.Conn) WebsocketConn {
 }
 
 func (c *websocketConn) Read(b []byte) (n int, err error) {
-	if len(c.rb) == 0 {
-		_, c.rb, err = c.Conn.ReadMessage()
+	for {
+		if c.r == nil {
+			_, c.r, err = c.Conn.NextReader()
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		n, err = c.r.Read(b)
+		if err == io.EOF {
+			c.r = nil
+			if n > 0 {
+				return n, nil
+			}
+			continue
+		}
+		return n, err
 	}
-	n = copy(b, c.rb)
-	c.rb = c.rb[n:]
-	return
 }
 
 func (c *websocketConn) Write(b []byte) (n int, err error) {
