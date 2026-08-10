@@ -1765,10 +1765,10 @@ func TestBuildNodeConfig_TLSWithCert(t *testing.T) {
 	}
 }
 
-func TestBuildNodeConfig_UnixFallsBackToTCP(t *testing.T) {
+func TestBuildNodeConfig_UnixAbsolutePath(t *testing.T) {
 	// http+unix scheme: connector=http, dialer=unix.
-	// Since unix is not in the test registry, dialer falls back to tcp,
-	// and the path-based address logic (dialer=="unix") is skipped.
+	// Dialer falls back to tcp when unix is not in the test registry, but
+	// the absolute socket path from a three-slash URL must still be kept.
 	rawURL := "http+unix:///var/run/socket"
 	u, _ := url.Parse(rawURL)
 
@@ -1780,9 +1780,19 @@ func TestBuildNodeConfig_UnixFallsBackToTCP(t *testing.T) {
 	if node.Dialer.Type != "tcp" {
 		t.Errorf("Dialer.Type = %q, want tcp (unix not in test registry)", node.Dialer.Type)
 	}
-	// Addr is url.Host ("") since no host component in three-slash unix URL
-	if node.Addr != "" {
-		t.Errorf("Addr = %q, want empty", node.Addr)
+	if node.Addr != "/var/run/socket" {
+		t.Errorf("Addr = %q, want /var/run/socket", node.Addr)
+	}
+}
+
+func TestBuildNodeConfig_UnixRelativeHost(t *testing.T) {
+	u, _ := url.Parse("unix://docker.sock")
+	node, err := buildNodeConfig(u, map[string]any{})
+	if err != nil {
+		t.Fatalf("buildNodeConfig: %v", err)
+	}
+	if node.Addr != "docker.sock" {
+		t.Errorf("Addr = %q, want docker.sock", node.Addr)
 	}
 }
 
