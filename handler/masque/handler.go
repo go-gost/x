@@ -368,9 +368,6 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 		return ErrDatagramNotSupport
 	}
 
-	// Get the underlying HTTP/3 stream
-	stream := streamer.HTTPStream()
-
 	// Get target connection - either through router/chain or direct
 	var targetPC net.PacketConn
 
@@ -393,15 +390,17 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 
 		ro.SrcAddr = c.LocalAddr().String()
 
-		// The connection from router should be a PacketConn (e.g., from masque connector)
-		if pc, ok := c.(net.PacketConn); ok {
-			targetPC = pc
-			log.Debugf("relaying UDP to %s via chain", targetAddr)
-		} else {
-			// Wrap as PacketConn if it's a regular Conn
-			targetPC = &connPacketConn{Conn: c, raddr: raddr}
-			log.Debugf("relaying UDP to %s via chain (wrapped)", targetAddr)
-		}
+		// Always wrap the router-returned conn as a point-to-point PacketConn
+		// that writes via Conn.Write against the fixed target. A direct UDP
+		// dial returns a *net.UDPConn that satisfies net.PacketConn but is
+		// pre-connected, so calling WriteTo on it fails with "use of WriteTo
+		// with pre-connected connection" and no packet ever reaches the target.
+		// Routing writes through Conn.Write works for both direct dials and
+		// stream-based upstream MASQUE connectors. The MASQUE target is fixed
+		// for the connection lifetime (parsed from the request path), so a
+		// single remote address is always correct.
+		targetPC = &connPacketConn{Conn: c, raddr: raddr}
+		log.Debugf("relaying UDP to %s via chain", targetAddr)
 	} else {
 		// Direct connection - create local UDP socket
 		directConn, err := net.ListenPacket("udp", "")
@@ -424,14 +423,17 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 	// Wrap target with metrics
 	targetPC = metrics.WrapPacketConn(h.options.Service, targetPC)
 
-	// Send success response with capsule-protocol header
+	// Send the success response WITH the mandatory Capsule-Protocol header
+	// (RFC 9298), then hijack the stream. HTTPStream() flushes the response
+	// internally and commits the headers, so Capsule-Protocol MUST be set
+	// before it; otherwise the client never sees Capsule-Protocol: ?1 and
+	// rejects the tunnel. Dialing the target first (above) means we only
+	// respond 200 once the relay path is ready, matching handleConnectTCP.
 	w.Header().Set("Capsule-Protocol", "?1")
 	w.WriteHeader(http.StatusOK)
 
-	// Flush the response headers
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	// Hijack the underlying HTTP/3 stream for datagram exchange.
+	stream := streamer.HTTPStream()
 
 	// Create datagram connection wrapping the HTTP/3 stream (client side)
 	datagramConn := masque_util.NewDatagramConn(stream, laddr, raddr)
