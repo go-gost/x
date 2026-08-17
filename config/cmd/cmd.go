@@ -397,8 +397,14 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 		listener = schemes[1]
 	}
 
-	// For path-based protocols (Unix socket listeners and serial), use path as address
+	// Decide path-based from the scheme before registry remaps listener to tcp.
 	isPathBasedProtocol := listener == "unix" || listener == "runix" || listener == "serial"
+	for _, s := range schemes {
+		if s == "unix" || s == "runix" || s == "serial" {
+			isPathBasedProtocol = true
+			break
+		}
+	}
 
 	var addrs []string
 	if isPathBasedProtocol {
@@ -640,6 +646,18 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 		dialer = schemes[1]
 	}
 
+	// Path-based address logic must use the requested scheme, not the
+	// registry fallback (unix/serial often remap to http/tcp when only
+	// the CLI registry is partially populated, or in unit tests).
+	isPathBasedProtocol := dialer == "unix" || dialer == "serial" ||
+		connector == "unix" || connector == "serial"
+	for _, s := range schemes {
+		if s == "unix" || s == "serial" || s == "runix" {
+			isPathBasedProtocol = true
+			break
+		}
+	}
+
 	md := mdx.NewMetadata(m)
 
 	if c := registry.ConnectorRegistry().Get(connector); c == nil {
@@ -727,7 +745,6 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 
 	// For path-based protocols (Unix socket dialers and serial), use path as address
 	var nodeAddr string
-	isPathBasedProtocol := dialer == "unix" || dialer == "serial"
 	if isPathBasedProtocol {
 		path := url.EscapedPath()
 		if url.Host != "" {
