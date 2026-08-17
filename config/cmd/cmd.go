@@ -405,13 +405,16 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 			break
 		}
 	}
+	// A path-based protocol with an empty host (three-slash URL like
+	// unix:///var/run/sock) uses the path as the absolute listen address and
+	// has no forward target. With a non-empty host (two-slash URL like
+	// unix://sock/other.sock), the host is the listen address and any path is a
+	// forward target (port-forward to another socket), handled below.
+	isPathAddr := isPathBasedProtocol && url.Host == ""
 
 	var addrs []string
-	if isPathBasedProtocol {
-		path := url.EscapedPath()
-		if url.Host != "" {
-			addrs = append(addrs, url.Host+strings.TrimPrefix(path, "/"))
-		} else if path != "" {
+	if isPathAddr {
+		if path := url.EscapedPath(); path != "" {
 			addrs = append(addrs, path)
 		} else {
 			addrs = append(addrs, url.Host)
@@ -442,8 +445,10 @@ func buildServiceConfig(url *url.URL) ([]*config.ServiceConfig, error) {
 
 	var nodes []*config.ForwardNodeConfig
 	// forward mode
-	// For path-based protocols, path is address not forward target
-	if remotes := strings.Trim(url.EscapedPath(), "/"); remotes != "" && !isPathBasedProtocol {
+	// A path-based protocol with an empty host (e.g. unix:///abs.sock) treats
+	// the path as the listen address, not a forward target. With a host
+	// (e.g. unix://a.sock/b.sock) the path is a forward target.
+	if remotes := strings.Trim(url.EscapedPath(), "/"); remotes != "" && !isPathAddr {
 		i := 0
 		for _, addr := range strings.Split(remotes, ",") {
 			addrs := xnet.AddrPortRange(addr).Addrs()
@@ -743,19 +748,14 @@ func buildNodeConfig(url *url.URL, m map[string]any) (*config.NodeConfig, error)
 		nodeMd[k] = v
 	}
 
-	// For path-based protocols (Unix socket dialers and serial), use path as address
+	// For path-based protocols (Unix socket dialers and serial), use path as address.
+	// Three-slash URLs (empty host) give the absolute socket path; two-slash URLs
+	// use the host as the socket. The path on a host form is not part of the node
+	// address (it is a forward target for services, ignored for nodes).
 	var nodeAddr string
-	if isPathBasedProtocol {
-		path := url.EscapedPath()
-		if url.Host != "" {
-			// Two slashes: host + path = relative path
-			nodeAddr = url.Host + strings.TrimPrefix(path, "/")
-		} else if path != "" {
-			// Three slashes: path is absolute (keep leading slash)
-			nodeAddr = path
-		} else {
-			nodeAddr = url.Host
-		}
+	if isPathBasedProtocol && url.Host == "" {
+		// Three slashes: path is absolute (keep leading slash)
+		nodeAddr = url.EscapedPath()
 	} else {
 		nodeAddr = url.Host
 	}
