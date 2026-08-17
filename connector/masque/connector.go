@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-gost/core/connector"
@@ -19,6 +20,7 @@ import (
 	masque_dialer "github.com/go-gost/x/dialer/http3/masque"
 	masque_util "github.com/go-gost/x/internal/util/masque"
 	"github.com/go-gost/x/registry"
+	"github.com/quic-go/quic-go/http3"
 )
 
 func init() {
@@ -73,6 +75,16 @@ func (c *masqueConnector) Connect(ctx context.Context, conn net.Conn, network, a
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedNetwork, network)
 }
 
+func newTCPConnectRequest(address string) *http.Request {
+	return &http.Request{
+		Method:     http.MethodConnect,
+		URL:        &url.URL{},
+		Host:       address,
+		Header:     http.Header{},
+		ProtoMajor: 3,
+	}
+}
+
 func (c *masqueConnector) connectTCP(ctx context.Context, conn net.Conn, address string, log logger.Logger) (net.Conn, error) {
 	log.Debugf("connect-tcp %s", address)
 
@@ -103,13 +115,7 @@ func (c *masqueConnector) connectTCP(ctx context.Context, conn net.Conn, address
 
 	// Create standard HTTP/3 CONNECT request (RFC 9114)
 	// No :protocol pseudo-header for standard CONNECT
-	req := &http.Request{
-		Method: http.MethodConnect,
-		URL:    &url.URL{},
-		Host:   address, // Target address goes in :authority
-		Header: http.Header{},
-		Proto:  "HTTP/3.0",
-	}
+	req := newTCPConnectRequest(address)
 
 	// Add proxy authentication if configured
 	if c.options.Auth != nil {
@@ -172,9 +178,69 @@ func (c *masqueConnector) connectUDP(ctx context.Context, conn net.Conn, address
 		return nil, ErrInvalidConnection
 	}
 
-	// Get pre-opened stream from dialer (stream opening happens there for dead connection detection)
-	reqStream := masqueConn.GetRequestStream()
-	proxyHost := masqueConn.GetHost()
+	if address == "" {
+		return c.connectUDPAssociation(ctx, masqueConn, log), nil
+	}
+
+	return c.connectUDPTarget(
+		ctx,
+		conn.LocalAddr(),
+		masqueConn.GetHost(),
+		masqueConn.GetRequestStream(),
+		address,
+		nil,
+		log,
+	)
+}
+
+func (c *masqueConnector) connectUDPAssociation(ctx context.Context, conn *masque_dialer.MasqueConn, log logger.Logger) net.Conn {
+	var (
+		mu          sync.Mutex
+		firstStream = conn.GetRequestStream()
+	)
+
+	nextStream := func(ctx context.Context) (*http3.RequestStream, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if firstStream != nil {
+			stream := firstStream
+			firstStream = nil
+			return stream, nil
+		}
+		return conn.OpenRequestStream(ctx)
+	}
+
+	closeIdle := func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		if firstStream == nil {
+			return nil
+		}
+		err := firstStream.Close()
+		firstStream = nil
+		return err
+	}
+
+	dial := func(ctx context.Context, addr net.Addr) (net.PacketConn, error) {
+		stream, err := nextStream(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return c.connectUDPTarget(ctx, conn.LocalAddr(), conn.GetHost(), stream, addr.String(), addr, log)
+	}
+
+	return newUDPAssociationConn(ctx, conn.LocalAddr(), c.md.connectTimeout, dial, closeIdle, log)
+}
+
+func (c *masqueConnector) connectUDPTarget(
+	ctx context.Context,
+	localAddr net.Addr,
+	proxyHost string,
+	reqStream *http3.RequestStream,
+	address string,
+	remoteAddr net.Addr,
+	log logger.Logger,
+) (*masque_util.DatagramConn, error) {
 
 	// Apply connect timeout to the actual stream
 	if c.md.connectTimeout > 0 {
@@ -259,14 +325,15 @@ func (c *masqueConnector) connectUDP(ctx context.Context, conn net.Conn, address
 	// Get the underlying HTTP/3 stream for datagrams
 	stream := reqStream
 
-	// Resolve target address
-	raddr, err := net.ResolveUDPAddr("udp", address)
-	if err != nil {
-		return nil, err
+	if remoteAddr == nil {
+		remoteAddr, err = net.ResolveUDPAddr("udp", address)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Create datagram connection wrapping the request stream
-	datagramConn := masque_util.NewDatagramConnFromRequestStream(stream, conn.LocalAddr(), raddr)
+	datagramConn := masque_util.NewDatagramConnFromRequestStream(stream, localAddr, remoteAddr)
 
 	success = true // Prevent defer from closing stream - datagramConn now owns it
 	return datagramConn, nil
