@@ -598,10 +598,11 @@ func TestSelect_FailCodesHighPriorityNode(t *testing.T) {
 	}
 }
 
-// TestSelect_SingleNodeKeptWhenFailed preserves the legacy safety net: a hop
-// with a single node still returns it even when marked failed (FailFilter's
-// len(vs) <= 1 guard / the single-node early return).
-func TestSelect_SingleNodeKeptWhenFailed(t *testing.T) {
+// TestSelect_SingleNodeFailedLastResort: with all candidates failed, Select
+// falls back to the first matching node (best effort) instead of returning
+// nil — a transient failure (e.g. one 429) must not take a lone-node hop
+// fully down. A successful dial in the caller resets the marker.
+func TestSelect_SingleNodeFailedLastResort(t *testing.T) {
 	only := chain.NewNode("only", "127.0.0.1:8080")
 	h := newTestHop(NodeOption(only))
 	defer h.Close()
@@ -609,11 +610,46 @@ func TestSelect_SingleNodeKeptWhenFailed(t *testing.T) {
 	only.Marker().Mark()
 
 	node := h.Select(context.Background())
-	if node == nil {
-		t.Fatal("expected the only node, got nil")
+	if node == nil || node.Name != "only" {
+		t.Fatalf("expected last-resort node 'only', got %v", node)
 	}
-	if node.Name != "only" {
-		t.Fatalf("expected 'only', got %q", node.Name)
+}
+
+// TestSelect_AllFailedLastResort: when every candidate is marked failed, the
+// first matching node is still returned as a best-effort fallback.
+func TestSelect_AllFailedLastResort(t *testing.T) {
+	n1 := chain.NewNode("n1", "127.0.0.1:8080")
+	n2 := chain.NewNode("n2", "127.0.0.1:9090")
+	h := newTestHop(NodeOption(n1, n2))
+	defer h.Close()
+
+	n1.Marker().Mark()
+	n2.Marker().Mark()
+
+	node := h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected a last-resort node, got nil")
+	}
+	if node.Name != "n1" && node.Name != "n2" {
+		t.Fatalf("expected n1 or n2, got %q", node.Name)
+	}
+}
+
+// TestSelect_AllFailedNoMatchReturnsNil: the last resort must still respect
+// the matcher gates — a request matching no node yields nil even when nodes
+// are marked failed (no route, not a fallback target).
+func TestSelect_AllFailedNoMatchReturnsNil(t *testing.T) {
+	only := chain.NewNode("only", "127.0.0.1:8080",
+		chain.MatcherNodeOption(&testMatcher{match: false}),
+	)
+	h := newTestHop(NodeOption(only))
+	defer h.Close()
+
+	only.Marker().Mark()
+
+	node := h.Select(context.Background())
+	if node != nil {
+		t.Fatalf("expected nil (no node matches), got %q", node.Name)
 	}
 }
 
