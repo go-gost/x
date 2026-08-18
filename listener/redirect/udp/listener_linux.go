@@ -31,6 +31,12 @@ func (l *redirectListener) listenUDP(addr string) (*net.UDPConn, error) {
 	lc := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
+				// Must match dialUDP's socket so per-packet tproxy sockets can
+				// bind a destination port that overlaps this listener without
+				// "address already in use" (gost#413).
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil {
+					l.logger.Errorf("SetsockoptInt(SOL_SOCKET, SO_REUSEADDR, 1): %v", err)
+				}
 				if err := unix.SetsockoptInt(int(fd), unix.SOL_IP, unix.IP_TRANSPARENT, 1); err != nil {
 					l.logger.Errorf("SetsockoptInt(SOL_IP, IP_TRANSPARENT, 1): %v", err)
 				}
