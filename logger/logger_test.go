@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,6 +182,25 @@ func TestWithFields(t *testing.T) {
 	childLevel := child.GetLevel()
 	if parentLevel != childLevel {
 		t.Errorf("parent and child levels should match: %q vs %q", parentLevel, childLevel)
+	}
+}
+
+func TestWithFieldsDeduplicatesKeys(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLogger(
+		OutputOption(&buf),
+		LevelOption(logger.InfoLevel),
+		FormatOption(logger.JSONFormat),
+	)
+	l = l.WithFields(map[string]any{"kind": "service", "service": "s"}).WithFields(map[string]any{"kind": "handler"})
+	l.Info("hello")
+	out := buf.String()
+	// "kind" must appear exactly once, with the last value winning.
+	if strings.Count(out, `"kind"`) != 1 {
+		t.Errorf("expected one %q key, got %q", "kind", out)
+	}
+	if !strings.Contains(out, `"kind":"handler"`) {
+		t.Errorf("expected kind=handler, got %q", out)
 	}
 }
 

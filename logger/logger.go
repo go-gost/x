@@ -62,8 +62,17 @@ func LevelOption(level logger.LogLevel) Option {
 
 // slogLogger implements logger.Logger backed by log/slog.
 type slogLogger struct {
+	// base is the pristine slog.Logger before any WithFields attrs are
+	// applied. It is used to rebuild logger after each WithFields call.
+	base *slog.Logger
+	// logger is the effective slog.Logger used for emitting entries.
 	logger *slog.Logger
-	level  *slog.LevelVar
+	// args holds the accumulated WithFields key-value pairs in insertion
+	// order, deduplicated by key (last write wins). slog.Logger.With does not
+	// deduplicate, so chaining WithFields with a repeated key would otherwise
+	// emit duplicate JSON keys.
+	args  []any
+	level *slog.LevelVar
 }
 
 // NewLogger creates a new logger.Logger backed by log/slog.
@@ -90,6 +99,7 @@ func NewLogger(opts ...Option) logger.Logger {
 	}
 
 	return &slogLogger{
+		base:   sl,
 		logger: sl,
 		level:  levelVar,
 	}
@@ -186,16 +196,36 @@ func revertLevel(lvl slog.Level) logger.LogLevel {
 }
 
 // WithFields returns a new Logger with the given fields attached to every
-// subsequent log entry.
+// subsequent log entry. A field whose key was already set by an earlier
+// WithFields call is overwritten (last write wins) rather than duplicated.
 func (l *slogLogger) WithFields(fields map[string]any) logger.Logger {
-	attrs := make([]any, 0, len(fields)*2)
-	for k, v := range fields {
-		attrs = append(attrs, k, v)
-	}
+	args := mergeArgs(l.args, fields)
 	return &slogLogger{
-		logger: l.logger.With(attrs...),
+		base:   l.base,
+		logger: l.base.With(args...),
+		args:   args,
 		level:  l.level,
 	}
+}
+
+// mergeArgs merges fields into args (a flat [key, value, ...] slice),
+// overwriting any existing key in place to preserve insertion order.
+func mergeArgs(args []any, fields map[string]any) []any {
+	index := make(map[string]int, len(args)/2+len(fields))
+	out := make([]any, 0, len(args)+len(fields)*2)
+	for i := 0; i < len(args); i += 2 {
+		index[args[i].(string)] = len(out)
+		out = append(out, args[i], args[i+1])
+	}
+	for k, v := range fields {
+		if i, ok := index[k]; ok {
+			out[i+1] = v
+		} else {
+			index[k] = len(out)
+			out = append(out, k, v)
+		}
+	}
+	return out
 }
 
 // Trace logs at Trace level.
