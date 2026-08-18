@@ -270,7 +270,7 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	if len(nodes) > 0 {
 		alive := nodes[:0]
 		for _, n := range nodes {
-			if !nodeIsFailed(n, p.options.failMaxFails, p.options.failTimeout) {
+			if !xs.IsFailed(n, p.options.failMaxFails, p.options.failTimeout) {
 				alive = append(alive, n)
 			}
 		}
@@ -366,24 +366,6 @@ func isAllBackup(nodes []*chain.Node) bool {
 		}
 	}
 	return len(nodes) > 0
-}
-
-// nodeIsFailed reports whether node is currently marked failed per the same
-// criteria FailFilter uses: failure count has reached maxFails and the last
-// failure is still within failTimeout. FailFilter itself no-ops on a single
-// node, so the priority short-circuit checks the marker directly here.
-func nodeIsFailed(node *chain.Node, maxFails int, timeout time.Duration) bool {
-	marker := node.Marker()
-	if marker == nil {
-		return false
-	}
-	if maxFails <= 0 {
-		maxFails = xs.DefaultMaxFails
-	}
-	if timeout <= 0 {
-		timeout = xs.DefaultFailTimeout
-	}
-	return !(marker.Count() < int64(maxFails) || time.Since(marker.Time()) >= timeout)
 }
 
 func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {

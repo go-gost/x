@@ -264,3 +264,33 @@ func TestFilterMetadataLabels(t *testing.T) {
 		t.Fatalf("failTimeout: expected 30s, got %v", ft)
 	}
 }
+
+// --- IsFailed shared helper tests ---
+
+func TestIsFailed(t *testing.T) {
+	item := newTestMarkable(nil)
+
+	if IsFailed(item, 1, 10*time.Second) {
+		t.Fatal("unmarked item should not be failed")
+	}
+
+	item.Marker().Mark()
+	if !IsFailed(item, 1, 10*time.Second) {
+		t.Fatal("marked item with maxFails=1 should be failed")
+	}
+	if IsFailed(item, 2, 10*time.Second) {
+		t.Fatal("single mark below maxFails=2 should not be failed")
+	}
+
+	// Per-item metadata override beats the given defaults.
+	item2 := newTestMarkable(map[string]any{"maxFails": 1, "failTimeout": "60s"})
+	item2.Marker().Mark()
+	if !IsFailed(item2, 5, 10*time.Second) {
+		t.Fatal("metadata maxFails override should take precedence")
+	}
+
+	// Non-markable items are never failed.
+	if IsFailed(42, 1, time.Second) {
+		t.Fatal("non-markable item should not be failed")
+	}
+}
