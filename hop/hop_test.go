@@ -19,6 +19,7 @@ import (
 	"github.com/go-gost/core/routing"
 	xmd "github.com/go-gost/x/metadata"
 	xlogger "github.com/go-gost/x/logger"
+	xselector "github.com/go-gost/x/selector"
 	"github.com/go-gost/x/registry"
 )
 
@@ -545,6 +546,74 @@ func TestSelect_EqualPriorityDoesNotShortcut(t *testing.T) {
 	}
 	if node.Name != "n2" {
 		t.Errorf("expected 'n2' (selected by selector, not shortcut), got %q", node.Name)
+	}
+}
+
+// TestSelect_FailCodesHighPriorityNode reproduces the reverse-proxy failCodes
+// bug: a node with a stricter (longer) matcher wins by auto-computed priority,
+// so the priority shortcut selected it directly and bypassed the FailFilter —
+// a node marked failed by http.failCodes could never be excluded, so failover
+// never happened. After the fix, marking the high-priority node makes Select
+// fall through to the healthy lower-priority node.
+func TestSelect_FailCodesHighPriorityNode(t *testing.T) {
+	// highPriority: stricter matcher -> longer rule -> higher auto priority.
+	highPriority := chain.NewNode("high", "127.0.0.1:8080",
+		chain.MatcherNodeOption(&testMatcher{match: true}),
+		chain.PriorityNodeOption(100), // simulates len(longer-rule)
+	)
+	// healthy: less specific matcher -> lower priority.
+	healthy := chain.NewNode("healthy", "127.0.0.1:9090",
+		chain.MatcherNodeOption(&testMatcher{match: true}),
+		chain.PriorityNodeOption(10),
+	)
+
+	sel := xselector.NewSelector[*chain.Node](
+		xselector.FIFOStrategy[*chain.Node](),
+		xselector.FailFilter[*chain.Node](1, 60*time.Second),
+	)
+
+	h := newTestHop(NodeOption(highPriority, healthy), SelectorOption(sel),
+		FailFilterSettingsOption(1, 60*time.Second))
+	defer h.Close()
+
+	// Before marking: high-priority node wins via the shortcut.
+	node := h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected node, got nil")
+	}
+	if node.Name != "high" {
+		t.Fatalf("expected 'high' (higher priority) before marking, got %q", node.Name)
+	}
+
+	// Simulate http.failCodes marking the high-priority node failed (429/5xx).
+	highPriority.Marker().Mark()
+
+	// After marking: Select must fall through to the healthy node.
+	node = h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected a node after marking, got nil")
+	}
+	if node.Name != "healthy" {
+		t.Fatalf("expected 'healthy' (marked node excluded by FailFilter), got %q", node.Name)
+	}
+}
+
+// TestSelect_SingleNodeKeptWhenFailed preserves the legacy safety net: a hop
+// with a single node still returns it even when marked failed (FailFilter's
+// len(vs) <= 1 guard / the single-node early return).
+func TestSelect_SingleNodeKeptWhenFailed(t *testing.T) {
+	only := chain.NewNode("only", "127.0.0.1:8080")
+	h := newTestHop(NodeOption(only))
+	defer h.Close()
+
+	only.Marker().Mark()
+
+	node := h.Select(context.Background())
+	if node == nil {
+		t.Fatal("expected the only node, got nil")
+	}
+	if node.Name != "only" {
+		t.Fatalf("expected 'only', got %q", node.Name)
 	}
 }
 

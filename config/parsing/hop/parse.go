@@ -15,6 +15,7 @@ import (
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	xhop "github.com/go-gost/x/hop"
 	hop_plugin "github.com/go-gost/x/hop/plugin"
+	xs "github.com/go-gost/x/selector"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 	"github.com/go-gost/x/metadata"
@@ -158,10 +159,21 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		sel = selector_parser.DefaultNodeSelector()
 	}
 
+	maxFails, timeout := xs.DefaultMaxFails, xs.DefaultFailTimeout
+	if cfg.Selector != nil {
+		if cfg.Selector.MaxFails > 0 {
+			maxFails = cfg.Selector.MaxFails
+		}
+		if cfg.Selector.FailTimeout > 0 {
+			timeout = cfg.Selector.FailTimeout
+		}
+	}
+
 	opts := []xhop.Option{
 		xhop.NameOption(cfg.Name),
 		xhop.NodeOption(nodes...),
 		xhop.SelectorOption(sel),
+		xhop.FailFilterSettingsOption(maxFails, timeout),
 		xhop.BypassOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		xhop.ReloadPeriodOption(cfg.Reload),
 		xhop.LoggerOption(log.WithFields(map[string]any{

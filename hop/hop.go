@@ -22,6 +22,7 @@ import (
 	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/x/config"
+	xs "github.com/go-gost/x/selector"
 	mdutil "github.com/go-gost/x/metadata/util"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	"github.com/go-gost/x/internal/loader"
@@ -33,6 +34,12 @@ type options struct {
 	nodes       []*chain.Node
 	bypass      bypass.Bypass
 	selector    selector.Selector[*chain.Node]
+	// failMaxFails / failTimeout mirror the FailFilter config used by the
+	// selector. The pre-selection dead-node filter (Stage 2.5) consults them
+	// to decide whether a node is currently marked failed (FailFilter itself
+	// no-ops on a single node, so the marker is checked directly here).
+	failMaxFails int
+	failTimeout  time.Duration
 	fileLoader  loader.Loader
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
@@ -68,6 +75,16 @@ func BypassOption(bp bypass.Bypass) Option {
 func SelectorOption(s selector.Selector[*chain.Node]) Option {
 	return func(o *options) {
 		o.selector = s
+	}
+}
+
+// FailFilterSettingsOption sets the maxFails/failTimeout used by the hop's
+// FailFilter. The pre-selection dead-node filter consults these to decide
+// whether a node is currently marked failed.
+func FailFilterSettingsOption(maxFails int, timeout time.Duration) Option {
+	return func(o *options) {
+		o.failMaxFails = maxFails
+		o.failTimeout = timeout
 	}
 }
 
@@ -243,6 +260,30 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 
 		nodes = append(nodes, node)
 	}
+
+	// Stage 2.5: drop nodes currently marked failed (http.failCodes match,
+	// probe failure, etc.). A failed node must not win via the priority
+	// shortcut (Stage 3) or a lone-node tier, neither of which consults the
+	// marker — otherwise failCodes could never trigger failover. This mirrors
+	// FailFilter's per-node criteria; FailFilter still runs in Stage 4 but
+	// finds nothing left to exclude.
+	if len(nodes) > 0 {
+		alive := nodes[:0]
+		for _, n := range nodes {
+			if !nodeIsFailed(n, p.options.failMaxFails, p.options.failTimeout) {
+				alive = append(alive, n)
+			}
+		}
+		if len(alive) == 0 {
+			if len(nodes) == 1 {
+				alive = nodes // safety net: keep the only node (matches FailFilter's len(vs) <= 1 guard and the single-node early return below)
+			} else {
+				return nil
+			}
+		}
+		nodes = alive
+	}
+
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -325,6 +366,24 @@ func isAllBackup(nodes []*chain.Node) bool {
 		}
 	}
 	return len(nodes) > 0
+}
+
+// nodeIsFailed reports whether node is currently marked failed per the same
+// criteria FailFilter uses: failure count has reached maxFails and the last
+// failure is still within failTimeout. FailFilter itself no-ops on a single
+// node, so the priority short-circuit checks the marker directly here.
+func nodeIsFailed(node *chain.Node, maxFails int, timeout time.Duration) bool {
+	marker := node.Marker()
+	if marker == nil {
+		return false
+	}
+	if maxFails <= 0 {
+		maxFails = xs.DefaultMaxFails
+	}
+	if timeout <= 0 {
+		timeout = xs.DefaultFailTimeout
+	}
+	return !(marker.Count() < int64(maxFails) || time.Since(marker.Time()) >= timeout)
 }
 
 func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {
