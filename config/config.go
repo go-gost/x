@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
@@ -28,7 +29,20 @@ func init() {
 var (
 	global    = &Config{}
 	globalMux sync.RWMutex
+
+	// configFile remembers the last file loaded via ReadFile so the API can
+	// save back to the same location (issue go-gost/x#123).
+	configFile atomic.Value // string
 )
+
+// ConfigFile returns the path of the last config file loaded via ReadFile,
+// or an empty string when the config came from stdin, a URL, or inline JSON.
+func ConfigFile() string {
+	if s, ok := configFile.Load().(string); ok {
+		return s
+	}
+	return ""
+}
 
 func Global() *Config {
 	globalMux.RLock()
@@ -780,6 +794,7 @@ func (c *Config) ReadFile(file string) error {
 	if err := v.ReadInConfig(); err != nil {
 		return err
 	}
+	configFile.Store(file)
 	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
 }
 
