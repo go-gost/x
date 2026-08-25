@@ -497,10 +497,22 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 				body = rewritten
 			}
 		} else if rw.Pattern != nil {
-			if strings.HasPrefix(rw.Type, "json:") {
+			if strings.HasPrefix(rw.Type, "json:") || strings.HasPrefix(rw.Type, "json-:") {
+				del := strings.HasPrefix(rw.Type, "json-:")
 				path := rw.Type[5:]
+				if del {
+					path = rw.Type[6:]
+				}
 				if rw.Pattern.MatchString(gjson.GetBytes(body, path).String()) {
-					replaced, err := sjson.SetBytes(body, path, string(rw.Replacement))
+					var (
+						replaced []byte
+						err      error
+					)
+					if del {
+						replaced, err = sjson.DeleteBytes(body, path)
+					} else {
+						replaced, err = sjson.SetBytes(body, path, string(rw.Replacement))
+					}
 					if err == nil {
 						body = replaced
 					}
@@ -514,9 +526,9 @@ func (b *rewriteBody) apply(body []byte, opts ...rewriter.RewriteOption) ([]byte
 }
 
 // shouldApply reports whether a rewrite rule's configured type matches the
-// actual request Content-Type. A type prefix "json:" matches only
-// "application/json" content. An empty type defaults to "text/html", or "*"
-// when a Rewriter is set.
+// actual request Content-Type. JSON rules ("json:" or "json-:" Type prefixes)
+// match only "application/json" content. An empty type defaults to
+// "text/html", or "*" when a Rewriter is set.
 func shouldApply(configuredType, actualContentType string, hasRewriter bool) bool {
 	t := configuredType
 	if t == "" {
@@ -526,7 +538,7 @@ func shouldApply(configuredType, actualContentType string, hasRewriter bool) boo
 			t = "text/html"
 		}
 	}
-	if strings.HasPrefix(t, "json:") {
+	if strings.HasPrefix(t, "json:") || strings.HasPrefix(t, "json-:") {
 		return actualContentType == "application/json"
 	}
 	return t == "*" || strings.Contains(t, actualContentType)

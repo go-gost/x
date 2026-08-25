@@ -1960,6 +1960,89 @@ func TestNewRewriteBody(t *testing.T) {
 	})
 }
 
+func TestRewriteJSONDelete(t *testing.T) {
+	makeRewrite := func(rewriteType, match, replace string) chain.HTTPBodyRewriteSettings {
+		return chain.HTTPBodyRewriteSettings{
+			Pattern:     regexp.MustCompile(match),
+			Type:        rewriteType,
+			Replacement: []byte(replace),
+		}
+	}
+	ctx := context.Background()
+
+	t.Run("delete matched field", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader(`{"user":{"id":123},"keep":1}`))
+		body, err := newRewriteBody(ctx, src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("json-:user.id", "123", ""),
+		}, "application/json", "", -1, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != `{"user":{},"keep":1}` {
+			t.Errorf("body = %q, want %q", string(got), `{"user":{},"keep":1}`)
+		}
+	})
+
+	t.Run("no match leaves body unchanged", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader(`{"user":{"id":123},"keep":1}`))
+		body, err := newRewriteBody(ctx, src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("json-:user.id", "^9$", ""),
+		}, "application/json", "", -1, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != `{"user":{"id":123},"keep":1}` {
+			t.Errorf("body = %q, want %q (unchanged)", string(got), `{"user":{"id":123},"keep":1}`)
+		}
+	})
+
+	t.Run("non-json content type filtered out", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader(`{"user":{"id":123},"keep":1}`))
+		body, err := newRewriteBody(ctx, src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("json-:user.id", "123", ""),
+		}, "text/plain", "", -1, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != `{"user":{"id":123},"keep":1}` {
+			t.Errorf("body = %q, want %q (unchanged)", string(got), `{"user":{"id":123},"keep":1}`)
+		}
+	})
+
+	t.Run("json: prefix still replaces", func(t *testing.T) {
+		src := io.NopCloser(strings.NewReader(`{"user":{"id":123},"keep":1}`))
+		body, err := newRewriteBody(ctx, src, []chain.HTTPBodyRewriteSettings{
+			makeRewrite("json:user.id", "123", "999"),
+		}, "application/json", "", -1, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body == nil {
+			t.Fatal("expected non-nil body")
+		}
+		got, _ := io.ReadAll(body)
+		body.Close()
+		if string(got) != `{"user":{"id":"999"},"keep":1}` {
+			t.Errorf("body = %q, want %q", string(got), `{"user":{"id":"999"},"keep":1}`)
+		}
+	})
+}
+
 func TestRewriteRespBody_CompressedEncodings(t *testing.T) {
 	tests := []struct {
 		name     string

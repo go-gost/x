@@ -48,8 +48,16 @@ func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []c
 		var pattern *regexp.Regexp
 		var rewriteType string
 
-		if js, ok := strings.CutPrefix(v.Match, "json:"); ok {
-			// json:<path> or json:<path>=<value-regex>
+		js, ok := strings.CutPrefix(v.Match, "json:")
+		del := false
+		if !ok {
+			// json-:<path> deletes the matched JSON field instead of replacing it.
+			if js, ok = strings.CutPrefix(v.Match, "json-:"); ok {
+				del = true
+			}
+		}
+		if ok {
+			// json:<path>[=<value-regex>] or json-:<path>[=<value-regex>]
 			path, valRegex, _ := strings.Cut(js, "=")
 			if valRegex == "" {
 				valRegex = ".*"
@@ -60,7 +68,11 @@ func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []c
 				log.Warnf("invalid JSON value regex %q for path %q: %v", valRegex, path, err)
 				continue
 			}
-			rewriteType = "json:" + path
+			if del {
+				rewriteType = "json-:" + path
+			} else {
+				rewriteType = "json:" + path
+			}
 		} else {
 			if v.Match != "" {
 				pattern, _ = regexp.Compile(v.Match)
