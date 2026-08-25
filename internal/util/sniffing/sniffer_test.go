@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -27,6 +28,16 @@ import (
 type noopRecorder struct{}
 
 func (n *noopRecorder) Record(_ context.Context, _ []byte, _ ...recorder.RecordOption) error {
+	return nil
+}
+
+// captureRecorder records every payload written through recorder.Recorder.
+type captureRecorder struct {
+	data [][]byte
+}
+
+func (r *captureRecorder) Record(_ context.Context, b []byte, _ ...recorder.RecordOption) error {
+	r.data = append(r.data, append([]byte(nil), b...))
 	return nil
 }
 
@@ -242,9 +253,10 @@ func TestHandleHTTP_BasicProxy(t *testing.T) {
 	}))
 	defer upstream.Close()
 
+	rec := &captureRecorder{}
 	h := &Sniffer{
 		ReadTimeout: 5 * time.Second,
-		Recorder:    &noopRecorder{},
+		Recorder:    rec,
 	}
 	ro := &xrecorder.HandlerRecorderObject{}
 
@@ -278,16 +290,35 @@ func TestHandleHTTP_BasicProxy(t *testing.T) {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	clientConn.Close()
-	if err := <-errCh; err != nil {
-		t.Logf("HandleHTTP returned: %v", err)
+	// Drain the body so HandleHTTP's response write completes before the
+	// client side closes (net.Pipe writes block until read).
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "OK from upstream" {
+		t.Errorf("body = %q, want %q", body, "OK from upstream")
 	}
 
-	if ro.SrcAddr == "" {
-		t.Error("SrcAddr should be populated")
+	clientConn.Close()
+	if err := <-errCh; err != nil {
+		t.Errorf("HandleHTTP returned: %v", err)
 	}
-	if ro.DstAddr == "" {
-		t.Error("DstAddr should be populated")
+
+	// HandleHTTP records on an internal clone of ro and publishes it via
+	// h.Recorder, so assert on the captured payload.
+	if len(rec.data) != 1 {
+		t.Fatalf("expected 1 recorder event, got %d", len(rec.data))
+	}
+	var recorded xrecorder.HandlerRecorderObject
+	if err := json.Unmarshal(rec.data[0], &recorded); err != nil {
+		t.Fatalf("unmarshal recorder event: %v", err)
+	}
+	if recorded.SrcAddr == "" {
+		t.Error("recorded srcAddr should be populated")
+	}
+	if recorded.DstAddr == "" {
+		t.Error("recorded dstAddr should be populated")
 	}
 }
 
