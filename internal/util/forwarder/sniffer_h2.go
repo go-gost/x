@@ -32,8 +32,8 @@ func (h *Sniffer) serveH2(ctx context.Context, conn net.Conn, ho *HandleOptions)
 		return errors.New("h2: invalid client preface")
 	}
 
-	ro := ho.recorderObject
-	log := ho.log
+	ro := ho.RecorderObject
+	log := ho.Log
 
 	ro.Time = time.Time{}
 

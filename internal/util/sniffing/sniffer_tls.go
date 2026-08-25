@@ -36,9 +36,9 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		return err
 	}
 
-	log := ho.log
+	log := ho.Log
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 	ro.TLS = &xrecorder.TLSRecorderObject{
 		ServerName:  clientHello.ServerName,
 		ClientHello: hex.EncodeToString(buf.Bytes()),
@@ -56,11 +56,11 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		ro.Host = host
 	}
 
-	if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
+	if ho.Bypass != nil && ho.Bypass.Contains(ctx, network, host, bypass.WithService(ho.Service)) {
 		return xbypass.ErrBypass
 	}
 
-	dial := ho.dial
+	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
@@ -79,7 +79,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		if host == "" {
 			host = ro.Host
 		}
-		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
+		if h.MitmBypass == nil || !h.MitmBypass.Contains(ctx, network, host, bypass.WithService(ho.Service)) {
 			return h.terminateTLS(ctx, network, xnet.NewReadWriteConn(io.MultiReader(buf, conn), conn, conn), cc, clientHello, &ho)
 		}
 	}
@@ -128,8 +128,8 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 // dynamically generated certificate. The decrypted traffic is then handled
 // as HTTP.
 func (h *Sniffer) terminateTLS(ctx context.Context, network string, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, ho *HandleOptions) error {
-	ro := ho.recorderObject
-	log := ho.log
+	ro := ho.RecorderObject
+	log := ho.Log
 
 	nextProtos := clientHello.SupportedProtos
 	if h.NegotiatedProtocol != "" {
@@ -234,7 +234,7 @@ func (h *Sniffer) terminateTLS(ctx context.Context, network string, conn, cc net
 		WithDialTLS(func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
 			return clientConn, nil
 		}),
-		WithBypass(ho.bypass),
+		WithBypass(ho.Bypass),
 		WithRecorderObject(ro),
 		WithLog(log),
 	}

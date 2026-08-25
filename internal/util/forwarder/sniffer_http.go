@@ -51,7 +51,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	for _, opt := range opts {
 		opt(&ho)
 	}
-	ho.readTimeout = h.effectiveReadTimeout(&ho)
+	ho.ReadTimeout = h.effectiveReadTimeout(&ho)
 
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
@@ -62,13 +62,13 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		return err
 	}
 
-	log := ho.log
+	log := ho.Log
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
 		log.Trace(string(dump))
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 
 	// Copy ro so that all internal recording (cache-hit serveCachedResponse
 	// and cache-miss httpRoundTrip) happens on a local clone, preventing
@@ -76,7 +76,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	ro2 := &xrecorder.HandlerRecorderObject{}
 	*ro2 = *ro
 	ro = ro2
-	ho.recorderObject = ro2
+	ho.RecorderObject = ro2
 
 	if clientIP := xhttp.GetClientIP(req); clientIP != nil {
 		clientAddr := &net.TCPAddr{IP: clientIP}
@@ -140,8 +140,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 				}
 				upstreamHost = normalizeHost(ro.HTTP.Host, "80")
 
-				ho.log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
-				log = ho.log
+				ho.Log = log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+				log = ho.Log
 				log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
 				ro.SrcAddr = cc.LocalAddr().String()
@@ -179,7 +179,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			ro.Host = reqHost
 
 			log = log.WithFields(map[string]any{"host": reqHost})
-			ho.log = log
+			ho.Log = log
 		}
 	}
 }
@@ -227,19 +227,19 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		StatusCode: http.StatusServiceUnavailable,
 	}
 
-	if ho.bypass != nil &&
-		ho.bypass.Contains(ctx, "tcp", host,
-			bypass.WithService(ho.service),
+	if ho.Bypass != nil &&
+		ho.Bypass.Contains(ctx, "tcp", host,
+			bypass.WithService(ho.Service),
 			bypass.WithPathOption(req.RequestURI)) {
-		ho.log.Debugf("bypass: %s %s", host, req.RequestURI)
+		ho.Log.Debugf("bypass: %s %s", host, req.RequestURI)
 		res.StatusCode = http.StatusForbidden
 		return nil, res, xbypass.ErrBypass
 	}
 
 	node = &chain.Node{}
-	if ho.hop != nil {
+	if ho.Hop != nil {
 		var clientIP net.IP
-		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.RecorderObject.ClientAddr); clientAddr != nil {
 			clientIP = clientAddr.IP
 		}
 
@@ -248,7 +248,7 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		// without consuming the stream that is still forwarded below.
 		var bodyPrefix []byte
 		var maxBodySize int
-		if nl, ok := ho.hop.(hop.NodeList); ok {
+		if nl, ok := ho.Hop.(hop.NodeList); ok {
 			for _, n := range nl.Nodes() {
 				if n == nil {
 					continue
@@ -271,7 +271,7 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 			}
 		}
 
-		node = ho.hop.Select(ctx,
+		node = ho.Hop.Select(ctx,
 			hop.ClientIPSelectOption(clientIP),
 			hop.ProtocolSelectOption(sniffing.ProtoHTTP),
 			hop.HostSelectOption(host),
@@ -283,11 +283,11 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 		)
 	}
 	if node == nil {
-		ho.log.Warnf("node for %s not found", host)
+		ho.Log.Warnf("node for %s not found", host)
 		res.StatusCode = http.StatusBadGateway
 		return nil, res, errors.New("node not available")
 	}
-	ho.recorderObject.Node = node.Name
+	ho.RecorderObject.Node = node.Name
 	if node.Addr == "" {
 		node = &chain.Node{
 			Name: node.Name,
@@ -299,21 +299,21 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 
 // dial selects a node, establishes a connection, and sends the request upstream.
 func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
-	dial := ho.dial
+	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
 
-	if node = ho.node; node != nil {
+	if node = ho.Node; node != nil {
 		cc, err = dial(ctx, "tcp", node.Addr)
 		return
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 	host := normalizeHost(req.Host, "80")
 	if host != "" {
 		ro.Host = host
-		ho.log = ho.log.WithFields(map[string]any{
+		ho.Log = ho.Log.WithFields(map[string]any{
 			"host": host,
 		})
 	}
@@ -322,7 +322,7 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 	if resolveErr != nil {
 		ro.HTTP.StatusCode = res.StatusCode
 		if werr := res.Write(conn); werr != nil {
-			ho.log.Warnf("write error response: %v", werr)
+			ho.Log.Warnf("write error response: %v", werr)
 		}
 		return nil, nil, resolveErr
 	}
@@ -336,20 +336,20 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 	}
 
 	ro.Host = node.Addr
-	ho.log = ho.log.WithFields(map[string]any{
+	ho.Log = ho.Log.WithFields(map[string]any{
 		"node": node.Name,
 		"dst":  node.Addr,
 	})
-	ho.log.Debugf("find node for host %s -> %s(%s)", host, node.Name, node.Addr)
+	ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, node.Addr)
 
 	cc, err = dial(ctx, "tcp", node.Addr)
 	if err != nil {
 		if marker := node.Marker(); marker != nil {
 			marker.Mark()
 		}
-		ho.log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
+		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
 		if werr := res.Write(conn); werr != nil {
-			ho.log.Warnf("write error response: %v", werr)
+			ho.Log.Warnf("write error response: %v", werr)
 		}
 		return
 	}
@@ -368,9 +368,9 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions, staleResp *http.Response) (shouldClose bool, err error) {
 	shouldClose = true
 
-	log := ho.log
+	log := ho.Log
 	ro := &xrecorder.HandlerRecorderObject{}
-	*ro = *ho.recorderObject
+	*ro = *ho.RecorderObject
 
 	ro.Time = time.Now()
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
@@ -439,7 +439,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	if httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
 			username, password, _ := req.BasicAuth()
-			id, ok := auther.Authenticate(ctx, username, password, auth.WithService(ho.service))
+			id, ok := auther.Authenticate(ctx, username, password, auth.WithService(ho.Service))
 			if !ok {
 				res.StatusCode = http.StatusUnauthorized
 				ro.HTTP.StatusCode = res.StatusCode
@@ -534,7 +534,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	br := bufio.NewReader(cc)
 	var resp *http.Response
 	for {
-		xio.SetReadDeadline(cc, time.Now().Add(ho.readTimeout))
+		xio.SetReadDeadline(cc, time.Now().Add(ho.ReadTimeout))
 		resp, err = http.ReadResponse(br, req)
 		if err != nil {
 			log.Errorf("read response: %v", err)
@@ -600,7 +600,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		resp.ProtoMinor = req.ProtoMinor
 	}
 
-	if !ho.httpKeepalive {
+	if !ho.HTTPKeepalive {
 		resp.Header.Set("Connection", "close")
 	}
 
@@ -679,7 +679,7 @@ func (h *Sniffer) serveStale(rw io.Writer, staleResp *http.Response, ro *xrecord
 	if h.Cache == nil || staleResp == nil || !h.Cache.ServeStale() {
 		return false
 	}
-	if !ho.httpKeepalive {
+	if !ho.HTTPKeepalive {
 		staleResp.Header.Set("Connection", "close")
 	}
 	ro.HTTP.StatusCode = staleResp.StatusCode

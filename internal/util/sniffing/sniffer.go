@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/chain"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/x/internal/util/httpcache"
@@ -33,58 +35,87 @@ const (
 var DefaultCertPool = tls_util.NewMemoryCertPool()
 
 // HandleOptions holds configuration options for sniffing handlers.
+// Fields are exported because forwarder's protocol handlers set them
+// across the package boundary.
 type HandleOptions struct {
-	service string
-	dial    func(ctx context.Context, network, address string) (net.Conn, error)
-	dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
+	Service string
+	Dial    func(ctx context.Context, network, address string) (net.Conn, error)
+	DialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)
 
-	bypass         bypass.Bypass
-	recorderObject *xrecorder.HandlerRecorderObject
-	log            logger.Logger
+	HTTPKeepalive bool
+	ReadTimeout   time.Duration
+
+	Node *chain.Node
+	Hop  hop.Hop
+
+	Bypass         bypass.Bypass
+	RecorderObject *xrecorder.HandlerRecorderObject
+	Log            logger.Logger
 }
 
 // HandleOption configures HandleOptions for sniffing handlers.
 type HandleOption func(opts *HandleOptions)
 
-// WithService sets the service name for bypass lookups.
+// WithService sets the service name for bypass and selection lookups.
 func WithService(service string) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.service = service
+		opts.Service = service
 	}
 }
 
 // WithDial sets the dial function used to establish upstream connections.
 func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.dial = dial
+		opts.Dial = dial
 	}
 }
 
 // WithDialTLS sets the dial function used for TLS-wrapped upstream connections.
 func WithDialTLS(dialTLS func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error)) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.dialTLS = dialTLS
+		opts.DialTLS = dialTLS
+	}
+}
+
+// WithHTTPKeepalive enables or disables HTTP keep-alive on the upstream connection.
+func WithHTTPKeepalive(keepalive bool) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.HTTPKeepalive = keepalive
+	}
+}
+
+// WithNode sets a pre-resolved chain node to connect to, bypassing hop selection.
+func WithNode(node *chain.Node) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.Node = node
+	}
+}
+
+// WithHop sets the hop used for node selection when routing requests.
+func WithHop(h hop.Hop) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.Hop = h
 	}
 }
 
 // WithBypass sets the bypass rules for filtering requests by host.
 func WithBypass(bypass bypass.Bypass) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.bypass = bypass
+		opts.Bypass = bypass
 	}
 }
 
 // WithRecorderObject sets the recorder object for capturing traffic metadata.
 func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.recorderObject = ro
+		opts.RecorderObject = ro
 	}
 }
 
 // WithLog sets the logger for the handler.
 func WithLog(log logger.Logger) HandleOption {
 	return func(opts *HandleOptions) {
-		opts.log = log
+		opts.Log = log
 	}
 }
 

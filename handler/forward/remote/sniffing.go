@@ -72,45 +72,19 @@ func (h *forwardHandler) sniffingDial(ctx context.Context, network, address stri
 }
 
 // handleSniffedProtocol dispatches a sniffed connection to the protocol-specific
-// sniffer (HandleHTTP or HandleTLS). It returns (true, err) when the protocol was
+// sniffer registered for proto. It returns (true, err) when the protocol was
 // handled and (false, nil) when the caller should fall through to raw forwarding.
 func (h *forwardHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, proto string) (handled bool, err error) {
-	switch proto {
-	case sniffing.ProtoHTTP, sniffing.ProtoTLS, sniffing.ProtoRedis:
-		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			return h.sniffingDial(ctx, network, address, ro)
-		}
-		sniffer := h.sniffer.Build()
-		if proto == sniffing.ProtoHTTP {
-			return true, sniffer.HandleHTTP(ctx, conn,
-				forwarder.WithService(h.options.Service),
-				forwarder.WithDial(dial),
-				forwarder.WithHop(h.getHop()),
-				forwarder.WithBypass(h.options.Bypass),
-				forwarder.WithHTTPKeepalive(h.md.httpKeepalive),
-				forwarder.WithRecorderObject(ro),
-				forwarder.WithLog(log),
-			)
-		}
-		if proto == sniffing.ProtoTLS {
-			return true, sniffer.HandleTLS(ctx, conn,
-				forwarder.WithService(h.options.Service),
-				forwarder.WithDial(dial),
-				forwarder.WithHop(h.getHop()),
-				forwarder.WithBypass(h.options.Bypass),
-				forwarder.WithRecorderObject(ro),
-				forwarder.WithLog(log),
-			)
-		}
-		return true, sniffer.HandleRedis(ctx, conn,
-			forwarder.WithService(h.options.Service),
-			forwarder.WithDial(dial),
-			forwarder.WithHop(h.getHop()),
-			forwarder.WithBypass(h.options.Bypass),
-			forwarder.WithRecorderObject(ro),
-			forwarder.WithLog(log),
-		)
-	default:
-		return false, nil
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		return h.sniffingDial(ctx, network, address, ro)
 	}
+	return forwarder.Dispatch(h.sniffer.Build(), ctx, conn, proto,
+		sniffing.WithService(h.options.Service),
+		sniffing.WithDial(dial),
+		sniffing.WithHop(h.getHop()),
+		sniffing.WithBypass(h.options.Bypass),
+		sniffing.WithHTTPKeepalive(h.md.httpKeepalive),
+		sniffing.WithRecorderObject(ro),
+		sniffing.WithLog(log),
+	)
 }

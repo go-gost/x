@@ -25,20 +25,20 @@ func (h *Sniffer) HandleRedis(ctx context.Context, conn net.Conn, opts ...Handle
 	}
 
 	buf := new(bytes.Buffer)
-	if err := sniffing.ParseRedisMetadata(io.TeeReader(conn, buf), ho.recorderObject); err != nil {
+	if err := sniffing.ParseRedisMetadata(io.TeeReader(conn, buf), ho.RecorderObject); err != nil {
 		return err
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 
 	node, cc, err := h.dialRedis(ctx, &ho)
 	if err != nil {
 		return err
 	}
 	defer cc.Close()
-	ho.node = node
+	ho.Node = node
 
-	log := ho.log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	log := ho.Log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
 	ro.SrcAddr = cc.LocalAddr().String()
@@ -63,12 +63,12 @@ func (h *Sniffer) HandleRedis(ctx context.Context, conn net.Conn, opts ...Handle
 // and ClientIPSelectOption.
 func resolveRedisNode(ctx context.Context, ho *HandleOptions) (node *chain.Node, err error) {
 	node = &chain.Node{}
-	if ho.hop != nil {
+	if ho.Hop != nil {
 		var clientIP net.IP
-		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.RecorderObject.ClientAddr); clientAddr != nil {
 			clientIP = clientAddr.IP
 		}
-		node = ho.hop.Select(ctx,
+		node = ho.Hop.Select(ctx,
 			hop.ClientIPSelectOption(clientIP),
 			hop.ProtocolSelectOption(sniffing.ProtoRedis),
 		)
@@ -76,19 +76,19 @@ func resolveRedisNode(ctx context.Context, ho *HandleOptions) (node *chain.Node,
 	if node == nil {
 		return nil, fmt.Errorf("node not available")
 	}
-	ho.recorderObject.Node = node.Name
+	ho.RecorderObject.Node = node.Name
 	return node, nil
 }
 
 // dialRedis selects a node via resolveRedisNode and establishes a TCP
 // connection to the node's address.
 func (h *Sniffer) dialRedis(ctx context.Context, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
-	dial := ho.dial
+	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
 
-	if node = ho.node; node != nil {
+	if node = ho.Node; node != nil {
 		cc, err = dial(ctx, "tcp", node.Addr)
 		return
 	}
@@ -98,7 +98,7 @@ func (h *Sniffer) dialRedis(ctx context.Context, ho *HandleOptions) (node *chain
 		return
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 	addr := node.Addr
 	network := "tcp"
 	if opts := node.Options(); opts != nil {
@@ -117,18 +117,18 @@ func (h *Sniffer) dialRedis(ctx context.Context, ho *HandleOptions) (node *chain
 	}
 	ro.Host = addr
 
-	ho.log = ho.log.WithFields(map[string]any{
+	ho.Log = ho.Log.WithFields(map[string]any{
 		"node": node.Name,
 		"dst":  fmt.Sprintf("%s/%s", addr, network),
 	})
-	ho.log.Debugf("find node for redis -> %s(%s)", node.Name, addr)
+	ho.Log.Debugf("find node for redis -> %s(%s)", node.Name, addr)
 
 	cc, err = dial(ctx, network, addr)
 	if err != nil {
 		if marker := node.Marker(); marker != nil {
 			marker.Mark()
 		}
-		ho.log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
+		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
 		return
 	}
 

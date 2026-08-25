@@ -32,7 +32,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 	for _, opt := range opts {
 		opt(&ho)
 	}
-	ho.readTimeout = h.effectiveReadTimeout(&ho)
+	ho.ReadTimeout = h.effectiveReadTimeout(&ho)
 
 	buf := new(bytes.Buffer)
 	clientHello, err := dissector.ParseClientHello(io.TeeReader(conn, buf))
@@ -40,7 +40,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		return err
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 	ro.TLS = &xrecorder.TLSRecorderObject{
 		ServerName:  clientHello.ServerName,
 		ClientHello: hex.EncodeToString(buf.Bytes()),
@@ -51,14 +51,14 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 
 	host := normalizeHost(clientHello.ServerName, "443")
 	if host == "" {
-		if ho.log != nil {
-			ho.log.Debugf("no sni in clienthello from %s", conn.RemoteAddr())
+		if ho.Log != nil {
+			ho.Log.Debugf("no sni in clienthello from %s", conn.RemoteAddr())
 		}
 	} else {
 		ro.Host = host
 	}
 
-	if ho.bypass != nil && ho.bypass.Contains(ctx, "tcp", host, bypass.WithService(ho.service)) {
+	if ho.Bypass != nil && ho.Bypass.Contains(ctx, "tcp", host, bypass.WithService(ho.Service)) {
 		return xbypass.ErrBypass
 	}
 
@@ -67,9 +67,9 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		return err
 	}
 	defer cc.Close()
-	ho.node = node
+	ho.Node = node
 
-	log := ho.log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
+	log := ho.Log.WithFields(map[string]any{"src": cc.LocalAddr().String(), "dst": cc.RemoteAddr().String()})
 	log.Debugf("connected to node %s(%s)", node.Name, node.Addr)
 
 	ro.SrcAddr = cc.LocalAddr().String()
@@ -89,7 +89,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 		return err
 	}
 
-	xio.SetReadDeadline(cc, time.Now().Add(ho.readTimeout))
+	xio.SetReadDeadline(cc, time.Now().Add(ho.ReadTimeout))
 	serverHello, serverHelloErr := dissector.ParseServerHello(io.TeeReader(cc, buf))
 	xio.SetReadDeadline(cc, time.Time{})
 
@@ -128,12 +128,12 @@ func (h *Sniffer) HandleTLS(ctx context.Context, conn net.Conn, opts ...HandleOp
 // resolveTLSNode selects a node for a TLS connection by applying hop selection.
 func resolveTLSNode(ctx context.Context, host string, ho *HandleOptions) (node *chain.Node, err error) {
 	node = &chain.Node{}
-	if ho.hop != nil {
+	if ho.Hop != nil {
 		var clientIP net.IP
-		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.recorderObject.ClientAddr); clientAddr != nil {
+		if clientAddr, _ := net.ResolveTCPAddr("tcp", ho.RecorderObject.ClientAddr); clientAddr != nil {
 			clientIP = clientAddr.IP
 		}
-		node = ho.hop.Select(ctx,
+		node = ho.Hop.Select(ctx,
 			hop.ClientIPSelectOption(clientIP),
 			hop.HostSelectOption(host),
 			hop.ProtocolSelectOption(sniffing.ProtoTLS),
@@ -142,7 +142,7 @@ func resolveTLSNode(ctx context.Context, host string, ho *HandleOptions) (node *
 	if node == nil {
 		return nil, errors.New("node not available")
 	}
-	ho.recorderObject.Node = node.Name
+	ho.RecorderObject.Node = node.Name
 	if node.Addr == "" {
 		node = &chain.Node{
 			Name: node.Name,
@@ -154,12 +154,12 @@ func resolveTLSNode(ctx context.Context, host string, ho *HandleOptions) (node *
 
 // dialTLS selects a node and establishes a TLS connection.
 func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
-	dial := ho.dial
+	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
 
-	if node = ho.node; node != nil {
+	if node = ho.Node; node != nil {
 		cc, err = dial(ctx, "tcp", node.Addr)
 		return
 	}
@@ -169,7 +169,7 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 		return
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 	addr := node.Addr
 	network := "tcp"
 	if opts := node.Options(); opts != nil {
@@ -188,19 +188,19 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 	}
 	ro.Host = addr
 
-	ho.log = ho.log.WithFields(map[string]any{
+	ho.Log = ho.Log.WithFields(map[string]any{
 		"host": host,
 		"node": node.Name,
 		"dst":  fmt.Sprintf("%s/%s", addr, network),
 	})
-	ho.log.Debugf("find node for host %s -> %s(%s)", host, node.Name, addr)
+	ho.Log.Debugf("find node for host %s -> %s(%s)", host, node.Name, addr)
 
 	cc, err = dial(ctx, network, addr)
 	if err != nil {
 		if marker := node.Marker(); marker != nil {
 			marker.Mark()
 		}
-		ho.log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
+		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
 		return
 	}
 
@@ -217,8 +217,8 @@ func (h *Sniffer) dialTLS(ctx context.Context, host string, ho *HandleOptions) (
 // dynamically generated certificate. The decrypted traffic is then handled
 // as HTTP.
 func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHello *dissector.ClientHelloInfo, ho *HandleOptions) error {
-	ro := ho.recorderObject
-	log := ho.log
+	ro := ho.RecorderObject
+	log := ho.Log
 
 	nextProtos := clientHello.SupportedProtos
 	if h.NegotiatedProtocol != "" {
@@ -317,14 +317,14 @@ func (h *Sniffer) terminateTLS(ctx context.Context, conn, cc net.Conn, clientHel
 	}
 
 	opts := []HandleOption{
-		WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+		sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
 			return clientConn, nil
 		}),
-		WithHTTPKeepalive(true),
-		WithNode(ho.node),
-		WithBypass(ho.bypass),
-		WithRecorderObject(ro),
-		WithLog(log),
+		sniffing.WithHTTPKeepalive(true),
+		sniffing.WithNode(ho.Node),
+		sniffing.WithBypass(ho.Bypass),
+		sniffing.WithRecorderObject(ro),
+		sniffing.WithLog(log),
 	}
 	return h.HandleHTTP(ctx, serverConn, opts...)
 }

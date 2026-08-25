@@ -1,7 +1,6 @@
 package forwarder
 
 import (
-	"context"
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,13 +10,11 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
-	"github.com/go-gost/core/hop"
-	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/x/config"
-	tls_util "github.com/go-gost/x/internal/util/tls"
 	"github.com/go-gost/x/internal/util/httpcache"
-	xrecorder "github.com/go-gost/x/recorder"
+	"github.com/go-gost/x/internal/util/sniffing"
+	tls_util "github.com/go-gost/x/internal/util/tls"
 )
 
 const (
@@ -33,77 +30,12 @@ const DefaultReadTimeout = 30 * time.Second
 // DefaultCertPool is the default in-memory certificate pool used for TLS MITM.
 var DefaultCertPool = tls_util.NewMemoryCertPool()
 
-// HandleOptions holds configuration options for sniffing handlers.
-type HandleOptions struct {
-	service        string
-	dial           func(ctx context.Context, network, address string) (net.Conn, error)
-	httpKeepalive  bool
-	readTimeout    time.Duration
-	node           *chain.Node
-	hop            hop.Hop
-	bypass         bypass.Bypass
-	recorderObject *xrecorder.HandlerRecorderObject
-	log            logger.Logger
-}
+// HandleOptions aliases sniffing.HandleOptions, the unified option set shared
+// by the sniffing and forwarder Sniffer implementations.
+type HandleOptions = sniffing.HandleOptions
 
 // HandleOption configures HandleOptions for sniffing handlers.
-type HandleOption func(opts *HandleOptions)
-
-// WithService sets the service name for bypass and selection lookups.
-func WithService(service string) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.service = service
-	}
-}
-
-// WithDial sets the dial function used to establish upstream connections.
-func WithDial(dial func(ctx context.Context, network, address string) (net.Conn, error)) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.dial = dial
-	}
-}
-
-// WithHTTPKeepalive enables or disables HTTP keep-alive on the upstream connection.
-func WithHTTPKeepalive(keepalive bool) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.httpKeepalive = keepalive
-	}
-}
-
-// WithNode sets a pre-resolved chain node to connect to, bypassing hop selection.
-func WithNode(node *chain.Node) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.node = node
-	}
-}
-
-// WithHop sets the hop used for node selection when routing requests.
-func WithHop(h hop.Hop) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.hop = h
-	}
-}
-
-// WithBypass sets the bypass rules for filtering requests by host.
-func WithBypass(bypass bypass.Bypass) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.bypass = bypass
-	}
-}
-
-// WithRecorderObject sets the recorder object for capturing traffic metadata.
-func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.recorderObject = ro
-	}
-}
-
-// WithLog sets the logger for the handler.
-func WithLog(log logger.Logger) HandleOption {
-	return func(opts *HandleOptions) {
-		opts.log = log
-	}
-}
+type HandleOption = sniffing.HandleOption
 
 // Sniffer handles HTTP and TLS traffic sniffing, recording, and MITM TLS
 // termination for protocol-aware forwarding. It can intercept HTTP requests,
@@ -171,8 +103,8 @@ func normalizeHost(host, defaultPort string) string {
 // effectiveReadTimeout returns the read timeout from options, falling back to
 // the Sniffer's ReadTimeout, then to DefaultReadTimeout.
 func (h *Sniffer) effectiveReadTimeout(ho *HandleOptions) time.Duration {
-	if ho.readTimeout > 0 {
-		return ho.readTimeout
+	if ho.ReadTimeout > 0 {
+		return ho.ReadTimeout
 	}
 	if h.ReadTimeout > 0 {
 		return h.ReadTimeout

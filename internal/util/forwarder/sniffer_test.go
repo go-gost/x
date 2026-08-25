@@ -21,9 +21,11 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/rewriter"
-	"github.com/klauspost/compress/zstd"
 	xlogger "github.com/go-gost/x/logger"
 	xrecorder "github.com/go-gost/x/recorder"
+	"github.com/klauspost/compress/zstd"
+
+	"github.com/go-gost/x/internal/util/sniffing"
 )
 
 // =============================================================================
@@ -230,7 +232,6 @@ func TestRewriteReqBody_Gzip(t *testing.T) {
 	})
 }
 
-
 func TestClampBodySize(t *testing.T) {
 	tests := []struct {
 		name string
@@ -297,7 +298,7 @@ func TestEffectiveReadTimeout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &Sniffer{ReadTimeout: tt.snifferTO}
-			ho := &HandleOptions{readTimeout: tt.hoTO}
+			ho := &HandleOptions{ReadTimeout: tt.hoTO}
 			got := h.effectiveReadTimeout(ho)
 			if got != tt.want {
 				t.Errorf("effectiveReadTimeout() = %v, want %v", got, tt.want)
@@ -555,12 +556,12 @@ func TestHandleHTTP_BasicProxy(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- h.HandleHTTP(context.Background(), serverConn,
-			WithService("test-svc"),
-			WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+			sniffing.WithService("test-svc"),
+			sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
 				return net.Dial("tcp", upstream.Listener.Addr().String())
 			}),
-			WithRecorderObject(ro),
-			WithLog(xlogger.Nop()),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(xlogger.Nop()),
 		)
 	}()
 
@@ -612,9 +613,9 @@ func TestHandleHTTP_HTTP2Detection(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- h.HandleHTTP(context.Background(), serverConn,
-			WithService("test-svc"),
-			WithRecorderObject(ro),
-			WithLog(xlogger.Nop()),
+			sniffing.WithService("test-svc"),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(xlogger.Nop()),
 		)
 	}()
 
@@ -637,16 +638,16 @@ func TestHandleHTTP_HTTP2Detection(t *testing.T) {
 
 func TestWithService(t *testing.T) {
 	opts := &HandleOptions{}
-	WithService("mysvc")(opts)
-	if opts.service != "mysvc" {
-		t.Errorf("service = %q, want %q", opts.service, "mysvc")
+	sniffing.WithService("mysvc")(opts)
+	if opts.Service != "mysvc" {
+		t.Errorf("service = %q, want %q", opts.Service, "mysvc")
 	}
 }
 
 func TestWithHTTPKeepalive(t *testing.T) {
 	opts := &HandleOptions{}
-	WithHTTPKeepalive(true)(opts)
-	if !opts.httpKeepalive {
+	sniffing.WithHTTPKeepalive(true)(opts)
+	if !opts.HTTPKeepalive {
 		t.Errorf("httpKeepalive = false, want true")
 	}
 }
@@ -654,8 +655,8 @@ func TestWithHTTPKeepalive(t *testing.T) {
 func TestWithNode(t *testing.T) {
 	opts := &HandleOptions{}
 	node := &chain.Node{Name: "test-node", Addr: "127.0.0.1:8080"}
-	WithNode(node)(opts)
-	if opts.node != node {
+	sniffing.WithNode(node)(opts)
+	if opts.Node != node {
 		t.Errorf("node not set")
 	}
 }
@@ -663,8 +664,8 @@ func TestWithNode(t *testing.T) {
 func TestWithHop(t *testing.T) {
 	opts := &HandleOptions{}
 	mh := &mockHop{}
-	WithHop(mh)(opts)
-	if opts.hop != mh {
+	sniffing.WithHop(mh)(opts)
+	if opts.Hop != mh {
 		t.Errorf("hop not set")
 	}
 }
@@ -672,8 +673,8 @@ func TestWithHop(t *testing.T) {
 func TestWithBypass(t *testing.T) {
 	opts := &HandleOptions{}
 	bp := &mockBypass{contains: true}
-	WithBypass(bp)(opts)
-	if opts.bypass != bp {
+	sniffing.WithBypass(bp)(opts)
+	if opts.Bypass != bp {
 		t.Errorf("bypass not set")
 	}
 }
@@ -681,8 +682,8 @@ func TestWithBypass(t *testing.T) {
 func TestWithRecorderObject(t *testing.T) {
 	opts := &HandleOptions{}
 	ro := &xrecorder.HandlerRecorderObject{}
-	WithRecorderObject(ro)(opts)
-	if opts.recorderObject != ro {
+	sniffing.WithRecorderObject(ro)(opts)
+	if opts.RecorderObject != ro {
 		t.Errorf("recorderObject not set")
 	}
 }
@@ -690,8 +691,8 @@ func TestWithRecorderObject(t *testing.T) {
 func TestWithLog(t *testing.T) {
 	opts := &HandleOptions{}
 	log := xlogger.Nop()
-	WithLog(log)(opts)
-	if opts.log != log {
+	sniffing.WithLog(log)(opts)
+	if opts.Log != log {
 		t.Errorf("log not set")
 	}
 }
@@ -732,11 +733,11 @@ func TestHandleHTTP_DialError(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- h.HandleHTTP(context.Background(), serverConn,
-			WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+			sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
 				return nil, io.ErrUnexpectedEOF
 			}),
-			WithRecorderObject(ro),
-			WithLog(xlogger.Nop()),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(xlogger.Nop()),
 		)
 	}()
 
@@ -782,11 +783,11 @@ func TestHandleHTTP_HTTP10Request(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- h.HandleHTTP(context.Background(), serverConn,
-			WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+			sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
 				return net.Dial("tcp", upstream.Listener.Addr().String())
 			}),
-			WithRecorderObject(ro),
-			WithLog(xlogger.Nop()),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(xlogger.Nop()),
 		)
 	}()
 
@@ -926,10 +927,10 @@ var _ hop.Hop = (*configurableHop)(nil)
 
 func TestResolveHTTPNode_Bypass(t *testing.T) {
 	ho := &HandleOptions{
-		service:        "test-svc",
-		bypass:         &mockBypass{contains: true},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Service:        "test-svc",
+		Bypass:         &mockBypass{contains: true},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
 
@@ -950,8 +951,8 @@ func TestResolveHTTPNode_Bypass(t *testing.T) {
 
 func TestResolveHTTPNode_NoHop(t *testing.T) {
 	ho := &HandleOptions{
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
 
@@ -972,9 +973,9 @@ func TestResolveHTTPNode_NoHop(t *testing.T) {
 
 func TestResolveHTTPNode_HopReturnsNil(t *testing.T) {
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: nil},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: nil},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
 
@@ -999,9 +1000,9 @@ func TestResolveHTTPNode_HopReturnsNil(t *testing.T) {
 func TestResolveHTTPNode_HopReturnsValidNode(t *testing.T) {
 	expectedNode := &chain.Node{Name: "backend", Addr: "10.0.0.1:8080"}
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: expectedNode},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: expectedNode},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
 
@@ -1019,9 +1020,9 @@ func TestResolveHTTPNode_HopReturnsValidNode(t *testing.T) {
 
 func TestResolveHTTPNode_HopReturnsNodeWithoutAddr(t *testing.T) {
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 	req, _ := http.NewRequest("GET", "http://example.com/path", nil)
 
@@ -1049,8 +1050,8 @@ func TestResolveHTTPNode_HopReturnsNodeWithoutAddr(t *testing.T) {
 
 func TestResolveTLSNode_NoHop(t *testing.T) {
 	ho := &HandleOptions{
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	node, err := resolveTLSNode(context.Background(), "example.com", ho)
@@ -1067,9 +1068,9 @@ func TestResolveTLSNode_NoHop(t *testing.T) {
 
 func TestResolveTLSNode_HopReturnsNil(t *testing.T) {
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: nil},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: nil},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	node, err := resolveTLSNode(context.Background(), "example.com", ho)
@@ -1087,9 +1088,9 @@ func TestResolveTLSNode_HopReturnsNil(t *testing.T) {
 func TestResolveTLSNode_HopReturnsValidNode(t *testing.T) {
 	expectedNode := &chain.Node{Name: "backend", Addr: "10.0.0.1:443"}
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: expectedNode},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: expectedNode},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	node, err := resolveTLSNode(context.Background(), "example.com", ho)
@@ -1103,9 +1104,9 @@ func TestResolveTLSNode_HopReturnsValidNode(t *testing.T) {
 
 func TestResolveTLSNode_HopReturnsNodeWithoutAddr(t *testing.T) {
 	ho := &HandleOptions{
-		hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Hop:            &configurableHop{node: &chain.Node{Name: "backend"}},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	node, err := resolveTLSNode(context.Background(), "example.com", ho)
@@ -1720,8 +1721,8 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 		Recorder:    &noopRecorder{},
 	}
 	ho := &HandleOptions{
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -1743,7 +1744,6 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 // =============================================================================
 // SSE (Server-Sent Events) Tests
 // =============================================================================
-
 
 func TestRewriteRespBody_SSE_ContentType(t *testing.T) {
 	// rewriteRespBody now rewrites SSE per-event via the universal wrapper.

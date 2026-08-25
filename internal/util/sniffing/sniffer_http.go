@@ -44,13 +44,13 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 		return err
 	}
 
-	log := ho.log
+	log := ho.Log
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
 		log.Trace(string(dump))
 	}
 
-	ro := ho.recorderObject
+	ro := ho.RecorderObject
 
 	// Copy ro so that all internal recording (cache-hit serveCachedResponse
 	// and cache-miss httpRoundTrip) happens on a local clone, preventing
@@ -74,12 +74,12 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 		ro.Host = host
 		log = log.WithFields(map[string]any{"host": host})
 
-		if ho.bypass != nil && ho.bypass.Contains(ctx, network, host, bypass.WithService(ho.service)) {
+		if ho.Bypass != nil && ho.Bypass.Contains(ctx, network, host, bypass.WithService(ho.Service)) {
 			return xbypass.ErrBypass
 		}
 	}
 
-	dialFn := ho.dial
+	dialFn := ho.Dial
 	if dialFn == nil {
 		dialFn = (&net.Dialer{}).DialContext
 	}

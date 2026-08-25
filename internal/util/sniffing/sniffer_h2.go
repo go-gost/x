@@ -33,14 +33,14 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 		return errors.New("h2: invalid client preface")
 	}
 
-	ro := ho.recorderObject
-	log := ho.log
+	ro := ho.RecorderObject
+	log := ho.Log
 
 	ro.Time = time.Time{}
 
 	tr := &http2.Transport{
 		DialTLSContext: func(ctx context.Context, nw, addr string, cfg *tls.Config) (net.Conn, error) {
-			if dial := ho.dialTLS; dial != nil {
+			if dial := ho.DialTLS; dial != nil {
 				return dial(ctx, network, addr, cfg)
 			}
 

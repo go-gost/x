@@ -153,14 +153,14 @@ func (h *Sniffer) HandleRedis(ctx context.Context, network string, conn net.Conn
 	}
 
 	buf := new(bytes.Buffer)
-	if err := ParseRedisMetadata(io.TeeReader(conn, buf), ho.recorderObject); err != nil {
+	if err := ParseRedisMetadata(io.TeeReader(conn, buf), ho.RecorderObject); err != nil {
 		return err
 	}
 
-	log := ho.log
-	ro := ho.recorderObject
+	log := ho.Log
+	ro := ho.RecorderObject
 
-	dial := ho.dial
+	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}

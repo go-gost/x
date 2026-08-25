@@ -90,49 +90,24 @@ func (h *sniHandler) sniffingDialTLS(ctx context.Context, network, address strin
 }
 
 // handleSniffedProtocol dispatches a sniffed connection to the
-// protocol-specific sniffer ([sniffing.Sniffer.HandleHTTP] or
-// [sniffing.Sniffer.HandleTLS]).
+// protocol-specific sniffer registered for proto.
 //
 // It returns (true, err) when the protocol was handled and (false, nil)
 // when the protocol is unrecognised and the caller should handle the
 // connection directly (which for the SNI handler means silently dropping it).
 func (h *sniHandler) handleSniffedProtocol(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, proto string) (handled bool, err error) {
-	switch proto {
-	case sniffing.ProtoHTTP, sniffing.ProtoTLS, sniffing.ProtoRedis:
-		dial := func(ctx context.Context, network, address string) (net.Conn, error) {
-			return h.sniffingDial(ctx, network, address, ro)
-		}
-		dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
-			return h.sniffingDialTLS(ctx, network, address, ro, cfg)
-		}
-		sniffer := h.sniffer.Build()
-		if proto == sniffing.ProtoHTTP {
-			return true, sniffer.HandleHTTP(ctx, "tcp", conn,
-				sniffing.WithService(h.options.Service),
-				sniffing.WithDial(dial),
-				sniffing.WithDialTLS(dialTLS),
-				sniffing.WithBypass(h.options.Bypass),
-				sniffing.WithRecorderObject(ro),
-				sniffing.WithLog(log),
-			)
-		}
-		if proto == sniffing.ProtoTLS {
-			return true, sniffer.HandleTLS(ctx, "tcp", conn,
-				sniffing.WithService(h.options.Service),
-				sniffing.WithDial(dial),
-				sniffing.WithDialTLS(dialTLS),
-				sniffing.WithBypass(h.options.Bypass),
-				sniffing.WithRecorderObject(ro),
-				sniffing.WithLog(log),
-			)
-		}
-		return true, sniffer.HandleRedis(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	default:
-		return false, nil
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		return h.sniffingDial(ctx, network, address, ro)
 	}
+	dialTLS := func(ctx context.Context, network, address string, cfg *tls.Config) (net.Conn, error) {
+		return h.sniffingDialTLS(ctx, network, address, ro, cfg)
+	}
+	return sniffing.Dispatch(h.sniffer.Build(), ctx, "tcp", conn, proto,
+		sniffing.WithService(h.options.Service),
+		sniffing.WithDial(dial),
+		sniffing.WithDialTLS(dialTLS),
+		sniffing.WithBypass(h.options.Bypass),
+		sniffing.WithRecorderObject(ro),
+		sniffing.WithLog(log),
+	)
 }

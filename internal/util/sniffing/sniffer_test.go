@@ -177,8 +177,8 @@ func TestWrapErr(t *testing.T) {
 func TestWithService(t *testing.T) {
 	opts := &HandleOptions{}
 	WithService("mysvc")(opts)
-	if opts.service != "mysvc" {
-		t.Errorf("service = %q, want %q", opts.service, "mysvc")
+	if opts.Service != "mysvc" {
+		t.Errorf("service = %q, want %q", opts.Service, "mysvc")
 	}
 }
 
@@ -188,7 +188,7 @@ func TestWithDial(t *testing.T) {
 		return nil, nil
 	}
 	WithDial(dial)(opts)
-	if opts.dial == nil {
+	if opts.Dial == nil {
 		t.Error("dial should be set")
 	}
 }
@@ -199,7 +199,7 @@ func TestWithDialTLS(t *testing.T) {
 		return nil, nil
 	}
 	WithDialTLS(dialTLS)(opts)
-	if opts.dialTLS == nil {
+	if opts.DialTLS == nil {
 		t.Error("dialTLS should be set")
 	}
 }
@@ -208,7 +208,7 @@ func TestWithBypass(t *testing.T) {
 	opts := &HandleOptions{}
 	bp := &mockBypass{contains: true}
 	WithBypass(bp)(opts)
-	if opts.bypass != bp {
+	if opts.Bypass != bp {
 		t.Errorf("bypass not set")
 	}
 }
@@ -217,7 +217,7 @@ func TestWithRecorderObject(t *testing.T) {
 	opts := &HandleOptions{}
 	ro := &xrecorder.HandlerRecorderObject{}
 	WithRecorderObject(ro)(opts)
-	if opts.recorderObject != ro {
+	if opts.RecorderObject != ro {
 		t.Errorf("recorderObject not set")
 	}
 }
@@ -226,7 +226,7 @@ func TestWithLog(t *testing.T) {
 	opts := &HandleOptions{}
 	log := xlogger.Nop()
 	WithLog(log)(opts)
-	if opts.log != log {
+	if opts.Log != log {
 		t.Errorf("log not set")
 	}
 }
@@ -416,8 +416,8 @@ func TestCopyWebsocketFrame_Basic(t *testing.T) {
 	}
 
 	var frame bytes.Buffer
-	frame.WriteByte(0x81)      // FIN + text opcode
-	frame.WriteByte(0x82)      // MASK + len=2
+	frame.WriteByte(0x81) // FIN + text opcode
+	frame.WriteByte(0x82) // MASK + len=2
 	frame.Write(mask)
 	frame.Write(maskedPayload)
 
@@ -664,8 +664,8 @@ func TestServeH2_InvalidPreface(t *testing.T) {
 		Recorder:    &noopRecorder{},
 	}
 	ho := &HandleOptions{
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -692,8 +692,8 @@ func TestServeH2_ShortRead(t *testing.T) {
 		Recorder:    &noopRecorder{},
 	}
 	ho := &HandleOptions{
-		log:            xlogger.Nop(),
-		recorderObject: &xrecorder.HandlerRecorderObject{},
+		Log:            xlogger.Nop(),
+		RecorderObject: &xrecorder.HandlerRecorderObject{},
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -1058,9 +1058,9 @@ func TestHandleTLS_NonTLSData(t *testing.T) {
 
 func TestHandleUpgradeResponse_WebsocketEnabled(t *testing.T) {
 	h := &Sniffer{
-		Websocket:    true,
-		ReadTimeout:  5 * time.Second,
-		Recorder:     &noopRecorder{},
+		Websocket:   true,
+		ReadTimeout: 5 * time.Second,
+		Recorder:    &noopRecorder{},
 	}
 	ro := &xrecorder.HandlerRecorderObject{}
 

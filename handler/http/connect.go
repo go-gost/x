@@ -128,35 +128,14 @@ func (h *httpHandler) sniffAndHandle(ctx context.Context, conn net.Conn, cc net.
 	sniffer := h.sniffer.Build()
 
 	conn = xnet.NewReadWriteConn(br, conn, conn)
-	switch proto {
-	case sniffing.ProtoHTTP:
-		return true, sniffer.HandleHTTP(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithDialTLS(dialTLS),
-			sniffing.WithBypass(h.options.Bypass),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	case sniffing.ProtoTLS:
-		return true, sniffer.HandleTLS(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithDialTLS(dialTLS),
-			sniffing.WithBypass(h.options.Bypass),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	case sniffing.ProtoRedis:
-		return true, sniffer.HandleRedis(ctx, "tcp", conn,
-			sniffing.WithService(h.options.Service),
-			sniffing.WithDial(dial),
-			sniffing.WithRecorderObject(ro),
-			sniffing.WithLog(log),
-		)
-	}
-
-	return false, nil
+	return sniffing.Dispatch(sniffer, ctx, "tcp", conn, proto,
+		sniffing.WithService(h.options.Service),
+		sniffing.WithDial(dial),
+		sniffing.WithDialTLS(dialTLS),
+		sniffing.WithBypass(h.options.Bypass),
+		sniffing.WithRecorderObject(ro),
+		sniffing.WithLog(log),
+	)
 }
 
 // dial establishes an upstream connection through the proxy chain router.
