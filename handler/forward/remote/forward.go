@@ -93,6 +93,15 @@ func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn,
 // metadata when set, then falling back to hop selection.
 func (h *forwardHandler) selectTarget(ctx context.Context, proto string) *chain.Node {
 	if host := mdutil.GetString(ictx.MetadataFromContext(ctx), "host"); host != "" {
+		// Route the tunneled hostname through the hop so a node with a matching
+		// filter.host is selected (the node's addr is the real target). If the
+		// hop has no matching node (e.g. no filter configured), fall back to
+		// dialing the hostname directly — the pre-regression behavior.
+		if curHop := h.getHop(); curHop != nil {
+			if node := curHop.Select(ctx, hop.ProtocolSelectOption(proto), hop.HostSelectOption(host)); node != nil {
+				return node
+			}
+		}
 		return &chain.Node{Addr: host}
 	}
 	if curHop := h.getHop(); curHop != nil {

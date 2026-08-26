@@ -201,7 +201,52 @@ func TestHandleRawForwarding_MarkerReset(t *testing.T) {
 	}
 }
 
-func TestHandleRawForwarding_ContextHost(t *testing.T) {
+// TestHandleRawForwarding_ContextHostHop: a tunneled hostname with a hop whose
+// node matches the host filter routes to that node's addr (the documented
+// filter.host client routing). The node addr is the real target.
+func TestHandleRawForwarding_ContextHostHop(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	var gotHost string
+	h := newInitdHandler(withRouter(&mockRouter{
+		opts: &chain.RouterOptions{},
+		dialFn: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return server, nil
+		},
+	}))
+	h.Forward(&mockHop{
+		selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
+			var so hop.SelectOptions
+			for _, o := range opts {
+				o(&so)
+			}
+			gotHost = so.Host
+			return &chain.Node{Name: "example", Addr: "10.0.0.2:80"}
+		},
+	})
+	ctx := ictx.ContextWithMetadata(context.Background(), xmd.NewMetadata(map[string]any{
+		"host": "example.local:80",
+	}))
+	conn := newStringConn(nil)
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	err := h.handleRawForwarding(ctx, conn, ro, nopLog(), "tcp", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotHost != "example.local:80" {
+		t.Errorf("expected host passed to hop selection, got '%s'", gotHost)
+	}
+	if ro.Host != "10.0.0.2:80" {
+		t.Errorf("expected node addr to be dialed, got '%s'", ro.Host)
+	}
+}
+
+// TestHandleRawForwarding_ContextHostNoHop: when there is no hop, the tunneled
+// hostname is dialed directly (fallback preserving the pre-regression behavior).
+func TestHandleRawForwarding_ContextHostNoHop(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -212,11 +257,6 @@ func TestHandleRawForwarding_ContextHost(t *testing.T) {
 			return server, nil
 		},
 	}))
-	h.Forward(&mockHop{
-		selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
-			return &chain.Node{Addr: "10.0.0.2:80"}
-		},
-	})
 	ctx := ictx.ContextWithMetadata(context.Background(), xmd.NewMetadata(map[string]any{
 		"host": "10.0.0.99:8080",
 	}))

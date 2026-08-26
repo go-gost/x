@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xrelay "github.com/go-gost/x/internal/util/relay"
 )
 
@@ -94,6 +96,14 @@ func (c *bindConn) Metadata() mdata.Metadata {
 	return c.md
 }
 
+// Context implements xctx.Context, exposing the connection metadata (e.g. the
+// tunneled hostname) to the handler's context. The service accept loop derives
+// the handler context from a conn that implements this interface, which lets
+// reverse-forward handlers (rtcp) route on the hostname carried by the tunnel.
+func (c *bindConn) Context() context.Context {
+	return ictx.ContextWithMetadata(context.Background(), c.md)
+}
+
 type bindUDPConn struct {
 	net.Conn
 	localAddr  net.Addr
@@ -160,6 +170,12 @@ func (c *bindUDPConn) RemoteAddr() net.Addr {
 // Metadata implements metadata.Metadatable interface.
 func (c *bindUDPConn) Metadata() mdata.Metadata {
 	return c.md
+}
+
+// Context implements xctx.Context, exposing the connection metadata (e.g. the
+// tunneled hostname) to the handler's context. See bindConn.Context.
+func (c *bindUDPConn) Context() context.Context {
+	return ictx.ContextWithMetadata(context.Background(), c.md)
 }
 
 type bindAddr struct {
