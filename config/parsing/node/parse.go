@@ -45,13 +45,28 @@ func filterToMatcherRule(filter *config.NodeFilterConfig) string {
 		return ""
 	}
 	var parts []string
-	if host := filter.Host; host != "" {
-		// A leading-dot host (from `*.example.com` or `.example.com`) matches
-		// the apex AND its subdomains in the legacy filter (HasSuffix on the
-		// dot-stripped form), but matcher Host(.x) only matches subdomains.
-		// Emit both to preserve apex coverage.
+	// Normalize the legacy host forms first: `*.example.com` and
+	// `.example.com` both meant "apex AND subdomains" in the legacy filter.
+	// Strip the wildcard so the leading-dot branch below handles both.
+	host := filter.Host
+	if strings.HasPrefix(host, "*") {
+		host = host[1:]
+		if !strings.HasPrefix(host, ".") {
+			host = "." + host
+		}
+	}
+	if host != "" {
+		// A leading-dot host matches the apex AND its subdomains in the
+		// legacy filter (HasSuffix on the dot-stripped form), but matcher
+		// Host(.x) only matches subdomains. Emit both to preserve apex
+		// coverage. Parenthesize the OR when other conjuncts follow, since
+		// && binds tighter than || in the matcher DSL.
 		if strings.HasPrefix(host, ".") {
-			parts = append(parts, "Host(`"+host[1:]+"`) || Host(`"+host+"`)")
+			h := "Host(`" + host[1:] + "`) || Host(`" + host + "`)"
+			if filter.Protocol != "" || filter.Path != "" {
+				h = "(" + h + ")"
+			}
+			parts = append(parts, h)
 		} else {
 			parts = append(parts, "Host(`"+host+"`)")
 		}
