@@ -245,6 +245,48 @@ func TestProxyRoundTrip_HeaderCleanup(t *testing.T) {
 	}
 }
 
+func TestProxyRoundTrip_OriginFormHost(t *testing.T) {
+	// Origin-form request (GET / + Host header), as sent by nginx
+	// proxy_pass. Mirrors go-gost/gost#679: the transport must not fail
+	// with "http: no Host in request URL".
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "myoniondomain.onion" {
+			t.Errorf("unexpected Host header: %q", r.Host)
+		}
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	// Transport must dial the test server regardless of the target host,
+	// like the handler's real transport does via the proxy chain.
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+		transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial(network, ts.Listener.Addr().String())
+			},
+		},
+	}
+	h.md.readTimeout = 15
+
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Host = "myoniondomain.onion"
+	ro := &xrecorder.HandlerRecorderObject{
+		RemoteAddr: "127.0.0.1:12345",
+	}
+	pStats := xstats.Stats{}
+
+	rw := &testReadWriteCloser{buf: new(strings.Builder)}
+
+	_, err := h.proxyRoundTrip(context.Background(), rw, req, ro, &pStats, &testLogger{})
+	if err != nil {
+		t.Fatalf("proxyRoundTrip error: %v", err)
+	}
+}
+
 // testBypass implements bypass.Bypass for testing.
 type testBypass struct {
 	contains bool

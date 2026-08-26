@@ -98,6 +98,18 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	}
 	req.Header.Del("Gost-Record")
 
+	// Origin-form requests ("GET / HTTP/1.1" + Host header, e.g. sent by
+	// nginx proxy_pass) carry their target only in req.Host, which
+	// normalizeRequest doesn't mirror into the URL (it fills Scheme only,
+	// leaving URL.Host empty). Subsequent keep-alive requests parsed in
+	// handleProxy never pass through normalizeRequest at all. The
+	// http.Transport requires a non-empty URL.Host, otherwise it fails
+	// with "http: no Host in request URL" (#679).
+	if req.URL.Host == "" {
+		req.URL.Scheme = "http"
+		req.URL.Host = req.Host
+	}
+
 	host := normalizeHostPort(req.Host, "80")
 	ro.Host = host
 	ro.Time = time.Now()
