@@ -9,9 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -171,13 +169,12 @@ func (p *chainHop) Nodes() []*chain.Node {
 // Selection pipeline:
 //
 //  1. Hop-level bypass         — entire hop skipped if bypass matches (addr/host)
-//  2. Per-node filter (pool)   — each candidate must pass at least one gate:
-//       a. routing.Matcher     — boolean expression (Host/Protocol/Method/Path/
-//                                  Query/Header/Body). Match → non-zero Priority.
-//       b. isEligible fallback — when no Matcher set, checks node Options.Filter:
-//                                  checkHost(Host), checkProtocol(Protocol),
-//                                  checkPath(Path prefix).
-//     Nodes that fail all gates or hit a node-level bypass are excluded.
+//  2. Per-node matcher (pool)  — each candidate must pass the gate:
+//       routing.Matcher         — boolean expression (Host/Protocol/Method/
+//                                  Path/Query/Header/Body). Match → non-zero
+//                                  Priority. Nodes without a matcher are
+//                                  unconditional candidates.
+//     Nodes that fail the gate or hit a node-level bypass are excluded.
 //  3. Priority short-circuit   — if the top node has strictly higher Priority
 //                                (>0) than the rest and no backup flag is present,
 //                                it wins directly (selector skipped).
@@ -346,23 +343,11 @@ func isAllBackup(nodes []*chain.Node) bool {
 	return len(nodes) > 0
 }
 
-func (p *chainHop) isEligible(node *chain.Node, opts *hop.SelectOptions) bool {
-	if node == nil {
-		return false
-	}
-	if node.Options().Filter == nil {
-		return true
-	}
-
-	if !p.checkHost(opts.Host, node) || !p.checkProtocol(opts.Protocol, node) || !p.checkPath(opts.Path, node) {
-		return false
-	}
-	return true
-}
-
-// nodeMatches reports whether node passes the per-node bypass and
-// matcher/eligible gates for the given selection options. Shared by the
-// candidate-pool scan and the all-failed last-resort fallback.
+// nodeMatches reports whether node passes the per-node bypass and matcher
+// gates for the given selection options. Shared by the candidate-pool scan
+// and the all-failed last-resort fallback. A node with no matcher is an
+// unconditional candidate (legacy filter config is normalized to a matcher
+// at parse time).
 func (p *chainHop) nodeMatches(ctx context.Context, node *chain.Node, opts *hop.SelectOptions) bool {
 	if node == nil {
 		return false
@@ -385,55 +370,7 @@ func (p *chainHop) nodeMatches(ctx context.Context, node *chain.Node, opts *hop.
 		}
 		return matcher.Match(&req)
 	}
-	return p.isEligible(node, opts)
-}
-
-func (p *chainHop) checkHost(host string, node *chain.Node) bool {
-	var vhost string
-	if filter := node.Options().Filter; filter != nil {
-		vhost = filter.Host
-	}
-	if vhost == "" { // backup node
-		return true
-	}
-
-	if host == "" {
-		return false
-	}
-
-	if v, _, _ := net.SplitHostPort(host); v != "" {
-		host = v
-	}
-
-	if vhost == host || vhost[0] == '.' && strings.HasSuffix(host, vhost[1:]) {
-		return true
-	}
-
-	return false
-}
-
-func (p *chainHop) checkProtocol(protocol string, node *chain.Node) bool {
-	var prot string
-	if filter := node.Options().Filter; filter != nil {
-		prot = filter.Protocol
-	}
-	if prot == "" {
-		return true
-	}
-	return prot == protocol
-}
-
-func (p *chainHop) checkPath(path string, node *chain.Node) bool {
-	var pathFilter string
-	if filter := node.Options().Filter; filter != nil {
-		pathFilter = filter.Path
-	}
-
-	if pathFilter == "" {
-		return true
-	}
-
-	return strings.HasPrefix(path, pathFilter)
+	return true
 }
 
 func (p *chainHop) periodReload(ctx context.Context) error {

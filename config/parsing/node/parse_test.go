@@ -501,3 +501,31 @@ func TestParseNode_DeprecatedFilterFields(t *testing.T) {
 		t.Fatal("expected non-nil node")
 	}
 }
+
+func TestFilterToMatcherRule(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter *config.NodeFilterConfig
+		want   string
+	}{
+		{"nil", nil, ""},
+		{"all empty", &config.NodeFilterConfig{}, ""},
+		{"host only", &config.NodeFilterConfig{Host: "example.com"}, "Host(`example.com`)"},
+		{"wildcard host", &config.NodeFilterConfig{Host: ".example.com"},
+			"Host(`example.com`) || Host(`.example.com`)"},
+		{"protocol only", &config.NodeFilterConfig{Protocol: "ssh"}, "Proto(`ssh`)"},
+		{"path only", &config.NodeFilterConfig{Path: "/api"}, "PathPrefix(`/api`)"},
+		{"combined", &config.NodeFilterConfig{
+			Host:     ".example.com",
+			Protocol: "http",
+			Path:     "/api",
+		}, "Host(`example.com`) || Host(`.example.com`) && Proto(`http`) && PathPrefix(`/api`)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := filterToMatcherRule(tt.filter); got != tt.want {
+				t.Errorf("filterToMatcherRule(%v) = %q, want %q", tt.filter, got, tt.want)
+			}
+		})
+	}
+}

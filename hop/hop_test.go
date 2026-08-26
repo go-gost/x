@@ -20,8 +20,19 @@ import (
 	xmd "github.com/go-gost/x/metadata"
 	xlogger "github.com/go-gost/x/logger"
 	xselector "github.com/go-gost/x/selector"
+	xrouting "github.com/go-gost/x/routing"
 	"github.com/go-gost/x/registry"
 )
+
+// mustMatcher parses a matcher DSL rule, failing the test on error.
+func mustMatcher(t *testing.T, rule string) routing.Matcher {
+	t.Helper()
+	m, err := xrouting.NewMatcher(rule)
+	if err != nil {
+		t.Fatalf("NewMatcher(%q): %v", rule, err)
+	}
+	return m
+}
 
 // --- Mock types ---
 
@@ -668,259 +679,12 @@ func TestSelect_NilNodesSkipped(t *testing.T) {
 }
 
 // =============================================================================
-// isEligible tests
+// Select with matcher integration tests
 // =============================================================================
 
-func TestIsEligible_NilNode(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	if ch.isEligible(nil, &hop.SelectOptions{}) {
-		t.Error("expected false for nil node")
-	}
-}
-
-func TestIsEligible_NoFilter(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	if !ch.isEligible(n, &hop.SelectOptions{}) {
-		t.Error("expected true when no filter")
-	}
-}
-
-func TestIsEligible_HostMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if !ch.isEligible(n, &hop.SelectOptions{Host: "example.com"}) {
-		t.Error("expected true for matching host")
-	}
-}
-
-func TestIsEligible_HostMismatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if ch.isEligible(n, &hop.SelectOptions{Host: "other.com"}) {
-		t.Error("expected false for mismatching host")
-	}
-}
-
-func TestIsEligible_ProtocolMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Protocol: "http"}
-	if !ch.isEligible(n, &hop.SelectOptions{Protocol: "http"}) {
-		t.Error("expected true for matching protocol")
-	}
-}
-
-func TestIsEligible_ProtocolMismatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Protocol: "http"}
-	if ch.isEligible(n, &hop.SelectOptions{Protocol: "socks5"}) {
-		t.Error("expected false for mismatching protocol")
-	}
-}
-
-func TestIsEligible_PathMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if !ch.isEligible(n, &hop.SelectOptions{Path: "/api/v1/users"}) {
-		t.Error("expected true for matching path prefix")
-	}
-}
-
-func TestIsEligible_PathMismatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if ch.isEligible(n, &hop.SelectOptions{Path: "/other/route"}) {
-		t.Error("expected false for mismatching path")
-	}
-}
-
-func TestIsEligible_AllFiltersMustPass(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{
-		Host:     "example.com",
-		Protocol: "http",
-	}
-	if ch.isEligible(n, &hop.SelectOptions{Host: "example.com", Protocol: "socks5"}) {
-		t.Error("expected false: host matches but protocol doesn't")
-	}
-}
-
-// =============================================================================
-// checkHost tests
-// =============================================================================
-
-func TestCheckHost_EmptyFilter(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	if !ch.checkHost("anything.com", n) {
-		t.Error("expected true when no host filter")
-	}
-}
-
-func TestCheckHost_ExactMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if !ch.checkHost("example.com", n) {
-		t.Error("expected true for exact host match")
-	}
-}
-
-func TestCheckHost_WildcardMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: ".example.com"}
-	if !ch.checkHost("sub.example.com", n) {
-		t.Error("expected true for wildcard host match")
-	}
-}
-
-func TestCheckHost_WildcardNoMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: ".example.com"}
-	if ch.checkHost("other.net", n) {
-		t.Error("expected false for non-matching wildcard")
-	}
-}
-
-func TestCheckHost_EmptyInputHost(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if ch.checkHost("", n) {
-		t.Error("expected false when input host is empty and filter is set")
-	}
-}
-
-func TestCheckHost_StripPort(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if !ch.checkHost("example.com:443", n) {
-		t.Error("expected true after stripping port")
-	}
-}
-
-func TestCheckHost_IPWithPort(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "192.168.1.1"}
-	if !ch.checkHost("192.168.1.1:3128", n) {
-		t.Error("expected true for IP with port")
-	}
-}
-
-func TestCheckHost_IPv6WithPort(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "::1"}
-	if !ch.checkHost("[::1]:8080", n) {
-		t.Error("expected true for bracketed IPv6 with port")
-	}
-}
-
-func TestCheckHost_NoMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
-	if ch.checkHost("other.com", n) {
-		t.Error("expected false for non-matching host")
-	}
-}
-
-// =============================================================================
-// checkProtocol tests
-// =============================================================================
-
-func TestCheckProtocol_EmptyFilter(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	if !ch.checkProtocol("http", n) {
-		t.Error("expected true when no protocol filter")
-	}
-}
-
-func TestCheckProtocol_Match(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Protocol: "http"}
-	if !ch.checkProtocol("http", n) {
-		t.Error("expected true for matching protocol")
-	}
-}
-
-func TestCheckProtocol_NoMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Protocol: "socks5"}
-	if ch.checkProtocol("http", n) {
-		t.Error("expected false for non-matching protocol")
-	}
-}
-
-// =============================================================================
-// checkPath tests
-// =============================================================================
-
-func TestCheckPath_EmptyFilter(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	if !ch.checkPath("/any/path", n) {
-		t.Error("expected true when no path filter")
-	}
-}
-
-func TestCheckPath_PrefixMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if !ch.checkPath("/api/v1/users", n) {
-		t.Error("expected true for prefix match")
-	}
-}
-
-func TestCheckPath_ExactMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if !ch.checkPath("/api", n) {
-		t.Error("expected true for exact match (prefix of self)")
-	}
-}
-
-func TestCheckPath_NoMatch(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if ch.checkPath("/other", n) {
-		t.Error("expected false for non-prefix match")
-	}
-}
-
-func TestCheckPath_ShorterInput(t *testing.T) {
-	ch := &chainHop{logger: xlogger.Nop()}
-	n := chain.NewNode("n1", "127.0.0.1:8080")
-	n.Options().Filter = &chain.NodeFilterSettings{Path: "/api"}
-	if ch.checkPath("/ap", n) {
-		t.Error("expected false when input is shorter than filter prefix")
-	}
-}
-
-// =============================================================================
-// Select with filter integration tests
-// =============================================================================
-
-func TestSelect_FilterHost_Match(t *testing.T) {
+func TestSelect_MatcherHost_Match(t *testing.T) {
 	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
+	n1.Options().Matcher = mustMatcher(t, "Host(`example.com`)")
 	h := newTestHop(NodeOption(n1))
 	defer h.Close()
 
@@ -930,9 +694,9 @@ func TestSelect_FilterHost_Match(t *testing.T) {
 	}
 }
 
-func TestSelect_FilterHost_NoMatch(t *testing.T) {
+func TestSelect_MatcherHost_NoMatch(t *testing.T) {
 	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Host: "example.com"}
+	n1.Options().Matcher = mustMatcher(t, "Host(`example.com`)")
 	n2 := chain.NewNode("n2", "127.0.0.1:9090")
 	h := newTestHop(NodeOption(n1, n2))
 	defer h.Close()
@@ -946,9 +710,9 @@ func TestSelect_FilterHost_NoMatch(t *testing.T) {
 	}
 }
 
-func TestSelect_FilterProtocol_Match(t *testing.T) {
+func TestSelect_MatcherProtocol_Match(t *testing.T) {
 	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Protocol: "http"}
+	n1.Options().Matcher = mustMatcher(t, "Proto(`http`)")
 	h := newTestHop(NodeOption(n1))
 	defer h.Close()
 
@@ -958,9 +722,9 @@ func TestSelect_FilterProtocol_Match(t *testing.T) {
 	}
 }
 
-func TestSelect_FilterProtocol_NoMatch(t *testing.T) {
+func TestSelect_MatcherProtocol_NoMatch(t *testing.T) {
 	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Protocol: "http"}
+	n1.Options().Matcher = mustMatcher(t, "Proto(`http`)")
 	n2 := chain.NewNode("n2", "127.0.0.1:9090")
 	h := newTestHop(NodeOption(n1, n2))
 	defer h.Close()
@@ -971,6 +735,39 @@ func TestSelect_FilterProtocol_NoMatch(t *testing.T) {
 	}
 	if node.Name != "n2" {
 		t.Errorf("expected 'n2' (n1 protocol mismatch), got %q", node.Name)
+	}
+}
+
+func TestSelect_MatcherWildcardHost_MatchesApexAndSubdomain(t *testing.T) {
+	// filter `.example.com` (legacy wildcard) matches apex AND subdomains;
+	// the converter emits `Host(example.com) || Host(.example.com)`.
+	n1 := chain.NewNode("n1", "127.0.0.1:8080")
+	n1.Options().Matcher = mustMatcher(t, "Host(`example.com`) || Host(`.example.com`)")
+	n2 := chain.NewNode("n2", "127.0.0.1:9090")
+	h := newTestHop(NodeOption(n1, n2))
+	defer h.Close()
+
+	for _, host := range []string{"example.com", "sub.example.com", "a.b.example.com"} {
+		node := h.Select(context.Background(), hop.HostSelectOption(host))
+		if node == nil || node.Name != "n1" {
+			t.Errorf("expected n1 for host %q, got %v", host, node)
+		}
+	}
+}
+
+func TestSelect_MatcherWildcardHost_NoSubdomainMatch(t *testing.T) {
+	n1 := chain.NewNode("n1", "127.0.0.1:8080")
+	n1.Options().Matcher = mustMatcher(t, "Host(`example.com`) || Host(`.example.com`)")
+	n2 := chain.NewNode("n2", "127.0.0.1:9090")
+	h := newTestHop(NodeOption(n1, n2))
+	defer h.Close()
+
+	node := h.Select(context.Background(), hop.HostSelectOption("other.net"))
+	if node == nil {
+		t.Fatal("expected node, got nil")
+	}
+	if node.Name != "n2" {
+		t.Errorf("expected 'n2' (n1 host mismatch), got %q", node.Name)
 	}
 }
 
@@ -1420,14 +1217,13 @@ func TestSelect_OnlyNegativePriorities(t *testing.T) {
 }
 
 // =============================================================================
-// Select with backup node (empty host filter means backup)
+// Select with catch-all node (no matcher = unconditional candidate)
 // =============================================================================
 
-func TestSelect_BackupNode_HostFilterEmpty(t *testing.T) {
-	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Host: ""}
+func TestSelect_CatchAllNode_TakesOverOnNoMatch(t *testing.T) {
+	n1 := chain.NewNode("n1", "127.0.0.1:8080") // no matcher: catch-all
 	n2 := chain.NewNode("n2", "127.0.0.1:9090")
-	n2.Options().Filter = &chain.NodeFilterSettings{Host: "specific.com"}
+	n2.Options().Matcher = mustMatcher(t, "Host(`specific.com`)")
 	h := newTestHop(NodeOption(n1, n2))
 	defer h.Close()
 
@@ -1436,15 +1232,14 @@ func TestSelect_BackupNode_HostFilterEmpty(t *testing.T) {
 		t.Fatal("expected node, got nil")
 	}
 	if node.Name != "n1" {
-		t.Errorf("expected 'n1' (backup), got %q", node.Name)
+		t.Errorf("expected 'n1' (catch-all), got %q", node.Name)
 	}
 }
 
 func TestSelect_SpecificHostNodeWins(t *testing.T) {
-	n1 := chain.NewNode("n1", "127.0.0.1:8080")
-	n1.Options().Filter = &chain.NodeFilterSettings{Host: ""}
+	n1 := chain.NewNode("n1", "127.0.0.1:8080") // no matcher: catch-all
 	n2 := chain.NewNode("n2", "127.0.0.1:9090")
-	n2.Options().Filter = &chain.NodeFilterSettings{Host: "specific.com"}
+	n2.Options().Matcher = mustMatcher(t, "Host(`specific.com`)")
 	h := newTestHop(NodeOption(n1, n2))
 	defer h.Close()
 

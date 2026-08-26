@@ -36,6 +36,35 @@ const DefaultMatcherBodySize = 1 << 20 // 1MB
 // when a node opts in to body matching.
 const MaxMatcherBodySize = 10 << 20 // 10MB
 
+// filterToMatcherRule converts a deprecated NodeFilterConfig (host/protocol/
+// path) into an equivalent matcher DSL rule. Empty fields are omitted; an
+// empty result means the node is unconditional. Path maps to PathPrefix
+// (the legacy filter is a prefix match, not exact).
+func filterToMatcherRule(filter *config.NodeFilterConfig) string {
+	if filter == nil {
+		return ""
+	}
+	var parts []string
+	if host := filter.Host; host != "" {
+		// A leading-dot host (from `*.example.com` or `.example.com`) matches
+		// the apex AND its subdomains in the legacy filter (HasSuffix on the
+		// dot-stripped form), but matcher Host(.x) only matches subdomains.
+		// Emit both to preserve apex coverage.
+		if strings.HasPrefix(host, ".") {
+			parts = append(parts, "Host(`"+host[1:]+"`) || Host(`"+host+"`)")
+		} else {
+			parts = append(parts, "Host(`"+host+"`)")
+		}
+	}
+	if prot := filter.Protocol; prot != "" {
+		parts = append(parts, "Proto(`"+prot+"`)")
+	}
+	if path := filter.Path; path != "" {
+		parts = append(parts, "PathPrefix(`"+path+"`)")
+	}
+	return strings.Join(parts, " && ")
+}
+
 // ParseNode converts a NodeConfig into a *chain.Node. It resolves the
 // connector and dialer from their registries, applies TLS settings, extracts
 // metadata-driven options (so_mark, interface, netns, proxy protocol), sets up
@@ -221,55 +250,52 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		chain.NetworkNodeOption(cfg.Network),
 	}
 
-	if filter := cfg.Filter; filter != nil {
-		// convert *.example.com to .example.com
-		// convert *example.com to example.com
-		host := filter.Host
-		if strings.HasPrefix(host, "*") {
-			host = host[1:]
-			if !strings.HasPrefix(host, ".") {
-				host = "." + host
-			}
-		}
+	var (
+		rule     string
+		priority int
+		bodySize int
+	)
 
-		settings := &chain.NodeFilterSettings{
-			Protocol: filter.Protocol,
-			Host:     host,
-			Path:     filter.Path,
-		}
-		opts = append(opts, chain.NodeFilterOption(settings))
+	// Deprecated filter: normalize into an equivalent matcher DSL rule so the
+	// runtime keeps a single filtering logic. Explicit -1 priority opts out of
+	// auto-priority and the priority short-circuit, preserving the legacy
+	// filter behavior (always through the selector).
+	if filter := cfg.Filter; filter != nil {
+		rule = filterToMatcherRule(filter)
+		priority = -1
+		bodySize = DefaultMatcherBodySize
 	}
 
 	if cfg.Matcher != nil {
-		priority := cfg.Matcher.Priority
-
-		if rule := strings.TrimSpace(cfg.Matcher.Rule); rule != "" {
-			if matcher, err := routing.NewMatcher(rule); err == nil {
-				log.Debugf("new matcher for node %s with rule %s", cfg.Name, cfg.Matcher.Rule)
-				// Priority 0 means "use default": automatically set to the
-				// rule length so longer (more specific) rules outrank shorter
-				// ones. Use a negative priority to opt out of this behavior
-				// and always go through the selector.
-				if priority == 0 {
-					priority = len(cfg.Matcher.Rule)
-				}
-				opts = append(opts, chain.MatcherNodeOption(matcher))
-			} else {
-				log.Error(err)
-				priority = -1
-			}
-		}
-
-		bodySize := cfg.Matcher.BodySize
-		if bodySize <= 0 {
-			bodySize = DefaultMatcherBodySize
-		} else if bodySize > MaxMatcherBodySize {
-			bodySize = MaxMatcherBodySize
-		}
-		opts = append(opts, chain.MatcherBodySizeNodeOption(bodySize))
-
-		opts = append(opts, chain.PriorityNodeOption(priority))
+		priority = cfg.Matcher.Priority
+		rule = cfg.Matcher.Rule
+		bodySize = cfg.Matcher.BodySize
 	}
+
+	if rule = strings.TrimSpace(rule); rule != "" {
+		if matcher, err := routing.NewMatcher(rule); err == nil {
+			log.Debugf("new matcher for node %s with rule %s", cfg.Name, rule)
+			// Priority 0 means "use default": automatically set to the
+			// rule length so longer (more specific) rules outrank shorter
+			// ones. Use a negative priority to opt out of this behavior
+			// and always go through the selector.
+			if priority == 0 {
+				priority = len(rule)
+			}
+			opts = append(opts, chain.MatcherNodeOption(matcher))
+		} else {
+			log.Error(err)
+			priority = -1
+		}
+	}
+
+	if bodySize <= 0 {
+		bodySize = DefaultMatcherBodySize
+	} else if bodySize > MaxMatcherBodySize {
+		bodySize = MaxMatcherBodySize
+	}
+	opts = append(opts, chain.MatcherBodySizeNodeOption(bodySize))
+	opts = append(opts, chain.PriorityNodeOption(priority))
 
 	if cfg.HTTP != nil {
 		settings := &chain.HTTPNodeSettings{
