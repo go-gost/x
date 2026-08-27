@@ -420,6 +420,11 @@ func TestNormalizeRequest_GostTarget(t *testing.T) {
 	if nr.Addr != "real-target.com:443" {
 		t.Errorf("got addr %q, want real-target.com:443", nr.Addr)
 	}
+	// The override must also reach req.URL.Host, otherwise the transport
+	// dials the absolute-URL host while policy checks the header host.
+	if req.URL.Host != "real-target.com:443" {
+		t.Errorf("got URL.Host %q, want real-target.com:443", req.URL.Host)
+	}
 }
 
 func TestNormalizeRequest_XGostTarget(t *testing.T) {
@@ -436,6 +441,9 @@ func TestNormalizeRequest_XGostTarget(t *testing.T) {
 	nr := normalizeRequest(req)
 	if nr.Addr != "alternate-target.com:443" {
 		t.Errorf("got addr %q, want alternate-target.com:443", nr.Addr)
+	}
+	if req.URL.Host != "alternate-target.com:443" {
+		t.Errorf("got URL.Host %q, want alternate-target.com:443", req.URL.Host)
 	}
 }
 

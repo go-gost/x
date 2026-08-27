@@ -2,6 +2,9 @@ package http
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/binary"
+	"hash/crc32"
 	"io"
 	"net"
 	"net/http"
@@ -420,6 +423,49 @@ func TestProxyRoundTrip_HTTP10_KeepAlive(t *testing.T) {
 	}
 }
 
+
+// TestProxyRoundTrip_TargetHeaderDialsHeaderAuthority is a regression test for
+// the destination-policy bypass where a valid Gost-Target header replaced
+// req.Host (checked by bypass) but left req.URL.Host (dialed by the transport)
+// as the absolute-URL authority. The transport must dial the same authority
+// the policy evaluated.
+func TestProxyRoundTrip_TargetHeaderDialsHeaderAuthority(t *testing.T) {
+	encodeName := func(name string) string {
+		v := []byte(name)
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, crc32.ChecksumIEEE(v))
+		inner := base64.RawURLEncoding.EncodeToString(v)
+		return base64.RawURLEncoding.EncodeToString(append(b, []byte(inner)...))
+	}
+
+	var dialed string
+	h := &httpHandler{
+		options: handler.Options{
+			Logger: &testLogger{},
+		},
+		transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				dialed = addr
+				return nil, &testError{msg: "stop after dial"}
+			},
+		},
+	}
+	h.md.readTimeout = 15
+
+	req, _ := http.NewRequest("GET", "http://blocked.example.com/secret", nil)
+	req.Header.Set("Gost-Target", encodeName("allowed.example.com:80"))
+	normalizeRequest(req)
+
+	ro := &xrecorder.HandlerRecorderObject{RemoteAddr: "127.0.0.1:12345"}
+	pStats := xstats.Stats{}
+	rw := &testReadWriteCloser{buf: new(strings.Builder)}
+
+	_, _ = h.proxyRoundTrip(context.Background(), rw, req, ro, &pStats, &testLogger{})
+
+	if dialed != "allowed.example.com:80" {
+		t.Fatalf("transport dialed %q, want allowed.example.com:80 (policy and dial destination must match)", dialed)
+	}
+}
 
 // testReadWriteCloser implements io.ReadWriteCloser for testing.
 type testReadWriteCloser struct {

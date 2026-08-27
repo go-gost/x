@@ -94,6 +94,20 @@ type NormalizedRequest struct {
 	Addr    string // host:port (default port appended when absent)
 }
 
+// setRequestHost applies a GOST v2 target-header override consistently. It
+// updates req.Host (used by bypass checks, logging, and recorder state) and
+// req.URL.Host (used by http.Transport to select the connection destination)
+// so that policy evaluation and upstream dialing resolve to the same
+// authority. Otherwise a target header could authorize one host while the
+// transport connects to the absolute-URL host.
+func setRequestHost(req *http.Request, host string) {
+	req.Host = host
+	if req.URL.Scheme == "" {
+		req.URL.Scheme = "http"
+	}
+	req.URL.Host = host
+}
+
 // normalizeRequest extracts the target address and network from an HTTP
 // request. It infers the URL scheme when absent, decodes GOST v2
 // compatibility headers (Gost-Target, X-Gost-Target), detects the
@@ -120,12 +134,12 @@ func normalizeRequest(req *http.Request) *NormalizedRequest {
 
 	if v := req.Header.Get("Gost-Target"); v != "" {
 		if h, err := decodeServerName(v); err == nil {
-			req.Host = h
+			setRequestHost(req, h)
 		}
 	}
 	if v := req.Header.Get("X-Gost-Target"); v != "" {
 		if h, err := decodeServerName(v); err == nil {
-			req.Host = h
+			setRequestHost(req, h)
 		}
 	}
 
