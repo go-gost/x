@@ -296,13 +296,10 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 				// This empty-body call lets Rewriter plugins append a
 				// trailing event (e.g. message_stop for LLM conversion).
 				b.ended = true
-				md := map[string]any{
-					"sid":         b.sid,
-					"direction":   b.direction,
-					"uri":         b.uri,
+				md := rewriteMeta(b.sid, b.direction, b.uri, KindBody, map[string]any{
 					"sse_phase":   "end",
 					"event_index": b.eventIndex,
-				}
+				})
 				rewritten, endErr := b.apply(nil, rewriter.MetadataRewriteOption(md))
 				if endErr != nil {
 					return 0, endErr
@@ -320,14 +317,11 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 			if !b.ended {
 				b.ended = true
 				b.scannerErr = err
-				md := map[string]any{
-					"sid":          b.sid,
-					"direction":    b.direction,
-					"uri":          b.uri,
+				md := rewriteMeta(b.sid, b.direction, b.uri, KindBody, map[string]any{
 					"sse_phase":    "end",
 					"event_index":  b.eventIndex,
 					"stream_error": err.Error(),
-				}
+				})
 				rewritten, _ := b.apply(nil, rewriter.MetadataRewriteOption(md))
 				if len(rewritten) > 0 {
 					b.buf.Write(rewritten)
@@ -350,13 +344,10 @@ func (b *rewriteBody) Read(p []byte) (n int, err error) {
 		if b.eventIndex == 0 {
 			phase = "start"
 		}
-		md := map[string]any{
-			"sid":         b.sid,
-			"direction":   b.direction,
-			"uri":         b.uri,
+		md := rewriteMeta(b.sid, b.direction, b.uri, KindBody, map[string]any{
 			"sse_phase":   phase,
 			"event_index": b.eventIndex,
-		}
+		})
 		b.eventIndex++
 
 		rewritten, err := b.apply(event, rewriter.MetadataRewriteOption(md))
@@ -377,17 +368,7 @@ func (b *rewriteBody) Close() error {
 
 // baseMetadata returns rewriter metadata with all available fields.
 func (b *rewriteBody) baseMetadata() map[string]any {
-	md := map[string]any{}
-	if b.sid != "" {
-		md["sid"] = b.sid
-	}
-	if b.direction != "" {
-		md["direction"] = b.direction
-	}
-	if b.uri != "" {
-		md["uri"] = b.uri
-	}
-	return md
+	return rewriteMeta(b.sid, b.direction, b.uri, KindBody, nil)
 }
 
 // baseMetadataOpt returns a RewriteOption wrapping baseMetadata.

@@ -130,11 +130,22 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		// --- Dial upstream (miss or stale; fresh cache hit with keep-alive skips) ---
 		if !freshHit {
 			if cc == nil {
-				node, cc, err = h.dial(ctx, conn, req, &ho)
+				var dialRes *http.Response
+				node, cc, dialRes, err = h.dial(ctx, req, &ho)
 				if err != nil {
-					// h.dial already wrote the error response to conn.
+					// Prefer serving a stale cached entry over surfacing the
+					// dial error, when the policy allows it. h.dial no longer
+					// writes the error response so this stays the sole writer.
+					var shouldClose bool
+					if h.serveStale(conn, staleResp, ro, &shouldClose, &ho, log) {
+						err = nil
+						return nil
+					}
 					if staleResp != nil && staleResp.Body != nil {
 						staleResp.Body.Close()
+					}
+					if dialRes != nil {
+						dialRes.Write(conn)
 					}
 					return err
 				}
@@ -297,8 +308,11 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 	return node, nil, nil
 }
 
-// dial selects a node, establishes a connection, and sends the request upstream.
-func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, err error) {
+// dial selects a node and establishes a connection. It does NOT write the
+// error response to conn; instead it returns res (nil on a plain dial failure)
+// so the caller can choose between serving a stale cached response and writing
+// the error response.
+func (h *Sniffer) dial(ctx context.Context, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, res *http.Response, err error) {
 	dial := ho.Dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
@@ -306,7 +320,7 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 
 	if node = ho.Node; node != nil {
 		cc, err = dial(ctx, "tcp", node.Addr)
-		return
+		return node, cc, nil, err
 	}
 
 	ro := ho.RecorderObject
@@ -321,10 +335,7 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 	node, res, resolveErr := resolveHTTPNode(ctx, host, req, ho)
 	if resolveErr != nil {
 		ro.HTTP.StatusCode = res.StatusCode
-		if werr := res.Write(conn); werr != nil {
-			ho.Log.Warnf("write error response: %v", werr)
-		}
-		return nil, nil, resolveErr
+		return nil, nil, res, resolveErr
 	}
 
 	// Prepare an error response for potential connection failures.
@@ -348,17 +359,14 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 			marker.Mark()
 		}
 		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
-		if werr := res.Write(conn); werr != nil {
-			ho.Log.Warnf("write error response: %v", werr)
-		}
-		return
+		return nil, nil, res, err
 	}
 	if marker := node.Marker(); marker != nil {
 		marker.Reset()
 	}
 
 	cc = tlsWrapConn(cc, node.Options().TLS)
-	return
+	return node, cc, nil, nil
 }
 
 // httpRoundTrip forwards a single HTTP request/response pair and records
@@ -367,6 +375,12 @@ func (h *Sniffer) dial(ctx context.Context, conn net.Conn, req *http.Request, ho
 // when the cache policy enables serve-stale.
 func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions, staleResp *http.Response) (shouldClose bool, err error) {
 	shouldClose = true
+
+	// Cache key identity is derived from the client's request (method + Host +
+	// request-target). Capture it before any rewrite so Lookup (which runs
+	// before rewrites in HandleHTTP) and Store agree on the same key — the Host
+	// header is rewritten below for mirror routing and must not change the key.
+	cacheKey := httpcache.Key(req.Method, req.Host, req.RequestURI)
 
 	log := ho.Log
 	ro := &xrecorder.HandlerRecorderObject{}
@@ -410,11 +424,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	// rewrite dimension added there must be added here too, or its originals
 	// won't be captured.
 	httpSettings := node.Options().HTTP
-	hasReqRewrite := httpSettings != nil && (httpSettings.Host != "" ||
+	hasReqRewrite := httpSettings != nil && (httpSettings.Host != "" || httpSettings.HostPattern != nil ||
 		len(httpSettings.RequestHeader) > 0 || len(httpSettings.RewriteURL) > 0 ||
-		len(httpSettings.RewriteRequestBody) > 0)
+		len(httpSettings.RewriteRequestBody) > 0 || len(httpSettings.RewriteRequestHeader) > 0)
 	hasRespRewrite := httpSettings != nil && (len(httpSettings.ResponseHeader) > 0 ||
-		len(httpSettings.RewriteResponseBody) > 0)
+		len(httpSettings.RewriteResponseBody) > 0 || len(httpSettings.RewriteResponseHeader) > 0)
 	bodySize := clampBodySize(h.RecorderOptions)
 
 	res := &http.Response{
@@ -436,6 +450,8 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	var responseHeader map[string]string
 	var respBodyRewrites []chain.HTTPBodyRewriteSettings
 	var reqBodyRewrites []chain.HTTPBodyRewriteSettings
+	var reqHeaderRewrites []chain.HTTPHeaderRewriteSettings
+	var respHeaderRewrites []chain.HTTPHeaderRewriteSettings
 	if httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
 			username, password, _ := req.BasicAuth()
@@ -461,7 +477,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			}
 		}
 
-		if httpSettings.Host != "" {
+		if httpSettings.HostPattern != nil {
+			if m := httpSettings.HostPattern.FindStringSubmatchIndex(req.URL.Path); m != nil {
+				req.Host = string(httpSettings.HostPattern.ExpandString(nil, httpSettings.Host, req.URL.Path, m))
+			}
+		} else if httpSettings.Host != "" {
 			req.Host = httpSettings.Host
 		}
 		for k, v := range httpSettings.RequestHeader {
@@ -491,9 +511,19 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			}
 		}
 
+		reqHeaderRewrites = httpSettings.RewriteRequestHeader
+		if len(reqHeaderRewrites) > 0 {
+			if err = rewriteReqHeader(ctx, req, reqHeaderRewrites...); err != nil {
+				log.Errorf("rewrite request header: %v", err)
+				return
+			}
+			ro.HTTP.Request.Header = req.Header.Clone()
+		}
+
 		responseHeader = httpSettings.ResponseHeader
 		respBodyRewrites = httpSettings.RewriteResponseBody
 		reqBodyRewrites = httpSettings.RewriteRequestBody
+		respHeaderRewrites = httpSettings.RewriteResponseHeader
 	}
 
 	// Snapshot the original request body before rewriting, restoring it via
@@ -627,6 +657,16 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			resp.Header.Set(k, v)
 		}
 	}
+
+	// Header regex/plugin rewrite runs after static overrides and before the
+	// recorder clone, so the recorder sees the final (post-rewrite) headers.
+	if len(respHeaderRewrites) > 0 {
+		if err = rewriteRespHeader(ctx, resp, respHeaderRewrites...); err != nil {
+			log.Errorf("rewrite response header: %v", err)
+			return
+		}
+	}
+
 	ro.HTTP.Response.Header = resp.Header.Clone()
 	ro.HTTP.Response.ContentLength = resp.ContentLength
 
@@ -656,10 +696,10 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	if tee != nil {
 		if data := tee.Captured(); data != nil {
-			if serr := h.Cache.Store(ctx, req, data, resp.StatusCode); serr != nil {
+			if serr := h.Cache.StoreKey(ctx, cacheKey, data, resp.StatusCode); serr != nil {
 				log.Warnf("cache store: %v", serr)
 			} else {
-				log.Debugf("cache store: %s", httpcache.Key(req.Method, req.Host, req.RequestURI))
+				log.Debugf("cache store: %s", cacheKey)
 			}
 		}
 	}

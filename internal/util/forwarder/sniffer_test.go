@@ -691,6 +691,64 @@ func TestWithNode(t *testing.T) {
 	}
 }
 
+func TestHandleHTTP_HostPattern(t *testing.T) {
+	// Upstream echoes the Host header it received in the response body.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(r.Host))
+	}))
+	defer upstream.Close()
+
+	rec := &captureRecorder{}
+	h := &Sniffer{Recorder: rec}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	// Node with HostPattern: derive Host from the first path segment.
+	node := chain.NewNode("githubio", "unused:443",
+		chain.HTTPNodeOption(&chain.HTTPNodeSettings{
+			HostPattern: regexp.MustCompile(`^/([a-z0-9-]+\.github\.io)/`),
+			Host:        "$1",
+		}),
+	)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleHTTP(context.Background(), serverConn,
+			sniffing.WithService("test"),
+			sniffing.WithNode(node),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
+				return net.Dial("tcp", upstream.Listener.Addr().String())
+			}),
+			sniffing.WithLog(xlogger.Nop()),
+		)
+	}()
+
+	// Request path encodes the upstream host as its first segment.
+	req, _ := http.NewRequest("GET", "http://gh.home.pi/microsoft.github.io/foo", nil)
+	req.Close = true
+	if err := req.Write(clientConn); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(clientConn), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	clientConn.Close()
+	<-errCh // teardown error on net.Pipe keep-alive is expected; ignore it
+
+	if got := string(body); got != "microsoft.github.io" {
+		t.Errorf("upstream Host = %q, want %q", got, "microsoft.github.io")
+	}
+}
+
 func TestWithHop(t *testing.T) {
 	opts := &HandleOptions{}
 	mh := &mockHop{}

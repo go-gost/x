@@ -387,6 +387,44 @@ func TestParseNode_WithHTTPDeprecatedHeader(t *testing.T) {
 	}
 }
 
+func TestParseNode_WithHeaderRewrite(t *testing.T) {
+	n, err := ParseNode("test-hop", &config.NodeConfig{
+		Name: "hdr-node",
+		Addr: "example.com:8080",
+		HTTP: &config.HTTPNodeConfig{
+			RewriteRequestHeader: []config.HTTPHeaderRewriteConfig{
+				{Name: "(?i)^referer$", Match: ".*", Replacement: ""},
+			},
+			RewriteResponseHeader: []config.HTTPHeaderRewriteConfig{
+				{Name: "(?i)^location$", Match: "https://github.com", Replacement: "https://127.0.0.1:8080"},
+			},
+		},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n == nil {
+		t.Fatal("expected non-nil node")
+	}
+	settings := n.Options().HTTP
+	if settings == nil {
+		t.Fatal("expected HTTP settings")
+	}
+	if len(settings.RewriteRequestHeader) != 1 || len(settings.RewriteResponseHeader) != 1 {
+		t.Fatalf("rewrite header counts = %d/%d, want 1/1", len(settings.RewriteRequestHeader), len(settings.RewriteResponseHeader))
+	}
+}
+
+func TestParseHeaderRewrites_EmptyNameNoRewriter(t *testing.T) {
+	// Empty Name with no Rewriter must not be appended (silent no-op guard).
+	out := parseHeaderRewrites([]config.HTTPHeaderRewriteConfig{
+		{Name: "", Match: ".*", Replacement: ""},
+	}, testLogger())
+	if len(out) != 0 {
+		t.Fatalf("out = %d rules, want 0", len(out))
+	}
+}
+
 func TestParseNode_WithTLSNode(t *testing.T) {
 	n, err := ParseNode("test-hop", &config.NodeConfig{
 		Name: "tls-node",

@@ -464,6 +464,17 @@ type HTTPBodyRewriteConfig struct {
 	MaxChunkSize int    `yaml:"maxChunkSize,omitempty" json:"maxChunkSize,omitempty"`
 }
 
+type HTTPHeaderRewriteConfig struct {
+	// Name is the header name regex, e.g. "(?i)^(location|set-cookie)$".
+	Name string
+	// Match is the header value regex.
+	Match string
+	// Replacement is the replacement string.
+	Replacement string
+	// Rewriter is the name of the rewriter plugin (via registry).
+	Rewriter string `yaml:",omitempty" json:"rewriter,omitempty"`
+}
+
 type NodeFilterConfig struct {
 	Host     string `yaml:",omitempty" json:"host,omitempty"`
 	Protocol string `yaml:",omitempty" json:"protocol,omitempty"`
@@ -505,6 +516,9 @@ type ProbeConfig struct {
 type HTTPNodeConfig struct {
 	// rewrite host header
 	Host string `yaml:",omitempty" json:"host,omitempty"`
+	// regex matched against the request path to derive Host; Host becomes a
+	// replacement template ($1, $2, ...) when set.
+	HostPattern string `yaml:"hostPattern,omitempty" json:"hostPattern,omitempty"`
 	// Deprecated: use requestHeader instead
 	Header map[string]string `yaml:",omitempty" json:"header,omitempty"`
 	// additional request header
@@ -521,6 +535,11 @@ type HTTPNodeConfig struct {
 	RewriteRequestBody []HTTPBodyRewriteConfig `yaml:"rewriteRequestBody,omitempty" json:"rewriteRequestBody,omitempty"`
 	// rewrite response body
 	RewriteResponseBody []HTTPBodyRewriteConfig `yaml:"rewriteResponseBody,omitempty" json:"rewriteResponseBody,omitempty"`
+
+	// rewrite request header values
+	RewriteRequestHeader []HTTPHeaderRewriteConfig `yaml:"rewriteRequestHeader,omitempty" json:"rewriteRequestHeader,omitempty"`
+	// rewrite response header values
+	RewriteResponseHeader []HTTPHeaderRewriteConfig `yaml:"rewriteResponseHeader,omitempty" json:"rewriteResponseHeader,omitempty"`
 
 	// comma-separated response status codes marking the node failed, e.g. "429,5xx"
 	FailCodes string `yaml:"failCodes,omitempty" json:"failCodes,omitempty"`

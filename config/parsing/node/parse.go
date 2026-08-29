@@ -143,6 +143,38 @@ func parseBodyRewrites(vs []config.HTTPBodyRewriteConfig, log logger.Logger) []c
 	return out
 }
 
+func parseHeaderRewrites(vs []config.HTTPHeaderRewriteConfig, log logger.Logger) []chain.HTTPHeaderRewriteSettings {
+	var out []chain.HTTPHeaderRewriteSettings
+	for _, v := range vs {
+		var name, pattern *regexp.Regexp
+		if v.Name != "" {
+			name, _ = regexp.Compile(v.Name)
+		}
+		if v.Match != "" {
+			pattern, _ = regexp.Compile(v.Match)
+		}
+
+		rw := chain.HTTPHeaderRewriteSettings{
+			Name:        name,
+			Pattern:     pattern,
+			Replacement: []byte(v.Replacement),
+		}
+		if v.Rewriter != "" {
+			if !registry.RewriterRegistry().IsRegistered(v.Rewriter) {
+				log.Warnf("rewriter %q not found in registry for rewrite rule", v.Rewriter)
+			}
+			rw.Rewriter = registry.RewriterRegistry().Get(v.Rewriter)
+		}
+		// Gate on the config string, not the compiled regexp: regexp.Compile("")
+		// returns a non-nil match-all regexp, so an empty Name with no rewriter
+		// would otherwise become a silent no-op rule.
+		if v.Name != "" || rw.Rewriter != nil {
+			out = append(out, rw)
+		}
+	}
+	return out
+}
+
 func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.Node, error) {
 	if cfg == nil {
 		return nil, nil
@@ -322,6 +354,10 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 			settings.RequestHeader = cfg.HTTP.Header
 		}
 
+		if v := cfg.HTTP.HostPattern; v != "" {
+			settings.HostPattern, _ = regexp.Compile(v)
+		}
+
 		if auth := cfg.HTTP.Auth; auth != nil && auth.Username != "" {
 			settings.Auther = xauth.NewAuthenticator(
 				xauth.AuthsOption(map[string]string{auth.Username: auth.Password}),
@@ -348,6 +384,8 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		settings.RewriteResponseBody = append(settings.RewriteResponseBody, parseBodyRewrites(cfg.HTTP.RewriteBody, log)...)
 		settings.RewriteResponseBody = append(settings.RewriteResponseBody, parseBodyRewrites(cfg.HTTP.RewriteResponseBody, log)...)
 		settings.RewriteRequestBody = append(settings.RewriteRequestBody, parseBodyRewrites(cfg.HTTP.RewriteRequestBody, log)...)
+		settings.RewriteRequestHeader = parseHeaderRewrites(cfg.HTTP.RewriteRequestHeader, log)
+		settings.RewriteResponseHeader = parseHeaderRewrites(cfg.HTTP.RewriteResponseHeader, log)
 
 		if v := strings.TrimSpace(cfg.HTTP.FailCodes); v != "" {
 			settings.FailCodes = parseFailCodes(v, nodeLogger)
