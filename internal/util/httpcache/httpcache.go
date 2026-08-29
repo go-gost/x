@@ -133,7 +133,17 @@ func (c *Cache) Cacheable(req *http.Request, resp *http.Response) bool {
 	if !c.CacheableRequest(req) {
 		return false
 	}
-	return resp.StatusCode >= 200 && resp.StatusCode < 400
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return false
+	}
+	// A Turbo/pjax short-circuit response carries only a handful of <meta>
+	// version tags (not the full page) and is meant to be merged with the
+	// client's already-rendered page. Caching it would serve a blank/partial
+	// page on a later hit. Never cache these.
+	if resp.Header.Get("X-Turbo-Short-Circuit") == "true" {
+		return false
+	}
+	return true
 }
 
 // TTLFor returns the TTL to apply for a response with the given status.
@@ -184,10 +194,18 @@ func (c *Cache) Lookup(ctx context.Context, req *http.Request) (resp *http.Respo
 // Store saves a serialized response (as produced by resp.Write) under req's
 // key, using the TTL for status.
 func (c *Cache) Store(ctx context.Context, req *http.Request, data []byte, status int) error {
+	return c.StoreKey(ctx, Key(req.Method, req.Host, req.RequestURI), data, status)
+}
+
+// StoreKey saves data under an explicit key using the TTL for status.
+// Callers whose request identity is mutated before the response is stored
+// (e.g. Host rewritten for mirror routing) must capture the pre-rewrite key
+// and pass it here, so Lookup and Store agree on the same key.
+func (c *Cache) StoreKey(ctx context.Context, key string, data []byte, status int) error {
 	if c == nil {
 		return nil
 	}
-	return c.store.Set(ctx, Key(req.Method, req.Host, req.RequestURI), data, cache.WithTTL(c.TTLFor(status)))
+	return c.store.Set(ctx, key, data, cache.WithTTL(c.TTLFor(status)))
 }
 
 // TeeWriter wraps w so bytes written to it are also captured for caching, up
