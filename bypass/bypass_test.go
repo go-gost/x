@@ -667,6 +667,20 @@ func TestBypassGroup_IsWhitelist(t *testing.T) {
 	assert.False(t, g.IsWhitelist())
 }
 
+// gost#899: in whitelist mode a domain-only allowlist must not reject the
+// destination IP before sniffing runs (the sniffer checks the sniffed host).
+func TestBypassGroup_WhitelistDomainNoMatch(t *testing.T) {
+	g := BypassGroup(
+		NewBypass(
+			WhitelistOption(true),
+			MatchersOption([]string{"example.com"}),
+			LoggerOption(xlogger.Nop()),
+		),
+	)
+	assert.True(t, g.Contains(context.Background(), "tcp", "93.184.216.34:443"))
+	assert.False(t, g.Contains(context.Background(), "tcp", "example.com:443"))
+}
+
 // --- NewBypass reload error in background ---
 
 func TestNewBypass_ReloadError(t *testing.T) {
@@ -1022,9 +1036,9 @@ func TestPatternSet_MatchAny_Empty(t *testing.T) {
 
 func TestPatternSet_MatchAny_MixedTypes(t *testing.T) {
 	ps := classifyPatterns([]string{
-		"192.168.1.1",         // address
-		"10.0.0.0/8",          // CIDR
-		"*.example.com",       // wildcard
+		"192.168.1.1",             // address
+		"10.0.0.0/8",              // CIDR
+		"*.example.com",           // wildcard
 		"172.16.0.1-172.16.0.255", // IP range
 	}, xlogger.Nop())
 	assert.True(t, ps.matchAny("192.168.1.1"))
@@ -1129,7 +1143,7 @@ func TestDecide_NilPatterns(t *testing.T) {
 
 func TestEvaluate_AllBlacklistAllMatch(t *testing.T) {
 	g := BypassGroup(alwaysContains{}, alwaysContains{}).(*bypassGroup)
-	assert.Equal(t, decisionBypass, g.evaluate(context.Background(), "tcp", "any", ))
+	assert.Equal(t, decisionBypass, g.evaluate(context.Background(), "tcp", "any"))
 }
 
 func TestEvaluate_BlacklistNoneMatch(t *testing.T) {

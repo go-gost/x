@@ -552,8 +552,17 @@ func (p *bypassGroup) evaluate(ctx context.Context, network, addr string, opts .
 	return decisionProxy
 }
 
-// IsWhitelist always returns false for a group, since the group may contain
-// a mix of whitelist and blacklist rules.
+// IsWhitelist reports whether the group acts as a pure whitelist: every
+// member is a whitelist rule. A mixed group is neither pure whitelist nor
+// pure blacklist, so it reports false.
 func (p *bypassGroup) IsWhitelist() bool {
-	return false
+	if len(p.bypasses) == 0 {
+		return false
+	}
+	for _, bp := range p.bypasses {
+		if !bp.IsWhitelist() {
+			return false
+		}
+	}
+	return true
 }

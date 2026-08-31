@@ -145,7 +145,11 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 	// Check bypass on dstAddr before sniffing — the sniffer only matches the
 	// sniffed req.Host, so IP/CIDR rules miss connections carrying a hostname.
+	// Skip in whitelist mode: a domain-only allowlist never matches the bare
+	// destination IP, and rejecting here would kill sniffed-host decisions
+	// (e.g. example.com in the whitelist) before sniffing can run.
 	if h.options.Bypass != nil &&
+		!h.options.Bypass.IsWhitelist() &&
 		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
 		log.Debug("bypass: ", dstAddr)
 		return xbypass.ErrBypass
@@ -267,6 +271,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		} else {
 			return sniffErr
 		}
+	}
+
+	// Re-check bypass on dstAddr before raw forwarding. In whitelist mode the
+	// pre-sniffing check above is skipped, so this is what drops connections
+	// whose sniffed host didn't match (sniffingFallback) or that weren't
+	// sniffed at all (sniffing disabled).
+	if h.options.Bypass != nil &&
+		h.options.Bypass.Contains(ctx, dstAddr.Network(), dstAddr.String(), bypass.WithService(h.options.Service)) {
+		log.Debug("bypass: ", dstAddr)
+		return xbypass.ErrBypass
 	}
 
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
