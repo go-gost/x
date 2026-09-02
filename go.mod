@@ -43,7 +43,6 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/vishvananda/netlink v1.1.1-0.20211118161826-650dca95af54
 	github.com/vishvananda/netns v0.0.4
-	github.com/vulcand/predicate v1.2.0
 	github.com/xjasonlyu/tun2socks/v2 v2.6.0
 	github.com/xtaci/kcp-go/v5 v5.6.5
 	github.com/xtaci/smux v1.5.31
@@ -71,7 +70,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
@@ -102,9 +100,7 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
-	github.com/gravitational/trace v1.1.16-0.20220114165159-14a9a7dd6aaf // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.11.8 // indirect
@@ -142,7 +138,6 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/sync v0.22.0
-	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260723215102-3fe39f3c1018 // indirect
