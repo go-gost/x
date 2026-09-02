@@ -7,11 +7,24 @@ import (
 	"hash/crc32"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 
-	"github.com/asaskevich/govalidator"
 	"golang.org/x/net/http/httpguts"
 )
+
+// isDNSName reports whether host is a valid DNS name. It mirrors
+// govalidator.IsDNSName (which was removed as a dependency): IP literals and
+// empty hosts are not DNS names, the dot-stripped length is capped at 255,
+// and each dot-separated label follows RFC-ish [A-Za-z0-9_-] rules.
+func isDNSName(host string) bool {
+	if host == "" || len(strings.ReplaceAll(host, ".", "")) > 255 {
+		return false
+	}
+	return net.ParseIP(host) == nil && dnsNameRE.MatchString(host)
+}
+
+var dnsNameRE = regexp.MustCompile(`^([a-zA-Z0-9_]{1}[a-zA-Z0-9_-]{0,62}){1}(\.[a-zA-Z0-9_]{1}[a-zA-Z0-9_-]{0,62})*[\._]?$`)
 
 // decodeServerName decodes a GOST v2 Gost-Target / X-Gost-Target header
 // value. The encoding is: base64(CRC32(hostname) + base64(hostname)).
@@ -122,7 +135,7 @@ func normalizeRequest(req *http.Request) *NormalizedRequest {
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			host = h
 		}
-		if govalidator.IsDNSName(host) || net.ParseIP(host) != nil {
+		if isDNSName(host) || net.ParseIP(host) != nil {
 			req.URL.Scheme = "http"
 		}
 	}

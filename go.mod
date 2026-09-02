@@ -5,7 +5,6 @@ go 1.26.3
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/andybalholm/brotli v1.0.6
-	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-gost/core v0.6.1
