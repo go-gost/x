@@ -15,13 +15,13 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	"github.com/go-gost/go-shadowsocks2/core"
+	"github.com/go-gost/go-shadowsocks2/shadowaead"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/ss"
 	tap_util "github.com/go-gost/x/internal/util/tap"
 	"github.com/go-gost/x/registry"
-	"github.com/shadowsocks/go-shadowsocks2/core"
-	"github.com/shadowsocks/go-shadowsocks2/shadowaead"
 	"github.com/songgao/water/waterutil"
 )
 
@@ -33,8 +33,7 @@ type tapHandler struct {
 	hop     hop.Hop
 	routes  sync.Map
 	exit    chan struct{}
-	cipher  core.Cipher
-	md      metadata
+	cipher  core.ShadowCipher
 	options handler.Options
 }
 
@@ -51,14 +50,10 @@ func NewHandler(opts ...handler.Option) handler.Handler {
 }
 
 func (h *tapHandler) Init(md md.Metadata) (err error) {
-	if err = h.parseMetadata(md); err != nil {
-		return
-	}
-
 	if h.options.Auth != nil {
 		method := h.options.Auth.Username()
 		password, _ := h.options.Auth.Password()
-		h.cipher, err = ss.ShadowCipher(method, password, h.md.key)
+		h.cipher, err = ss.ShadowCipher(method, password)
 		if err != nil {
 			return
 		}
@@ -153,7 +148,7 @@ func (h *tapHandler) handleLoop(ctx context.Context, conn net.Conn, addr net.Add
 			}
 
 			if h.cipher != nil {
-				pc = h.cipher.PacketConn(pc)
+				pc = ss.AEADPacketConn(pc, h.cipher)
 			}
 			defer pc.Close()
 

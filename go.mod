@@ -33,7 +33,6 @@ require (
 	github.com/quic-go/webtransport-go v0.11.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/xid v1.3.0
-	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/viper v1.19.0

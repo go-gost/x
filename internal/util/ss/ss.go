@@ -1,61 +1,23 @@
 package ss
 
 import (
-	"bytes"
-	"net"
+	"strings"
 
-	xio "github.com/go-gost/x/internal/io"
-	"github.com/shadowsocks/go-shadowsocks2/core"
+	"github.com/go-gost/go-shadowsocks2/core"
+	"github.com/go-gost/go-shadowsocks2/utils"
+
+	"github.com/go-gost/x/internal/util/ss/none"
 )
 
-func ShadowCipher(method, password string, key string) (core.Cipher, error) {
+// ShadowCipher derives a cipher from method + password.
+// method is case-insensitive; "dummy"/"none" select the pass-through cipher.
+// An empty method or password returns (nil, nil), meaning no encryption.
+func ShadowCipher(method, password string) (core.ShadowCipher, error) {
 	if method == "" || password == "" {
 		return nil, nil
 	}
-	return core.PickCipher(method, []byte(key), password)
-}
-
-// Due to in/out byte length is inconsistent of the shadowsocks.Conn.Write,
-// we wrap around it to make io.Copy happy.
-type shadowConn struct {
-	net.Conn
-	wbuf bytes.Buffer
-}
-
-func ShadowConn(conn net.Conn, header []byte) net.Conn {
-	c := &shadowConn{
-		Conn: conn,
+	if strings.EqualFold(method, "dummy") || strings.EqualFold(method, "none") {
+		return none.Cipher, nil
 	}
-	c.wbuf.Write(header)
-	return c
-}
-
-func (c *shadowConn) Write(b []byte) (n int, err error) {
-	n = len(b) // force byte length consistent
-	if c.wbuf.Len() > 0 {
-		c.wbuf.Write(b) // append the data to the cached header
-		written, err := c.Conn.Write(c.wbuf.Bytes())
-		if err != nil {
-			c.wbuf.Reset()
-			return written, err
-		}
-		c.wbuf.Reset()
-		return n, nil
-	}
-	_, err = c.Conn.Write(b)
-	return
-}
-
-func (c *shadowConn) CloseRead() error {
-	if sc, ok := c.Conn.(xio.CloseRead); ok {
-		return sc.CloseRead()
-	}
-	return xio.ErrUnsupported
-}
-
-func (c *shadowConn) CloseWrite() error {
-	if sc, ok := c.Conn.(xio.CloseWrite); ok {
-		return sc.CloseWrite()
-	}
-	return xio.ErrUnsupported
+	return utils.PickCipher(method, password) // lowercases internally
 }
