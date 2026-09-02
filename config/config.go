@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	yaml "github.com/goccy/go-yaml"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -827,9 +827,8 @@ func (c *Config) Write(w io.Writer, format string) error {
 	case "yaml":
 		fallthrough
 	default:
-		enc := yaml.NewEncoder(w)
+		enc := yaml.NewEncoder(w, yaml.Indent(2))
 		defer enc.Close()
-		enc.SetIndent(2)
 
 		return enc.Encode(c)
 	}
