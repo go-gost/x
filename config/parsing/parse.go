@@ -96,4 +96,8 @@ const (
 	// MDKeyLabels holds static key/value labels attached to a service's
 	// records and logs.
 	MDKeyLabels = "labels"
+
+	// MDKeyP2P selects the p2p tunnel provider for a chain node's base
+	// transport. The value is the name of a registered p2ps: component.
+	MDKeyP2P = "p2p"
 )

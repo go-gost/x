@@ -38,6 +38,7 @@ import (
 	limiter_parser "github.com/go-gost/x/config/parsing/limiter"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	observer_parser "github.com/go-gost/x/config/parsing/observer"
+	p2p_parser "github.com/go-gost/x/config/parsing/p2p"
 	quota_parser "github.com/go-gost/x/config/parsing/quota"
 	recorder_parser "github.com/go-gost/x/config/parsing/recorder"
 	resolver_parser "github.com/go-gost/x/config/parsing/resolver"
@@ -46,6 +47,7 @@ import (
 	sd_parser "github.com/go-gost/x/config/parsing/sd"
 	service_parser "github.com/go-gost/x/config/parsing/service"
 	quota "github.com/go-gost/x/limiter/quota"
+	xp2p "github.com/go-gost/x/p2p"
 	"github.com/go-gost/x/registry"
 )
 
@@ -254,6 +256,16 @@ func register(cfg *config.Config) error {
 			entries = append(entries, named[rewriter.Rewriter]{c.Name, rewriter_parser.ParseRewriter(c)})
 		}
 		if err := registerGroup(entries, registry.RewriterRegistry()); err != nil {
+			return err
+		}
+	}
+
+	{
+		var entries []named[xp2p.TunnelProvider]
+		for _, c := range cfg.P2Ps {
+			entries = append(entries, named[xp2p.TunnelProvider]{c.Name, p2p_parser.ParseP2P(c)})
+		}
+		if err := registerGroup(entries, registry.P2PRegistry()); err != nil {
 			return err
 		}
 	}

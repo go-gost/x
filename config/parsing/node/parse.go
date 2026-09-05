@@ -22,6 +22,7 @@ import (
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	mdx "github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
+	xp2p "github.com/go-gost/x/p2p"
 	"github.com/go-gost/x/registry"
 	"github.com/go-gost/x/routing"
 )
@@ -267,6 +268,24 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		)
 	} else {
 		return nil, fmt.Errorf("unregistered dialer: %s", dialCfg.Type)
+	}
+
+	// p2p: wrap the dialer so the node's base transport (the path to this
+	// node) goes through a tunnel opened by the named p2p plugin instead of
+	// a direct network dial. The inner dialer's protocol (tls/ws/mux) runs
+	// unchanged on top of the tunnel. Only whitelisted dialers qualify:
+	// the wrapper's contract is "inner dials one plain TCP stream via
+	// options.Dialer". The wrap happens before Init so the chain inits
+	// exactly once, through the wrapper.
+	if name := mdutil.GetString(md, parsing.MDKeyP2P); name != "" {
+		provider := registry.P2PRegistry().Get(name)
+		if provider == nil {
+			return nil, fmt.Errorf("unregistered p2p: %s", name)
+		}
+		if !xp2p.SupportedDialer(dialCfg.Type) {
+			return nil, fmt.Errorf("dialer %q does not support p2p", dialCfg.Type)
+		}
+		d = xp2p.NewTunnelDialer(d, provider)
 	}
 
 	if err := d.Init(mdx.NewMetadata(dialCfg.Metadata)); err != nil {

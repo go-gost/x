@@ -301,6 +301,13 @@ type RecorderConfig struct {
 	Plugin *PluginConfig  `yaml:",omitempty" json:"plugin,omitempty"`
 }
 
+// P2PConfig defines a named p2p tunnel provider, currently backed by an
+// external gRPC plugin process.
+type P2PConfig struct {
+	Name   string        `json:"name"`
+	Plugin *PluginConfig `yaml:",omitempty" json:"plugin,omitempty"`
+}
+
 type FileRecorder struct {
 	Path     string             `json:"path"`
 	Sep      string             `yaml:",omitempty" json:"sep,omitempty"`
@@ -776,6 +783,7 @@ type Config struct {
 	SDs        []*SDConfig        `yaml:"sds,omitempty" json:"sds,omitempty"`
 	Recorders  []*RecorderConfig  `yaml:",omitempty" json:"recorders,omitempty"`
 	Rewriters  []*RewriterConfig  `yaml:",omitempty" json:"rewriters,omitempty"`
+	P2Ps       []*P2PConfig       `yaml:"p2ps,omitempty" json:"p2ps,omitempty"`
 	Caches     []*CacheConfig     `yaml:",omitempty" json:"caches,omitempty"`
 	Limiters   []*LimiterConfig   `yaml:",omitempty" json:"limiters,omitempty"`
 	Quotas     []*QuotaConfig     `yaml:",omitempty" json:"quotas,omitempty"`

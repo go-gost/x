@@ -26,6 +26,7 @@ import (
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/service"
 	"github.com/go-gost/x/limiter/quota"
+	xp2p "github.com/go-gost/x/p2p"
 )
 
 var (
@@ -62,6 +63,8 @@ var (
 	observerReg reg.Registry[observer.Observer] = new(observerRegistry)
 
 	loggerReg reg.Registry[logger.Logger] = new(loggerRegistry)
+
+	p2pReg reg.Registry[xp2p.TunnelProvider] = new(p2pRegistry)
 )
 
 // registry is a sync.Map-backed generic named registry. It implements the
