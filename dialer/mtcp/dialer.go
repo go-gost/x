@@ -119,7 +119,7 @@ func (d *mtcpDialer) Handshake(ctx context.Context, conn net.Conn, options ...di
 	session, ok := d.sessions[opts.Addr]
 	if session != nil && session.conn != conn {
 		conn.Close()
-		return nil, errors.New("mtls: unrecognized connection")
+		return nil, errors.New("mtcp: unrecognized connection")
 	}
 
 	if !ok || session.session == nil {
