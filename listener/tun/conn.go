@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type conn struct {
 	raddr  net.Addr
 	ctx    context.Context
 	cancel context.CancelFunc
+	once   sync.Once
 }
 
 func (c *conn) Read(b []byte) (n int, err error) {
@@ -44,11 +46,14 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 	return &net.OpError{Op: "set", Net: "tun", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
-func (c *conn) Close() (err error) {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	return c.ifce.Close()
+func (c *conn) Close() error {
+	c.once.Do(func() {
+		if c.cancel != nil {
+			c.cancel()
+		}
+		c.ifce.Close()
+	})
+	return nil
 }
 
 func (c *conn) Context() context.Context {
