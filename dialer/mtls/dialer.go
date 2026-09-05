@@ -62,6 +62,10 @@ func (d *mtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 
 	session, ok := d.sessions[addr]
 	if session != nil && session.IsClosed() {
+		session.Close()
+		if session.conn != nil {
+			session.conn.Close() // base conn would otherwise leak (and hold a p2p tunnel open)
+		}
 		delete(d.sessions, addr) // session is dead
 		ok = false
 	}
