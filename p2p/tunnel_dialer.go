@@ -27,11 +27,13 @@ type TunnelProvider interface {
 	Close() error
 }
 
-// NewTunnelDialer wraps inner so that every Dial first opens a tunnel to the
-// target peer, then lets inner dial "through" the tunnel as if it were its
-// plain base connection. Inner protocol (tls/ws/mux...) stays untouched;
-// its Handshake is forwarded by tunnelDialer so it triggers at
-// Transport.Handshake. Fail-closed: any provider error aborts the dial.
+// NewTunnelDialer wraps inner so that every Dial dials "through" a tunnel to
+// the target peer, as if it were inner's plain base connection. The tunnel is
+// opened lazily inside the base dialer: mux inners (mtcp etc.) hit their
+// session cache without touching the base and must not leak an unused tunnel
+// per dial. Inner protocol (tls/ws/mux...) stays untouched; its Handshake is
+// forwarded by tunnelDialer so it triggers at Transport.Handshake.
+// Fail-closed: any provider error aborts the dial.
 func NewTunnelDialer(inner dialer.Dialer, pr TunnelProvider) dialer.Dialer {
 	return &tunnelDialer{inner: inner, provider: pr}
 }
@@ -39,11 +41,12 @@ func NewTunnelDialer(inner dialer.Dialer, pr TunnelProvider) dialer.Dialer {
 // SupportedDialer reports whether a dialer type may be used as the inner
 // protocol on top of a p2p tunnel. The wrapper's implicit contract is
 // "inner dials one plain TCP stream via options.Dialer and uses it as its
-// base" — kcp/udp/quic bases are datagram conns, http2 probes and destroys
+// base" (mux inners dial it once per session and multiplex streams over it)
+// — kcp/udp/quic bases are datagram conns, http2 probes and destroys
 // tunnels. Fail closed: new dialers are unsupported until verified.
 func SupportedDialer(name string) bool {
 	switch name {
-	case "tcp":
+	case "tcp", "tls", "ws", "mtcp", "mtls", "mws":
 		return true
 	default:
 		return false
@@ -63,31 +66,18 @@ func (d *tunnelDialer) Init(md metadata.Metadata) error {
 }
 
 func (d *tunnelDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
-	var options dialer.DialOptions
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	// Only the control RPC is time-capped; the inner dial runs on the
-	// caller's ctx so a slow path to the peer isn't killed by this budget.
-	octx, cancel := context.WithTimeout(ctx, rpcTimeout)
-	defer cancel()
-	id, endpoint, err := d.provider.OpenTunnel(octx, addr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Replace the inner dialer's base conn (options.Dialer, set by
-	// Transport.Dial) with a dialer that connects the tunnel endpoint and
-	// returns the tunnelConn unchanged — the inner dialer never sees that
-	// its base is a tunnel.
-	base := &tunnelBaseDialer{endpoint: endpoint, id: id, pr: d.provider}
+	// The tunnel is opened lazily by the base dialer: only when the inner
+	// dialer actually dials its base. On a mux session cache hit the inner
+	// never touches the base, and no tunnel (or control RPC) is spent.
+	base := &tunnelBaseDialer{peer: addr, pr: d.provider}
 	conn, err := d.inner.Dial(ctx, addr, append(opts, dialer.NetDialerDialOption(base))...)
 	if err != nil {
 		// The tunnel is unusable: close it and fail closed.
-		cctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
-		defer cancel()
-		d.provider.CloseTunnel(cctx, id)
+		if id := base.tunnelID(); id != "" {
+			cctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+			defer cancel()
+			d.provider.CloseTunnel(cctx, id)
+		}
 		return nil, err
 	}
 	return conn, nil
@@ -112,20 +102,57 @@ func (d *tunnelDialer) Multiplex() bool {
 	return false
 }
 
-// tunnelBaseDialer dials the tunnel endpoint and wraps the resulting conn
-// with tunnel teardown.
+// tunnelBaseDialer lazily opens a tunnel on first use, then dials the tunnel
+// endpoint and wraps the resulting conn with tunnel teardown. If the inner
+// dialer never dials its base (mux session cache hit), no tunnel is opened.
 type tunnelBaseDialer struct {
-	endpoint string
+	peer string
+	pr   TunnelProvider
+
+	mu       sync.Mutex
 	id       string
-	pr       TunnelProvider
+	endpoint string
+}
+
+// tunnelID returns the opened tunnel's id, or "" if none was opened.
+func (d *tunnelBaseDialer) tunnelID() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.id
 }
 
 func (d *tunnelBaseDialer) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Only the control RPC is time-capped; the endpoint dial runs on the
+	// caller's ctx so a slow path to the peer isn't killed by this budget.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.endpoint == "" {
+		octx, cancel := context.WithTimeout(ctx, rpcTimeout)
+		defer cancel()
+		id, endpoint, err := d.pr.OpenTunnel(octx, d.peer)
+		if err != nil {
+			return nil, err
+		}
+		d.id, d.endpoint = id, endpoint
+	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", d.endpoint)
 	if err != nil {
+		// The tunnel is unusable: release it and forget it, so a retry
+		// on the same base dialer opens a fresh one.
+		cctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+		defer cancel()
+		d.pr.CloseTunnel(cctx, d.id)
+		d.id, d.endpoint = "", ""
 		return nil, err
 	}
-	return &tunnelConn{Conn: conn, id: d.id, pr: d.pr}, nil
+	return &tunnelConn{Conn: conn, id: d.id, pr: d.pr, onClosed: func() {
+		// The inner may close the conn before this base dialer ever sees an
+		// error; clear the state so tunnelDialer's fail path doesn't issue a
+		// second CloseTunnel.
+		d.mu.Lock()
+		d.id, d.endpoint = "", ""
+		d.mu.Unlock()
+	}}, nil
 }
 
 // tunnelConn is the tunnel handle: closing it closes the underlying conn and
@@ -134,6 +161,7 @@ type tunnelConn struct {
 	net.Conn
 	id       string
 	pr       TunnelProvider
+	onClosed func()
 	closeOne sync.Once
 }
 
@@ -145,6 +173,9 @@ func (c *tunnelConn) Close() error {
 		err = c.pr.CloseTunnel(ctx, c.id)
 		if cerr := c.Conn.Close(); err == nil {
 			err = cerr
+		}
+		if c.onClosed != nil {
+			c.onClosed()
 		}
 	})
 	return err

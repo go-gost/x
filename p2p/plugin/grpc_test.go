@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -354,10 +355,171 @@ func TestHandshakeForward(t *testing.T) {
 }
 
 func TestSupportedDialer(t *testing.T) {
-	if !xp2p.SupportedDialer("tcp") {
-		t.Error("SupportedDialer(tcp) = false, want true")
+	for _, name := range []string{"tcp", "tls", "ws", "mtcp", "mtls", "mws"} {
+		if !xp2p.SupportedDialer(name) {
+			t.Errorf("SupportedDialer(%q) = false, want true", name)
+		}
 	}
-	if xp2p.SupportedDialer("kcp") {
-		t.Error("SupportedDialer(kcp) = true, want false (fail closed)")
+	for _, name := range []string{"kcp", "quic", "grpc", "http2", ""} {
+		if xp2p.SupportedDialer(name) {
+			t.Errorf("SupportedDialer(%q) = true, want false (fail closed)", name)
+		}
+	}
+}
+
+// muxDialer implements dialer.Multiplexer to exercise the wrapper's
+// Multiplex delegation (Chain.Route route-splitting depends on it).
+type muxDialer struct {
+	dialer.Dialer
+	mux bool
+}
+
+func (d *muxDialer) Multiplex() bool { return d.mux }
+
+func TestMultiplexDelegation(t *testing.T) {
+	d := xp2p.NewTunnelDialer(&muxDialer{mux: true}, nil)
+	m, ok := d.(dialer.Multiplexer)
+	if !ok {
+		t.Fatal("tunnelDialer does not implement dialer.Multiplexer")
+	}
+	if !m.Multiplex() {
+		t.Fatal("Multiplex() = false for muxing inner, want true (route-splitting would not trigger)")
+	}
+
+	d2 := xp2p.NewTunnelDialer(&muxDialer{mux: false}, nil)
+	if d2.(dialer.Multiplexer).Multiplex() {
+		t.Fatal("Multiplex() = true for non-muxing inner, want false")
+	}
+
+	// tcp inner has no Multiplex method; the wrapper must report false.
+	provider := NewGRPCPlugin("t", "127.0.0.1:1")
+	d3 := xp2p.NewTunnelDialer(tcp.NewDialer(dialer.LoggerOption(logger.Default())), provider)
+	if d3.(dialer.Multiplexer).Multiplex() {
+		t.Fatal("Multiplex() = true for tcp inner, want false")
+	}
+}
+
+// countingProvider is a TunnelProvider recording open/close calls.
+type countingProvider struct {
+	ln        net.Listener
+	mu        sync.Mutex
+	openCalls int
+	closes    []string
+}
+
+func (p *countingProvider) OpenTunnel(ctx context.Context, peer string) (id, endpoint string, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.openCalls++
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", "", err
+	}
+	p.ln = ln
+	return fmt.Sprintf("t-%d", p.openCalls), ln.Addr().String(), nil
+}
+
+func (p *countingProvider) CloseTunnel(ctx context.Context, id string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closes = append(p.closes, id)
+	if p.ln != nil {
+		p.ln.Close()
+		p.ln = nil
+	}
+	return nil
+}
+
+func (p *countingProvider) Close() error { return nil }
+
+func (p *countingProvider) openCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.openCalls
+}
+
+func (p *countingProvider) closeCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.closes)
+}
+
+// noBaseDialer never touches its base net dialer — the mux session cache hit
+// shape (mtcp.Dial returns the cached session conn directly).
+type noBaseDialer struct{ dialer.Dialer }
+
+func (d *noBaseDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+	c1, c2 := net.Pipe()
+	go c1.Close()
+	return c2, nil
+}
+
+// baseDialer dials its base net dialer once and returns the conn; if fail
+// is set, it returns an error after the base dial succeeded.
+type baseDialer struct {
+	dialer.Dialer
+	fail bool
+}
+
+func (d *baseDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+	var options dialer.DialOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+	conn, err := options.Dialer.Dial(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	if d.fail {
+		conn.Close()
+		return nil, errors.New("inner dial failed after base dial")
+	}
+	return conn, nil
+}
+
+func TestLazyOpenTunnel(t *testing.T) {
+	// Cache hit: the inner never dials its base, so no tunnel is opened.
+	p := &countingProvider{}
+	d := xp2p.NewTunnelDialer(&noBaseDialer{}, p)
+	conn, err := d.Dial(context.Background(), "127.0.0.1:9999")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	if n := p.openCount(); n != 0 {
+		t.Fatalf("OpenTunnel calls = %d, want 0 (cache hit must not leak a tunnel)", n)
+	}
+
+	// Happy path: the inner dials its base exactly once; closing the conn
+	// releases the tunnel.
+	p2 := &countingProvider{}
+	d2 := xp2p.NewTunnelDialer(&baseDialer{}, p2)
+	conn2, err := d2.Dial(context.Background(), "127.0.0.1:9999")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := p2.openCount(); n != 1 {
+		t.Fatalf("OpenTunnel calls = %d, want 1", n)
+	}
+	if n := p2.closeCount(); n != 0 {
+		t.Fatalf("CloseTunnel calls before conn close = %d, want 0", n)
+	}
+	conn2.Close()
+	if n := p2.closeCount(); n != 1 {
+		t.Fatalf("CloseTunnel calls after conn close = %d, want 1", n)
+	}
+
+	// Failure path: inner.Dial fails after the base dial opened the tunnel;
+	// the tunnel must be released (fail closed).
+	p3 := &countingProvider{}
+	d3 := xp2p.NewTunnelDialer(&baseDialer{fail: true}, p3)
+	if _, err := d3.Dial(context.Background(), "127.0.0.1:9999"); err == nil {
+		t.Fatal("Dial succeeded, want inner error")
+	}
+	if n := p3.openCount(); n != 1 {
+		t.Fatalf("OpenTunnel calls = %d, want 1", n)
+	}
+	if n := p3.closeCount(); n != 1 {
+		t.Fatalf("CloseTunnel calls after failed dial = %d, want 1 (fail closed)", n)
 	}
 }

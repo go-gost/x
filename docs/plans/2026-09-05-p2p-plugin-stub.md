@@ -167,6 +167,8 @@ log:
 
 **本里程碑内层 dialer 只验证 `tcp`**（无握手路径，wrapper 全链路完整跑通）；tls/ws/mtls/mws 需补完"内层协议与 mux"三条前置后用同类三终端流程另验（peer 侧起对应 listener）。
 
+> **验证结果注记（2026-09-05 mux/token 里程碑）**：白名单已扩至 `tcp/tls/ws/mtcp/mtls/mws`（`x/p2p/tunnel_dialer.go`），wrapper 已转发 Handshaker，TLS ServerName 走既有 `node/parse.go` 的 `SplitHostPort(cfg.Addr)` 兜底（p2p 下 node addr 即 peer，与非 p2p 语义一致，无需改代码）。mux 形态：**隧道惰性开洞**（`OpenTunnel` 下沉进 `tunnelBaseDialer`——mtcp 缓存命中时不碰 base，否则每 Dial 漏一条孤儿隧道），一条隧道 = 一个 mux 会话 = N 条流，会话死亡经 `session.conn.Close()` → `CloseTunnel` 回收。控制通道 token 校验已补宿主侧（`p2p --token` + gRPC metadata，常量时间比对）。演示配置：`play/p2p-tls|ws|mtcp|mtls.yaml`。
+
 ### 分层认知（适配器=建底座管道，dialer=在管道上握手，connector=在管道上说话）
 
 p2p 适配器是 reach 面：对插件发 control RPC（OpenTunnel）→ 拨本地 endpoint → 产出 `net.Conn` 底座（经插件桥接连到对端 peer）；内层 dialer 在底座上做协议握手（tls/ws/mux）；connector 是 speak 面：在第 3 层做代理协议握手（HTTP CONNECT/SOCKS5/透传），只与"对端跑什么协议"相关，**永远看不到插件/endpoint**。core 只消费普通 conn，不感知 P2P。隧道是昂贵资产：本桩为"每 Dial 一隧道"的最简形态，未来里程碑在底座之上用内层 mux dialer 复用（一条隧道 = mtcp/mtls 会话 = N 条 stream；wrapper 只供底座，mux 生命周期归内层，connector=每连接服务）。
