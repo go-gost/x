@@ -22,32 +22,41 @@ func CipherPacketConn(conn net.PacketConn, key []byte) net.PacketConn {
 }
 
 func (conn *cipherConn) ReadFrom(data []byte) (n int, addr net.Addr, err error) {
-	n, addr, err = conn.PacketConn.ReadFrom(data)
-	if err != nil {
-		return
+	for {
+		n, addr, err = conn.PacketConn.ReadFrom(data)
+		if err != nil {
+			return n, addr, err
+		}
+		b, err := conn.decrypt(data[:n])
+		if err != nil {
+			if _, ok := errors.AsType[aes.KeySizeError](err); ok {
+				// Local misconfiguration: surface it instead of looping forever.
+				return 0, addr, err
+			}
+			// Invalid peer datagram: discard and keep listening. Returning the
+			// error here would make quic-go close the shared transport.
+			continue
+		}
+		return copy(data, b), addr, nil
 	}
-	b, err := conn.decrypt(data[:n])
-	if err != nil {
-		return
-	}
-
-	copy(data, b)
-
-	return len(b), addr, nil
 }
 
 func (conn *cipherConn) WriteTo(data []byte, addr net.Addr) (n int, err error) {
 	b, err := conn.encrypt(data)
 	if err != nil {
-		return
+		return 0, err
 	}
 
-	_, err = conn.PacketConn.WriteTo(b, addr)
+	n, err = conn.PacketConn.WriteTo(b, addr)
 	if err != nil {
-		return
+		return n, err
+	}
+	if n != len(b) {
+		return n, io.ErrShortWrite
 	}
 
-	return len(b), nil
+	// Report the caller-supplied length, not the encrypted (nonce+tag) length.
+	return len(data), nil
 }
 
 func (conn *cipherConn) encrypt(data []byte) ([]byte, error) {
