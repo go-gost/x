@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 	"github.com/go-gost/x/registry"
 )
 
@@ -24,6 +25,9 @@ func ParseAdmission(cfg *config.AdmissionConfig) admission.Admission {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

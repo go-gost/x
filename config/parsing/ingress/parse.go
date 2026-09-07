@@ -11,6 +11,7 @@ import (
 	ingress_plugin "github.com/go-gost/x/ingress/plugin"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 )
 
 // ParseIngress converts an IngressConfig into an ingress.Ingress. It resolves
@@ -22,6 +23,9 @@ func ParseIngress(cfg *config.IngressConfig) ingress.Ingress {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

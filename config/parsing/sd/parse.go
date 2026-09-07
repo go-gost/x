@@ -4,9 +4,11 @@ import (
 	"crypto/tls"
 	"strings"
 
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 	sd_plugin "github.com/go-gost/x/sd/plugin"
 )
 
@@ -17,6 +19,9 @@ func ParseSD(cfg *config.SDConfig) sd.SD {
 		return nil
 	}
 
+	if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+		logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+	}
 	var tlsCfg *tls.Config
 	if cfg.Plugin.TLS != nil {
 		tlsCfg = &tls.Config{

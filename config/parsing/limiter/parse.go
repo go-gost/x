@@ -15,6 +15,7 @@ import (
 	xrate "github.com/go-gost/x/limiter/rate"
 	xtraffic "github.com/go-gost/x/limiter/traffic"
 	traffic_plugin "github.com/go-gost/x/limiter/traffic/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 )
 
 // ParseTrafficLimiter converts a LimiterConfig into a traffic.TrafficLimiter.
@@ -26,6 +27,9 @@ func ParseTrafficLimiter(cfg *config.LimiterConfig) (lim traffic.TrafficLimiter)
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

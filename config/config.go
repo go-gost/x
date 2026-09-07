@@ -148,6 +148,7 @@ type TLSOptions struct {
 type PluginConfig struct {
 	Type    string        `json:"type"`
 	Addr    string        `json:"addr"`
+	Command []string      `yaml:"command,omitempty" json:"command,omitempty"`
 	TLS     *TLSConfig    `yaml:",omitempty" json:"tls,omitempty"`
 	Timeout time.Duration `yaml:",omitempty" json:"timeout,omitempty"`
 	Token   string        `yaml:",omitempty" json:"token,omitempty"`

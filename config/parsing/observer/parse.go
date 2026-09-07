@@ -4,10 +4,12 @@ import (
 	"crypto/tls"
 	"strings"
 
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
 	observer_plugin "github.com/go-gost/x/observer/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 )
 
 // ParseObserver converts an ObserverConfig into an observer.Observer. It only
@@ -18,6 +20,9 @@ func ParseObserver(cfg *config.ObserverConfig) observer.Observer {
 		return nil
 	}
 
+	if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+		logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+	}
 	var tlsCfg *tls.Config
 	if cfg.Plugin.TLS != nil {
 		tlsCfg = &tls.Config{

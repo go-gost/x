@@ -12,6 +12,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 	xrecorder "github.com/go-gost/x/recorder"
 	recorder_plugin "github.com/go-gost/x/recorder/plugin"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -33,6 +34,9 @@ func ParseRecorder(cfg *config.RecorderConfig) (r recorder.Recorder) {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

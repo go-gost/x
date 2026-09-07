@@ -15,11 +15,12 @@ import (
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
 	xhop "github.com/go-gost/x/hop"
 	hop_plugin "github.com/go-gost/x/hop/plugin"
-	xs "github.com/go-gost/x/selector"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
 	"github.com/go-gost/x/metadata"
 	mdutil "github.com/go-gost/x/metadata/util"
+	xplugin "github.com/go-gost/x/plugin"
+	xs "github.com/go-gost/x/selector"
 )
 
 // ParseHop converts a HopConfig into a hop.Hop. It resolves plugin backends
@@ -32,6 +33,9 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

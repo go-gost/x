@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 	xrouter "github.com/go-gost/x/router"
 	router_plugin "github.com/go-gost/x/router/plugin"
 )
@@ -23,6 +24,9 @@ func ParseRouter(cfg *config.RouterConfig) router.Router {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{

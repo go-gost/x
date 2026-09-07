@@ -10,6 +10,7 @@ import (
 	"github.com/go-gost/x/internal/plugin"
 	xp2p "github.com/go-gost/x/p2p"
 	p2p_plugin "github.com/go-gost/x/p2p/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 )
 
 // ParseP2P converts a P2PConfig into a p2p.TunnelProvider backed by an
@@ -21,6 +22,9 @@ func ParseP2P(cfg *config.P2PConfig) (p xp2p.TunnelProvider) {
 		return nil
 	}
 
+	if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+		logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+	}
 	var tlsCfg *tls.Config
 	if cfg.Plugin.TLS != nil {
 		tlsCfg = &tls.Config{

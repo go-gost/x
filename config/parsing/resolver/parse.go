@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/plugin"
+	xplugin "github.com/go-gost/x/plugin"
 	"github.com/go-gost/x/registry"
 	xresolver "github.com/go-gost/x/resolver"
 	resolver_plugin "github.com/go-gost/x/resolver/plugin"
@@ -24,6 +25,9 @@ func ParseResolver(cfg *config.ResolverConfig) (resolver.Resolver, error) {
 	}
 
 	if cfg.Plugin != nil {
+		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
+			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
+		}
 		var tlsCfg *tls.Config
 		if cfg.Plugin.TLS != nil {
 			tlsCfg = &tls.Config{
