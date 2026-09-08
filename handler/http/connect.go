@@ -78,12 +78,17 @@ func (h *httpHandler) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 	}
 
 	if h.md.sniffing {
-		snifferHandled, err = h.sniffAndHandle(ctx, conn, cc, ro, log)
+		// A sniffed connection is recorded per exchange and its own record is
+		// dropped below, so its session must not report either: an interim
+		// record with no final one to close it would be a session that never ends.
+		snifferHandled, err = h.sniffAndHandle(ictx.ContextWithSession(ctx, nil), conn, cc, ro, log)
 		if snifferHandled {
 			ro.Time = time.Time{}
 			return err
 		}
 	}
+
+	ictx.SessionFromContext(ctx).Start(*ro)
 
 	start := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), addr)
@@ -214,6 +219,7 @@ type SnifferBuilder struct {
 	Websocket           bool
 	WebsocketSampleRate float64
 	Recorder            recorder.Recorder
+	Reporter            *xrecorder.SessionReporter
 	RecorderOptions     *recorder.Options
 	Certificate         *x509.Certificate
 	PrivateKey          crypto.PrivateKey
@@ -234,6 +240,7 @@ func (b *SnifferBuilder) Build() *sniffing.Sniffer {
 		Websocket:           b.Websocket,
 		WebsocketSampleRate: b.WebsocketSampleRate,
 		Recorder:            b.Recorder,
+		Reporter:            b.Reporter,
 		RecorderOptions:     b.RecorderOptions,
 		Certificate:         b.Certificate,
 		PrivateKey:          b.PrivateKey,

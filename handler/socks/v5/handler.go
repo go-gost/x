@@ -15,6 +15,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/gosocks5"
 	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	"github.com/go-gost/x/internal/util/socks"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -43,6 +44,7 @@ type socks5Handler struct {
 	limiter  traffic.TrafficLimiter
 	cancel   context.CancelFunc
 	recorder recorder.RecorderObject
+	reporter *xrecorder.SessionReporter
 	certPool tls_util.CertPool
 }
 
@@ -92,6 +94,11 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 			break
 		}
 	}
+
+	h.reporter = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+		Period: h.md.recorderPeriod,
+		Logger: h.options.Logger,
+	})
 
 	if h.md.certificate != nil && h.md.privateKey != nil {
 		h.certPool = tls_util.NewMemoryCertPool()
@@ -150,6 +157,9 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
+	session := h.reporter.NewSession(ctx, &pStats)
+	ctx = ictx.ContextWithSession(ctx, session)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -157,7 +167,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		ro.InputBytes += pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes += pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Errorf("record: %v", err)
 		}
 
@@ -204,7 +214,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 		return h.handleMuxBind(ctx, conn, networkAddr("tcp", req.Addr), address, ro, log)
 	case gosocks5.CmdUdp:
 		ro.Network = "udp"
-		return h.handleUDP(ctx, conn, "udp", ro, log)
+		return h.handleUDP(ctx, conn, "udp", ro, &pStats, log)
 	case socks.CmdUDPTun:
 		ro.Network = "udp"
 		return h.handleUDPTun(ctx, conn, networkAddr("udp", req.Addr), address, ro, log)
@@ -226,7 +236,7 @@ func (h *socks5Handler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
 	}
-	return nil
+	return h.reporter.Close()
 }
 
 func (h *socks5Handler) checkRateLimit(addr net.Addr) bool {

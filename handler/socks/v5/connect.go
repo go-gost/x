@@ -115,6 +115,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			Websocket:           h.md.sniffingWebsocket,
 			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 			Recorder:            h.recorder.Recorder,
+			Reporter:            h.reporter,
 			RecorderOptions:     h.recorder.Options,
 			Certificate:         h.md.certificate,
 			PrivateKey:          h.md.privateKey,
@@ -146,6 +147,8 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			)
 		}
 	}
+
+	ictx.SessionFromContext(ctx).Start(*ro)
 
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), address)

@@ -210,6 +210,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/util/httpcache"
@@ -241,6 +242,9 @@ type httpHandler struct {
 	recorder  recorder.RecorderObject // first matching service-handler recorder
 	certPool  tls_util.CertPool       // in-memory cert pool for MITM TLS termination
 	transport http.RoundTripper       // upstream HTTP transport (injectable for tests)
+
+	// reporter reports live sessions on an interval when recorder.period is set.
+	reporter *xrecorder.SessionReporter
 }
 
 // NewHandler creates a new HTTP handler and applies the given options.
@@ -295,10 +299,16 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		Log:     h.options.Logger,
 	}
 
+	h.reporter = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+		Period: h.md.recorderPeriod,
+		Logger: h.options.Logger,
+	})
+
 	h.sniffer = &SnifferBuilder{
 		Websocket:           h.md.sniffingWebsocket,
 		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 		Recorder:            h.recorder.Recorder,
+		Reporter:            h.reporter,
 		RecorderOptions:     h.recorder.Options,
 		Certificate:         h.md.certificate,
 		PrivateKey:          h.md.privateKey,
@@ -364,6 +374,9 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
+	session := h.reporter.NewSession(ctx, &pStats)
+	ctx = ictx.ContextWithSession(ctx, session)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -371,7 +384,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Error("record: %v", err)
 		}
 
@@ -539,7 +552,7 @@ func (h *httpHandler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
 	}
-	return nil
+	return h.reporter.Close()
 }
 
 // buildHTTPRecorder creates an HTTPRecorderObject from the request metadata.

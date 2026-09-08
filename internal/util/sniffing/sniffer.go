@@ -127,6 +127,9 @@ type Sniffer struct {
 
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
+	// Reporter reports the sessions this sniffer opens. When it is nil each
+	// session still writes one record, when it ends.
+	Reporter *xrecorder.SessionReporter
 
 	// MITM TLS termination
 	Certificate        *x509.Certificate
@@ -186,4 +189,13 @@ func (h *Sniffer) effectiveReadTimeout() time.Duration {
 		return h.ReadTimeout
 	}
 	return DefaultReadTimeout
+}
+
+// reporter falls back to a disabled reporter when the caller supplied none, so
+// that a session still writes one record per exchange, as it always has.
+func (h *Sniffer) reporter() *xrecorder.SessionReporter {
+	if h.Reporter != nil {
+		return h.Reporter
+	}
+	return xrecorder.NewSessionReporter(h.Recorder, xrecorder.ReporterOptions{})
 }

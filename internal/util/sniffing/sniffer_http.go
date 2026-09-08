@@ -239,6 +239,8 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	req.Header.Del("Gost-Record")
 
 	ro.Time = time.Now()
+	session := h.reporter().NewSession(ctx, pStats)
+	session.Start(*ro)
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
 		if err != nil {
@@ -247,7 +249,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(ro.Time)
-		if rerr := ro.Record(ctx, h.Recorder); rerr != nil {
+		if rerr := session.Finish(ctx, *ro); rerr != nil {
 			log.Errorf("record: %v", rerr)
 		}
 
