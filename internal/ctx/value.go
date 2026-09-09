@@ -13,6 +13,8 @@ import (
 
 type bufferKey struct{}
 
+type udpBindDeviceKey struct{}
+
 // ContextWithBuffer returns a copy of ctx with the given buffer stored.
 // The buffer is used by dialers and connectors to reuse a *bytes.Buffer
 // for protocol handshake data (e.g. TLS ClientHello, HTTP requests).
@@ -23,6 +25,19 @@ func ContextWithBuffer(ctx context.Context, buffer *bytes.Buffer) context.Contex
 // BufferFromContext returns the *bytes.Buffer stored in ctx, or nil.
 func BufferFromContext(ctx context.Context) *bytes.Buffer {
 	v, _ := ctx.Value(bufferKey{}).(*bytes.Buffer)
+	return v
+}
+
+// ContextWithUDPBindDevice marks an empty-address UDP relay dial as requiring
+// an operating-system device bind in addition to its local-address bind.
+func ContextWithUDPBindDevice(ctx context.Context) context.Context {
+	return context.WithValue(ctx, udpBindDeviceKey{}, true)
+}
+
+// UDPBindDeviceFromContext reports whether the UDP relay dial explicitly
+// requested an operating-system device bind.
+func UDPBindDeviceFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(udpBindDeviceKey{}).(bool)
 	return v
 }
 

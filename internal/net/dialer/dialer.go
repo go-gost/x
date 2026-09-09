@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-gost/core/logger"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 )
 
@@ -125,12 +126,15 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 				return nil, err
 			}
 			err = sc.Control(func(fd uintptr) {
-				// NOTE: bindDevice is intentionally skipped for empty-addr UDP
-				// (relay/listener sockets). The ListenUDP laddr binding above
-				// is sufficient to pin the source IP. SO_BINDTODEVICE would
-				// force all outbound datagrams through the named interface,
-				// which may conflict with the kernel routing table and cause
-				// silent packet drops — breaking UDP associate (issue #287).
+				// Keep the default from issue #287: an empty-address UDP relay
+				// binds only its source address. Multi-uplink hosts can opt into
+				// SO_BINDTODEVICE when their routing table would otherwise select
+				// a different egress interface.
+				if shouldBindUDPDevice(ctx, ifceName, bindToDevice) {
+					if err := bindDevice(network, addr, fd, ifceName); err != nil {
+						log.Warnf("%s/%s bind device: %v", addr, network, err)
+					}
+				}
 				if d.Mark != 0 {
 					if err := setMark(fd, d.Mark); err != nil {
 						log.Warnf("set mark: %v", err)
@@ -181,4 +185,8 @@ func (d *Dialer) dialOnce(ctx context.Context, network, addr, ifceName string, i
 	}
 
 	return netd.DialContext(ctx, network, addr)
+}
+
+func shouldBindUDPDevice(ctx context.Context, ifceName string, bindToDevice bool) bool {
+	return ictx.UDPBindDeviceFromContext(ctx) && ifceName != "" && bindToDevice
 }
