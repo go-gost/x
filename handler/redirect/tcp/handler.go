@@ -333,6 +333,4 @@ func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
-// Close shuts down the session reporter; live sessions are the service's to
-// finish first.
 func (h *redirectHandler) Close() error { return h.reporter.Close() }
