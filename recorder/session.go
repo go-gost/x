@@ -20,9 +20,11 @@ import (
 // the floor the observer applies to its own period.
 const MinPeriod = time.Second
 
-// Phases a session record can be in. Interim records are emitted while the
-// session is still running; exactly one final record closes it.
+// Phases a session record can be in. A start record announces the stream,
+// interim records are emitted while it is running, and exactly one final
+// record closes it.
 const (
+	PhaseStart   = "start"
 	PhaseInterim = "interim"
 	PhaseFinal   = "final"
 )
@@ -31,17 +33,17 @@ const (
 var ErrReporterClosed = errors.New("session recorder is closed")
 
 // SessionRecord is the periodic handler record. Byte counts are always the delta
-// since the previous record of the same stream, so a consumer sums them instead
-// of replacing what it already stored. A record is identified by (streamID,
-// sequence) rather than by SID: one connection can carry several HTTP requests
+// since the previous record of the same session, so a consumer sums them instead
+// of replacing what it already stored. A record is identified by (sessionID,
+// recordIndex) rather than by SID: one connection can carry several HTTP requests
 // or UDP destinations, and a delivery may be retried with the same body.
 //
 // Time and Duration describe the reported interval; StartedAt and
 // SessionDuration describe the session the interval belongs to.
 type SessionRecord struct {
 	HandlerRecorderObject
-	StreamID        string        `json:"streamID"`
-	Sequence        uint64        `json:"sequence"`
+	SessionID       string        `json:"sessionID"`
+	RecordIndex     uint64        `json:"recordIndex"`
 	Phase           string        `json:"phase"`
 	StartedAt       time.Time     `json:"startedAt"`
 	SessionDuration time.Duration `json:"sessionDuration"`
@@ -170,7 +172,8 @@ type Session struct {
 }
 
 // Start publishes the metadata that interim records carry, once routing and
-// authentication have settled it, and puts the session on the reporting tick.
+// authentication have settled it, emits one zero-byte start record, and puts
+// the session on the reporting tick.
 // It may be called again to refresh that metadata; the session keeps the start
 // time it was first given. Protocol bodies and headers are dropped here: they
 // describe an exchange, not an interval, and belong to the final record only.
@@ -180,8 +183,8 @@ func (s *Session) Start(base HandlerRecorderObject) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.finished {
+		s.mu.Unlock()
 		return
 	}
 
@@ -191,7 +194,8 @@ func (s *Session) Start(base HandlerRecorderObject) {
 		base.Labels = s.labels
 	}
 
-	if s.startedAt.IsZero() {
+	first := s.startedAt.IsZero()
+	if first {
 		s.startedAt = base.Time
 		if s.startedAt.IsZero() {
 			s.startedAt = time.Now()
@@ -201,6 +205,28 @@ func (s *Session) Start(base HandlerRecorderObject) {
 	}
 	base.Time = s.startedAt
 	s.base = base
+	if !first {
+		s.mu.Unlock()
+		return
+	}
+
+	start := s.base
+	start.InputBytes = 0
+	start.OutputBytes = 0
+	data, err := s.encode(start, s.startedAt, PhaseStart)
+	s.sequence = 1
+	s.mu.Unlock()
+	if err != nil {
+		s.reporter.logf("encode start: %v", err)
+		return
+	}
+	// A start record is useful metadata, but must never delay establishing a
+	// proxy connection when the recorder queue is full. The first interim/final
+	// record still carries the complete byte remainder.
+	if !s.reporter.tryEnqueue(data) {
+		s.reporter.logf("queue is full, deferring start record")
+		return
+	}
 }
 
 // Finish seals the session and hands over its remainder. final carries the
@@ -275,8 +301,8 @@ func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) 
 
 	return json.Marshal(SessionRecord{
 		HandlerRecorderObject: ro,
-		StreamID:              s.id,
-		Sequence:              s.sequence + 1,
+		SessionID:             s.id,
+		RecordIndex:           s.sequence + 1,
 		Phase:                 phase,
 		StartedAt:             s.startedAt,
 		SessionDuration:       now.Sub(s.startedAt),
@@ -318,6 +344,19 @@ func (s *Session) report(now time.Time) {
 	default:
 		// Never block traffic on periodic I/O: fold this interval into the next.
 		s.reporter.logf("queue is full, deferring an interim record")
+	}
+}
+
+func (r *SessionReporter) tryEnqueue(data []byte) bool {
+	r.admit.RLock()
+	defer r.admit.RUnlock()
+	select {
+	case <-r.stop:
+		return false
+	case r.queue <- data:
+		return true
+	default:
+		return false
 	}
 }
 

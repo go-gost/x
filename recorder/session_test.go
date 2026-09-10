@@ -112,16 +112,22 @@ func TestSessionReporterEmitsDeltasAndFinalRemainder(t *testing.T) {
 
 	raw := sink.snapshot()
 	var total uint64
-	stream := decodeSessionRecord(t, raw[0]).StreamID
+	stream := decodeSessionRecord(t, raw[0]).SessionID
+	if got := decodeSessionRecord(t, raw[0]); got.Phase != PhaseStart || got.RecordIndex != 1 || got.InputBytes != 0 || got.OutputBytes != 0 {
+		t.Fatalf("unexpected start record: %+v", got)
+	}
 	for i, b := range raw {
 		rec := decodeSessionRecord(t, b)
 		total += rec.OutputBytes
 
-		if rec.StreamID != stream {
-			t.Errorf("record %d: stream = %s, want %s", i, rec.StreamID, stream)
+		if rec.SessionID != stream {
+			t.Errorf("record %d: session = %s, want %s", i, rec.SessionID, stream)
 		}
-		if rec.Sequence != uint64(i+1) {
-			t.Errorf("record %d: sequence = %d, want %d", i, rec.Sequence, i+1)
+		if rec.RecordIndex != uint64(i+1) {
+			t.Errorf("record %d: record index = %d, want %d", i, rec.RecordIndex, i+1)
+		}
+		if i == 0 {
+			continue
 		}
 		want := PhaseInterim
 		if i == len(raw)-1 {
@@ -201,6 +207,27 @@ func TestSessionReporterDisabledKeepsLegacyRecord(t *testing.T) {
 	}
 }
 
+func TestSessionReporterStartIsEmittedOnce(t *testing.T) {
+	sink := new(sessionSink)
+	r := NewSessionReporter(sink, ReporterOptions{Period: MinPeriod})
+	defer r.Close()
+
+	s := r.NewSession(context.Background(), nil)
+	s.Start(HandlerRecorderObject{Service: "test", Time: time.Now()})
+	s.Start(HandlerRecorderObject{Service: "test", Time: time.Now().Add(time.Second)})
+	if err := s.Finish(context.Background(), HandlerRecorderObject{Service: "test", Time: time.Now(), InputBytes: 4}); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	waitFor(t, func() bool { return len(sink.snapshot()) == 2 }, "short session did not produce start and final")
+	raw := sink.snapshot()
+	if got := decodeSessionRecord(t, raw[0]); got.Phase != PhaseStart || got.RecordIndex != 1 {
+		t.Fatalf("unexpected start: %+v", got)
+	}
+	if got := decodeSessionRecord(t, raw[1]); got.Phase != PhaseFinal || got.RecordIndex != 2 || got.InputBytes != 4 {
+		t.Fatalf("unexpected final: %+v", got)
+	}
+}
+
 type flakySink struct {
 	sessionSink
 	fail     int32
@@ -233,7 +260,7 @@ func TestSessionReporterRetriesTheSameRecord(t *testing.T) {
 		t.Errorf("attempts = %d, want 4", got)
 	}
 	rec := decodeSessionRecord(t, sink.snapshot()[0])
-	if rec.InputBytes != 99 || rec.Sequence != 1 {
+	if rec.InputBytes != 99 || rec.RecordIndex != 1 {
 		t.Errorf("a retry must repeat the record, not advance the stream: %+v", rec)
 	}
 }
@@ -445,7 +472,7 @@ func TestSessionReporterAccountsConcurrentTraffic(t *testing.T) {
 	for _, raw := range sink.snapshot() {
 		rec := decodeSessionRecord(t, raw)
 		total += rec.InputBytes
-		streams[rec.StreamID]++
+		streams[rec.SessionID]++
 	}
 	if total != written {
 		t.Errorf("reported %d bytes, want %d: concurrent reporting lost or duplicated traffic", total, written)
