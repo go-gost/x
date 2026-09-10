@@ -27,8 +27,8 @@ const (
 	PhaseFinal   = "final"
 )
 
-// ErrReporterClosed is returned when a session outlives the handler that owns it.
-var ErrReporterClosed = errors.New("session recorder is closed")
+// ErrSessionRecorderClosed is returned when a session outlives the handler that owns it.
+var ErrSessionRecorderClosed = errors.New("session recorder is closed")
 
 // SessionRecord is one interval record with byte deltas for a session.
 type SessionRecord struct {
@@ -61,7 +61,7 @@ type SessionRecorder struct {
 	closed   bool
 
 	// admit is held for reading around an enqueue and for writing by Close, so
-	// that every enqueue which observed an open reporter completes while the
+	// that every enqueue which observed an open session recorder completes while the
 	// sender is still draining.
 	admit sync.RWMutex
 
@@ -141,7 +141,7 @@ type Session struct {
 
 // Start stores session metadata and emits one zero-byte start record.
 func (s *Session) Start(base HandlerRecorderObject) {
-	if s == nil || !s.sessionRecorder.Enabled() {
+	if s == nil || s.sessionRecorder == nil || !s.sessionRecorder.Enabled() {
 		return
 	}
 
@@ -199,6 +199,8 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 		return nil
 	}
 	r := s.sessionRecorder
+	r.admit.RLock()
+	defer r.admit.RUnlock()
 
 	s.mu.Lock()
 	if s.finished {
@@ -239,7 +241,7 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 	}
 	// Enqueued outside the session lock: a busy queue must not stall the
 	// collector, which samples every other session on the same goroutine.
-	return r.enqueue(data)
+	return r.enqueueLocked(data)
 }
 
 // encode converts cumulative handler totals into one record's byte deltas.
@@ -247,7 +249,7 @@ func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) 
 	ro.InputBytes = max(ro.InputBytes, s.input) - s.input
 	ro.OutputBytes = max(ro.OutputBytes, s.output) - s.output
 	ro.Time = now
-	ro.Duration = now.Sub(s.last)
+	ro.Duration = now.Sub(s.startedAt)
 
 	return json.Marshal(SessionRecord{
 		HandlerRecorderObject: ro,
@@ -350,12 +352,16 @@ func (r *SessionRecorder) collect() {
 func (r *SessionRecorder) enqueue(data []byte) error {
 	r.admit.RLock()
 	defer r.admit.RUnlock()
+	return r.enqueueLocked(data)
+}
+
+func (r *SessionRecorder) enqueueLocked(data []byte) error {
 
 	// Checked before the blocking select, which would otherwise be free to pick
 	// a queue that nothing drains any more.
 	select {
 	case <-r.stop:
-		return ErrReporterClosed
+		return ErrSessionRecorderClosed
 	default:
 	}
 
@@ -371,6 +377,32 @@ func (r *SessionRecorder) enqueue(data []byte) error {
 	case <-timer.C:
 		return fmt.Errorf("session recorder queue: %w", context.DeadlineExceeded)
 	}
+}
+
+func (r *SessionRecorder) enqueueShutdownLocked(data []byte) error {
+	timer := time.NewTimer(r.opts.WriteTimeout)
+	defer timer.Stop()
+	select {
+	case r.queue <- data:
+		return nil
+	case <-timer.C:
+		return fmt.Errorf("session recorder queue: %w", context.DeadlineExceeded)
+	}
+}
+
+func (s *Session) shutdown() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.finished || s.base.RecordMode == "off" || s.base.Time.IsZero() {
+		return nil, nil
+	}
+	s.finished = true
+	s.sessionRecorder.forget(s)
+	if s.counters != nil {
+		s.base.InputBytes = s.counters.Get(stats.KindInputBytes)
+		s.base.OutputBytes = s.counters.Get(stats.KindOutputBytes)
+	}
+	return s.encode(s.base, time.Now(), PhaseFinal)
 }
 
 func (r *SessionRecorder) send() {
@@ -443,9 +475,27 @@ func (r *SessionRecorder) Close() error {
 		r.admit.Lock()
 		r.mu.Lock()
 		r.closed = true
-		active := len(r.sessions)
+		activeSessions := make([]*Session, 0, len(r.sessions))
+		for s := range r.sessions {
+			activeSessions = append(activeSessions, s)
+		}
 		r.mu.Unlock()
 		close(r.stop)
+		<-r.collected
+
+		for _, s := range activeSessions {
+			data, err := s.shutdown()
+			if err != nil {
+				r.closeErr = errors.Join(r.closeErr, err)
+				continue
+			}
+			if data == nil {
+				continue
+			}
+			if err := r.enqueueShutdownLocked(data); err != nil {
+				r.closeErr = errors.Join(r.closeErr, err)
+			}
+		}
 		r.admit.Unlock()
 
 		timer := time.NewTimer(r.opts.DrainTimeout)
@@ -457,6 +507,9 @@ func (r *SessionRecorder) Close() error {
 		}
 		r.cancel()
 
+		r.mu.Lock()
+		active := len(r.sessions)
+		r.mu.Unlock()
 		if active > 0 {
 			r.closeErr = errors.Join(r.closeErr, fmt.Errorf("session recorder closed with %d active sessions", active))
 		}

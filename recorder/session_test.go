@@ -408,8 +408,8 @@ func TestSessionRecorderCloseWaitsForRecovery(t *testing.T) {
 	}
 
 	after := r.NewSession(context.Background(), nil)
-	if err := after.Finish(context.Background(), HandlerRecorderObject{Time: time.Now()}); !errors.Is(err, ErrReporterClosed) {
-		t.Errorf("finish after close = %v, want %v", err, ErrReporterClosed)
+	if err := after.Finish(context.Background(), HandlerRecorderObject{Time: time.Now()}); !errors.Is(err, ErrSessionRecorderClosed) {
+		t.Errorf("finish after close = %v, want %v", err, ErrSessionRecorderClosed)
 	}
 }
 
