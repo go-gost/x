@@ -121,7 +121,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 
 	// A keep-alive connection carries several exchanges; each is accounted for
 	// on its own, under the connection's shared counters.
-	session := h.reporter.NewSession(ctx, pStats)
+	session := h.sessionRecorder.NewSession(ctx, pStats)
 
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
