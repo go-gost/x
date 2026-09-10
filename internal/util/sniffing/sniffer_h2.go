@@ -100,8 +100,6 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ro.Time = time.Now()
 
-	// An h2 exchange has no connection of its own to wrap, so its payload is
-	// counted where it is handed over.
 	var counters xstats.Stats
 	session := h.reporter.NewSession(r.Context(), &counters)
 
@@ -211,8 +209,6 @@ func (h *h2Handler) setHeader(w http.ResponseWriter, header http.Header) {
 	}
 }
 
-// countBody counts what is read from body. An h2 exchange has no connection of
-// its own to wrap, so its payload is measured where it is handed over.
 func countBody(body io.ReadCloser, counters stats.Stats) io.ReadCloser {
 	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(body, io.Discard), counters)
 	return xio.NewReadWriteCloser(counted, io.Discard, body)

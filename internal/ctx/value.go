@@ -67,14 +67,10 @@ func RecorderObjectFromContext(ctx context.Context) *xrecorder.HandlerRecorderOb
 
 type sessionCtxKey struct{}
 
-// ContextWithSession returns a copy of ctx carrying the accounting session of
-// the connection being handled, alongside the recorder object it reports.
 func ContextWithSession(ctx context.Context, s *xrecorder.Session) context.Context {
 	return context.WithValue(ctx, sessionCtxKey{}, s)
 }
 
-// SessionFromContext returns the session stored in ctx, or nil. A nil session
-// is usable: it simply reports nothing.
 func SessionFromContext(ctx context.Context) *xrecorder.Session {
 	v, _ := ctx.Value(sessionCtxKey{}).(*xrecorder.Session)
 	return v

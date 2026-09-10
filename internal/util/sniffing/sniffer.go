@@ -127,8 +127,6 @@ type Sniffer struct {
 
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
-	// Reporter reports the sessions this sniffer opens. When it is nil each
-	// session still writes one record, when it ends.
 	Reporter *xrecorder.SessionReporter
 
 	// MITM TLS termination
