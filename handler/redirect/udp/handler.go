@@ -31,10 +31,10 @@ func init() {
 }
 
 type redirectHandler struct {
-	md       metadata
-	options  handler.Options
-	recorder recorder.RecorderObject
-	reporter *xrecorder.SessionReporter
+	md              metadata
+	options         handler.Options
+	recorder        recorder.RecorderObject
+	sessionRecorder *xrecorder.SessionReporter
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -60,7 +60,7 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
-	h.reporter = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})
@@ -99,7 +99,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
-	session := h.reporter.NewSession(ctx, &pStats)
+	session := h.sessionRecorder.NewSession(ctx, &pStats)
 
 	defer func() {
 		if err != nil {
@@ -246,4 +246,4 @@ func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
 	return true
 }
 
-func (h *redirectHandler) Close() error { return h.reporter.Close() }
+func (h *redirectHandler) Close() error { return h.sessionRecorder.Close() }

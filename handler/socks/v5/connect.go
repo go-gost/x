@@ -115,7 +115,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 			Websocket:           h.md.sniffingWebsocket,
 			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 			Recorder:            h.recorder.Recorder,
-			Reporter:            h.reporter,
+			SessionRecorder:     h.sessionRecorder,
 			RecorderOptions:     h.recorder.Options,
 			Certificate:         h.md.certificate,
 			PrivateKey:          h.md.privateKey,

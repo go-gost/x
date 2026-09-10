@@ -306,7 +306,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		Websocket:           h.md.sniffingWebsocket,
 		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 		Recorder:            h.recorder.Recorder,
-		Reporter:            h.sessionRecorder,
+		SessionRecorder:     h.sessionRecorder,
 		RecorderOptions:     h.recorder.Options,
 		Certificate:         h.md.certificate,
 		PrivateKey:          h.md.privateKey,

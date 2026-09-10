@@ -127,7 +127,7 @@ type Sniffer struct {
 
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
-	Reporter *xrecorder.SessionReporter
+	SessionRecorder *xrecorder.SessionReporter
 
 	// MITM TLS termination
 	Certificate        *x509.Certificate
@@ -189,11 +189,11 @@ func (h *Sniffer) effectiveReadTimeout() time.Duration {
 	return DefaultReadTimeout
 }
 
-// reporter falls back to a disabled reporter when the caller supplied none, so
+// sessionRecorder falls back to a disabled sessionRecorder when the caller supplied none, so
 // that a session still writes one record per exchange, as it always has.
-func (h *Sniffer) reporter() *xrecorder.SessionReporter {
-	if h.Reporter != nil {
-		return h.Reporter
+func (h *Sniffer) sessionRecorder() *xrecorder.SessionReporter {
+	if h.SessionRecorder != nil {
+		return h.SessionRecorder
 	}
 	return xrecorder.NewSessionReporter(h.Recorder, xrecorder.ReporterOptions{})
 }

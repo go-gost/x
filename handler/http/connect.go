@@ -216,7 +216,7 @@ type SnifferBuilder struct {
 	Websocket           bool
 	WebsocketSampleRate float64
 	Recorder            recorder.Recorder
-	Reporter            *xrecorder.SessionReporter
+	SessionRecorder     *xrecorder.SessionReporter
 	RecorderOptions     *recorder.Options
 	Certificate         *x509.Certificate
 	PrivateKey          crypto.PrivateKey
@@ -237,7 +237,7 @@ func (b *SnifferBuilder) Build() *sniffing.Sniffer {
 		Websocket:           b.Websocket,
 		WebsocketSampleRate: b.WebsocketSampleRate,
 		Recorder:            b.Recorder,
-		Reporter:            b.Reporter,
+		SessionRecorder:     b.SessionRecorder,
 		RecorderOptions:     b.RecorderOptions,
 		Certificate:         b.Certificate,
 		PrivateKey:          b.PrivateKey,

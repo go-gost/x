@@ -239,7 +239,7 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	req.Header.Del("Gost-Record")
 
 	ro.Time = time.Now()
-	session := h.reporter().NewSession(ctx, pStats)
+	session := h.sessionRecorder().NewSession(ctx, pStats)
 	session.Start(*ro)
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {

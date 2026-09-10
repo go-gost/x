@@ -37,15 +37,15 @@ func init() {
 }
 
 type socks5Handler struct {
-	selector gosocks5.Selector
-	md       metadata
-	options  handler.Options
-	stats    *stats_util.HandlerStats
-	limiter  traffic.TrafficLimiter
-	cancel   context.CancelFunc
-	recorder recorder.RecorderObject
-	reporter *xrecorder.SessionReporter
-	certPool tls_util.CertPool
+	selector        gosocks5.Selector
+	md              metadata
+	options         handler.Options
+	stats           *stats_util.HandlerStats
+	limiter         traffic.TrafficLimiter
+	cancel          context.CancelFunc
+	recorder        recorder.RecorderObject
+	sessionRecorder *xrecorder.SessionReporter
+	certPool        tls_util.CertPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -95,7 +95,7 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 		}
 	}
 
-	h.reporter = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})
@@ -157,7 +157,7 @@ func (h *socks5Handler) Handle(ctx context.Context, conn net.Conn, opts ...handl
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
-	session := h.reporter.NewSession(ctx, &pStats)
+	session := h.sessionRecorder.NewSession(ctx, &pStats)
 	ctx = ictx.ContextWithSession(ctx, session)
 
 	defer func() {
@@ -236,7 +236,7 @@ func (h *socks5Handler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
 	}
-	return h.reporter.Close()
+	return h.sessionRecorder.Close()
 }
 
 func (h *socks5Handler) checkRateLimit(addr net.Addr) bool {

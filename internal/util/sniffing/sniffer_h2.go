@@ -68,7 +68,7 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 		SawClientPreface: true,
 		Handler: &h2Handler{
 			transport:       tr,
-			reporter:        h.reporter(),
+			sessionRecorder: h.sessionRecorder(),
 			recorderOptions: h.RecorderOptions,
 			recorderObject:  ro,
 			log:             log,
@@ -81,7 +81,7 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 // http2.Transport while recording request and response metadata.
 type h2Handler struct {
 	transport       http.RoundTripper
-	reporter        *xrecorder.SessionReporter
+	sessionRecorder *xrecorder.SessionReporter
 	recorderOptions *recorder.Options
 	recorderObject  *xrecorder.HandlerRecorderObject
 	log             logger.Logger
@@ -101,7 +101,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ro.Time = time.Now()
 
 	var counters xstats.Stats
-	session := h.reporter.NewSession(r.Context(), &counters)
+	session := h.sessionRecorder.NewSession(r.Context(), &counters)
 
 	var err error
 	log.Infof("%s <-> %s", ro.RemoteAddr, r.Host)
