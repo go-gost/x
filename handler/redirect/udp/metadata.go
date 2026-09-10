@@ -8,9 +8,7 @@ import (
 )
 
 type metadata struct {
-	// recorderPeriod reports a live session on this interval; 0 = one record
-	// per session, written when it ends.
-	recorderPeriod time.Duration
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
 
 	sniffing        bool
 	sniffingTimeout time.Duration

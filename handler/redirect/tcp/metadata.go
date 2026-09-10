@@ -13,9 +13,7 @@ import (
 )
 
 type metadata struct {
-	// recorderPeriod reports a live session on this interval; 0 = one record
-	// per session, written when it ends.
-	recorderPeriod time.Duration
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
 	// readTimeout is passed to SnifferBuilder as the timeout for reading
 	// upstream response headers during HTTP/TLS sniffing. It is NOT used
 	// as a deadline on the initial client connection (unlike socks/ss

@@ -14,9 +14,7 @@ import (
 )
 
 type metadata struct {
-	// recorderPeriod reports a live session on this interval; 0 = one record
-	// per session, written when it ends.
-	recorderPeriod time.Duration
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
 
 	publicAddr string
 	// readTimeout is the deadline for reading the initial SOCKS5
