@@ -60,7 +60,7 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
-	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.SessionRecorderOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})

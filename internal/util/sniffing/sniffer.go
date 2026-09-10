@@ -189,11 +189,9 @@ func (h *Sniffer) effectiveReadTimeout() time.Duration {
 	return DefaultReadTimeout
 }
 
-// sessionRecorder falls back to a disabled sessionRecorder when the caller supplied none, so
-// that a session still writes one record per exchange, as it always has.
 func (h *Sniffer) sessionRecorder() *xrecorder.SessionRecorder {
 	if h.SessionRecorder != nil {
 		return h.SessionRecorder
 	}
-	return xrecorder.NewSessionRecorder(h.Recorder, xrecorder.ReporterOptions{})
+	return xrecorder.NewSessionRecorder(h.Recorder, xrecorder.SessionRecorderOptions{})
 }

@@ -297,7 +297,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		Log:     h.options.Logger,
 	}
 
-	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.SessionRecorderOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})

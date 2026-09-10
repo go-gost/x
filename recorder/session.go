@@ -20,9 +20,7 @@ import (
 // the floor the observer applies to its own period.
 const MinPeriod = time.Second
 
-// Phases a session record can be in. A start record announces the stream,
-// interim records are emitted while it is running, and exactly one final
-// record closes it.
+// Phases a session record can be in: start, interim, and final.
 const (
 	PhaseStart   = "start"
 	PhaseInterim = "interim"
@@ -32,13 +30,7 @@ const (
 // ErrReporterClosed is returned when a session outlives the handler that owns it.
 var ErrReporterClosed = errors.New("session recorder is closed")
 
-// SessionRecord is the periodic handler record. Byte counts are always the delta
-// since the previous record of the same session, so a consumer sums them instead
-// of replacing what it already stored. A record is identified by (sessionID,
-// recordIndex) rather than by SID: one connection can carry several HTTP requests
-// or UDP destinations, and a delivery may be retried with the same body.
-//
-// Time and Duration describe the reported interval.
+// SessionRecord is one interval record with byte deltas for a session.
 type SessionRecord struct {
 	HandlerRecorderObject
 	SessionID   string `json:"sessionID"`
@@ -46,20 +38,11 @@ type SessionRecord struct {
 	Phase       string `json:"phase"`
 }
 
-// ReporterOptions bound what a slow or broken recorder can cost. Interim
-// records are dropped as soon as the queue is full, since a later one restates
-// what they carried; a final record is worth waiting WriteTimeout for, because
-// nothing else will report its remainder. Neither ever waits forever: a proxy
-// that stops closing connections because its telemetry sink is down is a worse
-// outage than the records it would lose.
-//
-// A nonpositive Period keeps the legacy behaviour: a single record written
-// synchronously when the session ends.
-type ReporterOptions struct {
+// SessionRecorderOptions bounds periodic reporting, delivery, retries, and shutdown.
+type SessionRecorderOptions struct {
 	Period    time.Duration
 	QueueSize int
-	// WriteTimeout bounds one delivery attempt, and how long a finished session
-	// waits for room in the queue.
+	// WriteTimeout bounds delivery attempts and queue waits.
 	WriteTimeout time.Duration
 	// RetryInterval is the pause between delivery attempts of the same record.
 	RetryInterval time.Duration
@@ -68,17 +51,10 @@ type ReporterOptions struct {
 	Logger       logger.Logger
 }
 
-// SessionRecorder owns scheduling and delivery for one handler: a single
-// collector samples every live session on the same tick, and a single sender
-// delivers the resulting records in order, retrying the byte-for-byte same body
-// until the recorder accepts it. The queue lives in memory only, so it survives
-// a slow or briefly unavailable backend but not a process restart.
-//
-// Handlers build one in Init and Close it in Close; everything else goes through
-// Session, which is what the protocol code holds.
+// SessionRecorder samples live sessions and delivers records in order with retries.
 type SessionRecorder struct {
 	rec  recorder.Recorder
-	opts ReporterOptions
+	opts SessionRecorderOptions
 
 	mu       sync.Mutex
 	sessions map[*Session]struct{}
@@ -100,7 +76,7 @@ type SessionRecorder struct {
 	closeErr  error
 }
 
-func NewSessionRecorder(rec recorder.Recorder, opts ReporterOptions) *SessionRecorder {
+func NewSessionRecorder(rec recorder.Recorder, opts SessionRecorderOptions) *SessionRecorder {
 	if opts.Period > 0 && opts.Period < MinPeriod {
 		opts.Period = MinPeriod
 	}
@@ -138,10 +114,7 @@ func NewSessionRecorder(rec recorder.Recorder, opts ReporterOptions) *SessionRec
 // every Session still works, but writes one record when it finishes.
 func (r *SessionRecorder) Enabled() bool { return r != nil && r.rec != nil && r.opts.Period > 0 }
 
-// NewSession borrows counters that the caller must not reset while the session
-// is live: the reporter reads them on its own schedule and turns the cumulative
-// totals into deltas. The recorder object is passed in later, by value, so the
-// session never shares mutable protocol state with the handler.
+// NewSession creates a session over caller-owned cumulative counters.
 func (r *SessionRecorder) NewSession(ctx context.Context, counters stats.Stats) *Session {
 	s := &Session{sessionRecorder: r, counters: counters, labels: maps.Clone(xctx.LabelsFromContext(ctx))}
 	if r.Enabled() {
@@ -150,9 +123,7 @@ func (r *SessionRecorder) NewSession(ctx context.Context, counters stats.Stats) 
 	return s
 }
 
-// Session is one accounting stream: a connection, an HTTP request inside it, or
-// a single UDP destination. It owns the reporting cursor, independently of the
-// recorder object the handler keeps filling in.
+// Session tracks one connection, HTTP request, or UDP destination.
 type Session struct {
 	sessionRecorder *SessionRecorder
 	counters        stats.Stats
@@ -168,12 +139,7 @@ type Session struct {
 	finished      bool
 }
 
-// Start publishes the metadata that interim records carry, once routing and
-// authentication have settled it, emits one zero-byte start record, and puts
-// the session on the reporting tick.
-// It may be called again to refresh that metadata; the session keeps the start
-// time it was first given. Protocol bodies and headers are dropped here: they
-// describe an exchange, not an interval, and belong to the final record only.
+// Start stores session metadata and emits one zero-byte start record.
 func (s *Session) Start(base HandlerRecorderObject) {
 	if s == nil || !s.sessionRecorder.Enabled() {
 		return
@@ -226,15 +192,9 @@ func (s *Session) Start(base HandlerRecorderObject) {
 	}
 }
 
-// Finish seals the session and hands over its remainder. final carries the
-// session's cumulative totals, exactly as the handler has always computed them:
-// callers never subtract what was already reported, the session does that.
-//
-// With reporting disabled this writes the whole object synchronously, which is
-// the legacy contract, errors and all.
+// Finish seals the session and reports its remaining byte deltas.
 func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error {
-	// A handler that never built a reporter has no recorder to write to either,
-	// which is what the legacy path did with a nil recorder: nothing.
+	// A nil recorder preserves the legacy no-op behavior.
 	if s == nil || s.sessionRecorder == nil {
 		return nil
 	}
@@ -282,14 +242,7 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 	return r.enqueue(data)
 }
 
-// encode turns the cumulative totals in ro into the delta this record carries.
-// It leaves the caller's copy alone, so the caller can move the cursor to the
-// totals it passed in once the record is safely queued.
-//
-// Counters are monotonic, but a handler reads its final totals before it calls
-// Finish and an interim snapshot can land in between. Clamping that drift keeps
-// the race from dropping a final record, which carries the session's metadata,
-// over a few bytes.
+// encode converts cumulative handler totals into one record's byte deltas.
 func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) ([]byte, error) {
 	ro.InputBytes = max(ro.InputBytes, s.input) - s.input
 	ro.OutputBytes = max(ro.OutputBytes, s.output) - s.output

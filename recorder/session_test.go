@@ -88,7 +88,7 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 
 func TestSessionRecorderEmitsDeltasAndFinalRemainder(t *testing.T) {
 	sink := new(sessionSink)
-	r := NewSessionRecorder(sink, ReporterOptions{Period: MinPeriod})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{Period: MinPeriod})
 	defer r.Close()
 
 	if !r.Enabled() {
@@ -147,7 +147,7 @@ func TestSessionRecorderEmitsDeltasAndFinalRemainder(t *testing.T) {
 // before it has anything to route.
 func TestSessionFinishWithoutStart(t *testing.T) {
 	sink := new(sessionSink)
-	r := NewSessionRecorder(sink, ReporterOptions{Period: MinPeriod})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{Period: MinPeriod})
 	defer r.Close()
 
 	session := r.NewSession(context.Background(), nil)
@@ -168,7 +168,7 @@ func TestSessionFinishWithoutStart(t *testing.T) {
 // exactly as a handler did before the reporter existed.
 func TestSessionRecorderDisabledKeepsLegacyRecord(t *testing.T) {
 	sink := new(sessionSink)
-	r := NewSessionRecorder(sink, ReporterOptions{})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{})
 	defer r.Close()
 
 	if r.Enabled() {
@@ -209,7 +209,7 @@ func TestSessionRecorderDisabledKeepsLegacyRecord(t *testing.T) {
 
 func TestSessionRecorderStartIsEmittedOnce(t *testing.T) {
 	sink := new(sessionSink)
-	r := NewSessionRecorder(sink, ReporterOptions{Period: MinPeriod})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{Period: MinPeriod})
 	defer r.Close()
 
 	s := r.NewSession(context.Background(), nil)
@@ -245,7 +245,7 @@ func (s *flakySink) Record(ctx context.Context, b []byte, opts ...recorder.Recor
 // must not be paid twice for it either.
 func TestSessionRecorderRetriesTheSameRecord(t *testing.T) {
 	sink := &flakySink{fail: 3}
-	r := NewSessionRecorder(sink, ReporterOptions{Period: MinPeriod, RetryInterval: time.Millisecond})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{Period: MinPeriod, RetryInterval: time.Millisecond})
 	defer r.Close()
 
 	session := r.NewSession(context.Background(), nil)
@@ -269,7 +269,7 @@ func TestSessionRecorderRetriesTheSameRecord(t *testing.T) {
 // the queue instead of dropping its remainder.
 func TestSessionFinishWaitsForQueueCapacity(t *testing.T) {
 	sink := newGatedSink()
-	r := NewSessionRecorder(sink, ReporterOptions{
+	r := NewSessionRecorder(sink, SessionRecorderOptions{
 		Period: MinPeriod, QueueSize: 1, WriteTimeout: 5 * time.Second, RetryInterval: time.Millisecond,
 	})
 	defer func() { sink.resume(); r.Close() }()
@@ -331,7 +331,7 @@ func TestSessionFinishWaitsForQueueCapacity(t *testing.T) {
 // gives up after WriteTimeout, and Close after DrainTimeout.
 func TestSessionRecorderGivesUpOnAStalledSink(t *testing.T) {
 	sink := newGatedSink()
-	r := NewSessionRecorder(sink, ReporterOptions{
+	r := NewSessionRecorder(sink, SessionRecorderOptions{
 		Period: MinPeriod, QueueSize: 1, WriteTimeout: 50 * time.Millisecond,
 		RetryInterval: time.Millisecond, DrainTimeout: 200 * time.Millisecond,
 	})
@@ -375,7 +375,7 @@ func TestSessionRecorderGivesUpOnAStalledSink(t *testing.T) {
 
 func TestSessionRecorderCloseWaitsForRecovery(t *testing.T) {
 	sink := newGatedSink()
-	r := NewSessionRecorder(sink, ReporterOptions{
+	r := NewSessionRecorder(sink, SessionRecorderOptions{
 		Period: MinPeriod, WriteTimeout: 10 * time.Millisecond, RetryInterval: time.Millisecond,
 	})
 	defer func() { sink.resume(); r.Close() }()
@@ -419,7 +419,7 @@ func TestSessionRecorderAccountsConcurrentTraffic(t *testing.T) {
 	const sessions = 8
 
 	sink := new(sessionSink)
-	r := NewSessionRecorder(sink, ReporterOptions{Period: MinPeriod})
+	r := NewSessionRecorder(sink, SessionRecorderOptions{Period: MinPeriod})
 
 	// Long enough for the collector to sample mid-flight, so interim and final
 	// records are produced for the same session concurrently.
