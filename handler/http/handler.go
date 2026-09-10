@@ -232,19 +232,17 @@ func init() {
 // parsed metadata, handler options, and runtime state such as the traffic
 // limiter, recorder, certificate pool, and the upstream HTTP transport.
 type httpHandler struct {
-	md        metadata                // parsed configuration
-	options   handler.Options         // handler options from the service config
-	auth      *Authenticator          // auth + probe resistance (constructed in Init)
-	sniffer   *SnifferBuilder         // builds sniffing.Sniffer per connection
-	stats     *stats_util.HandlerStats // per-client stats, created when Observer is set
-	limiter   traffic.TrafficLimiter  // per-client traffic shaper (cached)
-	cancel    context.CancelFunc      // cancels the observeStats goroutine
-	recorder  recorder.RecorderObject // first matching service-handler recorder
-	certPool  tls_util.CertPool       // in-memory cert pool for MITM TLS termination
-	transport http.RoundTripper       // upstream HTTP transport (injectable for tests)
-
-	// reporter reports live sessions on an interval when recorder.period is set.
-	reporter *xrecorder.SessionReporter
+	md        metadata                   // parsed configuration
+	options   handler.Options            // handler options from the service config
+	auth      *Authenticator             // auth + probe resistance (constructed in Init)
+	sniffer   *SnifferBuilder            // builds sniffing.Sniffer per connection
+	stats     *stats_util.HandlerStats   // per-client stats, created when Observer is set
+	limiter   traffic.TrafficLimiter     // per-client traffic shaper (cached)
+	cancel    context.CancelFunc         // cancels the observeStats goroutine
+	recorder  recorder.RecorderObject    // first matching service-handler recorder
+	reporter  *xrecorder.SessionReporter // reporter reports live sessions on an interval when recorder.period is set.
+	certPool  tls_util.CertPool          // in-memory cert pool for MITM TLS termination
+	transport http.RoundTripper          // upstream HTTP transport (injectable for tests)
 }
 
 // NewHandler creates a new HTTP handler and applies the given options.

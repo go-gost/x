@@ -78,9 +78,6 @@ func (h *httpHandler) handleConnect(ctx context.Context, conn net.Conn, ro *xrec
 	}
 
 	if h.md.sniffing {
-		// A sniffed connection is recorded per exchange and its own record is
-		// dropped below, so its session must not report either: an interim
-		// record with no final one to close it would be a session that never ends.
 		snifferHandled, err = h.sniffAndHandle(ictx.ContextWithSession(ctx, nil), conn, cc, ro, log)
 		if snifferHandled {
 			ro.Time = time.Time{}
