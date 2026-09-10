@@ -211,8 +211,7 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 
 	if !r.Enabled() {
 		s.mu.Unlock()
-		// Shutdown cancels connection work before handler defers run. Final
-		// recording has its own bounded lifetime even in legacy mode.
+		final.Time = time.Now()
 		writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.opts.WriteTimeout)
 		defer cancel()
 		return final.Record(writeCtx, r.rec)

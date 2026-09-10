@@ -205,6 +205,9 @@ func TestSessionRecorderDisabledKeepsLegacyRecord(t *testing.T) {
 	if legacy["outputBytes"] != float64(21) {
 		t.Errorf("outputBytes = %v, want 21", legacy["outputBytes"])
 	}
+	if legacy["time"] == nil || legacy["time"] == "" {
+		t.Error("legacy record must contain its formation time")
+	}
 }
 
 func TestSessionRecorderStartIsEmittedOnce(t *testing.T) {
