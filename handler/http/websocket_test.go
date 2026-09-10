@@ -51,7 +51,7 @@ func TestCopyWebsocketFrame_WithBodyRecording(t *testing.T) {
 	}
 	h.recorder = recorder.RecorderObject{
 		Options: &recorder.Options{
-			HTTPBody:   true,
+			HTTPBody:    true,
 			MaxBodySize: 1024,
 		},
 	}
@@ -119,6 +119,6 @@ func TestCopyWebsocketDirection_NilRO(t *testing.T) {
 // errorReader always returns an error.
 type errorReader struct{}
 
-func (r *errorReader) Read(p []byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+func (r *errorReader) Read(p []byte) (int, error)  { return 0, io.ErrUnexpectedEOF }
 func (r *errorReader) Write(p []byte) (int, error) { return len(p), nil }
 func (r *errorReader) Close() error                { return nil }

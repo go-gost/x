@@ -147,8 +147,8 @@ func TestParseMetadata_ProbeResistance_InvalidFormat(t *testing.T) {
 func TestParseMetadata_UDP(t *testing.T) {
 	h := &httpHandler{}
 	if err := h.parseMetadata(testMD(map[string]any{
-		"udp":            "true",
-		"udpBufferSize":  "4096",
+		"udp":           "true",
+		"udpBufferSize": "4096",
 	})); err != nil {
 		t.Fatal(err)
 	}
@@ -193,9 +193,9 @@ func TestParseMetadata_ObserverPeriod_Minimum(t *testing.T) {
 func TestParseMetadata_Sniffing(t *testing.T) {
 	h := &httpHandler{}
 	if err := h.parseMetadata(testMD(map[string]any{
-		"sniffing":                   "true",
-		"sniffing.timeout":           "5s",
-		"sniffing.websocket":         "true",
+		"sniffing":                      "true",
+		"sniffing.timeout":              "5s",
+		"sniffing.websocket":            "true",
 		"sniffing.websocket.sampleRate": "20.0",
 	})); err != nil {
 		t.Fatal(err)

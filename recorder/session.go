@@ -68,7 +68,7 @@ type ReporterOptions struct {
 	Logger       logger.Logger
 }
 
-// SessionReporter owns scheduling and delivery for one handler: a single
+// SessionRecorder owns scheduling and delivery for one handler: a single
 // collector samples every live session on the same tick, and a single sender
 // delivers the resulting records in order, retrying the byte-for-byte same body
 // until the recorder accepts it. The queue lives in memory only, so it survives
@@ -76,7 +76,7 @@ type ReporterOptions struct {
 //
 // Handlers build one in Init and Close it in Close; everything else goes through
 // Session, which is what the protocol code holds.
-type SessionReporter struct {
+type SessionRecorder struct {
 	rec  recorder.Recorder
 	opts ReporterOptions
 
@@ -100,7 +100,7 @@ type SessionReporter struct {
 	closeErr  error
 }
 
-func NewSessionReporter(rec recorder.Recorder, opts ReporterOptions) *SessionReporter {
+func NewSessionRecorder(rec recorder.Recorder, opts ReporterOptions) *SessionRecorder {
 	if opts.Period > 0 && opts.Period < MinPeriod {
 		opts.Period = MinPeriod
 	}
@@ -117,7 +117,7 @@ func NewSessionReporter(rec recorder.Recorder, opts ReporterOptions) *SessionRep
 		opts.DrainTimeout = 30 * time.Second
 	}
 
-	r := &SessionReporter{rec: rec, opts: opts, sessions: make(map[*Session]struct{})}
+	r := &SessionRecorder{rec: rec, opts: opts, sessions: make(map[*Session]struct{})}
 	if !r.Enabled() {
 		return r
 	}
@@ -136,14 +136,14 @@ func NewSessionReporter(rec recorder.Recorder, opts ReporterOptions) *SessionRep
 
 // Enabled reports whether sessions are sampled periodically. When it is false
 // every Session still works, but writes one record when it finishes.
-func (r *SessionReporter) Enabled() bool { return r != nil && r.rec != nil && r.opts.Period > 0 }
+func (r *SessionRecorder) Enabled() bool { return r != nil && r.rec != nil && r.opts.Period > 0 }
 
 // NewSession borrows counters that the caller must not reset while the session
 // is live: the reporter reads them on its own schedule and turns the cumulative
 // totals into deltas. The recorder object is passed in later, by value, so the
 // session never shares mutable protocol state with the handler.
-func (r *SessionReporter) NewSession(ctx context.Context, counters stats.Stats) *Session {
-	s := &Session{reporter: r, counters: counters, labels: maps.Clone(xctx.LabelsFromContext(ctx))}
+func (r *SessionRecorder) NewSession(ctx context.Context, counters stats.Stats) *Session {
+	s := &Session{sessionRecorder: r, counters: counters, labels: maps.Clone(xctx.LabelsFromContext(ctx))}
 	if r.Enabled() {
 		s.id = rand.Text()
 	}
@@ -154,10 +154,10 @@ func (r *SessionReporter) NewSession(ctx context.Context, counters stats.Stats) 
 // a single UDP destination. It owns the reporting cursor, independently of the
 // recorder object the handler keeps filling in.
 type Session struct {
-	reporter *SessionReporter
-	counters stats.Stats
-	labels   map[string]string
-	id       string
+	sessionRecorder *SessionRecorder
+	counters        stats.Stats
+	labels          map[string]string
+	id              string
 
 	mu            sync.Mutex
 	base          HandlerRecorderObject
@@ -175,7 +175,7 @@ type Session struct {
 // time it was first given. Protocol bodies and headers are dropped here: they
 // describe an exchange, not an interval, and belong to the final record only.
 func (s *Session) Start(base HandlerRecorderObject) {
-	if s == nil || !s.reporter.Enabled() {
+	if s == nil || !s.sessionRecorder.Enabled() {
 		return
 	}
 
@@ -198,7 +198,7 @@ func (s *Session) Start(base HandlerRecorderObject) {
 			s.startedAt = time.Now()
 		}
 		s.last = s.startedAt
-		s.reporter.watch(s)
+		s.sessionRecorder.watch(s)
 	}
 	base.Time = s.startedAt
 	s.base = base
@@ -214,14 +214,14 @@ func (s *Session) Start(base HandlerRecorderObject) {
 	s.sequence = 1
 	s.mu.Unlock()
 	if err != nil {
-		s.reporter.logf("encode start: %v", err)
+		s.sessionRecorder.logf("encode start: %v", err)
 		return
 	}
 	// A start record is useful metadata, but must never delay establishing a
 	// proxy connection when the recorder queue is full. The first interim/final
 	// record still carries the complete byte remainder.
-	if !s.reporter.tryEnqueue(data) {
-		s.reporter.logf("queue is full, deferring start record")
+	if !s.sessionRecorder.tryEnqueue(data) {
+		s.sessionRecorder.logf("queue is full, deferring start record")
 		return
 	}
 }
@@ -235,10 +235,10 @@ func (s *Session) Start(base HandlerRecorderObject) {
 func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error {
 	// A handler that never built a reporter has no recorder to write to either,
 	// which is what the legacy path did with a nil recorder: nothing.
-	if s == nil || s.reporter == nil {
+	if s == nil || s.sessionRecorder == nil {
 		return nil
 	}
-	r := s.reporter
+	r := s.sessionRecorder
 
 	s.mu.Lock()
 	if s.finished {
@@ -325,12 +325,12 @@ func (s *Session) report(now time.Time) {
 
 	data, err := s.encode(ro, now, PhaseInterim)
 	if err != nil {
-		s.reporter.logf("encode: %v", err)
+		s.sessionRecorder.logf("encode: %v", err)
 		return
 	}
 
 	select {
-	case s.reporter.queue <- data:
+	case s.sessionRecorder.queue <- data:
 		// The cursor moves only once the retrying sender owns the record;
 		// otherwise a dropped record would take its bytes with it.
 		s.input, s.output = ro.InputBytes, ro.OutputBytes
@@ -338,11 +338,11 @@ func (s *Session) report(now time.Time) {
 		s.last = now
 	default:
 		// Never block traffic on periodic I/O: fold this interval into the next.
-		s.reporter.logf("queue is full, deferring an interim record")
+		s.sessionRecorder.logf("queue is full, deferring an interim record")
 	}
 }
 
-func (r *SessionReporter) tryEnqueue(data []byte) bool {
+func (r *SessionRecorder) tryEnqueue(data []byte) bool {
 	r.admit.RLock()
 	defer r.admit.RUnlock()
 	select {
@@ -355,7 +355,7 @@ func (r *SessionReporter) tryEnqueue(data []byte) bool {
 	}
 }
 
-func (r *SessionReporter) watch(s *Session) {
+func (r *SessionRecorder) watch(s *Session) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.closed {
@@ -363,13 +363,13 @@ func (r *SessionReporter) watch(s *Session) {
 	}
 }
 
-func (r *SessionReporter) forget(s *Session) {
+func (r *SessionRecorder) forget(s *Session) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.sessions, s)
 }
 
-func (r *SessionReporter) collect() {
+func (r *SessionRecorder) collect() {
 	defer close(r.collected)
 
 	ticker := time.NewTicker(r.opts.Period)
@@ -394,7 +394,7 @@ func (r *SessionReporter) collect() {
 	}
 }
 
-func (r *SessionReporter) enqueue(data []byte) error {
+func (r *SessionRecorder) enqueue(data []byte) error {
 	r.admit.RLock()
 	defer r.admit.RUnlock()
 
@@ -420,7 +420,7 @@ func (r *SessionReporter) enqueue(data []byte) error {
 	}
 }
 
-func (r *SessionReporter) send() {
+func (r *SessionRecorder) send() {
 	defer close(r.done)
 
 	for {
@@ -451,7 +451,7 @@ func (r *SessionReporter) send() {
 // deliver retries the same body until the recorder takes it, so a backend that
 // answers late does not cost the traffic it failed on. It reports false once the
 // reporter has given up, which abandons the rest of the queue with it.
-func (r *SessionReporter) deliver(data []byte) bool {
+func (r *SessionRecorder) deliver(data []byte) bool {
 	for {
 		ctx, cancel := context.WithTimeout(r.ctx, r.opts.WriteTimeout)
 		err := r.rec.Record(ctx, data)
@@ -471,7 +471,7 @@ func (r *SessionReporter) deliver(data []byte) bool {
 	}
 }
 
-func (r *SessionReporter) logf(format string, args ...any) {
+func (r *SessionRecorder) logf(format string, args ...any) {
 	if r.opts.Logger != nil {
 		r.opts.Logger.Errorf("session recorder: "+format, args...)
 	}
@@ -481,7 +481,7 @@ func (r *SessionReporter) logf(format string, args ...any) {
 // DrainTimeout. Sessions still running are the owner's to finish first; an
 // incomplete shutdown is reported rather than hidden, so that a sink which
 // never recovers delays a restart instead of preventing one.
-func (r *SessionReporter) Close() error {
+func (r *SessionRecorder) Close() error {
 	if !r.Enabled() {
 		return nil
 	}

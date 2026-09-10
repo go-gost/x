@@ -103,9 +103,9 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	// as ATYP=Domain themselves and are left untouched.
 	if _, isDirect := pc.(*net.UDPConn); isDirect {
 		pc = &resolvePacketConn{
-			PacketConn:  pc,
-			resolver:    h.options.Router.Options().Resolver,
-			hostMapper:  h.options.Router.Options().HostMapper,
+			PacketConn: pc,
+			resolver:   h.options.Router.Options().Resolver,
+			hostMapper: h.options.Router.Options().HostMapper,
 		}
 	}
 

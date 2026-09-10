@@ -240,7 +240,7 @@ type httpHandler struct {
 	limiter         traffic.TrafficLimiter     // per-client traffic shaper (cached)
 	cancel          context.CancelFunc         // cancels the observeStats goroutine
 	recorder        recorder.RecorderObject    // first matching service-handler recorder
-	sessionRecorder *xrecorder.SessionReporter // reports live sessions on an interval when recorder.period is set.
+	sessionRecorder *xrecorder.SessionRecorder // reports live sessions on an interval when recorder.period is set.
 	certPool        tls_util.CertPool          // in-memory cert pool for MITM TLS termination
 	transport       http.RoundTripper          // upstream HTTP transport (injectable for tests)
 }
@@ -297,7 +297,7 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		Log:     h.options.Logger,
 	}
 
-	h.sessionRecorder = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.ReporterOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})

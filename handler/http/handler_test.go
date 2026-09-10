@@ -13,7 +13,6 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
-
 func TestNewHandler(t *testing.T) {
 	h := NewHandler()
 	if h == nil {
@@ -346,4 +345,3 @@ func TestHandleRequest_Bypass_Test(t *testing.T) {
 		t.Error("expected bypass error")
 	}
 }
-

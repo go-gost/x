@@ -44,7 +44,7 @@ type socks5Handler struct {
 	limiter         traffic.TrafficLimiter
 	cancel          context.CancelFunc
 	recorder        recorder.RecorderObject
-	sessionRecorder *xrecorder.SessionReporter
+	sessionRecorder *xrecorder.SessionRecorder
 	certPool        tls_util.CertPool
 }
 
@@ -95,7 +95,7 @@ func (h *socks5Handler) Init(md md.Metadata) (err error) {
 		}
 	}
 
-	h.sessionRecorder = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.ReporterOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})

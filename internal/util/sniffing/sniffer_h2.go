@@ -81,7 +81,7 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 // http2.Transport while recording request and response metadata.
 type h2Handler struct {
 	transport       http.RoundTripper
-	sessionRecorder *xrecorder.SessionReporter
+	sessionRecorder *xrecorder.SessionRecorder
 	recorderOptions *recorder.Options
 	recorderObject  *xrecorder.HandlerRecorderObject
 	log             logger.Logger

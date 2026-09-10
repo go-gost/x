@@ -34,7 +34,7 @@ type redirectHandler struct {
 	md              metadata
 	options         handler.Options
 	recorder        recorder.RecorderObject
-	sessionRecorder *xrecorder.SessionReporter
+	sessionRecorder *xrecorder.SessionRecorder
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -60,7 +60,7 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 		}
 	}
 
-	h.sessionRecorder = xrecorder.NewSessionReporter(h.recorder.Recorder, xrecorder.ReporterOptions{
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.ReporterOptions{
 		Period: h.md.recorderPeriod,
 		Logger: h.options.Logger,
 	})

@@ -114,9 +114,9 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	// resolved through the configured resolver instead of failing WriteTo.
 	if _, ok := pc.(*net.UDPConn); ok {
 		pc = &resolvePacketConn{
-			PacketConn:  pc,
-			resolver:    h.options.Router.Options().Resolver,
-			hostMapper:  h.options.Router.Options().HostMapper,
+			PacketConn: pc,
+			resolver:   h.options.Router.Options().Resolver,
+			hostMapper: h.options.Router.Options().HostMapper,
 		}
 	}
 
