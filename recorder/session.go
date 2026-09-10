@@ -393,11 +393,14 @@ func (r *SessionRecorder) enqueueShutdownLocked(data []byte) error {
 func (s *Session) shutdown() ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.finished || s.base.RecordMode == "off" || s.base.Time.IsZero() {
+	if s.finished {
 		return nil, nil
 	}
 	s.finished = true
 	s.sessionRecorder.forget(s)
+	if s.base.RecordMode == "off" || s.base.Time.IsZero() {
+		return nil, nil
+	}
 	if s.counters != nil {
 		s.base.InputBytes = s.counters.Get(stats.KindInputBytes)
 		s.base.OutputBytes = s.counters.Get(stats.KindOutputBytes)
