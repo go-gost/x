@@ -38,15 +38,12 @@ var ErrReporterClosed = errors.New("session recorder is closed")
 // recordIndex) rather than by SID: one connection can carry several HTTP requests
 // or UDP destinations, and a delivery may be retried with the same body.
 //
-// Time and Duration describe the reported interval; StartedAt and
-// SessionDuration describe the session the interval belongs to.
+// Time and Duration describe the reported interval.
 type SessionRecord struct {
 	HandlerRecorderObject
-	SessionID       string        `json:"sessionID"`
-	RecordIndex     uint64        `json:"recordIndex"`
-	Phase           string        `json:"phase"`
-	StartedAt       time.Time     `json:"startedAt"`
-	SessionDuration time.Duration `json:"sessionDuration"`
+	SessionID   string `json:"sessionID"`
+	RecordIndex uint64 `json:"recordIndex"`
+	Phase       string `json:"phase"`
 }
 
 // ReporterOptions bound what a slow or broken recorder can cost. Interim
@@ -304,8 +301,6 @@ func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) 
 		SessionID:             s.id,
 		RecordIndex:           s.sequence + 1,
 		Phase:                 phase,
-		StartedAt:             s.startedAt,
-		SessionDuration:       now.Sub(s.startedAt),
 	})
 }
 

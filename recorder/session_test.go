@@ -159,7 +159,7 @@ func TestSessionFinishWithoutStart(t *testing.T) {
 	waitFor(t, func() bool { return sink.len() == 1 }, "no record for an unstarted session")
 
 	rec := decodeSessionRecord(t, sink.snapshot()[0])
-	if rec.Phase != PhaseFinal || rec.InputBytes != 3 || rec.StartedAt.IsZero() {
+	if rec.Phase != PhaseFinal || rec.InputBytes != 3 {
 		t.Errorf("unexpected record: %+v", rec)
 	}
 }
