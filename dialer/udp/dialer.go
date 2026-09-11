@@ -49,8 +49,11 @@ func (d *udpDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 		return nil, err
 	}
 
+	// The base may be a raw *net.UDPConn (a direct dial) or any conn carrying
+	// datagrams (a wrapped base dialer, e.g. a p2p tunnel endpoint); the
+	// wrapper treats both the same.
 	c = &conn{
-		UDPConn: c.(*net.UDPConn),
+		Conn: c,
 	}
 
 	c = proxyproto.WrapClientConn(

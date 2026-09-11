@@ -11,7 +11,7 @@ require (
 	github.com/go-gost/go-shadowsocks2 v0.1.4
 	github.com/go-gost/gosocks4 v0.1.0
 	github.com/go-gost/gosocks5 v0.5.0
-	github.com/go-gost/plugin v0.6.1
+	github.com/go-gost/plugin v0.7.0
 	github.com/go-gost/quic-dissector v0.1.0
 	github.com/go-gost/relay v0.7.0
 	github.com/go-gost/tls-dissector v0.3.1

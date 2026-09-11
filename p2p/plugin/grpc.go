@@ -50,11 +50,11 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) xp2p.TunnelP
 	return p
 }
 
-func (p *grpcPlugin) OpenTunnel(ctx context.Context, peer string) (id, endpoint string, err error) {
+func (p *grpcPlugin) OpenTunnel(ctx context.Context, network, peer string) (id, endpoint string, err error) {
 	if p.client == nil {
 		return "", "", errors.New("p2p: plugin unavailable")
 	}
-	reply, err := p.client.OpenTunnel(ctx, &proto.OpenTunnelRequest{Peer: peer})
+	reply, err := p.client.OpenTunnel(ctx, &proto.OpenTunnelRequest{Peer: peer, Network: network})
 	if err != nil {
 		p.log.Error(err)
 		return "", "", err

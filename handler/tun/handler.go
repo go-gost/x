@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	md "github.com/go-gost/core/metadata"
@@ -88,28 +87,53 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
-	var target *chain.Node
-	if h.hop != nil {
-		target = h.hop.Select(ctx)
-	}
-	if target != nil {
+	raddr, client := h.selectTarget(ctx)
+	if client {
 		network := "udp"
-		if _, _, err := net.SplitHostPort(target.Addr); err != nil {
+		if _, _, err := net.SplitHostPort(raddr); err != nil {
 			network = "ip"
 		}
 
 		log = log.WithFields(map[string]any{
-			"dst": fmt.Sprintf("%s/%s", target.Addr, network),
+			"dst": fmt.Sprintf("%s/%s", raddr, network),
 		})
-		log.Debugf("%s >> %s", conn.RemoteAddr(), target.Addr)
+		log.Debugf("%s >> %s", conn.RemoteAddr(), raddr)
 
-		if err := h.handleClient(ctx, conn, network, target.Addr, config, log); err != nil {
+		if err := h.handleClient(ctx, conn, network, raddr, config, log); err != nil {
 			log.Error(err)
 		}
 		return nil
 	}
 
 	return h.handleServer(ctx, conn, config, log)
+}
+
+// selectTarget decides the handler's mode and the address to dial.
+//
+//   - A forwarder hop (the service `forwarder:` config) selects client mode
+//     with the node's address, as before.
+//   - Without a forwarder, a chain means client mode with an empty address:
+//     the link is transparent (the connector does no dialing of its own) and
+//     the peer comes from the chain node instead — a p2p node's addr is its
+//     peer key, not a destination.
+//   - Neither means server mode.
+//
+// A chain without a forwarder used to be dead config for this handler (the
+// server branch never read it) and is now client mode, so it is logged.
+func (h *tunHandler) selectTarget(ctx context.Context) (addr string, client bool) {
+	if h.hop != nil {
+		if node := h.hop.Select(ctx); node != nil {
+			return node.Addr, true
+		}
+		return "", false
+	}
+	if h.options.Router != nil {
+		if ro := h.options.Router.Options(); ro != nil && ro.Chain != nil {
+			h.options.Logger.Warn("tun: chain without forwarder, running in client mode")
+			return "", true
+		}
+	}
+	return "", false
 }
 
 // collectFirstError drains errc (whose capacity must equal the number of

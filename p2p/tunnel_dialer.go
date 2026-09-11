@@ -21,8 +21,10 @@ const rpcTimeout = 3 * time.Second
 
 // TunnelProvider opens and closes tunnels to a peer. It is the wrapper's
 // only contact with the p2p plugin; peer and endpoint are opaque strings.
+// network is "tcp" or "udp": it selects the endpoint's semantics, so a
+// datagram dialer gets a datagram endpoint instead of a byte stream.
 type TunnelProvider interface {
-	OpenTunnel(ctx context.Context, peer string) (id, endpoint string, err error)
+	OpenTunnel(ctx context.Context, network, peer string) (id, endpoint string, err error)
 	CloseTunnel(ctx context.Context, id string) error
 	Close() error
 }
@@ -40,16 +42,28 @@ func NewTunnelDialer(inner dialer.Dialer, pr TunnelProvider) dialer.Dialer {
 
 // SupportedDialer reports whether a dialer type may be used as the inner
 // protocol on top of a p2p tunnel. The wrapper's implicit contract is
-// "inner dials one plain TCP stream via options.Dialer and uses it as its
-// base" (mux inners dial it once per session and multiplex streams over it)
-// — kcp/udp/quic bases are datagram conns, http2 probes and destroys
-// tunnels. Fail closed: new dialers are unsupported until verified.
+// "inner dials one plain conn via options.Dialer and uses it as its base" —
+// a byte stream for the stream dialers (mux inners dial it once per session
+// and multiplex streams over it), a datagram endpoint for udp. kcp/quic
+// bases, http2 probes and destroys tunnels. Fail closed: new dialers are
+// unsupported until verified.
 func SupportedDialer(name string) bool {
 	switch name {
-	case "tcp", "tls", "ws", "mtcp", "mtls", "mws":
+	case "tcp", "tls", "ws", "mtcp", "mtls", "mws", "udp":
 		return true
 	default:
 		return false
+	}
+}
+
+// tunnelNetwork normalizes a dialer network to the two the tunnel protocol
+// defines, so a udp4/udp6 dialer still asks for a datagram endpoint.
+func tunnelNetwork(network string) string {
+	switch network {
+	case "udp", "udp4", "udp6":
+		return "udp"
+	default:
+		return "tcp"
 	}
 }
 
@@ -124,18 +138,19 @@ func (d *tunnelBaseDialer) tunnelID() string {
 func (d *tunnelBaseDialer) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	// Only the control RPC is time-capped; the endpoint dial runs on the
 	// caller's ctx so a slow path to the peer isn't killed by this budget.
+	network = tunnelNetwork(network)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.endpoint == "" {
 		octx, cancel := context.WithTimeout(ctx, rpcTimeout)
 		defer cancel()
-		id, endpoint, err := d.pr.OpenTunnel(octx, d.peer)
+		id, endpoint, err := d.pr.OpenTunnel(octx, network, d.peer)
 		if err != nil {
 			return nil, err
 		}
 		d.id, d.endpoint = id, endpoint
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", d.endpoint)
+	conn, err := (&net.Dialer{}).DialContext(ctx, network, d.endpoint)
 	if err != nil {
 		// The tunnel is unusable: release it and forget it, so a retry
 		// on the same base dialer opens a fresh one.
@@ -144,6 +159,13 @@ func (d *tunnelBaseDialer) Dial(ctx context.Context, network, addr string) (net.
 		d.pr.CloseTunnel(cctx, d.id)
 		d.id, d.endpoint = "", ""
 		return nil, err
+	}
+	if network == "udp" {
+		// Announce the client address with an empty datagram. A datagram
+		// endpoint learns where to write peer packets only from a packet it
+		// receives, so without this a tunnel whose peer speaks first would
+		// drop every packet until this side happened to send one.
+		conn.Write(nil)
 	}
 	return &tunnelConn{Conn: conn, id: d.id, pr: d.pr, onClosed: func() {
 		// The inner may close the conn before this base dialer ever sees an
