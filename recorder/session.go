@@ -33,11 +33,12 @@ var ErrSessionRecorderClosed = errors.New("session recorder is closed")
 // SessionRecord is one interval record with byte deltas for a session.
 type SessionRecord struct {
 	HandlerRecorderObject
-	SessionID        string `json:"sessionID"`
-	RecordIndex      uint64 `json:"recordIndex"`
-	Phase            string `json:"phase"`
-	InputBytesDelta  uint64 `json:"inputBytesDelta"`
-	OutputBytesDelta uint64 `json:"outputBytesDelta"`
+	SessionID        string        `json:"sessionID"`
+	RecordIndex      uint64        `json:"recordIndex"`
+	Phase            string        `json:"phase"`
+	InputBytesDelta  uint64        `json:"inputBytesDelta"`
+	OutputBytesDelta uint64        `json:"outputBytesDelta"`
+	DurationDelta    time.Duration `json:"durationDelta"`
 }
 
 // SessionRecorderOptions bounds periodic reporting, delivery, retries, and shutdown.
@@ -263,6 +264,7 @@ func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) 
 		Phase:                 phase,
 		InputBytesDelta:       inputDelta,
 		OutputBytesDelta:      outputDelta,
+		DurationDelta:         now.Sub(s.last),
 	})
 }
 
