@@ -118,7 +118,7 @@ func TestSessionRecorderEmitsDeltasAndFinalRemainder(t *testing.T) {
 	}
 	for i, b := range raw {
 		rec := decodeSessionRecord(t, b)
-		total += rec.OutputBytes
+		total += rec.OutputBytesDelta
 
 		if rec.SessionID != stream {
 			t.Errorf("record %d: session = %s, want %s", i, rec.SessionID, stream)
@@ -132,6 +132,9 @@ func TestSessionRecorderEmitsDeltasAndFinalRemainder(t *testing.T) {
 		want := PhaseInterim
 		if i == len(raw)-1 {
 			want = PhaseFinal
+			if rec.OutputBytes != 17 {
+				t.Errorf("final cumulative outputBytes = %d, want 17", rec.OutputBytes)
+			}
 		}
 		if rec.Phase != want {
 			t.Errorf("record %d: phase = %s, want %s", i, rec.Phase, want)
@@ -324,7 +327,7 @@ func TestSessionFinishWaitsForQueueCapacity(t *testing.T) {
 		t.Fatalf("records = %d, want 3", len(raw))
 	}
 	for i, b := range raw {
-		if got := decodeSessionRecord(t, b).OutputBytes; got != uint64((i+1)*10) {
+		if got := decodeSessionRecord(t, b).OutputBytesDelta; got != uint64((i+1)*10) {
 			t.Errorf("record %d: outputBytes = %d, want %d", i, got, (i+1)*10)
 		}
 	}
@@ -474,7 +477,7 @@ func TestSessionRecorderAccountsConcurrentTraffic(t *testing.T) {
 	streams := map[string]int{}
 	for _, raw := range sink.snapshot() {
 		rec := decodeSessionRecord(t, raw)
-		total += rec.InputBytes
+		total += rec.InputBytesDelta
 		streams[rec.SessionID]++
 	}
 	if total != written {

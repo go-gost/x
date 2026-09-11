@@ -33,9 +33,11 @@ var ErrSessionRecorderClosed = errors.New("session recorder is closed")
 // SessionRecord is one interval record with byte deltas for a session.
 type SessionRecord struct {
 	HandlerRecorderObject
-	SessionID   string `json:"sessionID"`
-	RecordIndex uint64 `json:"recordIndex"`
-	Phase       string `json:"phase"`
+	SessionID        string `json:"sessionID"`
+	RecordIndex      uint64 `json:"recordIndex"`
+	Phase            string `json:"phase"`
+	InputBytesDelta  uint64 `json:"inputBytesDelta"`
+	OutputBytesDelta uint64 `json:"outputBytesDelta"`
 }
 
 // SessionRecorderOptions bounds periodic reporting, delivery, retries, and shutdown.
@@ -245,8 +247,12 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 
 // encode converts cumulative handler totals into one record's byte deltas.
 func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) ([]byte, error) {
-	ro.InputBytes = max(ro.InputBytes, s.input) - s.input
-	ro.OutputBytes = max(ro.OutputBytes, s.output) - s.output
+	input := max(ro.InputBytes, s.input)
+	output := max(ro.OutputBytes, s.output)
+	inputDelta := input - s.input
+	outputDelta := output - s.output
+	ro.InputBytes = input
+	ro.OutputBytes = output
 	ro.Time = now
 	ro.Duration = now.Sub(s.startedAt)
 
@@ -255,6 +261,8 @@ func (s *Session) encode(ro HandlerRecorderObject, now time.Time, phase string) 
 		SessionID:             s.id,
 		RecordIndex:           s.sequence + 1,
 		Phase:                 phase,
+		InputBytesDelta:       inputDelta,
+		OutputBytesDelta:      outputDelta,
 	})
 }
 
