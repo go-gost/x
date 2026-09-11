@@ -21,6 +21,8 @@ type DatagramStreamer interface {
 // This allows UDP packets to be tunneled over HTTP/3 datagrams per RFC 9297/9298.
 type DatagramConn struct {
 	stream     DatagramStreamer
+	ctx        context.Context
+	cancel     context.CancelFunc
 	closer     io.Closer // Optional closer for the underlying stream
 	localAddr  net.Addr
 	remoteAddr net.Addr
@@ -31,26 +33,32 @@ type DatagramConn struct {
 	readDeadline time.Time
 }
 
-// NewDatagramConn creates a new DatagramConn wrapping an HTTP/3 stream.
-func NewDatagramConn(stream *http3.Stream, laddr, raddr net.Addr) *DatagramConn {
+// newDatagramConn builds a DatagramConn. The ctx is cancelled by Close to
+// unblock a pending ReceiveDatagram: closing the underlying HTTP/3 stream does
+// not interrupt it, so a leaked ReadFrom would otherwise pin the goroutine and
+// the stream forever.
+func newDatagramConn(stream DatagramStreamer, closer io.Closer, laddr, raddr net.Addr) *DatagramConn {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &DatagramConn{
 		stream:     stream,
+		ctx:        ctx,
+		cancel:     cancel,
+		closer:     closer,
 		localAddr:  laddr,
 		remoteAddr: raddr,
 		closed:     make(chan struct{}),
 	}
 }
 
+// NewDatagramConn creates a new DatagramConn wrapping an HTTP/3 stream.
+func NewDatagramConn(stream *http3.Stream, laddr, raddr net.Addr) *DatagramConn {
+	return newDatagramConn(stream, nil, laddr, raddr)
+}
+
 // NewDatagramConnFromRequestStream creates a new DatagramConn wrapping an HTTP/3 request stream.
 // This is used by the client-side connector. The stream will be closed when Close() is called.
 func NewDatagramConnFromRequestStream(stream *http3.RequestStream, laddr, raddr net.Addr) *DatagramConn {
-	return &DatagramConn{
-		stream:     stream,
-		closer:     stream, // RequestStream implements io.Closer
-		localAddr:  laddr,
-		remoteAddr: raddr,
-		closed:     make(chan struct{}),
-	}
+	return newDatagramConn(stream, stream /* RequestStream implements io.Closer */, laddr, raddr)
 }
 
 // ReadFrom reads a UDP datagram from the HTTP/3 stream.
@@ -63,7 +71,7 @@ func (c *DatagramConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	default:
 	}
 
-	ctx := context.Background()
+	ctx := c.ctx
 	c.mu.RLock()
 	deadline := c.readDeadline
 	c.mu.RUnlock()
@@ -128,11 +136,13 @@ func (c *DatagramConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.remoteAddr)
 }
 
-// Close closes the datagram connection and the underlying stream.
+// Close closes the datagram connection and the underlying stream. It also
+// cancels the read context so a goroutine blocked in ReadFrom is released.
 func (c *DatagramConn) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
+		c.cancel()
 		if c.closer != nil {
 			err = c.closer.Close()
 		}

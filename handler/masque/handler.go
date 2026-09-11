@@ -467,7 +467,8 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 	relay := udp.NewRelay(clientPC, targetPC).
 		WithService(h.options.Service).
 		WithLogger(log).
-		WithBufferSize(h.md.bufferSize)
+		WithBufferSize(h.md.bufferSize).
+		WithReadTimeout(h.md.idleTimeout)
 
 	return relay.Run(ctx)
 }

@@ -25,8 +25,9 @@ type metadata struct {
 	bufferSize int
 	// authBasicRealm is the realm string sent in Proxy-Authenticate challenges.
 	authBasicRealm string
-	// idleTimeout is the read timeout for TCP connections during bidirectional relay.
-	// After this duration with no data, the relay is terminated.
+	// idleTimeout is the read timeout for both TCP and UDP (CONNECT-UDP)
+	// relays. After this duration with no traffic in a direction, that relay
+	// is terminated and its sockets released.
 	idleTimeout time.Duration
 
 	// observerPeriod is the interval between observer stats collection cycles.

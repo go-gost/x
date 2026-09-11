@@ -3,6 +3,7 @@ package udp
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/common/bufpool"
@@ -15,12 +16,13 @@ const (
 
 // Relay copies UDP datagrams between two net.PacketConns bidirectionally.
 type Relay struct {
-	service    string
-	pc1        net.PacketConn
-	pc2        net.PacketConn
-	bufferSize int
-	bypass     bypass.Bypass
-	logger     logger.Logger
+	service     string
+	pc1         net.PacketConn
+	pc2         net.PacketConn
+	bufferSize  int
+	readTimeout time.Duration
+	bypass      bypass.Bypass
+	logger      logger.Logger
 }
 
 // NewRelay creates a Relay that copies datagrams between pc1 and pc2.
@@ -55,7 +57,18 @@ func (r *Relay) WithBufferSize(n int) *Relay {
 	return r
 }
 
+// WithReadTimeout sets an idle read timeout for both relay directions. When a
+// read blocks for longer than d the relay terminates and closes both packet
+// conns. A value of 0 disables the timeout, relying on ctx cancellation to
+// detect dead associations.
+func (r *Relay) WithReadTimeout(d time.Duration) *Relay {
+	r.readTimeout = d
+	return r
+}
+
 // Run starts the relay. It blocks until an error occurs or ctx is cancelled.
+// Both packet conns are closed before returning so the underlying sockets are
+// released and the pending read in either direction is unblocked.
 func (r *Relay) Run(ctx context.Context) (err error) {
 	errc := make(chan error, 2)
 
@@ -69,7 +82,20 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 		defer bufpool.Put(b)
 
 		for {
+			select {
+			case <-ctx.Done():
+				errc <- ctx.Err()
+				return
+			default:
+			}
+
 			err := func() error {
+				if r.readTimeout > 0 {
+					if rd, ok := r.pc1.(interface{ SetReadDeadline(time.Time) error }); ok {
+						rd.SetReadDeadline(time.Now().Add(r.readTimeout))
+					}
+				}
+
 				n, raddr, err := r.pc1.ReadFrom(b)
 				if err != nil {
 					return err
@@ -106,7 +132,20 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 		defer bufpool.Put(b)
 
 		for {
+			select {
+			case <-ctx.Done():
+				errc <- ctx.Err()
+				return
+			default:
+			}
+
 			err := func() error {
+				if r.readTimeout > 0 {
+					if rd, ok := r.pc2.(interface{ SetReadDeadline(time.Time) error }); ok {
+						rd.SetReadDeadline(time.Now().Add(r.readTimeout))
+					}
+				}
+
 				n, raddr, err := r.pc2.ReadFrom(b)
 				if err != nil {
 					return err
@@ -138,5 +177,15 @@ func (r *Relay) Run(ctx context.Context) (err error) {
 		}
 	}()
 
-	return <-errc
+	select {
+	case err = <-errc:
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+
+	// Release the packet conns and unblock the remaining copy goroutine.
+	r.pc1.Close()
+	r.pc2.Close()
+
+	return
 }

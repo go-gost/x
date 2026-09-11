@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -39,11 +40,22 @@ type mockPacketConn struct {
 	localAddr net.Addr
 	closed    bool
 	mu        sync.Mutex
+
+	// closedCh is closed on Close, so a test readFn can block until the relay
+	// releases the conn.
+	closedCh   chan struct{}
+	closeOnce  sync.Once
+	// deadlineCh is closed on the first SetReadDeadline call, so a test readFn
+	// can observe that the relay armed an idle read timeout.
+	deadlineCh   chan struct{}
+	deadlineOnce sync.Once
 }
 
 func newMockPacketConn() *mockPacketConn {
 	return &mockPacketConn{
-		localAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10000},
+		localAddr:  &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10000},
+		closedCh:   make(chan struct{}),
+		deadlineCh: make(chan struct{}),
 	}
 }
 
@@ -64,14 +76,25 @@ func (m *mockPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 func (m *mockPacketConn) Close() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.closed = true
+	m.mu.Unlock()
+
+	m.closeOnce.Do(func() { close(m.closedCh) })
 	return m.closeErr
 }
 
-func (m *mockPacketConn) LocalAddr() net.Addr           { return m.localAddr }
+func (m *mockPacketConn) isClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closed
+}
+
+func (m *mockPacketConn) LocalAddr() net.Addr                { return m.localAddr }
 func (m *mockPacketConn) SetDeadline(t time.Time) error      { return nil }
-func (m *mockPacketConn) SetReadDeadline(t time.Time) error  { return nil }
+func (m *mockPacketConn) SetReadDeadline(t time.Time) error {
+	m.deadlineOnce.Do(func() { close(m.deadlineCh) })
+	return nil
+}
 func (m *mockPacketConn) SetWriteDeadline(t time.Time) error { return nil }
 func (m *mockPacketConn) SetReadBuffer(n int) error          { return nil }
 func (m *mockPacketConn) SetWriteBuffer(n int) error         { return nil }
@@ -642,6 +665,67 @@ func Test_Relay_TraceLogging(t *testing.T) {
 	err := r.Run(ctx)
 	if err == nil || err.Error() != "done" {
 		t.Errorf("expected 'done' error, got %v", err)
+	}
+}
+
+// blockingRead returns a readFn that blocks until the packet conn is closed by
+// the relay, simulating an idle association whose peer never sends again.
+func blockingRead(pc *mockPacketConn) func([]byte) (int, net.Addr, error) {
+	return func(b []byte) (int, net.Addr, error) {
+		<-pc.closedCh
+		return 0, nil, net.ErrClosed
+	}
+}
+
+// Test_Relay_Run_ContextCancel verifies that Run returns when ctx is cancelled
+// and that both packet conns are closed, so an idle association does not leak
+// its sockets or goroutines.
+func Test_Relay_Run_ContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	pc1 := newMockPacketConn()
+	pc2 := newMockPacketConn()
+	pc1.readFn = blockingRead(pc1)
+	pc2.readFn = blockingRead(pc2)
+
+	done := make(chan error, 1)
+	go func() { done <- NewRelay(pc1, pc2).Run(ctx) }()
+
+	// Let both copy goroutines block in ReadFrom before cancelling.
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancellation")
+	}
+
+	if !pc1.isClosed() || !pc2.isClosed() {
+		t.Errorf("expected both packet conns closed, got pc1=%v pc2=%v", pc1.isClosed(), pc2.isClosed())
+	}
+}
+
+// Test_Relay_Run_ReadTimeout verifies that WithReadTimeout arms a read deadline
+// on each direction and terminates the relay when a read times out.
+func Test_Relay_Run_ReadTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pc1 := newMockPacketConn()
+	pc2 := newMockPacketConn()
+	pc1.readFn = func(b []byte) (int, net.Addr, error) {
+		<-pc1.deadlineCh // the relay armed the idle timeout
+		return 0, nil, os.ErrDeadlineExceeded
+	}
+	pc2.readFn = blockingRead(pc2)
+
+	err := NewRelay(pc1, pc2).WithReadTimeout(50 * time.Millisecond).Run(ctx)
+	if !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("expected os.ErrDeadlineExceeded, got %v", err)
 	}
 }
 
