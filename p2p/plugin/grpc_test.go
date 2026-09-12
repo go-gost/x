@@ -19,8 +19,10 @@ import (
 	"github.com/go-gost/x/dialer/udp"
 	xlogger "github.com/go-gost/x/logger"
 	xp2p "github.com/go-gost/x/p2p"
+	"github.com/go-gost/x/p2p/streamconn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -33,25 +35,27 @@ func TestMain(m *testing.M) {
 }
 
 // fakeServer implements the P2P control contract: OpenTunnel validates the
-// peer, creates a local listener bridged to it, CloseTunnel tears it down.
-// Flags flip the failure paths: deadEndpoint returns an endpoint whose port
-// is already closed, bizFail answers ok:false body with a gRPC status OK.
+// peer and allocates the tunnel id (no endpoint — the data plane is the
+// Tunnel stream); Tunnel serves that stream, bridged to the target (tcp) or
+// framed-echoed (udp). A record is removed when its Tunnel handler returns:
+// stream end IS the tunnel teardown. bizFail answers ok:false with a gRPC
+// status OK.
 type fakeServer struct {
 	proto.UnimplementedP2PServer
-	mu           sync.Mutex
-	seq          atomic.Int64
-	tunnels      map[string]*fakeTunnel
-	networks     []string // network of every OpenTunnel request, in order
-	deadEndpoint bool
-	bizFail      bool
+	mu       sync.Mutex
+	seq      atomic.Int64
+	tunnels  map[string]fakeTunnel
+	networks []string // network of every OpenTunnel request, in order
+	bizFail  bool
 }
 
 type fakeTunnel struct {
-	target string
-	ln     net.Listener
-	pc     net.PacketConn // udp tunnels only
-	mu     sync.Mutex
-	conns  map[net.Conn]struct{}
+	network string
+	target  string
+}
+
+func newFakeServer() *fakeServer {
+	return &fakeServer{tunnels: make(map[string]fakeTunnel)}
 }
 
 func (s *fakeServer) OpenTunnel(ctx context.Context, req *proto.OpenTunnelRequest) (*proto.OpenTunnelReply, error) {
@@ -65,46 +69,75 @@ func (s *fakeServer) OpenTunnel(ctx context.Context, req *proto.OpenTunnelReques
 	if s.bizFail {
 		return &proto.OpenTunnelReply{Ok: false, Error: "biz boom"}, nil
 	}
-	if req.Network == "udp" {
-		pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-		if err != nil {
-			return &proto.OpenTunnelReply{Ok: false, Error: err.Error()}, nil
-		}
-		t := &fakeTunnel{target: req.Peer, pc: pc, conns: make(map[net.Conn]struct{})}
-		id := fmt.Sprintf("t-%d", s.seq.Add(1))
-		s.mu.Lock()
-		s.tunnels[id] = t
-		s.mu.Unlock()
-		return &proto.OpenTunnelReply{Ok: true, Id: id, Endpoint: pc.LocalAddr().String()}, nil
+	network := req.Network
+	if network == "" {
+		network = "tcp"
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return &proto.OpenTunnelReply{Ok: false, Error: err.Error()}, nil
-	}
-	endpoint := ln.Addr().String()
-	if s.deadEndpoint {
-		ln.Close() // endpoint is dead; the tunnel is still tracked for cleanup
-	}
-	t := &fakeTunnel{target: req.Peer, ln: ln, conns: make(map[net.Conn]struct{})}
 	id := fmt.Sprintf("t-%d", s.seq.Add(1))
 	s.mu.Lock()
-	s.tunnels[id] = t
+	s.tunnels[id] = fakeTunnel{network: network, target: req.Peer}
 	s.mu.Unlock()
-	if !s.deadEndpoint {
-		go t.serve()
-	}
-	return &proto.OpenTunnelReply{Ok: true, Id: id, Endpoint: endpoint}, nil
+	return &proto.OpenTunnelReply{Ok: true, Id: id}, nil
 }
 
-func (s *fakeServer) CloseTunnel(ctx context.Context, req *proto.CloseTunnelRequest) (*proto.CloseTunnelReply, error) {
-	s.mu.Lock()
-	t, ok := s.tunnels[req.Id]
-	delete(s.tunnels, req.Id)
-	s.mu.Unlock()
-	if ok {
-		t.close()
+// Tunnel is the data plane: look the tunnel up by the "id" metadata key
+// (unknown → NotFound), then serve the stream. The host side of the stream
+// stays raw; in udp mode the framing is carried end to end as bytes (the
+// fake plays the framed peer).
+func (s *fakeServer) Tunnel(stream proto.P2P_TunnelServer) error {
+	md, _ := metadata.FromIncomingContext(stream.Context())
+	var id string
+	if v := md.Get("id"); len(v) > 0 {
+		id = v[0]
 	}
-	return &proto.CloseTunnelReply{Ok: true}, nil
+	s.mu.Lock()
+	t, ok := s.tunnels[id]
+	s.mu.Unlock()
+	if !ok {
+		return status.Errorf(codes.NotFound, "unknown tunnel id")
+	}
+	defer func() {
+		s.mu.Lock()
+		delete(s.tunnels, id)
+		s.mu.Unlock()
+	}()
+
+	if t.network == "udp" {
+		c := streamconn.New(stream, nil, "udp", nil, nil)
+		defer c.Close()
+		buf := make([]byte, streamconn.MaxFrame)
+		for {
+			n, err := c.Read(buf)
+			if err != nil {
+				return nil // client closed: normal teardown
+			}
+			if _, err := c.Write(buf[:n]); err != nil {
+				return nil
+			}
+		}
+	}
+
+	up, err := net.DialTimeout("tcp", t.target, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	defer up.Close()
+	down := streamconn.New(stream, nil, "tcp", nil, nil)
+	defer down.Close()
+	done := make(chan struct{}, 2)
+	go func() {
+		io.Copy(up, down)
+		up.Close()
+		done <- struct{}{}
+	}()
+	go func() {
+		io.Copy(down, up)
+		down.Close()
+		done <- struct{}{}
+	}()
+	<-done
+	<-done
+	return nil
 }
 
 func (s *fakeServer) Status(ctx context.Context, req *proto.StatusRequest) (*proto.StatusReply, error) {
@@ -129,59 +162,16 @@ func (s *fakeServer) networkOf(i int) string {
 	return s.networks[i]
 }
 
-func (t *fakeTunnel) serve() {
-	for {
-		conn, err := t.ln.Accept()
-		if err != nil {
+func waitTunnelCount(t *testing.T, s *fakeServer, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.tunnelCount() == want {
 			return
 		}
-		t.mu.Lock()
-		t.conns[conn] = struct{}{}
-		t.mu.Unlock()
-		go t.bridge(conn)
+		time.Sleep(5 * time.Millisecond)
 	}
-}
-
-func (t *fakeTunnel) bridge(conn net.Conn) {
-	defer func() {
-		t.mu.Lock()
-		delete(t.conns, conn)
-		t.mu.Unlock()
-	}()
-	up, err := net.DialTimeout("tcp", t.target, 5*time.Second)
-	if err != nil {
-		conn.Close()
-		return
-	}
-	defer func() {
-		up.Close()
-		conn.Close()
-	}()
-	done := make(chan struct{}, 2)
-	go func() {
-		io.Copy(up, conn)
-		done <- struct{}{}
-	}()
-	go func() {
-		io.Copy(conn, up)
-		done <- struct{}{}
-	}()
-	<-done
-	<-done
-}
-
-func (t *fakeTunnel) close() {
-	if t.ln != nil {
-		t.ln.Close()
-	}
-	if t.pc != nil {
-		t.pc.Close()
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for conn := range t.conns {
-		conn.Close()
-	}
+	t.Fatalf("tunnel count = %d, want %d", s.tunnelCount(), want)
 }
 
 // startFake runs the fake control server and returns its address; the
@@ -245,7 +235,7 @@ func newTestDialer(t *testing.T, s *fakeServer) (dialer.Dialer, xp2p.TunnelProvi
 }
 
 func TestDialRoundTrip(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel)}
+	s := newFakeServer()
 	d, _ := newTestDialer(t, s)
 	target := startEcho(t)
 
@@ -261,16 +251,47 @@ func TestDialRoundTrip(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if n := s.tunnelCount(); n != 0 {
-		t.Fatalf("tunnel count after close = %d, want 0", n)
-	}
-	// second Close must be a no-op (sync.Once), not an error or panic
+	// The record is removed when the host-side handler returns (stream end).
+	waitTunnelCount(t, s, 0)
+	// second Close must be a no-op (idempotent), not an error or panic
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if n := s.tunnelCount(); n != 0 {
 		t.Fatalf("tunnel count after double close = %d, want 0", n)
 	}
+}
+
+// TestDialReadDeadline proves the tunnel conn honors SetReadDeadline (the
+// reason the conn exists in this shape: inner tls/ws handshakes set deadlines
+// and ignore the error, so a silent peer must not hang a Read forever).
+func TestDialReadDeadline(t *testing.T) {
+	s := newFakeServer()
+	d, _ := newTestDialer(t, s)
+	target := startEcho(t)
+
+	conn, err := d.Dial(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := conn.Read(make([]byte, 4)); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("Read err = %v, want os.ErrDeadlineExceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
+		t.Fatalf("Read returned after %v, want the deadline to have applied", elapsed)
+	}
+
+	// Clearing the deadline restores normal reads.
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	echoOnce(t, conn)
 }
 
 func TestPluginDown(t *testing.T) {
@@ -289,20 +310,8 @@ func TestPluginDown(t *testing.T) {
 	}
 }
 
-func TestLocalEndpointDead(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel), deadEndpoint: true}
-	d, _ := newTestDialer(t, s)
-
-	if _, err := d.Dial(context.Background(), "127.0.0.1:9999"); err == nil {
-		t.Fatal("Dial succeeded, want error on dead endpoint")
-	}
-	if n := s.tunnelCount(); n != 0 {
-		t.Fatalf("tunnel count after failed dial = %d, want 0 (cleanup ran)", n)
-	}
-}
-
 func TestDialConcurrent(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel)}
+	s := newFakeServer()
 	d, _ := newTestDialer(t, s)
 	target := startEcho(t)
 
@@ -319,13 +328,11 @@ func TestDialConcurrent(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if n := s.tunnelCount(); n != 0 {
-		t.Fatalf("tunnel count after concurrent dials = %d, want 0", n)
-	}
+	waitTunnelCount(t, s, 0)
 }
 
 func TestOpenTunnelInvalidPeer(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel)}
+	s := newFakeServer()
 	d, _ := newTestDialer(t, s)
 
 	if _, err := d.Dial(context.Background(), "foo"); err == nil {
@@ -337,7 +344,8 @@ func TestOpenTunnelInvalidPeer(t *testing.T) {
 }
 
 func TestOpenTunnelBizFail(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel), bizFail: true}
+	s := newFakeServer()
+	s.bizFail = true
 	d, _ := newTestDialer(t, s)
 
 	_, err := d.Dial(context.Background(), "127.0.0.1:9999")
@@ -365,7 +373,7 @@ func (d *handshakeDialer) Handshake(ctx context.Context, conn net.Conn, opts ...
 }
 
 func TestHandshakeForward(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel)}
+	s := newFakeServer()
 	provider := NewGRPCPlugin("t", startFake(t, s))
 	inner := &handshakeDialer{Dialer: tcp.NewDialer(dialer.LoggerOption(logger.Default()))}
 	d := xp2p.NewTunnelDialer(inner, provider)
@@ -401,11 +409,12 @@ func TestSupportedDialer(t *testing.T) {
 }
 
 // TestUDPNetworkPassthrough covers the datagram shape end to end over the
-// gRPC seam: a udp inner dialer must make the plugin return a datagram
-// endpoint (network carried on the request), and the wrapper must dial that
-// endpoint as udp — a TCP endpoint would coalesce packets.
+// gRPC seam: a udp inner dialer must make the plugin open a udp tunnel
+// (network carried on the request), the wrapped conn must preserve datagram
+// boundaries, and the dial result must expose the PacketConn shape the tun
+// handler's transport expects.
 func TestUDPNetworkPassthrough(t *testing.T) {
-	s := &fakeServer{tunnels: make(map[string]*fakeTunnel)}
+	s := newFakeServer()
 	provider := NewGRPCPlugin("t", startFake(t, s))
 	inner := udp.NewDialer(dialer.LoggerOption(logger.Default()))
 	d := xp2p.NewTunnelDialer(inner, provider)
@@ -419,13 +428,25 @@ func TestUDPNetworkPassthrough(t *testing.T) {
 	if got := s.networkOf(0); got != "udp" {
 		t.Fatalf("OpenTunnel network = %q, want udp", got)
 	}
-	if got := conn.LocalAddr().Network(); got != "udp" {
-		t.Fatalf("endpoint dial network = %q, want udp", got)
-	}
-	// A datagram conn must expose the connected-socket ReadFrom/WriteTo shape
-	// the tun handler's transport expects.
 	if _, ok := conn.(net.PacketConn); !ok {
 		t.Fatal("udp dial result is not a net.PacketConn")
+	}
+	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 8)
+	if n, err := conn.Read(buf); err != nil || string(buf[:n]) != "ping" {
+		t.Fatalf("datagram round trip = %q, %v; want ping", buf[:n], err)
+	}
+	// Boundaries preserved: consecutive datagrams never coalesce.
+	conn.Write([]byte("a"))
+	conn.Write([]byte("bb"))
+	if n, err := conn.Read(buf); err != nil || n != 1 || buf[0] != 'a' {
+		t.Fatalf("Read = %q, %v; want single-byte datagram", buf[:n], err)
+	}
+	if n, err := conn.Read(buf); err != nil || string(buf[:n]) != "bb" {
+		t.Fatalf("Read = %q, %v; want bb (no coalescing)", buf[:n], err)
 	}
 }
 
@@ -461,51 +482,39 @@ func TestMultiplexDelegation(t *testing.T) {
 	}
 }
 
-// countingProvider is a TunnelProvider recording open/close calls and the
-// network each open asked for.
+// countingProvider is a TunnelProvider recording opens/closes and the network
+// each open asked for. Each open returns an in-memory conn.
 type countingProvider struct {
-	ln        net.Listener
-	pc        net.PacketConn
 	mu        sync.Mutex
 	openCalls int
+	closeCall int
 	networks  []string
-	closes    []string
 }
 
-func (p *countingProvider) OpenTunnel(ctx context.Context, network, peer string) (id, endpoint string, err error) {
+func (p *countingProvider) OpenTunnelStream(ctx context.Context, network, peer string) (net.Conn, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.openCalls++
 	p.networks = append(p.networks, network)
-	if network == "udp" {
-		pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-		if err != nil {
-			return "", "", err
-		}
-		p.pc = pc
-		return fmt.Sprintf("t-%d", p.openCalls), pc.LocalAddr().String(), nil
-	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", "", err
-	}
-	p.ln = ln
-	return fmt.Sprintf("t-%d", p.openCalls), ln.Addr().String(), nil
+	p.mu.Unlock()
+	c1, c2 := net.Pipe()
+	go c1.Close()
+	return &countingConn{Conn: c2, onClose: func() {
+		p.mu.Lock()
+		p.closeCall++
+		p.mu.Unlock()
+	}}, nil
 }
 
-func (p *countingProvider) CloseTunnel(ctx context.Context, id string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.closes = append(p.closes, id)
-	if p.ln != nil {
-		p.ln.Close()
-		p.ln = nil
-	}
-	if p.pc != nil {
-		p.pc.Close()
-		p.pc = nil
-	}
-	return nil
+// countingConn observes the tunnel conn's close (the tunnel teardown).
+type countingConn struct {
+	net.Conn
+	onClose func()
+	once    sync.Once
+}
+
+func (c *countingConn) Close() error {
+	c.once.Do(c.onClose)
+	return c.Conn.Close()
 }
 
 func (p *countingProvider) networkOf(i int) string {
@@ -528,7 +537,7 @@ func (p *countingProvider) openCount() int {
 func (p *countingProvider) closeCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return len(p.closes)
+	return p.closeCall
 }
 
 // noBaseDialer never touches its base net dialer — the mux session cache hit
@@ -574,11 +583,11 @@ func TestLazyOpenTunnel(t *testing.T) {
 	}
 	conn.Close()
 	if n := p.openCount(); n != 0 {
-		t.Fatalf("OpenTunnel calls = %d, want 0 (cache hit must not leak a tunnel)", n)
+		t.Fatalf("OpenTunnelStream calls = %d, want 0 (cache hit must not leak a tunnel)", n)
 	}
 
 	// Happy path: the inner dials its base exactly once; closing the conn
-	// releases the tunnel.
+	// tears the tunnel down (the stream ending IS the teardown).
 	p2 := &countingProvider{}
 	d2 := xp2p.NewTunnelDialer(&baseDialer{}, p2)
 	conn2, err := d2.Dial(context.Background(), "127.0.0.1:9999")
@@ -586,17 +595,17 @@ func TestLazyOpenTunnel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := p2.openCount(); n != 1 {
-		t.Fatalf("OpenTunnel calls = %d, want 1", n)
+		t.Fatalf("OpenTunnelStream calls = %d, want 1", n)
 	}
 	if got := p2.networkOf(0); got != "tcp" {
 		t.Fatalf("OpenTunnel network = %q, want tcp for a stream inner", got)
 	}
 	if n := p2.closeCount(); n != 0 {
-		t.Fatalf("CloseTunnel calls before conn close = %d, want 0", n)
+		t.Fatalf("conn closes before conn2 close = %d, want 0", n)
 	}
 	conn2.Close()
 	if n := p2.closeCount(); n != 1 {
-		t.Fatalf("CloseTunnel calls after conn close = %d, want 1", n)
+		t.Fatalf("conn closes after conn2 close = %d, want 1", n)
 	}
 
 	// Failure path: inner.Dial fails after the base dial opened the tunnel;
@@ -607,9 +616,9 @@ func TestLazyOpenTunnel(t *testing.T) {
 		t.Fatal("Dial succeeded, want inner error")
 	}
 	if n := p3.openCount(); n != 1 {
-		t.Fatalf("OpenTunnel calls = %d, want 1", n)
+		t.Fatalf("OpenTunnelStream calls = %d, want 1", n)
 	}
 	if n := p3.closeCount(); n != 1 {
-		t.Fatalf("CloseTunnel calls after failed dial = %d, want 1 (fail closed)", n)
+		t.Fatalf("conn closes after failed dial = %d, want 1 (fail closed)", n)
 	}
 }
