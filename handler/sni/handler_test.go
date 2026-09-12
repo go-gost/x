@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
@@ -240,5 +242,64 @@ func TestHandle_ConnClosed(t *testing.T) {
 	}
 	if !conn.closed {
 		t.Error("expected connection to be closed after Handle returns")
+	}
+}
+
+// deadlineTrackingConn records read deadline changes so tests can observe
+// whether the sniffing deadline is cleared before the data path begins.
+type deadlineTrackingConn struct {
+	*stringConn
+	mu           sync.Mutex
+	readDeadline time.Time
+	sawNonZero   bool
+}
+
+func newDeadlineTrackingConn(data []byte) *deadlineTrackingConn {
+	return &deadlineTrackingConn{stringConn: newStringConn(data)}
+}
+
+func (c *deadlineTrackingConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	c.readDeadline = t
+	if !t.IsZero() {
+		c.sawNonZero = true
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *deadlineTrackingConn) currentReadDeadline() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.readDeadline
+}
+
+// TestHandle_ClearsSniffDeadlineBeforeDataPath guards against the sniffing
+// read deadline leaking into the long-lived data path. The deadline must be
+// cleared once sniffing completes, before the upstream dial.
+func TestHandle_ClearsSniffDeadlineBeforeDataPath(t *testing.T) {
+	conn := newDeadlineTrackingConn([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+
+	var dialed bool
+	var deadlineAtDial time.Time
+	h := newInitdHandler(withRouter(&mockRouter{
+		opts: &chain.RouterOptions{},
+		dialFn: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dialed = true
+			deadlineAtDial = conn.currentReadDeadline()
+			return nil, errors.New("stop")
+		},
+	}))
+
+	_ = h.Handle(context.Background(), conn)
+
+	if !dialed {
+		t.Fatal("expected upstream dial (data path) to be reached")
+	}
+	if !conn.sawNonZero {
+		t.Fatal("expected a sniffing read deadline to be set")
+	}
+	if !deadlineAtDial.IsZero() {
+		t.Errorf("sniffing read deadline %v still set at data path; want cleared", deadlineAtDial)
 	}
 }

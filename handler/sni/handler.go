@@ -176,11 +176,18 @@ func (h *sniHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	if h.md.readTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(h.md.readTimeout))
-		defer conn.SetReadDeadline(time.Time{})
 	}
 
 	br := bufio.NewReader(conn)
 	proto, sniffErr := sniffing.Sniff(ctx, br)
+
+	// Clear the sniffing deadline before entering the data path. Deferring it
+	// to Handle's return would keep an absolute deadline on the connection for
+	// the whole session, tearing it down after readTimeout seconds.
+	if h.md.readTimeout > 0 {
+		conn.SetReadDeadline(time.Time{})
+	}
+
 	if sniffErr != nil {
 		log.Debugf("sniff: %v", sniffErr)
 	}
