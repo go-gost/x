@@ -3,6 +3,7 @@ package streamconn
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -208,6 +209,61 @@ func TestFramedDatagrams(t *testing.T) {
 	connA.Write([]byte("z"))
 	if n, err := connB.Read(buf); err != nil || string(buf[:n]) != "z" {
 		t.Fatalf("Read = %q, %v; want z (remainder dropped)", buf[:n], err)
+	}
+}
+
+// TestFramedAssemblesAcrossChunks feeds one frame split across many small
+// chunks (the host pipes with io.Copy, so chunk boundaries are arbitrary) and
+// asserts the datagram reassembles — and that the assembly buffer is bounded
+// by the received bytes, never by the frame header's claimed length.
+func TestFramedAssemblesAcrossChunks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fs := newFakeStream(ctx)
+	c := New(fs, func() {}, "udp", nil, nil)
+	defer c.Close()
+
+	payload := bytes.Repeat([]byte{0x5a}, 5000)
+	var frame bytes.Buffer
+	if err := WriteFrame(&frame, payload); err != nil {
+		t.Fatal(err)
+	}
+	b := frame.Bytes()
+	for len(b) > 0 {
+		n := min(7, len(b))
+		fs.recvCh <- &proto.Chunk{Data: append([]byte{}, b[:n]...)}
+		b = b[n:]
+	}
+	buf := make([]byte, 8192)
+	n, err := c.Read(buf)
+	if err != nil || !bytes.Equal(buf[:n], payload) {
+		t.Fatalf("Read = %d bytes, %v; want the reassembled datagram", n, err)
+	}
+	c.mu.Lock()
+	rb := c.rb
+	c.mu.Unlock()
+	if rb != nil {
+		t.Fatalf("rb = %d bytes after one frame, want nil (backing array dropped)", len(rb))
+	}
+
+	// A frame that never completes: rb holds exactly the bytes that arrived
+	// (2 header + 1000), not the claimed 65535.
+	fs2 := newFakeStream(ctx)
+	c2 := New(fs2, func() {}, "udp", nil, nil)
+	defer c2.Close()
+	c2.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	var hdr [2]byte
+	binary.BigEndian.PutUint16(hdr[:], 65535)
+	fs2.recvCh <- &proto.Chunk{Data: hdr[:]}
+	fs2.recvCh <- &proto.Chunk{Data: bytes.Repeat([]byte{1}, 1000)}
+	if _, err := c2.Read(make([]byte, 8)); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("Read err = %v, want deadline (frame incomplete)", err)
+	}
+	c2.mu.Lock()
+	rb2 := len(c2.rb)
+	c2.mu.Unlock()
+	if rb2 != 1002 {
+		t.Fatalf("rb = %d bytes for a partial frame, want 1002 (received bytes only)", rb2)
 	}
 }
 

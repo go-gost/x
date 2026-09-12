@@ -264,8 +264,12 @@ func (c *Conn) Read(b []byte) (int, error) {
 	}
 }
 
-// readDatagram assembles one complete frame across chunks. c.rb only ever
-// accumulates up to MaxFrame+one chunk: a frame header bounds the wait.
+// readDatagram assembles one complete frame across chunks. The frame header
+// bounds the accumulation: appends stop once 2+n bytes are present, so c.rb
+// holds at most one frame plus the chunk that crossed the boundary. On a
+// frame boundary that drains it, the buffer is dropped outright — an append
+// would otherwise keep the backing array anchored (idle conns would retain
+// the largest frame's array indefinitely).
 func (c *Conn) readDatagram() ([]byte, error) {
 	for {
 		c.mu.Lock()
@@ -275,6 +279,9 @@ func (c *Conn) readDatagram() ([]byte, error) {
 			if len(rb) >= 2+n {
 				p := rb[2 : 2+n]
 				c.rb = c.rb[2+n:]
+				if len(c.rb) == 0 {
+					c.rb = nil
+				}
 				c.mu.Unlock()
 				return p, nil
 			}
