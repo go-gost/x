@@ -5,7 +5,26 @@ import (
 	"errors"
 	"net"
 	"testing"
+
+	ictx "github.com/go-gost/x/internal/ctx"
 )
+
+func TestShouldBindUDPDevice(t *testing.T) {
+	if shouldBindUDPDevice(context.Background(), "wwan0", true) {
+		t.Fatal("device binding must remain disabled by default")
+	}
+
+	ctx := ictx.ContextWithUDPBindDevice(context.Background())
+	if !shouldBindUDPDevice(ctx, "wwan0", true) {
+		t.Fatal("explicit UDP device binding was ignored")
+	}
+	if shouldBindUDPDevice(ctx, "", true) {
+		t.Fatal("device binding requires a resolved interface name")
+	}
+	if shouldBindUDPDevice(ctx, "wwan0", false) {
+		t.Fatal("an interface specified as an IP address must not use SO_BINDTODEVICE")
+	}
+}
 
 func TestDialer_Dial_DialFunc(t *testing.T) {
 	customErr := errors.New("custom dial")

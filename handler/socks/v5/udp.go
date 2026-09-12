@@ -74,7 +74,11 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	// Verify the upstream chain is reachable before replying Success,
 	// per RFC 1928 §7.
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, "") // UDP association
+	dialContext := ictx.ContextWithBuffer(ctx, &buf)
+	if h.md.udpBindDevice {
+		dialContext = ictx.ContextWithUDPBindDevice(dialContext)
+	}
+	c, err := h.options.Router.Dial(dialContext, network, "") // UDP association
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
@@ -104,9 +108,9 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	// as ATYP=Domain themselves and are left untouched.
 	if _, isDirect := pc.(*net.UDPConn); isDirect {
 		pc = &resolvePacketConn{
-			PacketConn:  pc,
-			resolver:    h.options.Router.Options().Resolver,
-			hostMapper:  h.options.Router.Options().HostMapper,
+			PacketConn: pc,
+			resolver:   h.options.Router.Options().Resolver,
+			hostMapper: h.options.Router.Options().HostMapper,
 		}
 	}
 

@@ -69,7 +69,11 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 
 		// obtain a udp connection
 		var buf bytes.Buffer
-		c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, "") // UDP association
+		dialContext := ictx.ContextWithBuffer(ctx, &buf)
+		if h.md.udpBindDevice {
+			dialContext = ictx.ContextWithUDPBindDevice(dialContext)
+		}
+		c, err := h.options.Router.Dial(dialContext, network, "") // UDP association
 		ro.Route = buf.String()
 		if err != nil {
 			log.Error(err)
@@ -114,9 +118,9 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 	// resolved through the configured resolver instead of failing WriteTo.
 	if _, ok := pc.(*net.UDPConn); ok {
 		pc = &resolvePacketConn{
-			PacketConn:  pc,
-			resolver:    h.options.Router.Options().Resolver,
-			hostMapper:  h.options.Router.Options().HostMapper,
+			PacketConn: pc,
+			resolver:   h.options.Router.Options().Resolver,
+			hostMapper: h.options.Router.Options().HostMapper,
 		}
 	}
 

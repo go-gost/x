@@ -7,7 +7,30 @@ import (
 	"testing"
 
 	xnet "github.com/go-gost/x/internal/net"
+	xmetadata "github.com/go-gost/x/metadata"
 )
+
+func TestParseMetadataUDPBindDevice(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{name: "dotted", key: "udp.bindDevice"},
+		{name: "flat alias", key: "udpBindDevice"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			h := &socks5Handler{}
+			if err := h.parseMetadata(xmetadata.NewMetadata(map[string]any{test.key: true})); err != nil {
+				t.Fatal(err)
+			}
+			if !h.md.udpBindDevice {
+				t.Fatalf("%s did not enable UDP device binding", test.key)
+			}
+		})
+	}
+}
 
 func TestListenPacketInRange(t *testing.T) {
 	ctx := context.Background()
