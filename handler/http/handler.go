@@ -210,6 +210,7 @@ import (
 	"github.com/go-gost/core/recorder"
 	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	xhttp "github.com/go-gost/x/internal/net/http"
 	"github.com/go-gost/x/internal/util/httpcache"
@@ -231,16 +232,17 @@ func init() {
 // parsed metadata, handler options, and runtime state such as the traffic
 // limiter, recorder, certificate pool, and the upstream HTTP transport.
 type httpHandler struct {
-	md        metadata                // parsed configuration
-	options   handler.Options         // handler options from the service config
-	auth      *Authenticator          // auth + probe resistance (constructed in Init)
-	sniffer   *SnifferBuilder         // builds sniffing.Sniffer per connection
-	stats     *stats_util.HandlerStats // per-client stats, created when Observer is set
-	limiter   traffic.TrafficLimiter  // per-client traffic shaper (cached)
-	cancel    context.CancelFunc      // cancels the observeStats goroutine
-	recorder  recorder.RecorderObject // first matching service-handler recorder
-	certPool  tls_util.CertPool       // in-memory cert pool for MITM TLS termination
-	transport http.RoundTripper       // upstream HTTP transport (injectable for tests)
+	md              metadata                   // parsed configuration
+	options         handler.Options            // handler options from the service config
+	auth            *Authenticator             // auth + probe resistance (constructed in Init)
+	sniffer         *SnifferBuilder            // builds sniffing.Sniffer per connection
+	stats           *stats_util.HandlerStats   // per-client stats, created when Observer is set
+	limiter         traffic.TrafficLimiter     // per-client traffic shaper (cached)
+	cancel          context.CancelFunc         // cancels the observeStats goroutine
+	recorder        recorder.RecorderObject    // first matching service-handler recorder
+	sessionRecorder *xrecorder.SessionRecorder // reports live sessions on an interval when recorder.period is set.
+	certPool        tls_util.CertPool          // in-memory cert pool for MITM TLS termination
+	transport       http.RoundTripper          // upstream HTTP transport (injectable for tests)
 }
 
 // NewHandler creates a new HTTP handler and applies the given options.
@@ -295,10 +297,16 @@ func (h *httpHandler) Init(md md.Metadata) error {
 		Log:     h.options.Logger,
 	}
 
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.SessionRecorderOptions{
+		Period: h.md.recorderPeriod,
+		Logger: h.options.Logger,
+	})
+
 	h.sniffer = &SnifferBuilder{
 		Websocket:           h.md.sniffingWebsocket,
 		WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 		Recorder:            h.recorder.Recorder,
+		SessionRecorder:     h.sessionRecorder,
 		RecorderOptions:     h.recorder.Options,
 		Certificate:         h.md.certificate,
 		PrivateKey:          h.md.privateKey,
@@ -364,6 +372,9 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
+	session := h.sessionRecorder.NewSession(ctx, &pStats)
+	ctx = ictx.ContextWithSession(ctx, session)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -371,7 +382,7 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Error("record: %v", err)
 		}
 
@@ -539,7 +550,7 @@ func (h *httpHandler) Close() error {
 	if h.cancel != nil {
 		h.cancel()
 	}
-	return nil
+	return h.sessionRecorder.Close()
 }
 
 // buildHTTPRecorder creates an HTTPRecorderObject from the request metadata.

@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	dissector "github.com/go-gost/tls-dissector"
 	xbypass "github.com/go-gost/x/bypass"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	tls_util "github.com/go-gost/x/internal/util/tls"
@@ -111,6 +112,7 @@ func (h *Sniffer) HandleTLS(ctx context.Context, network string, conn net.Conn, 
 		return err
 	}
 
+	ictx.SessionFromContext(ctx).Start(*ro)
 	log.Infof("%s <-> %s", ro.RemoteAddr, ro.Host)
 	xnet.Pipe(ctx, conn, cc)
 	log.WithFields(map[string]any{

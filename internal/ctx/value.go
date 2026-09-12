@@ -79,3 +79,14 @@ func RecorderObjectFromContext(ctx context.Context) *xrecorder.HandlerRecorderOb
 	v, _ := ctx.Value(recorderObjectCtxKey{}).(*xrecorder.HandlerRecorderObject)
 	return v
 }
+
+type sessionCtxKey struct{}
+
+func ContextWithSession(ctx context.Context, s *xrecorder.Session) context.Context {
+	return context.WithValue(ctx, sessionCtxKey{}, s)
+}
+
+func SessionFromContext(ctx context.Context) *xrecorder.Session {
+	v, _ := ctx.Value(sessionCtxKey{}).(*xrecorder.Session)
+	return v
+}

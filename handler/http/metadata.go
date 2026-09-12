@@ -23,6 +23,8 @@ const (
 // Fields are populated by parseMetadata and read throughout the handler's
 // request-processing methods.
 type metadata struct {
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
+
 	readTimeout time.Duration // deadline for upstream response headers (http.Transport.ResponseHeaderTimeout); 0=15s default, negative=disabled
 	idleTimeout time.Duration // idle read deadline per Pipe direction during CONNECT/forwarding; 0 or negative = disabled
 	keepalive   bool          // enable HTTP keep-alive on the upstream transport
@@ -45,10 +47,10 @@ type metadata struct {
 	sniffingWebsocket           bool          // enable WebSocket frame recording
 	sniffingWebsocketSampleRate float64       // max frames recorded per second
 
-	certificate *x509.Certificate  // MITM CA certificate (for TLS decryption)
-	privateKey  crypto.PrivateKey  // MITM CA private key
-	alpn        string             // ALPN protocol to negotiate during MITM
-	mitmBypass  bypass.Bypass      // bypass rules that skip MITM decryption
+	certificate *x509.Certificate // MITM CA certificate (for TLS decryption)
+	privateKey  crypto.PrivateKey // MITM CA private key
+	alpn        string            // ALPN protocol to negotiate during MITM
+	mitmBypass  bypass.Bypass     // bypass rules that skip MITM decryption
 
 	limiterRefreshInterval time.Duration // traffic limiter cache refresh interval
 	limiterCleanupInterval time.Duration // traffic limiter cache cleanup interval
@@ -59,6 +61,8 @@ type metadata struct {
 // observerPeriod (5s, min 1s), and proxyAgent ("gost/3.0"). MITM TLS is
 // enabled when both mitm.certFile and mitm.keyFile are provided.
 func (h *httpHandler) parseMetadata(md mdata.Metadata) error {
+	h.md.recorderPeriod = mdutil.GetDuration(md, "recorder.period", "recorder.reportPeriod")
+
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout == 0 {
 		h.md.readTimeout = 15 * time.Second

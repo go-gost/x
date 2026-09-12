@@ -8,9 +8,9 @@ import (
 	"slices"
 	"testing"
 
-	dissector "github.com/go-gost/tls-dissector"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/handler"
+	dissector "github.com/go-gost/tls-dissector"
 	xbypass "github.com/go-gost/x/bypass"
 	xlogger "github.com/go-gost/x/logger"
 	mdata "github.com/go-gost/x/metadata"

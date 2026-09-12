@@ -165,7 +165,6 @@ func TestProxyRoundTrip_HTTP10(t *testing.T) {
 	}
 }
 
-
 func TestHandleUpgradeResponse_Mismatch(t *testing.T) {
 	h := &httpHandler{}
 	h.md.proxyAgent = defaultProxyAgent
@@ -423,7 +422,6 @@ func TestProxyRoundTrip_HTTP10_KeepAlive(t *testing.T) {
 	}
 }
 
-
 // TestProxyRoundTrip_TargetHeaderDialsHeaderAuthority is a regression test for
 // the destination-policy bypass where a valid Gost-Target header replaced
 // req.Host (checked by bypass) but left req.URL.Host (dialed by the transport)
@@ -472,7 +470,7 @@ type testReadWriteCloser struct {
 	buf *strings.Builder
 }
 
-func (rw *testReadWriteCloser) Read(p []byte) (int, error)  { return 0, io.EOF }
+func (rw *testReadWriteCloser) Read(p []byte) (int, error) { return 0, io.EOF }
 func (rw *testReadWriteCloser) Write(p []byte) (int, error) {
 	if rw.buf != nil {
 		return rw.buf.Write(p)

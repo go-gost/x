@@ -35,10 +35,11 @@ func init() {
 }
 
 type redirectHandler struct {
-	md       metadata
-	options  handler.Options
-	recorder recorder.RecorderObject
-	certPool tls_util.CertPool
+	md              metadata
+	options         handler.Options
+	recorder        recorder.RecorderObject
+	sessionRecorder *xrecorder.SessionRecorder
+	certPool        tls_util.CertPool
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -63,6 +64,11 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 			break
 		}
 	}
+
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.SessionRecorderOptions{
+		Period: h.md.recorderPeriod,
+		Logger: h.options.Logger,
+	})
 
 	if h.md.certificate != nil && h.md.privateKey != nil {
 		h.certPool = tls_util.NewMemoryCertPool()
@@ -101,6 +107,9 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
+	session := h.sessionRecorder.NewSession(ctx, &pStats)
+	ctx = ictx.ContextWithSession(ctx, session)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -108,7 +117,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(start)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Errorf("record: %v", err)
 		}
 
@@ -220,6 +229,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			Websocket:           h.md.sniffingWebsocket,
 			WebsocketSampleRate: h.md.sniffingWebsocketSampleRate,
 			Recorder:            h.recorder.Recorder,
+			SessionRecorder:     h.sessionRecorder,
 			RecorderOptions:     h.recorder.Options,
 			Certificate:         h.md.certificate,
 			PrivateKey:          h.md.privateKey,
@@ -298,6 +308,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
+	session.Start(*ro)
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	// xnet.Transport(conn, cc)
@@ -320,3 +332,5 @@ func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
 
 	return true
 }
+
+func (h *redirectHandler) Close() error { return h.sessionRecorder.Close() }

@@ -36,8 +36,8 @@ type Authenticator struct {
 	Auther    auth.Authenticator
 	PR        *probeResistance
 	Realm     string
-	Service   string                                         // service name passed to auth.WithService
-	WebClient func(string) (*http.Response, error)           // injectable for tests; defaults to http.Get
+	Service   string                               // service name passed to auth.WithService
+	WebClient func(string) (*http.Response, error) // injectable for tests; defaults to http.Get
 	Log       logger.Logger
 }
 

@@ -31,9 +31,10 @@ func init() {
 }
 
 type redirectHandler struct {
-	md       metadata
-	options  handler.Options
-	recorder recorder.RecorderObject
+	md              metadata
+	options         handler.Options
+	recorder        recorder.RecorderObject
+	sessionRecorder *xrecorder.SessionRecorder
 }
 
 func NewHandler(opts ...handler.Option) handler.Handler {
@@ -58,6 +59,11 @@ func (h *redirectHandler) Init(md md.Metadata) (err error) {
 			break
 		}
 	}
+
+	h.sessionRecorder = xrecorder.NewSessionRecorder(h.recorder.Recorder, xrecorder.SessionRecorderOptions{
+		Period: h.md.recorderPeriod,
+		Logger: h.options.Logger,
+	})
 
 	return
 }
@@ -93,6 +99,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	pStats := xstats.Stats{}
 	conn = stats_wrapper.WrapConn(conn, &pStats)
 
+	session := h.sessionRecorder.NewSession(ctx, &pStats)
+
 	defer func() {
 		if err != nil {
 			ro.Err = err.Error()
@@ -100,7 +108,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		ro.Duration = time.Since(start)
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Error("record: %v", err)
 		}
 
@@ -213,6 +221,8 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	ro.SrcAddr = cc.LocalAddr().String()
 	ro.DstAddr = cc.RemoteAddr().String()
 
+	session.Start(*ro)
+
 	t := time.Now()
 	log.Infof("%s <-> %s", conn.RemoteAddr(), dstAddr)
 	// xnet.Transport(conn, cc)
@@ -235,3 +245,5 @@ func (h *redirectHandler) checkRateLimit(addr net.Addr) bool {
 
 	return true
 }
+
+func (h *redirectHandler) Close() error { return h.sessionRecorder.Close() }

@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/observer"
 	cmdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/core/observer"
 	xmetadata "github.com/go-gost/x/metadata"
 )
 
@@ -19,21 +19,21 @@ import (
 // testLogger implements logger.Logger for testing. It discards all output.
 type testLogger struct{}
 
-func (l *testLogger) WithFields(fields map[string]any) logger.Logger   { return l }
-func (l *testLogger) Debug(args ...any)                                 {}
-func (l *testLogger) Debugf(format string, args ...any)                 {}
-func (l *testLogger) Info(args ...any)                                  {}
-func (l *testLogger) Infof(format string, args ...any)                  {}
-func (l *testLogger) Warn(args ...any)                                  {}
-func (l *testLogger) Warnf(format string, args ...any)                  {}
-func (l *testLogger) Error(args ...any)                                 {}
-func (l *testLogger) Errorf(format string, args ...any)                 {}
-func (l *testLogger) Fatal(args ...any)                                 {}
-func (l *testLogger) Fatalf(format string, args ...any)                 {}
-func (l *testLogger) GetLevel() logger.LogLevel                         { return logger.InfoLevel }
-func (l *testLogger) IsLevelEnabled(level logger.LogLevel) bool         { return false }
-func (l *testLogger) Trace(args ...any)                                 {}
-func (l *testLogger) Tracef(format string, args ...any)                 {}
+func (l *testLogger) WithFields(fields map[string]any) logger.Logger { return l }
+func (l *testLogger) Debug(args ...any)                              {}
+func (l *testLogger) Debugf(format string, args ...any)              {}
+func (l *testLogger) Info(args ...any)                               {}
+func (l *testLogger) Infof(format string, args ...any)               {}
+func (l *testLogger) Warn(args ...any)                               {}
+func (l *testLogger) Warnf(format string, args ...any)               {}
+func (l *testLogger) Error(args ...any)                              {}
+func (l *testLogger) Errorf(format string, args ...any)              {}
+func (l *testLogger) Fatal(args ...any)                              {}
+func (l *testLogger) Fatalf(format string, args ...any)              {}
+func (l *testLogger) GetLevel() logger.LogLevel                      { return logger.InfoLevel }
+func (l *testLogger) IsLevelEnabled(level logger.LogLevel) bool      { return false }
+func (l *testLogger) Trace(args ...any)                              {}
+func (l *testLogger) Tracef(format string, args ...any)              {}
 
 // testObserver implements observer.Observer for testing.
 type testObserver struct{}
@@ -78,10 +78,10 @@ func newInitdHandler(opts ...handler.Option) *httpHandler {
 // buffer. Useful for testing code that writes HTTP responses without
 // needing net.Pipe() + goroutine.
 type stringConn struct {
-	readBuf   *strings.Reader
-	writeBuf  *strings.Builder
-	closed    bool
-	mu        sync.Mutex
+	readBuf  *strings.Reader
+	writeBuf *strings.Builder
+	closed   bool
+	mu       sync.Mutex
 }
 
 func newStringConn(data string) *stringConn {
@@ -92,17 +92,21 @@ func newStringConn(data string) *stringConn {
 }
 
 func (c *stringConn) Read(b []byte) (int, error)  { return c.readBuf.Read(b) }
-func (c *stringConn) Write(b []byte) (int, error)  { return c.writeBuf.Write(b) }
+func (c *stringConn) Write(b []byte) (int, error) { return c.writeBuf.Write(b) }
 func (c *stringConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
 	return nil
 }
-func (c *stringConn) LocalAddr() net.Addr                { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080} }
-func (c *stringConn) RemoteAddr() net.Addr               { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345} }
+func (c *stringConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080}
+}
+func (c *stringConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+}
 func (c *stringConn) SetDeadline(t time.Time) error      { return nil }
 func (c *stringConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *stringConn) SetWriteDeadline(t time.Time) error { return nil }
-func (c *stringConn) Bytes() []byte                       { return []byte(c.writeBuf.String()) }
-func (c *stringConn) String() string                      { return c.writeBuf.String() }
+func (c *stringConn) Bytes() []byte                      { return []byte(c.writeBuf.String()) }
+func (c *stringConn) String() string                     { return c.writeBuf.String() }

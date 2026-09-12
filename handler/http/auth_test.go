@@ -30,7 +30,6 @@ func (a *stubAuther) Authenticate(ctx context.Context, user, password string, op
 	return a.id, a.accept
 }
 
-
 // --- Authenticator tests (synchronous — no net.Pipe or goroutines) ---
 
 func TestAuthenticate_NoAuther(t *testing.T) {
