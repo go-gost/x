@@ -229,11 +229,13 @@ func TestFramedAssemblesAcrossChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := frame.Bytes()
-	for len(b) > 0 {
-		n := min(7, len(b))
-		fs.recvCh <- &proto.Chunk{Data: append([]byte{}, b[:n]...)}
-		b = b[n:]
-	}
+	go func() {
+		for len(b) > 0 {
+			n := min(7, len(b))
+			fs.recvCh <- &proto.Chunk{Data: append([]byte{}, b[:n]...)}
+			b = b[n:]
+		}
+	}()
 	buf := make([]byte, 8192)
 	n, err := c.Read(buf)
 	if err != nil || !bytes.Equal(buf[:n], payload) {
