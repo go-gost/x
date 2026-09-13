@@ -44,7 +44,11 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 			}
 			defer cc.Close()
 
-			if network == "udp" {
+			// A datagram link needs the keepalive. On the udp network it is the
+			// registration handshake (and runs even without keepalive:true, so
+			// existing configs keep their one-shot registration); on a p2p link
+			// ("ip") it is what registers the route with the peer's tun server.
+			if network == "udp" || h.md.keepAlivePeriod > 0 {
 				iterCtx, iterCancel := context.WithCancel(ctx)
 				defer iterCancel()
 
@@ -178,13 +182,16 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 					return err
 				}
 
-				if n == keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
-					ip := net.IP(b[4:20])
-					log.Debugf("keepalive received at %v", ip)
+				// Any inbound byte proves the tunnel is alive: refresh the liveness
+				// deadline before interpreting the packet. Relying on the keepalive
+				// echo alone (which a transient channel hiccup can drop) would redial
+				// a healthy tunnel after 3×period.
+				if h.md.keepAlivePeriod > 0 {
+					conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
+				}
 
-					if h.md.keepAlivePeriod > 0 {
-						conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
-					}
+				if n == keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
+					log.Debugf("keepalive received at %v", net.IP(b[4:20]))
 					return nil
 				}
 

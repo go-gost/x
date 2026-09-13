@@ -97,7 +97,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				addr := h.findRouteFor(ctx, dst, config.Router)
+				addr := h.findRouteFor(ctx, dst, config.Router, log)
 				if addr == nil {
 					log.Debugf("no route for %s -> %s, packet discarded", src, dst)
 					return nil
@@ -228,7 +228,7 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 				}
 
 				if !h.md.p2p {
-					if addr := h.findRouteFor(ctx, dst, config.Router); addr != nil {
+					if addr := h.findRouteFor(ctx, dst, config.Router, log); addr != nil {
 						log.Debugf("find route: %s -> %s", dst, addr)
 
 						_, err := conn.WriteTo(b[:n], addr)
@@ -252,30 +252,58 @@ func (h *tunHandler) transportServer(ctx context.Context, tun io.ReadWriter, con
 	return collectFirstError(errc, cancel)
 }
 
+// tunRoute is a registered route: the client's UDP address and when a keepalive
+// last refreshed it, so an absent client's route can expire.
+type tunRoute struct {
+	addr     net.Addr
+	lastSeen time.Time
+}
+
 func (h *tunHandler) updateRoute(ip net.IP, addr net.Addr, log logger.Logger) {
 	if h.md.p2p {
 		ip = net.IPv6zero
 	}
 	rkey := ipToTunRouteKey(ip)
-	if actual, loaded := h.routes.LoadOrStore(rkey, addr); loaded {
-		if actual.(net.Addr).String() != addr.String() {
-			h.routes.Store(rkey, addr)
-			log.Debugf("update route: %s -> %s (old %s)",
-				ip, addr, actual.(net.Addr))
+	now := time.Now()
+	if actual, loaded := h.routes.LoadOrStore(rkey, tunRoute{addr: addr, lastSeen: now}); loaded {
+		old := actual.(tunRoute)
+		h.routes.Store(rkey, tunRoute{addr: addr, lastSeen: now}) // refresh lastSeen
+		if old.addr.String() != addr.String() {
+			log.Debugf("update route: %s -> %s (old %s)", ip, addr, old.addr)
 		}
 	} else {
 		log.Debugf("new route: %s -> %s", ip, addr)
 	}
 }
 
-func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router.Router) net.Addr {
+// liveRoute returns the route for rkey, lazily expiring it once the opt-in TTL
+// has passed since its last keepalive. The TTL applies only when a keepalive
+// period is configured (server-side keepalive/ttl), so an unconfigured
+// deployment keeps today's never-expiring routes. No sweeper: every write path
+// consults this, which is enough.
+func (h *tunHandler) liveRoute(rkey tunRouteKey, log logger.Logger) (net.Addr, bool) {
+	v, ok := h.routes.Load(rkey)
+	if !ok {
+		return nil, false
+	}
+	r := v.(tunRoute)
+	if ttl := h.md.keepAlivePeriod * 3; ttl > 0 && time.Since(r.lastSeen) > ttl {
+		if h.routes.CompareAndDelete(rkey, r) {
+			log.Infof("route expired: %s -> %s", net.IP(rkey[:]), r.addr)
+		}
+		return nil, false
+	}
+	return r.addr, true
+}
+
+func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router.Router, log logger.Logger) net.Addr {
 	if h.md.p2p {
 		dst = net.IPv6zero
 		router = nil
 	}
 
-	if v, ok := h.routes.Load(ipToTunRouteKey(dst)); ok {
-		return v.(net.Addr)
+	if addr, ok := h.liveRoute(ipToTunRouteKey(dst), log); ok {
+		return addr
 	}
 
 	if router == nil {
@@ -284,8 +312,8 @@ func (h *tunHandler) findRouteFor(ctx context.Context, dst net.IP, router router
 
 	if route := router.GetRoute(ctx, dst.String()); route != nil {
 		if gw := net.ParseIP(route.Gateway); gw != nil {
-			if v, ok := h.routes.Load(ipToTunRouteKey(gw)); ok {
-				return v.(net.Addr)
+			if addr, ok := h.liveRoute(ipToTunRouteKey(gw), log); ok {
+				return addr
 			}
 		}
 	}
