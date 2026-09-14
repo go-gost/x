@@ -8,13 +8,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"strings"
 	"time"
 
 	"github.com/go-gost/core/bypass"
-	stats "github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/logger"
+	stats "github.com/go-gost/core/observer/stats"
 	xbypass "github.com/go-gost/x/bypass"
 	ictx "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
@@ -118,6 +119,10 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 		"host": host,
 	})
 
+	// A keep-alive connection carries several exchanges; each is accounted for
+	// on its own, under the connection's shared counters.
+	session := h.sessionRecorder.NewSession(ctx, pStats)
+
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
 		if err != nil {
@@ -126,7 +131,7 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 		ro.InputBytes = pStats.Get(stats.KindInputBytes)
 		ro.OutputBytes = pStats.Get(stats.KindOutputBytes)
 		ro.Duration = time.Since(ro.Time)
-		if err := ro.Record(ctx, h.recorder.Recorder); err != nil {
+		if err := session.Finish(ctx, *ro); err != nil {
 			log.Errorf("record: %v", err)
 		}
 
@@ -202,7 +207,18 @@ func (h *httpHandler) proxyRoundTrip(ctx context.Context, rw io.ReadWriteCloser,
 	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	ctx = ictx.ContextWithLogger(ctx, log)
 
-	resp, err := h.transport.RoundTrip(req.WithContext(ctx))
+	// Report from the moment the upstream connection is in hand, and only for
+	// this request: a recorder of its own would otherwise inherit the callback
+	// and overwrite the addresses with its own.
+	traceCtx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			ro.SrcAddr = info.Conn.LocalAddr().String()
+			ro.DstAddr = info.Conn.RemoteAddr().String()
+			session.Start(*ro)
+		},
+	})
+
+	resp, err := h.transport.RoundTrip(req.WithContext(traceCtx))
 
 	if reqBody != nil {
 		ro.HTTP.Request.Body = reqBody.Content()
