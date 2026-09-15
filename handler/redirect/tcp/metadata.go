@@ -13,6 +13,7 @@ import (
 )
 
 type metadata struct {
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
 	// readTimeout is passed to SnifferBuilder as the timeout for reading
 	// upstream response headers during HTTP/TLS sniffing. It is NOT used
 	// as a deadline on the initial client connection (unlike socks/ss
@@ -35,6 +36,8 @@ type metadata struct {
 }
 
 func (h *redirectHandler) parseMetadata(md mdata.Metadata) (err error) {
+	h.md.recorderPeriod = mdutil.GetDuration(md, "recorder.period", "recorder.reportPeriod")
+
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {
 		h.md.readTimeout = 15 * time.Second
