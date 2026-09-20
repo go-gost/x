@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -41,6 +42,28 @@ func borrowBodyPrefix(body io.ReadCloser, n int) (prefix []byte, restored io.Rea
 	prefix, _ = io.ReadAll(io.LimitReader(body, int64(n)))
 	restored = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), body))
 	return
+}
+
+// basicProxyAuth extracts the username and password from an HTTP Basic
+// Proxy-Authorization header value. It mirrors net/http's Request.BasicAuth,
+// but for the proxy credential (RFC 9110 §11.7.2) instead of the origin
+// credential. It returns ok=false if the value is empty, does not use the
+// Basic scheme, or is not valid base64; the password may contain colons since
+// the username/password separator is the first colon.
+func basicProxyAuth(proxyAuth string) (username, password string, ok bool) {
+	const prefix = "Basic "
+	if len(proxyAuth) < len(prefix) || !strings.EqualFold(proxyAuth[:len(prefix)], prefix) {
+		return "", "", false
+	}
+	c, err := base64.StdEncoding.DecodeString(proxyAuth[len(prefix):])
+	if err != nil {
+		return "", "", false
+	}
+	username, password, ok = strings.Cut(string(c), ":")
+	if !ok {
+		return "", "", false
+	}
+	return username, password, true
 }
 
 // HandleHTTP sniffs and proxies an HTTP connection. It reads the initial
@@ -454,13 +477,20 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	var respHeaderRewrites []chain.HTTPHeaderRewriteSettings
 	if httpSettings != nil {
 		if auther := httpSettings.Auther; auther != nil {
-			username, password, _ := req.BasicAuth()
+			// Node auth is proxy auth, so it reads the proxy credential
+			// (Proxy-Authorization) rather than the origin credential
+			// (Authorization). The two are separate fields precisely so a client
+			// can authenticate to this node and to the backend independently;
+			// consuming Authorization here would swallow the credentials the
+			// client sent for a backend that also uses Basic auth (e.g. a
+			// reverse-proxied site behind an authenticated node).
+			username, password, _ := basicProxyAuth(req.Header.Get("Proxy-Authorization"))
 			id, ok := auther.Authenticate(ctx, username, password, auth.WithService(ho.Service))
 			if !ok {
-				res.StatusCode = http.StatusUnauthorized
+				res.StatusCode = http.StatusProxyAuthRequired
 				ro.HTTP.StatusCode = res.StatusCode
-				res.Header.Set("WWW-Authenticate", "Basic")
-				log.Warnf("node %s(%s) 401 unauthorized", node.Name, node.Addr)
+				res.Header.Set("Proxy-Authenticate", "Basic")
+				log.Warnf("node %s(%s) 407 unauthorized", node.Name, node.Addr)
 				res.Write(rw)
 				err = errors.New("unauthorized")
 				return
@@ -525,6 +555,10 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		reqBodyRewrites = httpSettings.RewriteRequestBody
 		respHeaderRewrites = httpSettings.RewriteResponseHeader
 	}
+
+	// Proxy-Authorization authenticates the client to this node and is
+	// hop-by-hop (RFC 9110 §11.7.2): never forward it to the upstream backend.
+	req.Header.Del("Proxy-Authorization")
 
 	// Snapshot the original request body before rewriting, restoring it via
 	// MultiReader so the body is read from the wire only once. Only when body
