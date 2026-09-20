@@ -44,7 +44,7 @@ func NewTunnelDialer(inner dialer.Dialer, pr TunnelProvider) dialer.Dialer {
 // unsupported until verified.
 func SupportedDialer(name string) bool {
 	switch name {
-	case "tcp", "tls", "ws", "mtcp", "mtls", "mws", "udp":
+	case "tcp", "tls", "ws", "wss", "grpc", "http2", "h2", "ssh", "sshd", "mtcp", "mtls", "mws", "mwss", "udp":
 		return true
 	default:
 		return false
