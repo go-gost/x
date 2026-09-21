@@ -13,8 +13,12 @@ import (
 	"time"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
+	xio "github.com/go-gost/x/internal/io"
 	xhttp "github.com/go-gost/x/internal/net/http"
+	xstats "github.com/go-gost/x/observer/stats"
+	stats_wrapper "github.com/go-gost/x/observer/stats/wrapper"
 	xrecorder "github.com/go-gost/x/recorder"
 	"golang.org/x/net/http2"
 )
@@ -64,7 +68,7 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 		SawClientPreface: true,
 		Handler: &h2Handler{
 			transport:       tr,
-			recorder:        h.Recorder,
+			sessionRecorder: h.sessionRecorder(),
 			recorderOptions: h.RecorderOptions,
 			recorderObject:  ro,
 			log:             log,
@@ -77,7 +81,7 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 // http2.Transport while recording request and response metadata.
 type h2Handler struct {
 	transport       http.RoundTripper
-	recorder        recorder.Recorder
+	sessionRecorder *xrecorder.SessionRecorder
 	recorderOptions *recorder.Options
 	recorderObject  *xrecorder.HandlerRecorderObject
 	log             logger.Logger
@@ -96,6 +100,9 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ro.Time = time.Now()
 
+	var counters xstats.Stats
+	session := h.sessionRecorder.NewSession(r.Context(), &counters)
+
 	var err error
 	log.Infof("%s <-> %s", ro.RemoteAddr, r.Host)
 	defer func() {
@@ -103,7 +110,9 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			ro.Err = err.Error()
 		}
-		if rerr := ro.Record(r.Context(), h.recorder); rerr != nil {
+		ro.InputBytes = counters.Get(stats.KindInputBytes)
+		ro.OutputBytes = counters.Get(stats.KindOutputBytes)
+		if rerr := session.Finish(r.Context(), *ro); rerr != nil {
 			log.Errorf("record: %v", rerr)
 		}
 
@@ -130,6 +139,10 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
+	}
+
+	if r.Body != nil {
+		r.Body = countBody(r.Body, &counters)
 	}
 
 	url := r.URL
@@ -176,14 +189,15 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.setHeader(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
+	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(nil, w), &counters)
 	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
-		io.Copy(w, resp.Body)
+		io.Copy(counted, resp.Body)
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	} else {
-		io.Copy(w, resp.Body)
+		io.Copy(counted, resp.Body)
 	}
 }
 
@@ -193,4 +207,9 @@ func (h *h2Handler) setHeader(w http.ResponseWriter, header http.Header) {
 			w.Header().Add(k, v[i])
 		}
 	}
+}
+
+func countBody(body io.ReadCloser, counters stats.Stats) io.ReadCloser {
+	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(body, io.Discard), counters)
+	return xio.NewReadWriteCloser(counted, io.Discard, body)
 }
