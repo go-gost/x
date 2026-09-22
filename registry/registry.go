@@ -64,7 +64,7 @@ var (
 
 	loggerReg reg.Registry[logger.Logger] = new(loggerRegistry)
 
-	p2pReg reg.Registry[xp2p.TunnelProvider] = new(p2pRegistry)
+	p2pReg reg.Registry[xp2p.Tunnel] = new(p2pRegistry)
 )
 
 // registry is a sync.Map-backed generic named registry. It implements the

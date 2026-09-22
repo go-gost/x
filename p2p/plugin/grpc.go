@@ -1,4 +1,4 @@
-// Package plugin implements p2p.TunnelProvider over the plugin control
+// Package plugin implements p2p.Tunnel over the plugin control
 // protocol (github.com/go-gost/plugin/p2p).
 package plugin
 
@@ -28,12 +28,12 @@ type grpcPlugin struct {
 	log    logger.Logger
 }
 
-// NewGRPCPlugin creates a p2p.TunnelProvider backed by a gRPC plugin. The
+// NewGRPCPlugin creates a p2p.Tunnel backed by a gRPC plugin. The
 // constructor mirrors the recorder plugin's relaxed shape (connection
 // failures are logged, a non-nil provider is always returned), but the
-// runtime semantics are fail-closed: OpenTunnelStream on an unavailable
+// runtime semantics are fail-closed: Dial on an unavailable
 // plugin returns an error, never a no-op.
-func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) xp2p.TunnelProvider {
+func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) xp2p.Tunnel {
 	var options plugin.Options
 	for _, opt := range opts {
 		opt(&options)
@@ -58,12 +58,12 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) xp2p.TunnelP
 	return p
 }
 
-// OpenTunnelStream runs the two-RPC tunnel setup: OpenTunnel authorizes the
+// Dial runs the two-RPC tunnel setup: OpenTunnel authorizes the
 // tunnel and issues its id (the stream credential), then the Tunnel bidi
 // stream — bound to the id via the "id" metadata key — carries the data. The
 // returned conn's Close ends the stream, which the host treats as the tunnel
 // teardown.
-func (p *grpcPlugin) OpenTunnelStream(ctx context.Context, network, peer string) (net.Conn, error) {
+func (p *grpcPlugin) Dial(ctx context.Context, network, peer string) (net.Conn, error) {
 	if p.client == nil {
 		return nil, errors.New("p2p: plugin unavailable")
 	}

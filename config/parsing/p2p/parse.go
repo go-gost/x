@@ -1,4 +1,4 @@
-// Package p2p converts a [config.P2PConfig] into a p2p.TunnelProvider.
+// Package p2p converts a [config.P2PConfig] into a p2p.Tunnel.
 package p2p
 
 import (
@@ -13,11 +13,11 @@ import (
 	xplugin "github.com/go-gost/x/plugin"
 )
 
-// ParseP2P converts a P2PConfig into a p2p.TunnelProvider backed by an
+// ParseP2P converts a P2PConfig into a p2p.Tunnel backed by an
 // external gRPC plugin. Returns nil when cfg is nil or no plugin is
 // configured. The HTTP plugin variant is not implemented; configuring it
 // logs a deprecation notice and falls back to gRPC.
-func ParseP2P(cfg *config.P2PConfig) (p xp2p.TunnelProvider) {
+func ParseP2P(cfg *config.P2PConfig) (p xp2p.Tunnel) {
 	if cfg == nil || cfg.Plugin == nil {
 		return nil
 	}

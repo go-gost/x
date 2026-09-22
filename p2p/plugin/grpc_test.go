@@ -227,7 +227,7 @@ func echoOnce(t *testing.T, conn net.Conn) {
 	}
 }
 
-func newTestDialer(t *testing.T, s *fakeServer) (dialer.Dialer, xp2p.TunnelProvider) {
+func newTestDialer(t *testing.T, s *fakeServer) (dialer.Dialer, xp2p.Tunnel) {
 	t.Helper()
 	provider := NewGRPCPlugin("t", startFake(t, s))
 	inner := tcp.NewDialer(dialer.LoggerOption(logger.Default()))
@@ -482,7 +482,7 @@ func TestMultiplexDelegation(t *testing.T) {
 	}
 }
 
-// countingProvider is a TunnelProvider recording opens/closes and the network
+// countingProvider is a Tunnel recording opens/closes and the network
 // each open asked for. Each open returns an in-memory conn.
 type countingProvider struct {
 	mu        sync.Mutex
@@ -491,7 +491,7 @@ type countingProvider struct {
 	networks  []string
 }
 
-func (p *countingProvider) OpenTunnelStream(ctx context.Context, network, peer string) (net.Conn, error) {
+func (p *countingProvider) Dial(ctx context.Context, network, peer string) (net.Conn, error) {
 	p.mu.Lock()
 	p.openCalls++
 	p.networks = append(p.networks, network)
@@ -583,7 +583,7 @@ func TestLazyOpenTunnel(t *testing.T) {
 	}
 	conn.Close()
 	if n := p.openCount(); n != 0 {
-		t.Fatalf("OpenTunnelStream calls = %d, want 0 (cache hit must not leak a tunnel)", n)
+		t.Fatalf("Dial calls = %d, want 0 (cache hit must not leak a tunnel)", n)
 	}
 
 	// Happy path: the inner dials its base exactly once; closing the conn
@@ -595,7 +595,7 @@ func TestLazyOpenTunnel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := p2.openCount(); n != 1 {
-		t.Fatalf("OpenTunnelStream calls = %d, want 1", n)
+		t.Fatalf("Dial calls = %d, want 1", n)
 	}
 	if got := p2.networkOf(0); got != "tcp" {
 		t.Fatalf("OpenTunnel network = %q, want tcp for a stream inner", got)
@@ -616,7 +616,7 @@ func TestLazyOpenTunnel(t *testing.T) {
 		t.Fatal("Dial succeeded, want inner error")
 	}
 	if n := p3.openCount(); n != 1 {
-		t.Fatalf("OpenTunnelStream calls = %d, want 1", n)
+		t.Fatalf("Dial calls = %d, want 1", n)
 	}
 	if n := p3.closeCount(); n != 1 {
 		t.Fatalf("conn closes after failed dial = %d, want 1 (fail closed)", n)

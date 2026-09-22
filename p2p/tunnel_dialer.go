@@ -14,13 +14,13 @@ import (
 	"github.com/go-gost/core/metadata"
 )
 
-// TunnelProvider opens tunnels to a peer over the plugin control protocol.
+// Tunnel opens tunnels to a peer over the plugin control protocol.
 // It is the wrapper's only contact with the p2p plugin; peer is an opaque
 // string (the plugin defines its semantics). network is "tcp" or "udp" and
 // selects the data stream's semantics: "udp" preserves datagram boundaries,
 // so a datagram dialer gets a datagram conn instead of a byte stream.
-type TunnelProvider interface {
-	OpenTunnelStream(ctx context.Context, network, peer string) (net.Conn, error)
+type Tunnel interface {
+	Dial(ctx context.Context, network, peer string) (net.Conn, error)
 	Close() error
 }
 
@@ -31,8 +31,8 @@ type TunnelProvider interface {
 // per dial. Inner protocol (tls/ws/mux...) stays untouched; its Handshake is
 // forwarded by tunnelDialer so it triggers at Transport.Handshake.
 // Fail-closed: any provider error aborts the dial.
-func NewTunnelDialer(inner dialer.Dialer, pr TunnelProvider) dialer.Dialer {
-	return &tunnelDialer{inner: inner, provider: pr}
+func NewTunnelDialer(inner dialer.Dialer, t Tunnel) dialer.Dialer {
+	return &tunnelDialer{inner: inner, tunnel: t}
 }
 
 // SupportedDialer reports whether a dialer type may be used as the inner
@@ -66,8 +66,8 @@ var _ dialer.Dialer = (*tunnelDialer)(nil)
 var _ dialer.Handshaker = (*tunnelDialer)(nil)
 
 type tunnelDialer struct {
-	inner    dialer.Dialer
-	provider TunnelProvider
+	inner  dialer.Dialer
+	tunnel Tunnel
 }
 
 func (d *tunnelDialer) Init(md metadata.Metadata) error {
@@ -78,11 +78,11 @@ func (d *tunnelDialer) Dial(ctx context.Context, addr string, opts ...dialer.Dia
 	// The tunnel is opened lazily by the base dialer: only when the inner
 	// dialer actually dials its base. On a mux session cache hit the inner
 	// never touches the base, and no tunnel (or control RPC) is spent.
-	base := &tunnelBaseDialer{peer: addr, pr: d.provider}
+	base := &tunnelBaseDialer{peer: addr, pr: d.tunnel}
 	conn, err := d.inner.Dial(ctx, addr, append(opts, dialer.NetDialerDialOption(base))...)
 	if err != nil {
 		// The tunnel is unusable: close it and fail closed. closeTunnel is
-		// nil-safe — OpenTunnelStream may have failed before any conn existed
+		// nil-safe — Dial may have failed before any conn existed
 		// (the host's pending GC then reclaims the record).
 		base.closeTunnel()
 		return nil, err
@@ -115,13 +115,13 @@ func (d *tunnelDialer) Multiplex() bool {
 // base (mux session cache hit), no tunnel is opened.
 type tunnelBaseDialer struct {
 	peer string
-	pr   TunnelProvider
+	pr   Tunnel
 
 	mu   sync.Mutex
 	conn net.Conn
 }
 
-// closeTunnel closes the opened conn, if any. Nil-safe: OpenTunnelStream can
+// closeTunnel closes the opened conn, if any. Nil-safe: Dial can
 // fail before any conn exists, and closing a nil net.Conn interface panics.
 func (d *tunnelBaseDialer) closeTunnel() {
 	d.mu.Lock()
@@ -134,13 +134,13 @@ func (d *tunnelBaseDialer) closeTunnel() {
 }
 
 func (d *tunnelBaseDialer) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	// Only the control RPC is time-capped (inside OpenTunnelStream); the
+	// Only the control RPC is time-capped (inside Dial); the
 	// stream runs on its own context so the conn outlives this dial.
 	network = tunnelNetwork(network)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.conn == nil {
-		conn, err := d.pr.OpenTunnelStream(ctx, network, d.peer)
+		conn, err := d.pr.Dial(ctx, network, d.peer)
 		if err != nil {
 			return nil, err
 		}

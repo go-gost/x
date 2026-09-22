@@ -261,9 +261,9 @@ func register(cfg *config.Config) error {
 	}
 
 	{
-		var entries []named[xp2p.TunnelProvider]
+		var entries []named[xp2p.Tunnel]
 		for _, c := range cfg.P2Ps {
-			entries = append(entries, named[xp2p.TunnelProvider]{c.Name, p2p_parser.ParseP2P(c)})
+			entries = append(entries, named[xp2p.Tunnel]{c.Name, p2p_parser.ParseP2P(c)})
 		}
 		if err := registerGroup(entries, registry.P2PRegistry()); err != nil {
 			return err
