@@ -100,14 +100,15 @@ func (l *tunListener) listenLoop(ready context.CancelCauseFunc) {
 				return err
 			}
 
-			itf, err := net.InterfaceByName(name)
-			if err != nil {
-				return err
+			// Informational only: on Android the device belongs to the
+			// VpnService and the interface may not be listed in this process.
+			if itf, err := net.InterfaceByName(name); err != nil {
+				l.log.Warnf("interface %s: %v", name, err)
+			} else {
+				addrs, _ := itf.Addrs()
+				l.log.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
+					itf.Name, ip, l.md.config.MTU, addrs)
 			}
-
-			addrs, _ := itf.Addrs()
-			l.log.Infof("name: %s, net: %s, mtu: %d, addrs: %s",
-				itf.Name, ip, l.md.config.MTU, addrs)
 
 			ctx = ictx.ContextWithMetadata(ctx, mdx.NewMetadata(map[string]any{
 				"config": l.md.config,

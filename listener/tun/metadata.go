@@ -20,6 +20,13 @@ const (
 type metadata struct {
 	config *tun_util.Config
 	guid   string
+	// fd yields the descriptor of a device created outside gost, currently
+	// only the Android VpnService; nil when gost creates its own device. It is
+	// a function rather than a number because a descriptor is resolved per
+	// device: by the time the tun listener rebuilds one (a session ended, the
+	// VPN was rebuilt), a number handed out at configure time may be closed —
+	// or worse, recycled by an unrelated file.
+	fd func() int
 }
 
 func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
@@ -120,6 +127,18 @@ func (l *tunListener) parseMetadata(md mdata.Metadata) (err error) {
 	l.md.config = config
 
 	l.md.guid = mdutil.GetString(md, "guid", "tun.guid")
+
+	// A device created outside gost (the Android VpnService) arrives either as
+	// a fixed descriptor or — for an embedder, which is what the platform's own
+	// VPN is — as a provider that resolves one when each device is built.
+	if md != nil {
+		switch v := md.Get("fd").(type) {
+		case int:
+			l.md.fd = func() int { return v }
+		case func() int:
+			l.md.fd = v
+		}
+	}
 
 	return
 }

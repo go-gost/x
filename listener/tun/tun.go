@@ -78,6 +78,13 @@ func (l *tunListener) createTunDevice() (dev io.ReadWriteCloser, name string, er
 		return
 	}
 
+	return newTunDevice(ifce)
+}
+
+// newTunDevice adapts a tun device to the byte-stream conn this package hands
+// out: the device reads and writes packets in batches, the listener speaks
+// io.ReadWriteCloser.
+func newTunDevice(ifce tun.Device) (dev io.ReadWriteCloser, name string, err error) {
 	batchSize := ifce.BatchSize()
 
 	rbufs := make([][]byte, batchSize)
