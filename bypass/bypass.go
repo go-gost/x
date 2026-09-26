@@ -44,13 +44,13 @@ var ErrBypass = errors.New("bypass")
 type options struct {
 	// whitelist toggles between blacklist and whitelist mode.
 	// When false (default): matching addresses bypass the proxy.
-	// When true: only matching addresses bypass the proxy.
+	// When true: matching addresses use the proxy and all others bypass it.
 	whitelist bool
 
 	// network restricts this bypass to a specific network protocol.
-	// When set, the incoming network must match before address matchers
-	// are evaluated. Recognized values include "tcp" and "udp".
-	// An empty value disables the network check.
+	// When set, the incoming network must match as part of the base rule.
+	// Recognized values include "tcp" and "udp". An empty value
+	// disables the network check.
 	network string
 
 	// matchers holds static patterns provided at construction time
@@ -89,8 +89,8 @@ func WhitelistOption(whitelist bool) Option {
 }
 
 // NetworkOption restricts this bypass to a specific network protocol.
-// When set, Contains returns false when the incoming network does not
-// match, regardless of address matchers. Accepts values like "tcp" or "udp".
+// Network and address predicates are combined before whitelist mode is
+// applied to the resulting match. Accepts values like "tcp" or "udp".
 func NetworkOption(network string) Option {
 	return func(opts *options) {
 		opts.network = network
@@ -427,43 +427,28 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 	return decision == decisionBypass
 }
 
-// decide returns the bypass decision for the given address, applying the
-// whitelist or blacklist mode to the pattern match result.
+// decide returns the bypass decision for the given address. Network and
+// address predicates form one base match, then whitelist mode is applied once
+// to that combined result.
 func (p *localBypass) decide(network string, addr string) bypassDecision {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if p.options.network != "" && p.options.network != network {
+	matched := p.options.network == "" || p.options.network == network
+	if p.patterns != nil {
+		matched = matched && p.patterns.matchAny(addr)
+	} else if p.options.network == "" {
+		// A bypass with no predicates has no base match.
+		matched = false
+	}
+
+	// Whitelist is a top-level negation of the normal blacklist decision:
+	// blacklist mode proxies a failed combined match, while whitelist mode
+	// proxies a successful combined match.
+	if matched == p.options.whitelist {
 		return decisionProxy
 	}
-
-	if p.patterns == nil {
-		if p.options.network != "" {
-			if p.options.whitelist {
-				return decisionProxy
-			}
-			return decisionBypass
-		}
-
-		return decisionProxy
-	}
-
-	matched := p.patterns.matchAny(addr)
-
-	if p.options.whitelist {
-		// Whitelist mode: the pattern set specifies addresses that MUST use the proxy.
-		// Matched addresses go through the proxy; unmatched addresses bypass.
-		if matched {
-			return decisionProxy
-		}
-		return decisionBypass
-	}
-	// Blacklist mode: the pattern set specifies addresses that should bypass the proxy.
-	// Matched addresses bypass; unmatched addresses go through the proxy.
-	if matched {
-		return decisionBypass
-	}
-	return decisionProxy
+	return decisionBypass
 }
 
 func (p *localBypass) IsWhitelist() bool {
