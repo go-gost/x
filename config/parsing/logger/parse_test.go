@@ -1,7 +1,10 @@
 package logger
 
 import (
+	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/go-gost/core/logger"
@@ -9,8 +12,15 @@ import (
 	xlogger "github.com/go-gost/x/logger"
 )
 
+// probeEnv marks the child process TestParseLogger_UnopenableOutput spawns:
+// that test needs a process in which no default logger was ever installed,
+// which is the state the failure path used to dereference.
+const probeEnv = "X_LOGGER_UNOPENABLE_PROBE"
+
 func TestMain(m *testing.M) {
-	logger.SetDefault(xlogger.NewLogger(xlogger.OutputOption(io.Discard)))
+	if os.Getenv(probeEnv) != "1" {
+		logger.SetDefault(xlogger.NewLogger(xlogger.OutputOption(io.Discard)))
+	}
 	m.Run()
 }
 
@@ -138,5 +148,35 @@ func TestList_WithNames(t *testing.T) {
 	got := List("nonexistent", "also_nonexistent")
 	if len(got) != 0 {
 		t.Fatal("expected empty list for unregistered names")
+	}
+}
+
+// TestParseLogger_UnopenableOutput: a log file that cannot be opened must leave
+// the process logging somewhere, not panic. The failure used to be reported
+// through logger.Default(), which is nil until a caller installs one — and this
+// call is usually the one doing the installing — so an unwritable path (an app
+// whose working directory is not writable, a typo'd directory) dereferenced a
+// nil logger and took the whole process down.
+//
+// The state that matters is process-wide and TestMain sets it for every other
+// case here, so the assertion runs in a child process: a fresh one is the only
+// place the default logger is still unset, exactly as it is at startup.
+func TestParseLogger_UnopenableOutput(t *testing.T) {
+	if os.Getenv(probeEnv) == "1" {
+		lg := ParseLogger(&config.LoggerConfig{Log: &config.LogConfig{
+			Output: "/nonexistent-dir-for-test/wisper.log",
+			Level:  "info",
+		}})
+		if lg == nil {
+			fmt.Fprintln(os.Stderr, "ParseLogger returned nil for an unopenable output")
+			os.Exit(1)
+		}
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestParseLogger_UnopenableOutput", "-test.v")
+	cmd.Env = append(os.Environ(), probeEnv+"=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("a log file that cannot be opened must not be fatal:\n%s", out)
 	}
 }

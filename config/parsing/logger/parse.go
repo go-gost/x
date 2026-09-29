@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,7 +48,13 @@ func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 			os.MkdirAll(filepath.Dir(cfg.Log.Output), 0755)
 			f, err := os.OpenFile(cfg.Log.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
-				logger.Default().Warn(err)
+				// Reported on stderr, not through logger.Default(): that logger
+				// is what this call is on its way to installing and is nil until
+				// it is — calling a method on it panics, which aborted the whole
+				// process on a log path that could not be opened (an app whose
+				// working directory is not writable, say). A log file that
+				// cannot be opened leaves the default output in place instead.
+				fmt.Fprintf(os.Stderr, "logger: open %s: %v (logging to stderr)\n", cfg.Log.Output, err)
 			} else {
 				out = f
 			}
