@@ -45,6 +45,10 @@ func ParseLogger(cfg *config.LoggerConfig) logger.Logger {
 				Compress:   cfg.Log.Rotation.Compress,
 			}
 		} else {
+			// Nothing rotates this file, and it is the only place that sees both
+			// the path and the missing rotation — the default (an unconfigured
+			// logger) always carries one.
+			fmt.Fprintf(os.Stderr, "logger: %s has no rotation configured: it will grow without bound\n", cfg.Log.Output)
 			os.MkdirAll(filepath.Dir(cfg.Log.Output), 0755)
 			f, err := os.OpenFile(cfg.Log.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
