@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,11 +15,13 @@ import (
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/listener"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xctx "github.com/go-gost/x/ctx"
+	xlogger "github.com/go-gost/x/logger"
 )
 
 // --- Mocks ---
@@ -687,3 +691,29 @@ var _ observer.Observer = (*mockObserver)(nil)
 var _ stats.Stats = (*mockStats)(nil)
 var _ recorder.Recorder = (*mockRecorder)(nil)
 var _ xctx.Context = (*ctxConn)(nil)
+
+// TestServeDoesNotLogAClosedListenerAsAnError pins the classification a
+// deliberate stop depends on: a closed listener answers Accept with core's
+// listener.ErrClosed, which is how stopping a service ends, not a failure.
+// net.ErrClosed alone was not enough — that sentinel never matched it, so every
+// stop reached the log at error level and read like a crash.
+func TestServeDoesNotLogAClosedListenerAsAnError(t *testing.T) {
+	var buf bytes.Buffer
+	ln := newMockListener()
+	ln.errCh <- listener.ErrClosed
+
+	svc := NewService("test", ln, newMockHandler(nil),
+		LoggerOption(xlogger.NewLogger(
+			xlogger.OutputOption(&buf),
+			xlogger.LevelOption(logger.ErrorLevel),
+		)))
+
+	// The error still comes back to the caller: classification changes how it
+	// is reported, not what the service returns.
+	if err := svc.Serve(); !errors.Is(err, listener.ErrClosed) {
+		t.Fatalf("Serve() = %v, want the listener's error back", err)
+	}
+	if got := buf.String(); strings.Contains(got, "accept:") {
+		t.Fatalf("a closed listener reached the log at error level:\n%s", got)
+	}
+}

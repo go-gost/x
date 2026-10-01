@@ -122,7 +122,10 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 			err := func() error {
 				n, err := tun.Read(b[:])
 				if err != nil {
-					return fmt.Errorf("%w: read: %s", ErrTun, err.Error())
+					// %w, not %s: a device closed under the reader must stay
+					// recognisable as a closed device, or an intentional stop
+					// reads as a failure all the way up.
+					return fmt.Errorf("%w: read: %w", ErrTun, err)
 				}
 
 				if waterutil.IsIPv4(b[:n]) {

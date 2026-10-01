@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -100,7 +101,14 @@ func (h *tunHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		log.Debugf("%s >> %s", conn.RemoteAddr(), raddr)
 
 		if err := h.handleClient(ctx, conn, network, raddr, config, log); err != nil {
-			log.Error(err)
+			// A device (or connection) closed under the reader is how a stop
+			// ends, not a failure: see client.go's read loop. Anything else is
+			// a real error.
+			if errors.Is(err, os.ErrClosed) || errors.Is(err, net.ErrClosed) {
+				log.Debug(err)
+			} else {
+				log.Error(err)
+			}
 		}
 		return nil
 	}

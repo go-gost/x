@@ -249,7 +249,7 @@ func (s *defaultService) Serve() error {
 			}
 			s.setState(StateClosed)
 
-			if !errors.Is(e, net.ErrClosed) {
+			if !errors.Is(e, net.ErrClosed) && !errors.Is(e, listener.ErrClosed) {
 				log.Errorf("accept: %v", e)
 			}
 
