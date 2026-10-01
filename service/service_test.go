@@ -717,3 +717,35 @@ func TestServeDoesNotLogAClosedListenerAsAnError(t *testing.T) {
 		t.Fatalf("a closed listener reached the log at error level:\n%s", got)
 	}
 }
+
+// TestServeRetriesAClosedPipeQuietly pins both halves of the fix: the retry
+// stays (a remote listener wraps an accept failure in core's AcceptError — which
+// always claims Temporary() — to say "rebuild the transport", and a closed pipe
+// is one of the failures that recovers that way), and the *log* stops reading
+// like a hiccup. A stop arrives by the same path, so the closed error must not
+// be logged at warning level.
+func TestServeRetriesAClosedPipeQuietly(t *testing.T) {
+	var buf bytes.Buffer
+	ln := newMockListener()
+	err := listener.NewAcceptError(io.ErrClosedPipe)
+	ln.errCh <- err
+	ln.errCh <- err
+	ln.errCh <- errors.New("gave up after the retries")
+
+	svc := NewService("test", ln, newMockHandler(nil),
+		LoggerOption(xlogger.NewLogger(
+			xlogger.OutputOption(&buf),
+			xlogger.LevelOption(logger.WarnLevel),
+		)))
+
+	// Serve returns only after the queue is drained, which is what proves the
+	// closed pipe was retried rather than ending the service.
+	if got := svc.Serve(); got == nil || !strings.Contains(got.Error(), "gave up after") {
+		t.Fatalf("Serve() = %v, want the error after the retries", got)
+	}
+	// The error that really ended it is logged, as it should be; the closed pipe
+	// on the way must not be.
+	if got := buf.String(); strings.Contains(got, "closed pipe") {
+		t.Fatalf("a closed pipe was logged at warning level or above:\n%s", got)
+	}
+}

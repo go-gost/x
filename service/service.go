@@ -148,6 +148,16 @@ type defaultService struct {
 	options  options
 }
 
+// closedStop reports whether an accept error means the service was closed rather
+// than broken: the listener's own sentinel, the socket's, or a pipe whose other
+// end went away. It is consulted twice — once to end the loop quietly, and once
+// so a closed listener is never logged as a failure.
+func closedStop(e error) bool {
+	return errors.Is(e, net.ErrClosed) ||
+		errors.Is(e, listener.ErrClosed) ||
+		errors.Is(e, io.ErrClosedPipe)
+}
+
 // NewService creates a new service that binds the given listener and handler.
 // The service is registered in the running state and pre-up commands are
 // executed immediately. Call [Serve] to start accepting connections.
@@ -235,7 +245,19 @@ func (s *defaultService) Serve() error {
 				s.setState(StateFailed)
 				s.status.setLastError(e)
 
-				log.Warnf("accept: %v, retrying in %v", e, tempDelay)
+				// The retry itself is deliberate and stays: a remote listener
+				// wraps an accept failure in AcceptError, which always claims
+				// Temporary(), to say "rebuild the transport and try again" — a
+				// closed pipe under it is exactly the case that recovers that
+				// way, so ending the service here would break port hopping.
+				// What is wrong is the wording: on a stop the same error arrives,
+				// and a warning that promises a retry reads like a hiccup. Log it
+				// by what it is.
+				if closedStop(e) {
+					log.Debugf("accept: %v, retrying in %v", e, tempDelay)
+				} else {
+					log.Warnf("accept: %v, retrying in %v", e, tempDelay)
+				}
 				time.Sleep(tempDelay)
 
 				// Transition back to Ready so status observers see the
@@ -249,7 +271,7 @@ func (s *defaultService) Serve() error {
 			}
 			s.setState(StateClosed)
 
-			if !errors.Is(e, net.ErrClosed) && !errors.Is(e, listener.ErrClosed) {
+			if !closedStop(e) {
 				log.Errorf("accept: %v", e)
 			}
 
