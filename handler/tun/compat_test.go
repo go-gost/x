@@ -3,6 +3,7 @@ package tun
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
+	ictx "github.com/go-gost/x/internal/ctx"
 	tun_util "github.com/go-gost/x/internal/util/tun"
 	xlogger "github.com/go-gost/x/logger"
 	xmd "github.com/go-gost/x/metadata"
@@ -62,6 +64,11 @@ type compatSpoke struct {
 	// read returns the next frame the hub sent to this spoke, or nil when none
 	// arrives within compatReadTimeout.
 	read func() []byte
+	// conn is the link this spoke registered on, for the implementations that
+	// have one. It is what lets a reconnecting peer be driven as two spokes
+	// sharing a name — without it, both cases would land on whichever link the
+	// hub happened to record first.
+	conn *compatSpokeConn
 }
 
 // compatHub is one implementation as the shared assertions see it. Every method
@@ -492,34 +499,274 @@ func (c *compatSocket) gone(*compatSpoke) {}
 
 // ---- the p2p hub ------------------------------------------------------------
 
+// compatSpokeConn is one peer's link as the p2p endpoint hands it over: a
+// net.Conn whose RemoteAddr is the opaque peer key the p2p host stamped on the
+// stream, and whose reads and writes preserve datagram boundaries. That is what a
+// streamconn.Conn in framed mode is, and it is the whole of what the handler can
+// see of a transport — so a case that passes on one is a statement about the
+// handler, not about the harness.
+type compatSpokeConn struct {
+	// send is the hub's outbound path on this peer's link; recv is the spoke's
+	// read end of it. Kept apart per peer, so a hub that wrote without its own
+	// lock would splice two peers' packets rather than merely race.
+	send *datagramPipe
+	recv *datagramPipe
+	// in is what the spoke writes and the handler reads. It blocks rather than
+	// timing out, because a stream does: the handler's loop has to be parked in
+	// Read when a case delivers a packet, and a read that gave up would end the
+	// stream instead.
+	in *blockingPipe
+	// done is closed when the handler's Handle has returned for this stream, so
+	// gone can wait for the teardown it provoked rather than assert against a
+	// goroutine that may not have run yet.
+	done chan struct{}
+	peer string
+}
+
+func (c *compatSpokeConn) Read(b []byte) (int, error)       { return c.in.Read(b) }
+func (c *compatSpokeConn) Write(b []byte) (int, error)      { return c.send.Write(b) }
+func (c *compatSpokeConn) Close() error                     { c.in.Close(); return nil }
+func (c *compatSpokeConn) RemoteAddr() net.Addr             { return peerAddr{"ip", c.peer} }
+func (c *compatSpokeConn) LocalAddr() net.Addr              { return peerAddr{"ip", "p2p"} }
+func (c *compatSpokeConn) SetDeadline(time.Time) error      { return nil }
+func (c *compatSpokeConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *compatSpokeConn) SetWriteDeadline(time.Time) error { return nil }
+
+var _ net.Conn = (*compatSpokeConn)(nil)
+
+// blockingPipe is datagramPipe without the read timeout: a Read parks until
+// something is written or the pipe closes, and then reports io.EOF — which is
+// what a stream does when its peer goes away, and what ends the handler's loop.
+type blockingPipe struct {
+	queue chan []byte
+	once  sync.Once
+}
+
+func newBlockingPipe(depth int) *blockingPipe { return &blockingPipe{queue: make(chan []byte, depth)} }
+
+func (p *blockingPipe) Write(b []byte) (int, error) {
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	p.queue <- cp
+	return len(b), nil
+}
+
+func (p *blockingPipe) Read(b []byte) (int, error) {
+	pkt, ok := <-p.queue
+	if !ok {
+		return 0, io.EOF
+	}
+	return copy(b, pkt), nil
+}
+
+func (p *blockingPipe) Close() error { p.once.Do(func() { close(p.queue) }); return nil }
+
+// peerAddr is the streamconn address shape: a synthetic network and an opaque
+// peer key, never an address the handler could parse into one.
+type peerAddr struct{ network, addr string }
+
+func (a peerAddr) Network() string { return a.network }
+func (a peerAddr) String() string  { return a.addr }
+
+// compatTunDevice is the tun conn the listener produces: the device, plus the
+// context the listener stamps the device's parsed config into. That context is
+// the only place the hub's own addresses exist, so a device without it is not the
+// device the handler is meant to read — see deviceNets.
+type compatTunDevice struct {
+	*compatDevice
+	ctx context.Context
+}
+
+func (d compatTunDevice) Context() context.Context         { return d.ctx }
+func (d compatTunDevice) LocalAddr() net.Addr              { return peerAddr{"tun", ""} }
+func (d compatTunDevice) RemoteAddr() net.Addr             { return peerAddr{"tun", ""} }
+func (d compatTunDevice) SetDeadline(time.Time) error      { return nil }
+func (d compatTunDevice) SetReadDeadline(time.Time) error  { return nil }
+func (d compatTunDevice) SetWriteDeadline(time.Time) error { return nil }
+
+var _ net.Conn = compatTunDevice{}
+
+// compatP2P is the p2p hub as the shared assertions see it. Nothing here knows
+// how a hub is implemented: a spoke connects, registers, and reads.
+type compatP2P struct {
+	h      *p2pHandler
+	router *peerRouter
+	send   *datagramPipe // to the device, which the handler's own reader consumes
+
+	mu      sync.Mutex
+	spokes  int
+	streams []*compatSpokeConn
+}
+
+// spoke connects one more peer and starts the handler's Handle on it, the way
+// the p2p endpoint does when a stream opens. The Handle runs on its own
+// context: a stream's lifetime is the stream's, ended by its close rather than
+// by a test's cleanup.
+func (c *compatP2P) spoke(t *testing.T) *compatSpoke {
+	t.Helper()
+
+	c.mu.Lock()
+	c.spokes++
+	// A peer key, not an address: what the p2p host stamps on a stream is
+	// opaque, and a hub that assumed it parsed as one would be testing a
+	// different transport.
+	peer := fmt.Sprintf("peer-key-%d", c.spokes)
+	send, recv := newDatagramPipe(16)
+	conn := &compatSpokeConn{
+		send: send,
+		recv: recv,
+		in:   newBlockingPipe(16),
+		done: make(chan struct{}),
+		peer: peer,
+	}
+	c.streams = append(c.streams, conn)
+	c.mu.Unlock()
+
+	go func() {
+		defer close(conn.done)
+		c.h.Handle(context.Background(), conn)
+	}()
+
+	// The spoke's read side of the hub's outbound path, bounded the same way
+	// the socket half's is: a case that expects silence pays one timeout, and a
+	// hub that answered nothing is exactly what "answers the keepalive" is about.
+	read := func() []byte {
+		select {
+		case pkt := <-recv.queue:
+			return pkt
+		case <-time.After(compatReadTimeout):
+			return nil
+		}
+	}
+
+	return &compatSpoke{name: peer, read: read, conn: conn}
+}
+
+// register is a spoke's handshake on its stream: write the frame, then read the
+// echo. The read is what makes it synchronous — a registration is observable
+// from outside only through its answer, so waiting for that is what stops the
+// route assertions from racing the hub.
+func (c *compatP2P) register(s *compatSpoke, frame []byte) (string, []byte) {
+	conn := s.conn
+	if conn == nil {
+		return "", nil
+	}
+	if _, err := conn.in.Write(frame); err != nil {
+		return "", nil
+	}
+	return s.name, s.read()
+}
+
+// resolve is the table's own lookup — the same one the hub routes every packet
+// through, on either transport.
+func (c *compatP2P) resolve(ip net.IP) (string, bool) { return c.router.table.lookup(ip) }
+
+// deliver puts a packet on the device, as the hub's own reader would find it.
+func (c *compatP2P) deliver(pkt []byte) { c.send.Write(pkt) }
+
+// reconnect opens a second stream for a peer that already has one, under the
+// same key. This is what a p2p peer looks like after a network blip: the new
+// stream is live, and the old one is still open — its teardown has not happened
+// yet, and that is precisely when reclaiming its routes would be wrong.
+func (c *compatP2P) reconnect(s *compatSpoke, t *testing.T) *compatSpoke {
+	t.Helper()
+
+	c.mu.Lock()
+	c.spokes++
+	send, recv := newDatagramPipe(16)
+	conn := &compatSpokeConn{
+		send: send,
+		recv: recv,
+		in:   newBlockingPipe(16),
+		done: make(chan struct{}),
+		peer: s.name, // the same peer key, which is what a reconnect reuses
+	}
+	c.streams = append(c.streams, conn)
+	c.mu.Unlock()
+
+	go func() {
+		defer close(conn.done)
+		c.h.Handle(context.Background(), conn)
+	}()
+
+	read := func() []byte {
+		select {
+		case pkt := <-recv.queue:
+			return pkt
+		case <-time.After(compatReadTimeout):
+			return nil
+		}
+	}
+	return &compatSpoke{name: s.name, read: read, conn: conn}
+}
+
+// gone ends a spoke's link. On a stream a peer leaving is exactly this: the read
+// fails and the handler tears the peer down through peerGone — which is what
+// this half's extra case asserts. It waits for that Handle to return, because a
+// teardown the assertion then reads has to have happened, not be about to.
+func (c *compatP2P) gone(s *compatSpoke) {
+	if s.conn == nil {
+		return
+	}
+	s.conn.in.Close()
+	<-s.conn.done
+}
+
 // compatP2PCase is the p2p half of the table.
 //
-// The half is a visible skip rather than an omission. What is missing is the
-// server-side stream endpoint: nothing turns an inbound gRPC Tunnel stream into
-// a peerStream and feeds its datagrams to p2pHub.fromSpoke, so there is no path
-// by which a spoke's registration frame could reach this hub at all. Until that
-// exists, "delivered to the peer naming the destination" and the rest are
-// assertions against a construction rather than against the hub.
+// The hub is the real NewP2PHandler over the real p2pHub: a spoke here is a
+// net.Conn the handler's Handle is driven with, which is exactly what the p2p
+// endpoint hands it when a stream opens. A stand-in would flip the flag to green
+// while proving nothing, and the whole claim of this file — a spoke cannot tell
+// which hub it reached — rests on these assertions running against the hub rather
+// than against a copy of it.
 //
-// The hub's own pieces are all here and tested on their own in p2p_test.go —
-// dispatch, fromSpoke, peerGone — and newPeerRouter/newP2PHub are the same
-// constructors this half will use. What is missing is the thing that joins them
-// to a socket peer: a peer stream's inbound half, which does not exist until the
-// p2p endpoint is built. So this half reports itself unavailable, and the six
-// shared cases below are enumerated rather than merely absent.
+// Nothing else about the p2p path is simulated either: the registrations go over
+// the stream the handler owns, and the packets leave through the device reader
+// the handler started.
 func compatP2PCase() compatCase {
 	return compatCase{
-		name: "p2p",
-		available: func() (string, bool) {
-			return "no server-side stream endpoint: nothing turns an inbound gRPC Tunnel stream into a peerStream and feeds it to p2pHub.fromSpoke, so a spoke's registration frame has no path to this hub. The six shared cases and the teardown case below are pending against this hub, not absent",
-				false
-		},
+		name:      "p2p",
+		available: func() (string, bool) { return "", true },
 		new: func(t *testing.T, auther auth.Authenticator) compatHub {
-			// Unreachable while available() reports false, and a panic rather than
-			// a stub returning a half-built hub: if the skip is ever removed
-			// without this half being written, this says so at once rather than
-			// passing on a construction that delivers nothing.
-			panic("compatP2P: the hub is not constructible; compatP2PCase.available must be implemented first")
+			dev, send, _ := newDevice()
+
+			// The device conn is where the listener puts the parsed device
+			// config, and NewP2PHandler reads the hub's own addresses from it the
+			// way server.go's Handle does. Without it the self-route guard is off,
+			// and the "refuses the hub's own address" case below would pass for
+			// the wrong reason on both halves.
+			dctx := ictx.ContextWithMetadata(context.Background(), xmd.NewMetadata(map[string]any{
+				"config": &tun_util.Config{Net: compatNets},
+			}))
+
+			// Built through the constructor, as a deployment does: the device is
+			// the tun conn the listener produced and the auther is the one under
+			// test. The TTL a socket hub needs is not passed — a p2p hub reclaims
+			// on stream close, which is what this half's extra case asserts.
+			h := NewP2PHandler(compatTunDevice{compatDevice: dev, ctx: dctx}, auther,
+				handler.AutherOption(auther),
+				handler.LoggerOption(compatLogger()),
+				handler.ServiceOption("tun-service"),
+			).(*p2pHandler)
+
+			c := &compatP2P{router: h.router, send: send, h: h}
+
+			t.Cleanup(func() {
+				// The streams first: each Close ends the Handle that owns it, and
+				// the handler's Close then stops the device reader they were
+				// delivering into.
+				c.mu.Lock()
+				streams := c.streams
+				c.mu.Unlock()
+				for _, conn := range streams {
+					conn.Close()
+					<-conn.done
+				}
+				h.Close()
+			})
+
+			return c
 		},
 		extra: func(t *testing.T, newHub func(t *testing.T) compatHub) {
 			// The p2p half of reclamation. A stream close says a peer is gone
@@ -539,6 +786,48 @@ func compatP2PCase() compatCase {
 				}
 				if name, ok := hub.resolve(compatPeerB); !ok || name == "" {
 					t.Fatalf("the other peer's route = %q, %v, want it untouched", name, ok)
+				}
+			})
+
+			// The reason reclaiming is conditional at all, and the case that
+			// makes peerGone's withdraw load-bearing rather than incidental: a peer
+			// that reconnects holds its name under a *new* stream, and the old
+			// stream's teardown must not reclaim the routes the new one is
+			// serving. Asserting it here rather than only in p2p_test.go is the
+			// point of this half — a hub whose peerGone dropped routes
+			// unconditionally passes every shared case and still leaves a flapping
+			// peer unreachable.
+			t.Run("a reconnecting peer keeps its routes when the stale stream ends", func(t *testing.T) {
+				// A reconnect is a p2p-only notion, and so is the assertion about
+				// it: the socket hub has no way to express one. It is stated here,
+				// on the concrete type, rather than in the shared set — where a
+				// transport-specific case would either run vacuously or force the
+				// socket half to fake a stream.
+				hub, ok := newHub(t).(*compatP2P)
+				if !ok {
+					t.Fatalf("hub is a %T, want the p2p implementation", newHub(t))
+				}
+				stale := hub.spoke(t)
+				hub.register(stale, keepAliveFrame("secret", compatPeerA))
+
+				live := hub.reconnect(stale, t)
+				hub.register(live, keepAliveFrame("secret", compatPeerA))
+
+				hub.gone(stale)
+
+				if name, ok := hub.resolve(compatPeerA); !ok || name != live.name {
+					t.Fatalf("the reconnecting peer's route = %q, %v, want it to survive the stale stream's end", name, ok)
+				}
+				// And the live stream is still the one packets go to, which is
+				// what "the name belongs to the new stream" has to mean for
+				// delivery and not merely for the lookup.
+				pkt := udpPacket(compatHubIP.String(), compatPeerA.String(), 2, 1)
+				hub.deliver(pkt)
+				if got := live.read(); !bytes.Equal(got, pkt) {
+					t.Fatalf("the reconnecting peer got % x, want % x — its packets are going to the stale stream", got, pkt)
+				}
+				if got := stale.read(); got != nil {
+					t.Fatalf("the stale stream received % x after being replaced", got)
 				}
 			})
 		},
