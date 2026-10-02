@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/go-gost/core/handler"
@@ -30,7 +29,7 @@ func init() {
 
 type tunHandler struct {
 	hop     hop.Hop
-	routes  sync.Map
+	router  *peerTable
 	md      metadata
 	options handler.Options
 }
@@ -50,6 +49,10 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 	if err = h.parseMetadata(md); err != nil {
 		return
 	}
+
+	// After parseMetadata, so the table's TTL is the configured keepalive
+	// period rather than the zero a pre-parse construction would give it.
+	h.router = newPeerTable(h.options.Auther, h.md.keepAlivePeriod, h.options.Service, h.options.Logger)
 
 	return
 }

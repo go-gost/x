@@ -404,3 +404,61 @@ func TestTransportRouterUnknownDestination(t *testing.T) {
 		t.Fatalf("unregistered destination resolved to %q", name)
 	}
 }
+
+// Several peers claiming one address must leave exactly one owner, and the
+// peer's route must survive the losers being dropped. That is the whole
+// invariant: whoever won the address owns it, so dropPeer on anyone else
+// cannot take it away.
+//
+// The socket path registers one writer per address per peer and cannot reach
+// this. A p2p hub has several streams registering concurrently, so it can —
+// and the table keeps a reverse index (which routes are this peer's?) that has
+// to agree with the route itself. That pairing is what this hammers.
+func TestTransportRouterConcurrentSetKeepsRouteWithItsOwner(t *testing.T) {
+	const rounds = 200
+	ip := net.ParseIP("10.10.0.3")
+
+	names := []string{"peer-a", "peer-b", "peer-c", "peer-d", "peer-e", "peer-f"}
+
+	for round := range rounds {
+		pt := newPeerTable(nil, 0, "tun-service", nil)
+
+		// Released together, so the registrations genuinely overlap rather
+		// than happening to interleave by luck.
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for _, name := range names {
+			wg.Add(1)
+			go func(name string) {
+				defer wg.Done()
+				<-start
+				pt.set(ip, name)
+			}(name)
+		}
+		close(start)
+		wg.Wait()
+
+		winner, ok := pt.lookup(ip)
+		if !ok {
+			t.Fatalf("round %d: the address has no route after %d peers claimed it", round, len(names))
+		}
+
+		// Every peer but the winner has disconnected. Dropping them must leave
+		// the winner's route: dropPeer reads the reverse index, so a loser that
+		// ended up named there takes the winner's route with it.
+		for _, name := range names {
+			if name == winner {
+				continue
+			}
+			pt.dropPeer(name)
+		}
+
+		got, ok := pt.lookup(ip)
+		if !ok {
+			t.Fatalf("round %d: dropping the losers removed %q's route, which %q owns", round, winner, winner)
+		}
+		if got != winner {
+			t.Fatalf("round %d: route resolves to %q, want the owner %q", round, got, winner)
+		}
+	}
+}

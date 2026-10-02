@@ -24,8 +24,12 @@ import (
 // a p2p peer is named by its peer key, which is not an address at all. The table
 // only ever hands the name back to the caller, which knows what to do with it.
 type peerTable struct {
+	// One map, not two. A route's owner is part of the route, so the reverse
+	// index that used to answer "which routes are this peer's?" was a second
+	// copy of the same fact — and two sync.Maps have no shared atomicity, so
+	// concurrent set() calls could leave them disagreeing about who owned an
+	// address, after which dropPeer deleted the winner's route. See set.
 	routes sync.Map // tunRouteKey -> peerRoute
-	owners sync.Map // tunRouteKey -> owning peer name
 
 	auther  auth.Authenticator
 	ttl     time.Duration
@@ -116,19 +120,27 @@ func (pt *peerTable) onKeepalive(ctx context.Context, frame []byte, from string,
 }
 
 // set registers ip under name, refreshing lastSeen if the route already exists.
+//
+// The route carries its own owner, so the fact dropPeer needs — "is this
+// address still this peer's?" — is answered by the value being deleted rather
+// than by consulting a second structure. That is what makes it correct: the
+// reverse index this used to keep alongside was a second copy of the same
+// fact, and two sync.Maps share no atomicity, so two peers claiming one
+// address concurrently could leave the index naming a loser whose dropPeer
+// then deleted the winner's route. With one map there is nothing to disagree,
+// whether this path takes the LoadOrStore path or the Store one.
 func (pt *peerTable) set(ip net.IP, name string) {
 	rkey := ipToTunRouteKey(ip)
-	now := time.Now()
-	if actual, loaded := pt.routes.LoadOrStore(rkey, peerRoute{name: name, lastSeen: now}); loaded {
+	entry := peerRoute{name: name, lastSeen: time.Now()}
+	if actual, loaded := pt.routes.LoadOrStore(rkey, entry); loaded {
 		old := actual.(peerRoute)
-		pt.routes.Store(rkey, peerRoute{name: name, lastSeen: now}) // refresh lastSeen
+		pt.routes.Store(rkey, entry) // refresh lastSeen
 		if old.name != name {
 			pt.debugf("update route: %s -> %s (old %s)", ip, name, old.name)
 		}
 	} else {
 		pt.debugf("new route: %s -> %s", ip, name)
 	}
-	pt.owners.Store(rkey, name)
 }
 
 // lookup returns the peer name for dst, lazily expiring the route once the TTL
@@ -146,7 +158,10 @@ func (pt *peerTable) lookup(dst net.IP) (string, bool) {
 	// Three missed keepalives, as server.go has always counted them.
 	if ttl := pt.ttl * 3; ttl > 0 && time.Since(r.lastSeen) > ttl {
 		if pt.routes.CompareAndDelete(rkey, r) {
-			pt.owners.Delete(rkey)
+			// The route and its owner are one value, so expiring the route
+			// expires the owner. That pairing used to be maintained here as a
+			// second site, which is how the two drifted apart in the first
+			// place.
 			pt.infof("route expired: %s -> %s", net.IP(rkey[:]), r.name)
 		}
 		return "", false
@@ -162,16 +177,16 @@ func (pt *peerTable) lookup(dst net.IP) (string, bool) {
 // from silence that it is gone; a stream close says so exactly, so the p2p hub
 // calls this when a peer's stream ends and needs no timer at all.
 func (pt *peerTable) dropPeer(name string) {
-	pt.owners.Range(func(k, v any) bool {
-		if v.(string) != name {
+	pt.routes.Range(func(k, v any) bool {
+		rkey := k.(tunRouteKey)
+		r := v.(peerRoute)
+		if r.name != name {
 			return true
 		}
-		rkey := k.(tunRouteKey)
-		if r, ok := pt.routes.Load(rkey); ok {
-			pt.infof("route dropped: %s -> %s", net.IP(rkey[:]), r.(peerRoute).name)
-		}
-		pt.routes.Delete(rkey)
-		pt.owners.Delete(rkey)
+		pt.infof("route dropped: %s -> %s", net.IP(rkey[:]), r.name)
+		// Delete only the entry still owned by name: a peer that took this
+		// address over since the scan started must keep its route.
+		pt.routes.CompareAndDelete(k, r)
 		return true
 	})
 }
