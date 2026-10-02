@@ -188,6 +188,28 @@ func (c *streamConn) Close() error {
 	return c.stream.Close()
 }
 
+// SetReadDeadline sets the deadline on this stream, never on the session conn
+// underneath. The embedded net.Conn is shared by every stream, so a deadline
+// set there outlives the stream that set it: net/http parks a read with
+// SetReadDeadline(time.Unix(1, 0)) to unblock it on teardown and only clears
+// it when a read was actually in flight, leaving the shared conn with a
+// deadline in 1970 — and the next session Accept fails with an i/o timeout.
+func (c *streamConn) SetReadDeadline(t time.Time) error {
+	return c.stream.SetReadDeadline(t)
+}
+
+// SetWriteDeadline sets the deadline on this stream, never on the session conn
+// underneath. See SetReadDeadline.
+func (c *streamConn) SetWriteDeadline(t time.Time) error {
+	return c.stream.SetWriteDeadline(t)
+}
+
+// SetDeadline sets both deadlines on this stream, never on the session conn
+// underneath. See SetReadDeadline.
+func (c *streamConn) SetDeadline(t time.Time) error {
+	return c.stream.SetDeadline(t)
+}
+
 func (c *streamConn) Context() context.Context {
 	if sc, ok := c.Conn.(ctx.Context); ok {
 		return sc.Context()
@@ -289,6 +311,25 @@ func (c *yamuxStreamConn) Write(b []byte) (n int, err error) {
 
 func (c *yamuxStreamConn) Close() error {
 	return c.stream.Close()
+}
+
+// SetReadDeadline sets the deadline on this stream, never on the session conn
+// underneath. See streamConn.SetReadDeadline for why a leaked deadline here
+// breaks every other stream on the session.
+func (c *yamuxStreamConn) SetReadDeadline(t time.Time) error {
+	return c.stream.SetReadDeadline(t)
+}
+
+// SetWriteDeadline sets the deadline on this stream, never on the session conn
+// underneath. See streamConn.SetReadDeadline.
+func (c *yamuxStreamConn) SetWriteDeadline(t time.Time) error {
+	return c.stream.SetWriteDeadline(t)
+}
+
+// SetDeadline sets both deadlines on this stream, never on the session conn
+// underneath. See streamConn.SetReadDeadline.
+func (c *yamuxStreamConn) SetDeadline(t time.Time) error {
+	return c.stream.SetDeadline(t)
 }
 
 func (c *yamuxStreamConn) Context() context.Context {
