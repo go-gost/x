@@ -33,6 +33,7 @@ import (
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
+	"github.com/go-gost/x/config"
 )
 
 // --- Base registry[T] tests ---
@@ -213,6 +214,9 @@ func TestGlobalRegistryAccessors(t *testing.T) {
 	if HopRegistry() == nil {
 		t.Error("HopRegistry() returned nil")
 	}
+	if NodeRegistry() == nil {
+		t.Error("NodeRegistry() returned nil")
+	}
 	if AutherRegistry() == nil {
 		t.Error("AutherRegistry() returned nil")
 	}
@@ -279,6 +283,9 @@ func TestGlobalRegistrySingleton(t *testing.T) {
 	}
 	if HopRegistry() != HopRegistry() {
 		t.Error("HopRegistry not singleton")
+	}
+	if NodeRegistry() != NodeRegistry() {
+		t.Error("NodeRegistry not singleton")
 	}
 	if AutherRegistry() != AutherRegistry() {
 		t.Error("AutherRegistry not singleton")
@@ -1047,4 +1054,4 @@ var _ reg.Registry[router.Router] = (*routerRegistry)(nil)
 var _ reg.Registry[sd.SD] = (*sdRegistry)(nil)
 var _ reg.Registry[observer.Observer] = (*observerRegistry)(nil)
 var _ reg.Registry[logger.Logger] = (*loggerRegistry)(nil)
-
+var _ reg.Registry[*config.NodeConfig] = NodeRegistry()

@@ -88,6 +88,12 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			continue
 		}
 
+		var err error
+		v, err = node_parser.ResolveConfig(v)
+		if err != nil {
+			return nil, err
+		}
+
 		// Build a merged metadata map for inheritance without mutating
 		// the original node config.
 		merged := make(map[string]any)

@@ -484,6 +484,14 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 			continue
 		}
 
+		name := nc.Name
+		nc, err := node_parser.ResolveConfig(nc)
+		if err != nil {
+			p.logger.Warnf("skip node %s: %v", name, err)
+			errs = append(errs, err)
+			continue
+		}
+
 		node, err := node_parser.ParseNode(p.options.name, nc, logger.Default())
 		if err != nil {
 			p.logger.Warnf("skip node %s: %v", nc.Name, err)
@@ -513,4 +521,3 @@ func (p *chainHop) Close() error {
 	}
 	return nil
 }
-

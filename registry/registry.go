@@ -21,10 +21,11 @@ import (
 	"github.com/go-gost/core/recorder"
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
-	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/rewriter"
+	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/core/service"
+	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/limiter/quota"
 	xp2p "github.com/go-gost/x/p2p"
 )
@@ -43,6 +44,7 @@ var (
 	serviceReg   reg.Registry[service.Service]     = new(serviceRegistry)
 	chainReg     reg.Registry[chain.Chainer]       = new(chainRegistry)
 	hopReg       reg.Registry[hop.Hop]             = new(hopRegistry)
+	nodeReg      reg.Registry[*config.NodeConfig]  = new(registry[*config.NodeConfig])
 	autherReg    reg.Registry[auth.Authenticator]  = new(autherRegistry)
 	admissionReg reg.Registry[admission.Admission] = new(admissionRegistry)
 	bypassReg    reg.Registry[bypass.Bypass]       = new(bypassRegistry)
@@ -162,6 +164,11 @@ func ChainRegistry() reg.Registry[chain.Chainer] {
 // HopRegistry returns the global registry of hop instances.
 func HopRegistry() reg.Registry[hop.Hop] {
 	return hopReg
+}
+
+// NodeRegistry returns the global registry of reusable node configurations.
+func NodeRegistry() reg.Registry[*config.NodeConfig] {
+	return nodeReg
 }
 
 // AutherRegistry returns the global registry of authenticator instances.
