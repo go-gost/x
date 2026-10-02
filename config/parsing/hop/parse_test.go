@@ -4,13 +4,14 @@ import (
 	"io"
 	"testing"
 
+	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
-
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	xlogger "github.com/go-gost/x/logger"
 	mdutil "github.com/go-gost/x/metadata/util"
+	"github.com/go-gost/x/registry"
 
 	// Register connector and dialer implementations needed for node parsing.
 	_ "github.com/go-gost/x/connector/http"
@@ -182,6 +183,81 @@ func TestParseHop_WithNodeNilEntries(t *testing.T) {
 	}
 	if h == nil {
 		t.Fatal("expected non-nil hop when nodes contain nil entries")
+	}
+}
+
+func TestParseHop_GlobalNodeReference(t *testing.T) {
+	global := &config.NodeConfig{Name: "global-node", Addr: "example.com:8080"}
+	registry.NodeRegistry().Register(global.Name, global)
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(global.Name) })
+
+	h, err := ParseHop(&config.HopConfig{
+		Name:  "reference-hop",
+		Nodes: []*config.NodeConfig{{Name: global.Name}},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	nodes := h.(hop.NodeList).Nodes()
+	if len(nodes) != 1 || nodes[0].Name != global.Name || nodes[0].Addr != global.Addr {
+		t.Fatalf("referenced nodes = %v, want node %q at %q", nodes, global.Name, global.Addr)
+	}
+}
+
+func TestParseHop_GlobalNodeReferenceNotFound(t *testing.T) {
+	_, err := ParseHop(&config.HopConfig{
+		Name:  "reference-hop",
+		Nodes: []*config.NodeConfig{{Name: "missing-global-node"}},
+	}, testLogger())
+	if err == nil {
+		t.Fatal("expected missing global node error")
+	}
+}
+
+func TestParseHop_NodeWithAdditionalFieldRemainsInline(t *testing.T) {
+	global := &config.NodeConfig{Name: "shared-name", Addr: "global.example:8080"}
+	registry.NodeRegistry().Register(global.Name, global)
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(global.Name) })
+
+	h, err := ParseHop(&config.HopConfig{
+		Name: "inline-hop",
+		Nodes: []*config.NodeConfig{{
+			Name: global.Name,
+			Addr: "inline.example:8080",
+		}},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	nodes := h.(hop.NodeList).Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].Addr != "inline.example:8080" {
+		t.Fatalf("node addr = %q, want inline node address", nodes[0].Addr)
+	}
+}
+
+func TestParseHop_GlobalNodeCreatesIndependentRuntimeNodes(t *testing.T) {
+	global := &config.NodeConfig{Name: "independent-node", Addr: "example.com:8080"}
+	registry.NodeRegistry().Register(global.Name, global)
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(global.Name) })
+
+	parse := func(name string) *chain.Node {
+		h, err := ParseHop(&config.HopConfig{
+			Name: name, Nodes: []*config.NodeConfig{{Name: global.Name}},
+		}, testLogger())
+		if err != nil {
+			t.Fatalf("ParseHop: %v", err)
+		}
+		return h.(hop.NodeList).Nodes()[0]
+	}
+
+	if first, second := parse("hop-1"), parse("hop-2"); first == second {
+		t.Fatal("global node references must create independent runtime nodes")
+	}
+	if global.Connector != nil || global.Dialer != nil {
+		t.Fatal("parsing a reference must not mutate the global definition")
 	}
 }
 

@@ -774,6 +774,7 @@ type Config struct {
 	Services   []*ServiceConfig   `json:"services"`
 	Chains     []*ChainConfig     `yaml:",omitempty" json:"chains,omitempty"`
 	Hops       []*HopConfig       `yaml:",omitempty" json:"hops,omitempty"`
+	Nodes      []*NodeConfig      `yaml:",omitempty" json:"nodes,omitempty"`
 	Authers    []*AutherConfig    `yaml:",omitempty" json:"authers,omitempty"`
 	Admissions []*AdmissionConfig `yaml:",omitempty" json:"admissions,omitempty"`
 	Bypasses   []*BypassConfig    `yaml:",omitempty" json:"bypasses,omitempty"`

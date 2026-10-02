@@ -6,6 +6,9 @@
 package loader
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/go-gost/core/admission"
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
@@ -22,8 +25,8 @@ import (
 	"github.com/go-gost/core/recorder"
 	reg "github.com/go-gost/core/registry"
 	"github.com/go-gost/core/resolver"
-	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/rewriter"
+	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
@@ -320,7 +323,26 @@ func register(cfg *config.Config) error {
 		}
 	}
 
-	// --- hops (references bypasses, resolvers, hosts from registries) ---
+	// --- nodes (definitions referenced by hops) ---
+
+	{
+		var entries []named[*config.NodeConfig]
+		for _, c := range cfg.Nodes {
+			if c == nil {
+				continue
+			}
+			c.Name = strings.TrimSpace(c.Name)
+			if c.Name == "" {
+				return fmt.Errorf("global node name is required")
+			}
+			entries = append(entries, named[*config.NodeConfig]{c.Name, c})
+		}
+		if err := registerGroup(entries, registry.NodeRegistry()); err != nil {
+			return err
+		}
+	}
+
+	// --- hops (references nodes, bypasses, resolvers, hosts from registries) ---
 
 	{
 		var entries []named[hop.Hop]

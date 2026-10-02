@@ -320,6 +320,7 @@ func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 		Services:   append(cfg1.Services, cfg2.Services...),
 		Chains:     append(cfg1.Chains, cfg2.Chains...),
 		Hops:       append(cfg1.Hops, cfg2.Hops...),
+		Nodes:      append(cfg1.Nodes, cfg2.Nodes...),
 		Authers:    append(cfg1.Authers, cfg2.Authers...),
 		Admissions: append(cfg1.Admissions, cfg2.Admissions...),
 		Bypasses:   append(cfg1.Bypasses, cfg2.Bypasses...),

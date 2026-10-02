@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,6 +37,64 @@ const DefaultMatcherBodySize = 1 << 20 // 1MB
 // this are silently clamped. Protects against unbounded in-memory buffering
 // when a node opts in to body matching.
 const MaxMatcherBodySize = 10 << 20 // 10MB
+
+// IsReference reports whether cfg contains only a non-empty name. Such a
+// config references a definition from the top-level nodes section.
+func IsReference(cfg *config.NodeConfig) bool {
+	if cfg == nil || strings.TrimSpace(cfg.Name) == "" {
+		return false
+	}
+	return reflect.DeepEqual(cfg, &config.NodeConfig{Name: cfg.Name})
+}
+
+// ResolveConfig resolves a name-only config through the global node registry
+// and returns an independent copy of the definition. Inline configs are
+// returned unchanged to preserve their existing parsing behavior.
+func ResolveConfig(cfg *config.NodeConfig) (*config.NodeConfig, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	if !IsReference(cfg) {
+		return cfg, nil
+	}
+
+	name := cfg.Name
+	cfg = registry.NodeRegistry().Get(name)
+	if cfg == nil {
+		return nil, fmt.Errorf("node %q not found", name)
+	}
+	return cloneConfig(cfg), nil
+}
+
+// cloneConfig copies the fields that parsing may default or inherit. Other
+// nested values are read-only during parsing and can safely remain shared.
+func cloneConfig(cfg *config.NodeConfig) *config.NodeConfig {
+	c := *cfg
+	c.Bypasses = append([]string(nil), cfg.Bypasses...)
+	if cfg.Metadata != nil {
+		c.Metadata = make(map[string]any, len(cfg.Metadata))
+		for k, v := range cfg.Metadata {
+			c.Metadata[k] = v
+		}
+	}
+	if cfg.Connector != nil {
+		connector := *cfg.Connector
+		if cfg.Connector.TLS != nil {
+			tls := *cfg.Connector.TLS
+			connector.TLS = &tls
+		}
+		c.Connector = &connector
+	}
+	if cfg.Dialer != nil {
+		dialer := *cfg.Dialer
+		if cfg.Dialer.TLS != nil {
+			tls := *cfg.Dialer.TLS
+			dialer.TLS = &tls
+		}
+		c.Dialer = &dialer
+	}
+	return &c
+}
 
 // filterToMatcherRule converts a deprecated NodeFilterConfig (host/protocol/
 // path) into an equivalent matcher DSL rule. Empty fields are omitted; an
