@@ -31,10 +31,11 @@ type peerTable struct {
 	// address, after which dropPeer deleted the winner's route. See set.
 	routes sync.Map // tunRouteKey -> peerRoute
 
-	auther  auth.Authenticator
-	ttl     time.Duration
-	service string
-	log     logger.Logger
+	auther     auth.Authenticator
+	authorizer PeerAuthorizer
+	ttl        time.Duration
+	service    string
+	log        logger.Logger
 }
 
 // peerRoute is a registered route: the peer's name and when a keepalive last
@@ -44,15 +45,32 @@ type peerRoute struct {
 	lastSeen time.Time
 }
 
+// peerTableOption configures a table that the constructor's fixed arguments do
+// not express. It is variadic rather than a parameter because a table without an
+// authorizer is the common case, and every existing caller means exactly that —
+// so "no authorization" is what omitting an option says, without making every
+// call site pass a nil.
+type peerTableOption func(*peerTable)
+
+// withAuthorizer installs the policy that decides which addresses a peer may
+// claim. Without one, a table registers whatever a peer claims.
+func withAuthorizer(a PeerAuthorizer) peerTableOption {
+	return func(pt *peerTable) { pt.authorizer = a }
+}
+
 // newPeerTable builds the table. service is the handler's service name: it is
 // passed to the auther on every authentication, and a plugin auther sends it to
 // an external process, so dropping it here would silently change who the
 // external auther thinks is asking. An empty service is legitimate — a handler
 // registered without one — and is passed through as the empty string.
-func newPeerTable(auther auth.Authenticator, keepAlivePeriod time.Duration, service string, log logger.Logger) *peerTable {
+func newPeerTable(auther auth.Authenticator, keepAlivePeriod time.Duration, service string, log logger.Logger, opts ...peerTableOption) *peerTable {
 	// ttl is the keepalive period, not the expiry window: a route outlives three
 	// missed keepalives (see lookup), which is how server.go has always counted.
-	return &peerTable{auther: auther, ttl: keepAlivePeriod, service: service, log: log}
+	pt := &peerTable{auther: auther, ttl: keepAlivePeriod, service: service, log: log}
+	for _, opt := range opts {
+		opt(pt)
+	}
+	return pt
 }
 
 // onKeepalive parses a registration frame, authenticates it, and registers the
@@ -94,6 +112,14 @@ func (pt *peerTable) onKeepalive(ctx context.Context, frame []byte, from string,
 				return nil, false
 			}
 		}
+	}
+
+	// Above the auther, deliberately: a claim that is not this peer's to make
+	// needs no credential check, and the auther below may be a plugin making an
+	// RPC to another process — one not worth spending on a refused claim.
+	if pt.authorizer != nil && !pt.authorizer.Authorize(ctx, from, peerIPs) {
+		pt.debugf("keepalive from %v => %v, not authorized", from, peerIPs)
+		return nil, false
 	}
 
 	// The passphrase covers the whole registration, so every claimed address

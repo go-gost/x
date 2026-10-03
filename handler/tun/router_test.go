@@ -405,6 +405,294 @@ func TestTransportRouterUnknownDestination(t *testing.T) {
 	}
 }
 
+// assigningAuthorizer is the hub-side policy the PeerAuthorizer interface
+// describes, in miniature: every peer owns a fixed set of addresses, and a claim
+// is authorized only when it is exactly that set — every assigned address
+// claimed, and nothing extra. "Exactly", not "at least": peerTable.set is
+// last-writer-wins per address, so a claim that adds one neighbour's address
+// takes that neighbour's route over, which is the whole point of the seam.
+type assigningAuthorizer struct {
+	assigned map[string][]net.IP
+}
+
+func newAssigningAuthorizer(assigned map[string][]net.IP) *assigningAuthorizer {
+	return &assigningAuthorizer{assigned: assigned}
+}
+
+func (a *assigningAuthorizer) Authorize(ctx context.Context, peer string, ips []net.IP) bool {
+	want, ok := a.assigned[peer]
+	if !ok {
+		return false
+	}
+	// An empty claim is never a registration, and a claim the wrong size cannot
+	// be the assignment.
+	if len(ips) == 0 || len(ips) != len(want) {
+		return false
+	}
+	// An address that is not one To16 can produce is not an address any peer
+	// could have been assigned, so it is refused rather than compared.
+	claimed := make(map[string]bool, len(ips))
+	for _, ip := range ips {
+		if ip.To16() == nil {
+			return false
+		}
+		claimed[ip.String()] = true
+	}
+	for _, ip := range want {
+		if !claimed[ip.String()] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestAuthorizerAcceptsOnlyTheAssignedSet(t *testing.T) {
+	first := net.ParseIP("10.10.0.3")
+	second := net.ParseIP("10.10.0.4")
+	neighbour := net.ParseIP("10.10.0.5")
+
+	a := newAssigningAuthorizer(map[string][]net.IP{"peer-a": {first, second}})
+
+	tests := []struct {
+		name string
+		ips  []net.IP
+		want bool
+	}{
+		{"exactly the assignment", []net.IP{first, second}, true},
+		{"the assignment in the other order", []net.IP{second, first}, true},
+		{"the assignment plus a neighbour's", []net.IP{first, second, neighbour}, false},
+		{"a neighbour's alone", []net.IP{neighbour}, false},
+		// A subset is refused too: the assignment is the claim, and a peer
+		// that may shrink its own registration is one hop away from renaming
+		// itself back onto an address it no longer owns.
+		{"only part of the assignment", []net.IP{first}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := a.Authorize(context.Background(), "peer-a", tt.ips); got != tt.want {
+				t.Fatalf("Authorize(peer-a, %v) = %v, want %v", tt.ips, got, tt.want)
+			}
+		})
+	}
+}
+
+// A peer the hub has no assignment for is not one it can recognize, however well
+// authenticated the transport found it.
+func TestAuthorizerRefusesAPeerNotInTheTable(t *testing.T) {
+	assigned := net.ParseIP("10.10.0.3")
+	a := newAssigningAuthorizer(map[string][]net.IP{"peer-a": {assigned}})
+
+	claim := []net.IP{assigned}
+	if a.Authorize(context.Background(), "peer-a", claim) != true {
+		t.Fatalf("Authorize(peer-a, %v) = false, want true: the control proves nothing", claim)
+	}
+	if a.Authorize(context.Background(), "peer-b", claim) {
+		t.Fatalf("Authorize(peer-b, %v) = true, want false: peer-b is not in the table", claim)
+	}
+}
+
+// A frame with no addresses is not a registration, and a caller that reaches the
+// authorizer with an empty claim must be refused rather than matched against an
+// empty assignment.
+func TestAuthorizerRefusesAnEmptyClaim(t *testing.T) {
+	a := newAssigningAuthorizer(map[string][]net.IP{"peer-a": {net.ParseIP("10.10.0.3")}})
+
+	if a.Authorize(context.Background(), "peer-a", nil) {
+		t.Fatal("Authorize(peer-a, nil) = true, want false")
+	}
+	if a.Authorize(context.Background(), "peer-a", []net.IP{}) {
+		t.Fatal("Authorize(peer-a, []) = true, want false")
+	}
+	// Even a peer assigned nothing must not be able to register nothing: that
+	// would be the table accepting a claim that names no address at all.
+	empty := newAssigningAuthorizer(map[string][]net.IP{"peer-b": nil})
+	if empty.Authorize(context.Background(), "peer-b", nil) {
+		t.Fatal("Authorize(peer-b, nil) = true, want false: an empty claim is refused whatever the assignment")
+	}
+}
+
+// Review Focus #2: one assigned, two claimed. This is the take-over, and it is
+// the case a subset check would wave through.
+func TestAuthorizerRefusesAClaimLargerThanTheAssignment(t *testing.T) {
+	assigned := net.ParseIP("10.10.0.3")
+	other := net.ParseIP("10.10.0.4")
+
+	a := newAssigningAuthorizer(map[string][]net.IP{"peer-a": {assigned}})
+
+	if a.Authorize(context.Background(), "peer-a", []net.IP{assigned, other}) {
+		t.Fatalf("Authorize(peer-a, [%s %s]) = true, want false: peer-a is assigned only %s", assigned, other, assigned)
+	}
+	// And the take-over this prevents, shown on the table: had the claim been
+	// authorized, peer-b's route for `other` would now belong to peer-a.
+	pt := newPeerTable(newMultiAuther("secret", assigned.String(), other.String()), 0, "tun-service", nil, withAuthorizer(a))
+	if _, ok := pt.onKeepalive(context.Background(), keepAliveFrame("secret", assigned, other), "peer-a", nil); ok {
+		t.Fatal("onKeepalive registered an address the authorizer refused")
+	}
+	if _, ok := pt.lookup(other); ok {
+		t.Fatal("the refused claim left a route behind")
+	}
+}
+
+// Review Focus #6: Authorize is called with whatever the claim carried, so it
+// must refuse an address it cannot interpret instead of panicking on it. Three
+// bytes is a length no IPNet address ever has.
+func TestAuthorizeRefusesAMalformedClaimWithoutPanicking(t *testing.T) {
+	a := newAssigningAuthorizer(map[string][]net.IP{"peer-a": {net.ParseIP("10.10.0.3")}})
+	claim := []net.IP{{1, 2, 3}}
+
+	// Recovered so a panic is this test's failure with a readable cause rather
+	// than a stack trace that aborts the package's run.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Authorize(peer-a, %v) panicked: %v", claim, r)
+			}
+		}()
+		if a.Authorize(context.Background(), "peer-a", claim) {
+			t.Errorf("Authorize(peer-a, %v) = true, want false: three bytes is not an address", claim)
+		}
+	}()
+}
+
+// orderRecorder collects the order in which the hub consulted its authorizer and
+// its auther, which is what the two hooks' relative position is worth.
+type orderRecorder struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (r *orderRecorder) record(step string) {
+	r.mu.Lock()
+	r.seen = append(r.seen, step)
+	r.mu.Unlock()
+}
+
+func (r *orderRecorder) steps() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.seen...)
+}
+
+// orderAuthorizer and orderAuther are one decision each, recorded into the same
+// recorder, so the order the hub asked in is observable and either can refuse.
+type orderAuthorizer struct {
+	rec   *orderRecorder
+	allow bool
+}
+
+func (a *orderAuthorizer) Authorize(ctx context.Context, peer string, ips []net.IP) bool {
+	a.rec.record("authorize")
+	return a.allow
+}
+
+type orderAuther struct {
+	rec   *orderRecorder
+	allow bool
+}
+
+func (a *orderAuther) Authenticate(ctx context.Context, user, password string, opts ...auth.Option) (string, bool) {
+	a.rec.record("authenticate")
+	if !a.allow {
+		return "", false
+	}
+	return user, true
+}
+
+// The authorizer runs before the auther: a claim that is not this peer's to make
+// needs no credential check, and the auther may be a plugin making an RPC to
+// another process — which should not be spent on a claim already refused.
+func TestOnKeepaliveCallsTheAuthorizerBeforeTheAuther(t *testing.T) {
+	t.Run("both accept", func(t *testing.T) {
+		rec := &orderRecorder{}
+		pt := newPeerTable(
+			&orderAuther{rec: rec, allow: true}, 0, "tun-service", nil,
+			withAuthorizer(&orderAuthorizer{rec: rec, allow: true}),
+		)
+
+		if _, ok := pt.onKeepalive(context.Background(), keepAliveFrame("secret", net.ParseIP("10.10.0.3")), "peer-a", nil); !ok {
+			t.Fatal("onKeepalive refused a frame both hooks accepted")
+		}
+
+		got := rec.steps()
+		want := []string{"authorize", "authenticate"}
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+			t.Fatalf("hooks ran as %v, want %v", got, want)
+		}
+	})
+
+	t.Run("the authorizer refuses first", func(t *testing.T) {
+		rec := &orderRecorder{}
+		pt := newPeerTable(
+			&orderAuther{rec: rec, allow: true}, 0, "tun-service", nil,
+			withAuthorizer(&orderAuthorizer{rec: rec, allow: false}),
+		)
+
+		if _, ok := pt.onKeepalive(context.Background(), keepAliveFrame("secret", net.ParseIP("10.10.0.3")), "peer-a", nil); ok {
+			t.Fatal("onKeepalive registered a claim the authorizer refused")
+		}
+
+		// The auther never ran: that is what "before" buys, and a registration
+		// that stops at the authorizer leaves no route behind.
+		if got := rec.steps(); len(got) != 1 || got[0] != "authorize" {
+			t.Fatalf("hooks ran as %v, want [authorize]", got)
+		}
+		if name, ok := pt.lookup(net.ParseIP("10.10.0.3")); ok {
+			t.Fatalf("the refused claim left the route %q behind", name)
+		}
+	})
+
+	// The self-loop guard is above both, and it must stay there: it refuses a
+	// frame whose addresses are the hub's own, before the hub asks any policy
+	// whether that frame was allowed.
+	t.Run("the self-loop guard precedes both", func(t *testing.T) {
+		rec := &orderRecorder{}
+		own := net.ParseIP("10.10.0.9")
+		pt := newPeerTable(
+			&orderAuther{rec: rec, allow: true}, 0, "tun-service", nil,
+			withAuthorizer(&orderAuthorizer{rec: rec, allow: true}),
+		)
+
+		ownNets := []net.IPNet{{IP: own, Mask: net.CIDRMask(24, 32)}}
+		if _, ok := pt.onKeepalive(context.Background(), keepAliveFrame("secret", own), "peer-a", ownNets); ok {
+			t.Fatal("onKeepalive accepted the hub's own network")
+		}
+		if got := rec.steps(); len(got) != 0 {
+			t.Fatalf("hooks ran as %v, want neither: the self-loop guard refuses first", got)
+		}
+	})
+}
+
+// A table with no authorizer authorizes nothing it should not — it authorizes
+// everything. The socket path builds its table without one, so this is what the
+// other newPeerTable call sites in this package rely on.
+func TestNilAuthorizerRegistersEverything(t *testing.T) {
+	a := net.ParseIP("10.10.0.3")
+	b := net.ParseIP("10.10.0.4")
+
+	// Omitted entirely, as every pre-existing call site does.
+	omitted := newPeerTable(newMultiAuther("secret", a.String(), b.String()), 0, "tun-service", nil)
+	// And passed explicitly as nil, which must read the same as omitted.
+	explicit := newPeerTable(newMultiAuther("secret", a.String(), b.String()), 0, "tun-service", nil, withAuthorizer(nil))
+
+	for name, pt := range map[string]*peerTable{"omitted": omitted, "explicit nil": explicit} {
+		t.Run(name, func(t *testing.T) {
+			ips, ok := pt.onKeepalive(context.Background(), keepAliveFrame("secret", a, b), "peer-a", nil)
+			if !ok {
+				t.Fatalf("onKeepalive refused a valid frame with no authorizer")
+			}
+			if len(ips) != 2 {
+				t.Fatalf("peer IPs = %v, want two", ips)
+			}
+			for _, ip := range []net.IP{a, b} {
+				if name, ok := pt.lookup(ip); !ok || name != "peer-a" {
+					t.Fatalf("lookup(%s) = %q, %v, want \"peer-a\", true", ip, name, ok)
+				}
+			}
+		})
+	}
+}
+
 // Several peers claiming one address must leave exactly one owner, and the
 // peer's route must survive the losers being dropped. That is the whole
 // invariant: whoever won the address owns it, so dropPeer on anyone else
