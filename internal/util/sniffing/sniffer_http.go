@@ -11,10 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
-	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
@@ -69,16 +67,6 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 		return h.serveH2(ctx, network, xnet.NewReadWriteConn(br, conn, conn), &ho)
 	}
 
-	host := normalizeHost(req.Host, "80")
-	if host != "" {
-		ro.Host = host
-		log = log.WithFields(map[string]any{"host": host})
-
-		if ho.Bypass != nil && ho.Bypass.Contains(ctx, network, host, bypass.WithService(ho.Service)) {
-			return xbypass.ErrBypass
-		}
-	}
-
 	dialFn := ho.Dial
 	if dialFn == nil {
 		dialFn = (&net.Dialer{}).DialContext
@@ -86,10 +74,36 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 
 	var (
 		cc           net.Conn
+		host         string
 		upstreamHost string
 	)
 
 	for {
+		// Authorize this request against the bypass in effect now. Doing it
+		// here rather than once before the loop is what makes the gate hold
+		// for every request on the connection: a later request can name
+		// another host, can be answered from the cache without a dial, and
+		// can arrive after the bypass was reloaded.
+		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" {
+			if reqHost != host {
+				log = log.WithFields(map[string]any{"host": reqHost})
+			}
+			host = reqHost
+			ro.Host = host
+		}
+		if err := ho.CheckBypass(ctx, network, host); err != nil {
+			if cc != nil {
+				cc.Close()
+			}
+			return err
+		}
+
+		// A request naming another host needs its own upstream.
+		if cc != nil && host != upstreamHost {
+			cc.Close()
+			cc = nil
+		}
+
 		// Initialize HTTP recorder fields for this request.
 		ro.HTTP = &xrecorder.HTTPRecorderObject{
 			Host:   req.Host,
@@ -177,15 +191,8 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, network string, conn net.Conn,
 			log.Trace(string(dump))
 		}
 
-		// Re-dial on host change (DNS override reuses same conn for same host).
-		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" && reqHost != upstreamHost {
-			cc.Close()
-			cc = nil
-			host = reqHost
-			ro.Host = reqHost
-
-			log = log.WithFields(map[string]any{"host": reqHost})
-		}
+		// The next iteration authorizes this request and re-dials when it
+		// names a host other than the one cc is connected to.
 	}
 }
 

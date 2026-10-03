@@ -96,6 +96,20 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 	)
 
 	for {
+		// Authorize this request against the bypass in effect now. The check
+		// inside dial only runs when a new upstream connection is needed, so
+		// it misses a request answered from the cache and a request that
+		// arrives after the bypass was reloaded.
+		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" {
+			if err := ho.CheckBypass(ctx, "tcp", reqHost,
+				bypass.WithPathOption(req.RequestURI)); err != nil {
+				if cc != nil {
+					cc.Close()
+				}
+				return err
+			}
+		}
+
 		// Initialize HTTP recorder fields for this request.
 		ro.HTTP = &xrecorder.HTTPRecorderObject{
 			Host:   req.Host,
