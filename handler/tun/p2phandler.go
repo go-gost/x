@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
@@ -27,9 +26,9 @@ import (
 // already share; what is new is only who owns the device reader and who feeds a
 // stream to it.
 //
-// Unlike tunHandler, this one is not built from metadata: the device, its own
-// addresses and its auther are all fixed before the p2p endpoint can accept a
-// single stream, so Init has nothing left to parse.
+// Unlike tunHandler, this one is not built from metadata: the device and its own
+// addresses are all fixed before the p2p endpoint can accept a single stream, so
+// Init has nothing left to parse.
 type p2pHandler struct {
 	device net.Conn
 	hub    *p2pHub
@@ -40,10 +39,21 @@ type p2pHandler struct {
 }
 
 // NewP2PHandler builds a hub over device — the tun conn the listener produced —
-// for the peers that reach it over p2p. auther authenticates their registrations
-// and may be nil. The hub's device reader starts here and runs until Close, so a
-// packet off the device is being routed before the first stream arrives.
-func NewP2PHandler(device net.Conn, auther auth.Authenticator, opts ...handler.Option) handler.Handler {
+// for the peers that reach it over p2p. authorizer decides which addresses a
+// peer's registration may claim, and may be nil when a peer is to be able to
+// claim whatever it asks for.
+//
+// There is no auther here, because a p2p peer has nothing to authenticate: the
+// allowlist that routed its stream here already said who it is, and onKeepalive
+// consults an auther with the *claimed address* as the user name — so a
+// credential check could only ever ask "is this peer allowed the address it just
+// claimed", which is the question authorizer answers, and which an operator could
+// otherwise satisfy only by typing each spoke's own IP into the tunnel's username
+// field.
+//
+// The hub's device reader starts here and runs until Close, so a packet off the
+// device is being routed before the first stream arrives.
+func NewP2PHandler(device net.Conn, authorizer PeerAuthorizer, opts ...handler.Option) handler.Handler {
 	options := handler.Options{}
 	for _, opt := range opts {
 		opt(&options)
@@ -57,7 +67,12 @@ func NewP2PHandler(device net.Conn, auther auth.Authenticator, opts ...handler.O
 	// A p2p hub has no TTL: a peer announces its departure by closing its
 	// stream, and peerGone reclaims exactly that peer's routes on the way out.
 	// A timer here would only guess at what the close says outright.
-	table := newPeerTable(auther, 0, options.Service, log)
+	//
+	// The authorizer is an option rather than an argument so that a nil one
+	// stays legible as a decision — register whatever a peer claims — which is
+	// also what the socket hub's table means by having no authorizer. The auther
+	// argument is nil because this path has no credential to check.
+	table := newPeerTable(nil, 0, options.Service, log, withAuthorizer(authorizer))
 	router := newPeerRouter(table)
 
 	h := &p2pHandler{
@@ -82,7 +97,7 @@ func NewP2PHandler(device net.Conn, auther auth.Authenticator, opts ...handler.O
 	return h
 }
 
-// Init is a no-op. The device, its own addresses and the auther are all fixed at
+// Init is a no-op. The device and its own addresses are all fixed at
 // construction — the config that describes them lives on the device conn's
 // context, which exists before any metadata does — and the p2p endpoint that
 // builds this handler is what turns config into them.

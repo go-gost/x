@@ -12,6 +12,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-gost/core/handler"
+	ictx "github.com/go-gost/x/internal/ctx"
+	tun_util "github.com/go-gost/x/internal/util/tun"
+	xmd "github.com/go-gost/x/metadata"
 )
 
 // datagramPipe is a unidirectional pipe whose boundaries survive: every Write on
@@ -451,6 +456,113 @@ func TestP2PRefusedKeepaliveIsNotAnswered(t *testing.T) {
 	}
 	if _, ok := table.lookup(net.ParseIP("10.10.0.3")); ok {
 		t.Fatal("a refused registration left a route behind")
+	}
+}
+
+// newP2PAuthorizerHub builds the hub a deployment gets — NewP2PHandler over the
+// tun conn the listener produced — and returns it as the compat suite drives one,
+// so a case writes a registration on a real stream and reads the answer off the
+// peer's end. Only the authorizer is the case's: the device reader, the stream
+// and the route table are the real ones, which is the point of driving the
+// handler rather than the table.
+//
+// The device carries the parsed config, because that is where the hub's own
+// addresses live and NewP2PHandler reads them from it (see deviceNets).
+//
+// The first spoke is registered by the compat harness under peer-key-1, so a case
+// that keys an authorizer on a peer name has to know it before the stream exists.
+func newP2PAuthorizerHub(t *testing.T, authorizer PeerAuthorizer) *compatP2P {
+	t.Helper()
+
+	dev, send, _ := newDevice()
+	dctx := ictx.ContextWithMetadata(context.Background(), xmd.NewMetadata(map[string]any{
+		"config": &tun_util.Config{Net: compatNets},
+	}))
+
+	h := NewP2PHandler(compatTunDevice{compatDevice: dev, ctx: dctx}, authorizer,
+		handler.LoggerOption(compatLogger()),
+		handler.ServiceOption("tun-service"),
+	).(*p2pHandler)
+
+	c := &compatP2P{h: h, router: h.router, send: send}
+	t.Cleanup(func() {
+		// The streams first: each Close ends the Handle that owns it, and the
+		// handler's Close then stops the device reader they were delivering into.
+		c.mu.Lock()
+		streams := c.streams
+		c.mu.Unlock()
+		for _, conn := range streams {
+			conn.Close()
+			<-conn.done
+		}
+		h.Close()
+	})
+
+	return c
+}
+
+// End to end through the handler: a claim the authorizer accepts registers its
+// address under the peer's key and is answered with the keepalive echo, which is
+// the byte a spoke refreshes its read deadline from.
+func TestP2PHandleRegistersAnAuthorizedClaim(t *testing.T) {
+	assigned := net.ParseIP("10.10.0.3")
+	hub := newP2PAuthorizerHub(t, newAssigningAuthorizer(map[string][]net.IP{
+		"peer-key-1": {assigned},
+	}))
+
+	s := hub.spoke(t)
+	_, reply := hub.register(s, keepAliveFrame("secret", assigned))
+
+	// The route first: registering and answering is the whole of a spoke's
+	// handshake, and the lookup is what a later packet's delivery resolves.
+	if name, ok := hub.resolve(assigned); !ok {
+		t.Fatalf("no route for %s after an authorized registration", assigned)
+	} else if name != s.name {
+		t.Fatalf("the route for %s resolves to %q, want the registering peer %q", assigned, name, s.name)
+	}
+	if !isKeepaliveFrame(reply) {
+		t.Fatalf("the authorized registration was not answered with a keepalive frame: % x", reply)
+	}
+	if len(reply) != keepAliveHeaderLength {
+		t.Fatalf("the reply is %d bytes, want the %d-byte header the spoke detects",
+			len(reply), keepAliveHeaderLength)
+	}
+}
+
+// End to end through the handler: a claim the authorizer refuses registers
+// nothing and is not answered.
+//
+// The route is the load-bearing half of the assertion. A hub that merely stayed
+// quiet would pass a reply-only check while still handing its traffic to a peer
+// that has no right to the address, so the refusal is asserted where it is
+// observable — in the table a packet's destination is resolved against.
+func TestP2PHandleDoesNotRegisterARefusedClaim(t *testing.T) {
+	assigned := net.ParseIP("10.10.0.3")
+	neighbour := net.ParseIP("10.10.0.4")
+	hub := newP2PAuthorizerHub(t, newAssigningAuthorizer(map[string][]net.IP{
+		"peer-key-1": {assigned},
+	}))
+
+	s := hub.spoke(t)
+	_, reply := hub.register(s, keepAliveFrame("secret", neighbour))
+
+	if name, ok := hub.resolve(neighbour); ok {
+		t.Fatalf("a refused claim left the route %q behind for %s", name, neighbour)
+	}
+	if reply != nil {
+		t.Fatalf("a refused registration was answered with % x", reply)
+	}
+
+	// Proof the frame was otherwise acceptable: the same peer claiming the one
+	// address it was assigned registers. Without it the refusal above would be
+	// indistinguishable from a hub that refuses everything, and the authorizer
+	// would go untested.
+	_, reply = hub.register(s, keepAliveFrame("secret", assigned))
+	if !isKeepaliveFrame(reply) {
+		t.Fatalf("the control registration was not answered: % x", reply)
+	}
+	if name, ok := hub.resolve(assigned); !ok || name != s.name {
+		t.Fatalf("the control registration did not take: lookup = %q, %v, want %q", name, ok, s.name)
 	}
 }
 

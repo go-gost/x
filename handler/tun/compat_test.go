@@ -96,7 +96,9 @@ type compatHub interface {
 }
 
 // compatCases is the shared assertion set: every case, run against every
-// implementation, with an auther and without one.
+// implementation, with an auther and without one — or, for an implementation
+// that has no auther at all, with the nil auther only, which is the whole of
+// what it has to offer (see compatCase.autherless).
 func compatCases() []struct {
 	name string
 	run  func(t *testing.T, hub compatHub, auther auth.Authenticator)
@@ -147,10 +149,14 @@ func compatCases() []struct {
 
 		// The self-loop guard: a registration claiming one of the hub's own
 		// addresses would send the hub's own packets back at it.
-		{"refuses the hub's own address", func(t *testing.T, hub compatHub, auther auth.Authenticator) {
-			if auther == nil {
-				t.Skip("no auther: the address is refused by authentication, not by the guard")
-			}
+		//
+		// No auther is needed, and running without one is the stronger form: the
+		// guard is peerTable's own check, upstream of both hooks, so with neither
+		// hook installed nothing *could* be refusing the address — which is what
+		// makes the control registration below the load-bearing half. An auther
+		// would have nothing to say about it either way: it is asked whether the
+		// address being claimed is allowed, not who is claiming it.
+		{"refuses the hub's own address", func(t *testing.T, hub compatHub, _ auth.Authenticator) {
 			spoke := hub.spoke(t)
 
 			_, reply := hub.register(spoke, keepAliveFrame("secret", compatHubIP))
@@ -164,7 +170,8 @@ func compatCases() []struct {
 
 			// Proof the frame was otherwise acceptable: the same registration for a
 			// peer address registers. Without it the refusal above is
-			// indistinguishable from the auther's, and the guard would go untested.
+			// indistinguishable from some other check refusing it, and the guard
+			// would go untested.
 			hub.register(spoke, keepAliveFrame("secret", compatPeerA))
 			if _, ok := hub.resolve(compatPeerA); !ok {
 				t.Fatal("the control registration did not take, so the test proves nothing")
@@ -246,6 +253,15 @@ type compatCase struct {
 	// extra is the implementation's own contract, where it has one — the socket
 	// hub's TTL, the p2p hub's teardown. nil where it has none.
 	extra func(t *testing.T, newHub func(t *testing.T) compatHub)
+	// autherless reports that this implementation runs no registrations through an
+	// auther at all. The p2p hub does not: its peers are identified by the
+	// allowlist that routed their streams here, so a credential in a registration
+	// is never checked — and the hub's only remaining question about a claim is
+	// which addresses it may take, which is the author's decision, not the
+	// harness's. Running the "with an auther" variant against it would build the
+	// same hub twice and assert, on a credential the hub never reads, that
+	// "refuses a wrong passphrase" holds — which it does not, and must not.
+	autherless bool
 }
 
 func TestCompatHubsAgreeOnTheSpokeContract(t *testing.T) {
@@ -262,6 +278,9 @@ func TestCompatHubsAgreeOnTheSpokeContract(t *testing.T) {
 						auther auth.Authenticator
 					}{{"with an auther", compatAuther}, {"without an auther", nil}} {
 						t.Run(a.name, func(t *testing.T) {
+							if impl.autherless && a.auther != nil {
+								t.Skipf("the %s hub has no auther: its peers are already identified by the transport that routed them", impl.name)
+							}
 							tc.run(t, impl.new(t, a.auther), a.auther)
 						})
 					}
@@ -724,11 +743,17 @@ func (c *compatP2P) gone(s *compatSpoke) {
 // Nothing else about the p2p path is simulated either: the registrations go over
 // the stream the handler owns, and the packets leave through the device reader
 // the handler started.
+//
+// This half is autherless: NewP2PHandler takes an authorizer rather than a
+// credential auther, so the harness's auther is not installed here and the
+// "with an auther" variant does not run. What the p2p hub does with a claim is
+// asserted by the authorizer tests in p2p_test.go, which drive this same handler.
 func compatP2PCase() compatCase {
 	return compatCase{
-		name:      "p2p",
-		available: func() (string, bool) { return "", true },
-		new: func(t *testing.T, auther auth.Authenticator) compatHub {
+		name:       "p2p",
+		autherless: true,
+		available:  func() (string, bool) { return "", true },
+		new: func(t *testing.T, _ auth.Authenticator) compatHub {
 			dev, send, _ := newDevice()
 
 			// The device conn is where the listener puts the parsed device
@@ -741,11 +766,12 @@ func compatP2PCase() compatCase {
 			}))
 
 			// Built through the constructor, as a deployment does: the device is
-			// the tun conn the listener produced and the auther is the one under
-			// test. The TTL a socket hub needs is not passed — a p2p hub reclaims
-			// on stream close, which is what this half's extra case asserts.
-			h := NewP2PHandler(compatTunDevice{compatDevice: dev, ctx: dctx}, auther,
-				handler.AutherOption(auther),
+			// the tun conn the listener produced, and no authorizer is installed,
+			// which is what leaves the hub registering whatever a peer claims — the
+			// behavior every shared case below describes. The TTL a socket hub
+			// needs is not passed either: a p2p hub reclaims on stream close, which
+			// is what this half's extra case asserts.
+			h := NewP2PHandler(compatTunDevice{compatDevice: dev, ctx: dctx}, nil,
 				handler.LoggerOption(compatLogger()),
 				handler.ServiceOption("tun-service"),
 			).(*p2pHandler)
