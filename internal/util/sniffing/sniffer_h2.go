@@ -68,6 +68,8 @@ func (h *Sniffer) serveH2(ctx context.Context, network string, conn net.Conn, ho
 			recorderOptions: h.RecorderOptions,
 			recorderObject:  ro,
 			log:             log,
+			handleOptions:   ho,
+			network:         network,
 		},
 	})
 	return nil
@@ -81,6 +83,8 @@ type h2Handler struct {
 	recorderOptions *recorder.Options
 	recorderObject  *xrecorder.HandlerRecorderObject
 	log             logger.Logger
+	handleOptions   *HandleOptions
+	network         string
 }
 
 func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +134,15 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
+	}
+
+	// Every stream carries its own :authority and reaches its own upstream,
+	// so each one is authorized on its own. The connection was never checked
+	// against a hostname rule.
+	if err = h.handleOptions.CheckBypass(r.Context(), h.network, normalizeHost(r.Host, "443")); err != nil {
+		log.Debug("bypass: ", r.Host)
+		w.WriteHeader(http.StatusForbidden)
+		return
 	}
 
 	url := r.URL
