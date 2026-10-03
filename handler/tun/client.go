@@ -44,16 +44,22 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 			}
 			defer cc.Close()
 
-			// A datagram link needs the keepalive. On the udp network it is the
-			// registration handshake (and runs even without keepalive:true, so
-			// existing configs keep their one-shot registration); on a p2p link
-			// ("ip") it is what registers the route with the peer's tun server.
-			if network == "udp" || h.md.keepAlivePeriod > 0 {
-				iterCtx, iterCancel := context.WithCancel(ctx)
-				defer iterCancel()
+			// The registration handshake always runs. It is how the far side's
+			// tun server learns which addresses this device holds, and it is
+			// the only thing that tells it — a server routes by destination
+			// address, and this is the sole source of that mapping. Without it
+			// the link is one-way: traffic leaves, and nothing can come back.
+			//
+			// A configured keepalive period only decides whether the handshake
+			// then repeats, which matters against a server reached over UDP:
+			// UDP is connectionless, so silence is the only signal that a peer
+			// has left, and a repeat is what lets a route expire. On a p2p link
+			// the period buys nothing — closing the stream says the peer is
+			// gone — so a one-shot is the whole of it there.
+			iterCtx, iterCancel := context.WithCancel(ctx)
+			defer iterCancel()
 
-				go h.keepalive(iterCtx, cc, ips)
-			}
+			go h.keepalive(iterCtx, cc, ips)
 
 			return h.transportClient(ctx, conn, cc, log)
 		}()
