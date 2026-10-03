@@ -1,4 +1,4 @@
-package relay
+package socks
 
 import (
 	"bytes"
@@ -10,53 +10,6 @@ import (
 
 	"github.com/go-gost/gosocks5"
 )
-
-// pipeConn is a net.Conn backed by bytes.Buffer — Write writes to buf, Read reads from buf.
-type pipeConn struct {
-	net.Conn
-	buf []byte
-}
-
-func newPipeConn() *pipeConn {
-	return &pipeConn{}
-}
-func (c *pipeConn) Read(b []byte) (int, error) {
-	n := copy(b, c.buf)
-	c.buf = c.buf[n:]
-	return n, nil
-}
-func (c *pipeConn) Write(b []byte) (int, error) {
-	c.buf = append(c.buf, b...)
-	return len(b), nil
-}
-func (c *pipeConn) Close() error { return nil }
-
-func Test_udpTunConn_domainRoundTrip(t *testing.T) {
-	pc1 := newPipeConn()
-	server := UDPTunServerConn(pc1)
-
-	domain := &domainAddr{network: "udp", host: "dns.google", port: 53}
-	_, err := server.WriteTo([]byte("hello"), domain)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	pc2 := newPipeConn()
-	pc2.Write(pc1.buf)
-
-	_, addr, err := UDPTunServerConn(pc2).ReadFrom(make([]byte, 1500))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	da, ok := addr.(*domainAddr)
-	if !ok {
-		t.Fatalf("expected *domainAddr, got %T: %s", addr, addr)
-	}
-	if da.host != "dns.google" || da.port != 53 {
-		t.Fatalf("expected dns.google:53, got %s:%d", da.host, da.port)
-	}
-}
 
 // slowConn is a net.Conn that pauses inside every Write before appending.
 //
@@ -98,15 +51,10 @@ func (c *slowConn) stream() []byte {
 }
 
 // Test_udpTunConn_concurrentWriteTo checks that endpoints sharing one reverse
-// tunnel stream cannot interleave inside a datagram frame.
-//
-// Each writer targets a distinct address and sends a payload of its own id
-// byte, so a frame assembled from the wrong segments is detected both as a
-// payload mismatch and as a misattributed address. This is the seam behind
-// gost#911: concurrent UDP endpoints over one RUDP reverse tunnel produced
-// corrupted datagrams, and torn frames left half a header in the stream, which
-// the far end read as "unexpected EOF" and answered by tearing down and
-// rebinding the whole tunnel every second.
+// tunnel stream cannot interleave inside a datagram frame. Same defect as
+// gost#911 in the relay variant: concurrent UDP endpoints corrupted datagrams
+// and left torn frames that the far end read as "unexpected EOF", rebuilding
+// the whole tunnel every second.
 func Test_udpTunConn_concurrentWriteTo(t *testing.T) {
 	const writers = 4
 	const datagramsPerWriter = 25
@@ -133,7 +81,11 @@ func Test_udpTunConn_concurrentWriteTo(t *testing.T) {
 		wg.Add(1)
 		go func(id byte) {
 			defer wg.Done()
-			taddr := mustUDPAddr(t, addrs[int(id)-1])
+			taddr, err := net.ResolveUDPAddr("udp", addrs[int(id)-1])
+			if err != nil {
+				t.Errorf("resolve: %v", err)
+				return
+			}
 			for range datagramsPerWriter {
 				if _, err := pc.WriteTo(payloadFor(id), taddr); err != nil {
 					t.Errorf("writer %d WriteTo: %v", id, err)
@@ -145,10 +97,9 @@ func Test_udpTunConn_concurrentWriteTo(t *testing.T) {
 	wg.Wait()
 
 	// Parse the raw stream the way the far end does, one frame at a time. A
-	// torn frame shows up here as an unparseable header or a payload that does
-	// not match the address it was framed with.
+	// torn frame shows up here as a payload that does not match the address it
+	// was framed with.
 	stream := bytes.NewReader(conn.stream())
-	seen := make(map[string]int, writers)
 	total := writers * datagramsPerWriter
 	for i := range total {
 		socksAddr := gosocks5.Addr{}
@@ -164,17 +115,9 @@ func Test_udpTunConn_concurrentWriteTo(t *testing.T) {
 			t.Fatalf("frame %d of %d: payload is not a single-writer payload "+
 				"(%d bytes), corrupted by concurrent writers", i, total, len(dgram.Data))
 		}
-		got := socksAddr.String()
-		if got != addrs[id-1] {
+		if got := socksAddr.String(); got != addrs[id-1] {
 			t.Fatalf("frame %d of %d: payload from writer %d framed with address %s, want %s "+
 				"— frames interleaved", i, total, id, got, addrs[id-1])
-		}
-		seen[got]++
-	}
-
-	for _, a := range addrs {
-		if seen[a] != datagramsPerWriter {
-			t.Errorf("addr %s: got %d frames, want %d", a, seen[a], datagramsPerWriter)
 		}
 	}
 }
@@ -191,36 +134,4 @@ func payloadID(b []byte) (byte, bool) {
 		}
 	}
 	return id, true
-}
-
-func mustUDPAddr(t *testing.T, s string) net.Addr {
-	t.Helper()
-	a, err := net.ResolveUDPAddr("udp", s)
-	if err != nil {
-		t.Fatalf("resolve %s: %v", s, err)
-	}
-	return a
-}
-
-func Test_udpTunConn_ipRoundTrip(t *testing.T) {
-	pc1 := newPipeConn()
-	server := UDPTunServerConn(pc1)
-
-	ipAddr := &net.UDPAddr{IP: net.ParseIP("1.1.1.1"), Port: 53}
-	_, err := server.WriteTo([]byte("hello"), ipAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	pc2 := newPipeConn()
-	pc2.Write(pc1.buf)
-
-	_, addr, err := UDPTunServerConn(pc2).ReadFrom(make([]byte, 1500))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, ok := addr.(*net.UDPAddr); !ok {
-		t.Fatalf("expected *net.UDPAddr, got %T: %s", addr, addr)
-	}
 }

@@ -4,14 +4,26 @@ import (
 	"bytes"
 	"net"
 	"strconv"
+	"sync"
 
 	"github.com/go-gost/core/common/bufpool"
 	"github.com/go-gost/gosocks5"
 )
 
+// udpTunConn frames UDP datagrams onto a stream connection as SOCKS5 UDP
+// datagrams. One such conn is shared by every endpoint multiplexed over a
+// reverse tunnel, so several handlers write to the same stream concurrently.
+//
+// A frame is not written atomically: UDPDatagram.WriteTo issues three separate
+// Write calls (RSV/FRAG, address, payload). Each Write is concurrency-safe on
+// its own, but without serialization the frames interleave between those calls,
+// corrupting datagrams and leaving half a header in the stream — which the far
+// end reads as io.ErrUnexpectedEOF and answers by tearing down and rebinding
+// the whole tunnel. wmu makes one whole frame exclusive.
 type udpTunConn struct {
 	net.Conn
 	taddr net.Addr
+	wmu   sync.Mutex
 }
 
 func UDPTunClientConn(c net.Conn, targetAddr net.Addr) net.Conn {
@@ -80,7 +92,12 @@ func (c *udpTunConn) WriteTo(b []byte, addr net.Addr) (n int, err error) {
 	}
 	dgram.Header.Rsv = uint16(len(dgram.Data))
 	dgram.Header.Frag = 0xff // UDP tun relay flag, used by shadowsocks
+
+	// Hold the write lock for the whole frame, not just for the writes the
+	// datagram happens to make.
+	c.wmu.Lock()
 	_, err = dgram.WriteTo(c.Conn)
+	c.wmu.Unlock()
 	n = len(b)
 
 	return
