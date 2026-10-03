@@ -68,10 +68,13 @@ func NewP2PHandler(device net.Conn, authorizer PeerAuthorizer, opts ...handler.O
 	// stream, and peerGone reclaims exactly that peer's routes on the way out.
 	// A timer here would only guess at what the close says outright.
 	//
-	// The authorizer is an option rather than an argument so that a nil one
-	// stays legible as a decision — register whatever a peer claims — which is
-	// also what the socket hub's table means by having no authorizer. The auther
-	// argument is nil because this path has no credential to check.
+	// A nil authorizer means "register whatever a peer claims", which is also
+	// what the socket hub's table means by having none. On the table itself the
+	// authorizer is a variadic option rather than a parameter because every
+	// existing caller means "no address authorization"; here it arrives as an
+	// argument so a hub's owner has one place to pass it. The auther stays nil
+	// throughout: this path has no credential to check, because the p2p peer
+	// allowlist already decided which peers may connect at all.
 	table := newPeerTable(nil, 0, options.Service, log, withAuthorizer(authorizer))
 	router := newPeerRouter(table)
 
