@@ -3,7 +3,6 @@ package mtls
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"net"
 	"sync"
 	"time"
@@ -62,11 +61,17 @@ func (d *mtlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 
 	session, ok := d.sessions[addr]
 	if session != nil && session.IsClosed() {
-		session.Close()
-		if session.conn != nil {
-			session.conn.Close() // base conn would otherwise leak (and hold a p2p tunnel open)
+		// A session still waiting for its handshake is not dead: its conn
+		// belongs to the request that dialed it, whose Handshake either
+		// builds the session on it or closes it. Only an established
+		// session's base conn is closed here.
+		if session.session != nil {
+			session.Close()
+			if session.conn != nil {
+				session.conn.Close() // base conn would otherwise leak (and hold a p2p tunnel open)
+			}
 		}
-		delete(d.sessions, addr) // session is dead
+		delete(d.sessions, addr)
 		ok = false
 	}
 	if !ok {
@@ -119,8 +124,15 @@ func (d *mtlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...di
 
 	session, ok := d.sessions[opts.Addr]
 	if session != nil && session.conn != conn {
-		conn.Close()
-		return nil, errors.New("mtls: unrecognized connection")
+		// Another Dial registered a conn of its own while this one waited
+		// for the lock. If it has become a live session, use that and drop
+		// this conn; otherwise build the session on this conn, and the other
+		// request's Handshake will find it here and use it.
+		if session.IsClosed() {
+			ok = false
+		} else {
+			conn.Close()
+		}
 	}
 
 	if !ok || session.session == nil {
