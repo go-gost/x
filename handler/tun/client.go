@@ -199,8 +199,19 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 					conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
 				}
 
-				if n == keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
-					log.Debugf("keepalive received at %v", net.IP(b[4:20]))
+				// A registration handshake or keepalive echo is protocol, not a
+				// packet, so it never belongs on the device. The client does not
+				// route by address — only the hub reads it, on its own side.
+				// Without this guard a 20+N*16-byte registration frame from the
+				// peer is misread as IPv4 ('G' is 0x47) and gets written into
+				// the kernel device as junk. The hub and the socket server
+				// already filter this shape; the client must too.
+				if n >= keepAliveHeaderLength && bytes.Equal(b[:4], magicHeader) {
+					if n == keepAliveHeaderLength {
+						log.Debugf("keepalive received at %v", net.IP(b[4:20]))
+					} else {
+						log.Debugf("keepalive frame (%d bytes, %d address(es)) discarded", n, (n-keepAliveHeaderLength)/net.IPv6len)
+					}
 					return nil
 				}
 
