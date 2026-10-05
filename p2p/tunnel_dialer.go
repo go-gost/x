@@ -24,6 +24,18 @@ type Tunnel interface {
 	Close() error
 }
 
+// TunnelOption configures the tunnel wrapper.
+type TunnelOption func(*tunnelDialer)
+
+// WithTunnelNetwork overrides the tunnel network the wrapper requests, instead
+// of deriving it from the inner dialer (udp4/udp6 -> udp, else tcp). The tun
+// link asks for "ip": datagram-shaped like udp, but session-scoped on the host
+// side, so the link ends on a lost peer session and the consumer re-dials. An
+// empty network (the default) keeps the derived value.
+func WithTunnelNetwork(network string) TunnelOption {
+	return func(d *tunnelDialer) { d.network = network }
+}
+
 // NewTunnelDialer wraps inner so that every Dial dials "through" a tunnel to
 // the target peer, as if it were inner's plain base connection. The tunnel is
 // opened lazily inside the base dialer: mux inners (mtcp etc.) hit their
@@ -31,8 +43,12 @@ type Tunnel interface {
 // per dial. Inner protocol (tls/ws/mux...) stays untouched; its Handshake is
 // forwarded by tunnelDialer so it triggers at Transport.Handshake.
 // Fail-closed: any provider error aborts the dial.
-func NewTunnelDialer(inner dialer.Dialer, t Tunnel) dialer.Dialer {
-	return &tunnelDialer{inner: inner, tunnel: t}
+func NewTunnelDialer(inner dialer.Dialer, t Tunnel, opts ...TunnelOption) dialer.Dialer {
+	d := &tunnelDialer{inner: inner, tunnel: t}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
 
 // SupportedDialer reports whether a dialer type may be used as the inner
@@ -66,8 +82,9 @@ var _ dialer.Dialer = (*tunnelDialer)(nil)
 var _ dialer.Handshaker = (*tunnelDialer)(nil)
 
 type tunnelDialer struct {
-	inner  dialer.Dialer
-	tunnel Tunnel
+	inner   dialer.Dialer
+	tunnel  Tunnel
+	network string // tunnel network override; empty = derive from the inner dialer
 }
 
 func (d *tunnelDialer) Init(md metadata.Metadata) error {
@@ -78,7 +95,7 @@ func (d *tunnelDialer) Dial(ctx context.Context, addr string, opts ...dialer.Dia
 	// The tunnel is opened lazily by the base dialer: only when the inner
 	// dialer actually dials its base. On a mux session cache hit the inner
 	// never touches the base, and no tunnel (or control RPC) is spent.
-	base := &tunnelBaseDialer{peer: addr, pr: d.tunnel}
+	base := &tunnelBaseDialer{peer: addr, pr: d.tunnel, network: d.network}
 	conn, err := d.inner.Dial(ctx, addr, append(opts, dialer.NetDialerDialOption(base))...)
 	if err != nil {
 		// The tunnel is unusable: close it and fail closed. closeTunnel is
@@ -114,8 +131,9 @@ func (d *tunnelDialer) Multiplex() bool {
 // the stream ending is the tunnel ending. If the inner dialer never dials its
 // base (mux session cache hit), no tunnel is opened.
 type tunnelBaseDialer struct {
-	peer string
-	pr   Tunnel
+	peer    string
+	pr      Tunnel
+	network string // tunnel network override; empty = tunnelNetwork(inner)
 
 	mu   sync.Mutex
 	conn net.Conn
@@ -136,7 +154,11 @@ func (d *tunnelBaseDialer) closeTunnel() {
 func (d *tunnelBaseDialer) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	// Only the control RPC is time-capped (inside Dial); the
 	// stream runs on its own context so the conn outlives this dial.
-	network = tunnelNetwork(network)
+	if d.network != "" {
+		network = d.network
+	} else {
+		network = tunnelNetwork(network)
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.conn == nil {

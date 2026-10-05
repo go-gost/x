@@ -285,7 +285,8 @@ func ParseNode(hop string, cfg *config.NodeConfig, log logger.Logger) (*chain.No
 		if !xp2p.SupportedDialer(dialCfg.Type) {
 			return nil, fmt.Errorf("dialer %q does not support p2p", dialCfg.Type)
 		}
-		d = xp2p.NewTunnelDialer(d, provider)
+		d = xp2p.NewTunnelDialer(d, provider,
+			xp2p.WithTunnelNetwork(mdutil.GetString(md, parsing.MDKeyP2PNetwork)))
 	}
 
 	if err := d.Init(mdx.NewMetadata(dialCfg.Metadata)); err != nil {

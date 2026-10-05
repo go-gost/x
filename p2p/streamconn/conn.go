@@ -95,7 +95,7 @@ func New(s Stream, abort func(), network string, local, remote net.Addr) *Conn {
 	c := &Conn{
 		s:      s,
 		abort:  abort,
-		framed: network == "udp",
+		framed: network == "udp" || network == "ip",
 		local:  local,
 		remote: remote,
 		chunks: make(chan *proto.Chunk, 1),

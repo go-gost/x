@@ -100,4 +100,10 @@ const (
 	// MDKeyP2P selects the p2p tunnel provider for a chain node's base
 	// transport. The value is the name of a registered p2ps: component.
 	MDKeyP2P = "p2p"
+
+	// MDKeyP2PNetwork overrides the tunnel network a p2p-wrapped node asks the
+	// provider for (see xp2p.WithTunnelNetwork). Empty derives it from the inner
+	// dialer. A tun link sets it to "ip": datagram-shaped like udp, but
+	// session-scoped on the host, so the link ends on a lost peer session.
+	MDKeyP2PNetwork = "p2p.network"
 )
