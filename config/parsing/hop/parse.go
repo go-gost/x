@@ -91,6 +91,10 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		var err error
 		v, err = node_parser.ResolveConfig(v)
 		if err != nil {
+			// Fail the whole hop: static config is validated at startup,
+			// so a dangling reference is a hard error. (Contrast with
+			// chainHop.parseNode, which warns and skips bad nodes to
+			// keep hot-reloaded hops resilient.)
 			return nil, err
 		}
 

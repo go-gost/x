@@ -8,6 +8,7 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	xlogger "github.com/go-gost/x/logger"
+	"github.com/go-gost/x/registry"
 
 	// Register connector and dialer implementations needed for node parsing.
 	_ "github.com/go-gost/x/connector/http"
@@ -572,5 +573,103 @@ func TestFilterToMatcherRule(t *testing.T) {
 				t.Errorf("filterToMatcherRule(%v) = %q, want %q", tt.filter, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsReference(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.NodeConfig
+		want bool
+	}{
+		{"nil", nil, false},
+		{"empty name", &config.NodeConfig{}, false},
+		{"blank name", &config.NodeConfig{Name: "  "}, false},
+		{"name only", &config.NodeConfig{Name: "shared"}, true},
+		{"name and addr", &config.NodeConfig{Name: "shared", Addr: "example.com:80"}, false},
+		{"name and network", &config.NodeConfig{Name: "shared", Network: "tcp"}, false},
+		{"name and empty-but-non-nil connector", &config.NodeConfig{Name: "shared", Connector: &config.ConnectorConfig{}}, false},
+		{"name and empty bypasses slice", &config.NodeConfig{Name: "shared", Bypasses: []string{}}, true},
+		{"name and matcher", &config.NodeConfig{Name: "shared", Matcher: &config.NodeMatcherConfig{Rule: "Host(`x`)"}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsReference(tt.cfg); got != tt.want {
+				t.Errorf("IsReference(%+v) = %v, want %v", tt.cfg, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveConfig_TrimsName(t *testing.T) {
+	const name = "spaced-global-node"
+	registry.NodeRegistry().Register(name, &config.NodeConfig{Name: name, Addr: "example.com:8080"})
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(name) })
+
+	got, err := ResolveConfig(&config.NodeConfig{Name: "  " + name + "  "})
+	if err != nil {
+		t.Fatalf("ResolveConfig: %v", err)
+	}
+	if got == nil || got.Addr != "example.com:8080" {
+		t.Fatalf("resolved = %+v, want addr %q", got, "example.com:8080")
+	}
+}
+
+func TestResolveConfig_DeepCopyIsolation(t *testing.T) {
+	const name = "rich-global-node"
+	global := &config.NodeConfig{
+		Name:     name,
+		Addr:     "example.com:8080",
+		Metadata: map[string]any{"k": "v"},
+		Connector: &config.ConnectorConfig{
+			Type:     "http",
+			Auth:     &config.AuthConfig{Username: "u"},
+			Metadata: map[string]any{"ck": "cv"},
+			TLS:      &config.TLSConfig{ServerName: "sni.example", Options: &config.TLSOptions{ALPN: []string{"h2"}}},
+		},
+		Dialer: &config.DialerConfig{
+			Type:     "tcp",
+			Metadata: map[string]any{"dk": "dv"},
+		},
+		Matcher: &config.NodeMatcherConfig{Rule: "Host(`x`)"},
+		HTTP: &config.HTTPNodeConfig{
+			Host:          "h",
+			RequestHeader: map[string]string{"A": "b"},
+			Auth:          &config.AuthConfig{Username: "hu"},
+		},
+		TLS:   &config.TLSNodeConfig{ServerName: "tls.example", Options: &config.TLSOptions{MinVersion: "1.2"}},
+		Probe: &config.ProbeConfig{Type: "tcp", Addr: "example.com:80", HTTPHeaders: map[string]string{"H": "v"}},
+	}
+	registry.NodeRegistry().Register(name, global)
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(name) })
+
+	got, err := ResolveConfig(&config.NodeConfig{Name: name})
+	if err != nil {
+		t.Fatalf("ResolveConfig: %v", err)
+	}
+
+	// Mutate every nested value on the copy; the global must not change.
+	got.Metadata["k"] = "mut"
+	got.Connector.Auth.Username = "mut"
+	got.Connector.Metadata["ck"] = "mut"
+	got.Connector.TLS.Options.ALPN[0] = "mut"
+	got.Dialer.Metadata["dk"] = "mut"
+	got.Matcher.Rule = "mut"
+	got.HTTP.RequestHeader["A"] = "mut"
+	got.HTTP.Auth.Username = "mut"
+	got.TLS.Options.MinVersion = "mut"
+	got.Probe.HTTPHeaders["H"] = "mut"
+
+	if global.Metadata["k"] != "v" ||
+		global.Connector.Auth.Username != "u" ||
+		global.Connector.Metadata["ck"] != "cv" ||
+		global.Connector.TLS.Options.ALPN[0] != "h2" ||
+		global.Dialer.Metadata["dk"] != "dv" ||
+		global.Matcher.Rule != "Host(`x`)" ||
+		global.HTTP.RequestHeader["A"] != "b" ||
+		global.HTTP.Auth.Username != "hu" ||
+		global.TLS.Options.MinVersion != "1.2" ||
+		global.Probe.HTTPHeaders["H"] != "v" {
+		t.Fatalf("global definition was mutated via the resolved copy: %+v", global)
 	}
 }

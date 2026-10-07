@@ -3,7 +3,6 @@ package node
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,11 +39,20 @@ const MaxMatcherBodySize = 10 << 20 // 10MB
 
 // IsReference reports whether cfg contains only a non-empty name. Such a
 // config references a definition from the top-level nodes section.
+// Any additional field, even a zero-valued one set explicitly (e.g. an
+// empty but non-nil connector), makes the config inline.
+// NOTE: keep this in sync with NodeConfig — a new field must be added here,
+// otherwise a config setting only that field would misresolve as a reference.
 func IsReference(cfg *config.NodeConfig) bool {
 	if cfg == nil || strings.TrimSpace(cfg.Name) == "" {
 		return false
 	}
-	return reflect.DeepEqual(cfg, &config.NodeConfig{Name: cfg.Name})
+	return cfg.Addr == "" && cfg.Network == "" && cfg.Bypass == "" &&
+		len(cfg.Bypasses) == 0 && cfg.Resolver == "" && cfg.Hosts == "" &&
+		cfg.Connector == nil && cfg.Dialer == nil &&
+		cfg.Interface == "" && cfg.Netns == "" && cfg.SockOpts == nil &&
+		cfg.Filter == nil && cfg.Matcher == nil && cfg.HTTP == nil &&
+		cfg.TLS == nil && cfg.Probe == nil && len(cfg.Metadata) == 0
 }
 
 // ResolveConfig resolves a name-only config through the global node registry
@@ -58,7 +66,7 @@ func ResolveConfig(cfg *config.NodeConfig) (*config.NodeConfig, error) {
 		return cfg, nil
 	}
 
-	name := cfg.Name
+	name := strings.TrimSpace(cfg.Name)
 	cfg = registry.NodeRegistry().Get(name)
 	if cfg == nil {
 		return nil, fmt.Errorf("node %q not found", name)
@@ -66,8 +74,11 @@ func ResolveConfig(cfg *config.NodeConfig) (*config.NodeConfig, error) {
 	return cloneConfig(cfg), nil
 }
 
-// cloneConfig copies the fields that parsing may default or inherit. Other
-// nested values are read-only during parsing and can safely remain shared.
+// cloneConfig returns a deep copy of cfg so that parsing (hop-level
+// inheritance, connector/dialer type defaults, TLS ServerName defaulting)
+// only ever mutates the copy, never the shared global definition.
+// NOTE: keep this in sync with NodeConfig — a new reference-type field
+// must be cloned here, otherwise hops would share it with the registry.
 func cloneConfig(cfg *config.NodeConfig) *config.NodeConfig {
 	c := *cfg
 	c.Bypasses = append([]string(nil), cfg.Bypasses...)
@@ -79,21 +90,105 @@ func cloneConfig(cfg *config.NodeConfig) *config.NodeConfig {
 	}
 	if cfg.Connector != nil {
 		connector := *cfg.Connector
-		if cfg.Connector.TLS != nil {
-			tls := *cfg.Connector.TLS
-			connector.TLS = &tls
+		connector.Auth = cloneAuth(cfg.Connector.Auth)
+		connector.TLS = cloneTLSConfig(cfg.Connector.TLS)
+		if cfg.Connector.Metadata != nil {
+			connector.Metadata = make(map[string]any, len(cfg.Connector.Metadata))
+			for k, v := range cfg.Connector.Metadata {
+				connector.Metadata[k] = v
+			}
 		}
 		c.Connector = &connector
 	}
 	if cfg.Dialer != nil {
 		dialer := *cfg.Dialer
-		if cfg.Dialer.TLS != nil {
-			tls := *cfg.Dialer.TLS
-			dialer.TLS = &tls
+		dialer.Auth = cloneAuth(cfg.Dialer.Auth)
+		dialer.TLS = cloneTLSConfig(cfg.Dialer.TLS)
+		if cfg.Dialer.Metadata != nil {
+			dialer.Metadata = make(map[string]any, len(cfg.Dialer.Metadata))
+			for k, v := range cfg.Dialer.Metadata {
+				dialer.Metadata[k] = v
+			}
 		}
 		c.Dialer = &dialer
 	}
+	if cfg.SockOpts != nil {
+		sockOpts := *cfg.SockOpts
+		c.SockOpts = &sockOpts
+	}
+	if cfg.Filter != nil {
+		filter := *cfg.Filter
+		c.Filter = &filter
+	}
+	if cfg.Matcher != nil {
+		matcher := *cfg.Matcher
+		c.Matcher = &matcher
+	}
+	if cfg.HTTP != nil {
+		http := *cfg.HTTP
+		http.Header = cloneStringMap(cfg.HTTP.Header)
+		http.RequestHeader = cloneStringMap(cfg.HTTP.RequestHeader)
+		http.ResponseHeader = cloneStringMap(cfg.HTTP.ResponseHeader)
+		http.Rewrite = append([]config.HTTPURLRewriteConfig(nil), cfg.HTTP.Rewrite...)
+		http.RewriteURL = append([]config.HTTPURLRewriteConfig(nil), cfg.HTTP.RewriteURL...)
+		http.RewriteBody = append([]config.HTTPBodyRewriteConfig(nil), cfg.HTTP.RewriteBody...)
+		http.RewriteRequestBody = append([]config.HTTPBodyRewriteConfig(nil), cfg.HTTP.RewriteRequestBody...)
+		http.RewriteResponseBody = append([]config.HTTPBodyRewriteConfig(nil), cfg.HTTP.RewriteResponseBody...)
+		http.RewriteRequestHeader = append([]config.HTTPHeaderRewriteConfig(nil), cfg.HTTP.RewriteRequestHeader...)
+		http.RewriteResponseHeader = append([]config.HTTPHeaderRewriteConfig(nil), cfg.HTTP.RewriteResponseHeader...)
+		http.Auth = cloneAuth(cfg.HTTP.Auth)
+		c.HTTP = &http
+	}
+	if cfg.TLS != nil {
+		tls := *cfg.TLS
+		if cfg.TLS.Options != nil {
+			options := *cfg.TLS.Options
+			options.CipherSuites = append([]string(nil), cfg.TLS.Options.CipherSuites...)
+			options.ALPN = append([]string(nil), cfg.TLS.Options.ALPN...)
+			tls.Options = &options
+		}
+		c.TLS = &tls
+	}
+	if cfg.Probe != nil {
+		probe := *cfg.Probe
+		probe.HTTPHeaders = cloneStringMap(cfg.Probe.HTTPHeaders)
+		c.Probe = &probe
+	}
 	return &c
+}
+
+func cloneAuth(cfg *config.AuthConfig) *config.AuthConfig {
+	if cfg == nil {
+		return nil
+	}
+	auth := *cfg
+	return &auth
+}
+
+func cloneTLSConfig(cfg *config.TLSConfig) *config.TLSConfig {
+	if cfg == nil {
+		return nil
+	}
+	tls := *cfg
+	tls.ServerNames = append([]string(nil), cfg.ServerNames...)
+	if cfg.Options != nil {
+		options := *cfg.Options
+		options.CipherSuites = append([]string(nil), cfg.Options.CipherSuites...)
+		options.ALPN = append([]string(nil), cfg.Options.ALPN...)
+		tls.Options = &options
+	}
+	return &tls
+}
+
+func cloneStringMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	c := make(map[string]string, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
 }
 
 // filterToMatcherRule converts a deprecated NodeFilterConfig (host/protocol/

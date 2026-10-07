@@ -20,29 +20,29 @@ import (
 	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/x/config"
-	xs "github.com/go-gost/x/selector"
-	mdutil "github.com/go-gost/x/metadata/util"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
+	mdutil "github.com/go-gost/x/metadata/util"
+	xs "github.com/go-gost/x/selector"
 )
 
 type options struct {
-	name        string
-	nodes       []*chain.Node
-	bypass      bypass.Bypass
-	selector    selector.Selector[*chain.Node]
+	name     string
+	nodes    []*chain.Node
+	bypass   bypass.Bypass
+	selector selector.Selector[*chain.Node]
 	// failMaxFails / failTimeout mirror the FailFilter config used by the
 	// selector. Node selection consults them via selector.IsFailed to skip
 	// nodes currently marked failed (FailFilter itself no-ops on a single
 	// node, so the marker is checked here instead).
 	failMaxFails int
 	failTimeout  time.Duration
-	fileLoader  loader.Loader
-	redisLoader loader.Loader
-	httpLoader  loader.Loader
-	period      time.Duration
-	logger      logger.Logger
+	fileLoader   loader.Loader
+	redisLoader  loader.Loader
+	httpLoader   loader.Loader
+	period       time.Duration
+	logger       logger.Logger
 }
 
 // Option configures a hop.
@@ -170,17 +170,17 @@ func (p *chainHop) Nodes() []*chain.Node {
 //
 //  1. Hop-level bypass         — entire hop skipped if bypass matches (addr/host)
 //  2. Per-node matcher (pool)  — each candidate must pass the gate:
-//       routing.Matcher         — boolean expression (Host/Protocol/Method/
-//                                  Path/Query/Header/Body). Match → non-zero
-//                                  Priority. Nodes without a matcher are
-//                                  unconditional candidates.
+//     routing.Matcher         — boolean expression (Host/Protocol/Method/
+//     Path/Query/Header/Body). Match → non-zero
+//     Priority. Nodes without a matcher are
+//     unconditional candidates.
 //     Nodes that fail the gate or hit a node-level bypass are excluded.
 //  3. Priority short-circuit   — if the top node has strictly higher Priority
-//                                (>0) than the rest and no backup flag is present,
-//                                it wins directly (selector skipped).
+//     (>0) than the rest and no backup flag is present,
+//     it wins directly (selector skipped).
 //  4. Selector                 — Filters (FailFilter, BackupFilter) cull the pool,
-//                                then Strategy (roundRobin/random/fifo/hash/parallel)
-//                                picks one.
+//     then Strategy (roundRobin/random/fifo/hash/parallel)
+//     picks one.
 //
 // Returns nil when no node survives all stages.
 func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
@@ -201,12 +201,12 @@ func (p *chainHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.
 	// Track priority stats and backup presence during the scan so we can
 	// skip a separate sort/scan in the common all-equal-priority case.
 	var (
-		nodes        []*chain.Node
-		maxPriority  int
-		maxPriCount  int
-		maxPriNode   *chain.Node
-		hasBackup    bool
-		sawFailed    bool
+		nodes       []*chain.Node
+		maxPriority int
+		maxPriCount int
+		maxPriNode  *chain.Node
+		hasBackup   bool
+		sawFailed   bool
 	)
 	for _, node := range p.Nodes() {
 		if node == nil {
@@ -487,6 +487,9 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 		name := nc.Name
 		nc, err := node_parser.ResolveConfig(nc)
 		if err != nil {
+			// Warn and skip: file/Redis/HTTP reloads must stay resilient
+			// to a single bad entry. (Contrast with ParseHop, which
+			// fails the whole hop on a dangling reference at startup.)
 			p.logger.Warnf("skip node %s: %v", name, err)
 			errs = append(errs, err)
 			continue
