@@ -396,6 +396,201 @@ func TestP2PSpokeDatagramReachesDevice(t *testing.T) {
 	}
 }
 
+// A spoke-to-spoke packet is delivered straight to the owning peer's stream
+// instead of going through the device and the kernel's hairpin routing.
+func TestP2PFromSpokeDeliversDirectToPeer(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerAEnd := newDatagramPipe(4)
+	_, peerBEnd := newDatagramPipe(4)
+
+	hub := newP2PHub(device, router, nil, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerAEnd)
+	b := newPeerStream(context.Background(), "peer-b", peerBEnd)
+	router.install(a)
+	router.install(b)
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-a")
+	router.table.set(net.ParseIP("10.10.0.4"), "peer-b")
+
+	pkt := udpPacket("10.10.0.3", "10.10.0.4", 1, 1)
+	if err := hub.fromSpoke(a, pkt); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	var got [MaxMessageSize]byte
+	n, err := peerBEnd.Read(got[:])
+	if err != nil {
+		t.Fatalf("peer-b read: %v", err)
+	}
+	if !bytes.Equal(got[:n], pkt) {
+		t.Fatalf("peer-b got % x, want % x", got[:n], pkt)
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("device received %d packets, want none (direct delivery)", len(got))
+	}
+	select {
+	case pkt := <-peerAEnd.queue:
+		t.Fatalf("sender received its own packet back: % x", pkt)
+	default:
+	}
+}
+
+// A packet a spoke sends to its own address is dropped, not echoed: the
+// lookup hits the sender's own route, and delivering it would bounce the
+// packet back down the stream it arrived on.
+func TestP2PFromSpokeDoesNotEchoSender(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerEnd := newDatagramPipe(4)
+
+	hub := newP2PHub(device, router, nil, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerEnd)
+	router.install(a)
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-a")
+
+	pkt := udpPacket("10.10.0.3", "10.10.0.3", 1, 1)
+	if err := hub.fromSpoke(a, pkt); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	select {
+	case pkt := <-peerEnd.queue:
+		t.Fatalf("sender got its own packet back: % x", pkt)
+	default:
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("device received %d packets, want none", len(got))
+	}
+}
+
+// A packet with no route still goes to the device: the direct path is an
+// optimization for registered peers, not a replacement for the hub's own
+// stack receiving its traffic.
+func TestP2PFromSpokeFallsBackToDeviceWhenUnrouted(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerEnd := newDatagramPipe(4)
+
+	hub := newP2PHub(device, router, nil, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerEnd)
+	router.install(a)
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-a")
+
+	pkt := udpPacket("10.10.0.3", "10.10.0.9", 1, 1)
+	if err := hub.fromSpoke(a, pkt); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	got := device.received()
+	if len(got) != 1 || !bytes.Equal(got[0], pkt) {
+		t.Fatalf("device writes = %d entries, want the packet exactly once", len(got))
+	}
+	select {
+	case pkt := <-peerEnd.queue:
+		t.Fatalf("sender received an unroutable packet back: % x", pkt)
+	default:
+	}
+}
+
+// A packet for the hub's own address goes to the device: the hub's address
+// never registers (the table's self-loop guard refuses it), so the lookup
+// misses and the kernel delivers it locally.
+func TestP2PFromSpokeSendsHubOwnAddressToDevice(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerEnd := newDatagramPipe(4)
+
+	ownNets := []net.IPNet{{IP: net.ParseIP("10.10.0.1"), Mask: net.CIDRMask(24, 32)}}
+	hub := newP2PHub(device, router, ownNets, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerEnd)
+	router.install(a)
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-a")
+
+	pkt := udpPacket("10.10.0.3", "10.10.0.1", 1, 1)
+	if err := hub.fromSpoke(a, pkt); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	got := device.received()
+	if len(got) != 1 || !bytes.Equal(got[0], pkt) {
+		t.Fatalf("device writes = %d entries, want the hub-bound packet exactly once", len(got))
+	}
+}
+
+// IPv6 takes the same direct path: destinationOf parses it on its other
+// branch, and the table keys the unmapped address either way.
+func TestP2PFromSpokeDeliversDirectToPeerIPv6(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerAEnd := newDatagramPipe(4)
+	_, peerBEnd := newDatagramPipe(4)
+
+	hub := newP2PHub(device, router, nil, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerAEnd)
+	b := newPeerStream(context.Background(), "peer-b", peerBEnd)
+	router.install(a)
+	router.install(b)
+	router.table.set(net.ParseIP("fd00::3"), "peer-a")
+	router.table.set(net.ParseIP("fd00::4"), "peer-b")
+
+	pkt := udp6Packet("fd00::3", "fd00::4", 1, 1)
+	if err := hub.fromSpoke(a, pkt); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	var got [MaxMessageSize]byte
+	n, err := peerBEnd.Read(got[:])
+	if err != nil {
+		t.Fatalf("peer-b read: %v", err)
+	}
+	if !bytes.Equal(got[:n], pkt) {
+		t.Fatalf("peer-b got % x, want % x", got[:n], pkt)
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("device received %d packets, want none (direct delivery)", len(got))
+	}
+}
+
+// The direct path has no length gate: fromSpoke never checked lengths (the
+// device conn enforces ErrPacketTooLarge on its own path), so a large valid
+// packet is delivered whole rather than truncated.
+func TestP2PFromSpokeDeliversLargePacketDirect(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	router := newTestRouter()
+	_, peerAEnd := newDatagramPipe(4)
+	_, peerBEnd := newDatagramPipe(4)
+
+	hub := newP2PHub(device, router, nil, nil)
+	a := newPeerStream(context.Background(), "peer-a", peerAEnd)
+	b := newPeerStream(context.Background(), "peer-b", peerBEnd)
+	router.install(a)
+	router.install(b)
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-a")
+	router.table.set(net.ParseIP("10.10.0.4"), "peer-b")
+
+	pkt := udpPacket("10.10.0.3", "10.10.0.4", 2, 7)
+	big := make([]byte, 0, 32768)
+	big = append(big, pkt...)
+	big = append(big, make([]byte, 32768-len(pkt))...)
+	binary.BigEndian.PutUint16(big[2:4], uint16(len(big)))
+
+	if err := hub.fromSpoke(a, big); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+
+	var got [MaxMessageSize]byte
+	n, err := peerBEnd.Read(got[:])
+	if err != nil {
+		t.Fatalf("peer-b read: %v", err)
+	}
+	if !bytes.Equal(got[:n], big) {
+		t.Fatalf("peer-b got %d bytes, want the %d-byte packet whole", n, len(big))
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("device received %d packets, want none (direct delivery)", len(got))
+	}
+}
+
 // A keepalive is answered *and* registers. The echo is what a keepalive:true
 // spoke refreshes its read deadline from, and the registration is what makes the
 // peer reachable at all.

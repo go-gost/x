@@ -323,10 +323,39 @@ func (h *p2pHub) countOversize(size int) {
 }
 
 // fromSpoke handles one datagram from one peer: a keepalive is answered on the
-// peer it arrived from, anything else is the device's.
+// peer it arrived from, a packet for another registered peer is delivered
+// straight to that peer's stream, and anything else is the device's.
 func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 	if isKeepaliveFrame(pkt) {
 		return h.answerKeepalive(s, pkt)
+	}
+
+	// Peer-to-peer shortcut: a destination the table resolves to a live peer
+	// reaches it without a round trip through the device and the kernel's
+	// same-interface forwarding, which the hub's host may not have enabled.
+	// No wmu here: peerStream.write serializes per stream, so direct
+	// deliveries never share the device's single write buffer.
+	if dst, ok := destinationOf(pkt); ok {
+		if name, found := h.router.table.lookup(dst); found {
+			if name == s.key {
+				// The sender addressed itself: delivering would echo the
+				// packet back down the stream it arrived on.
+				h.countUnrouted(dst)
+				return nil
+			}
+			if err := h.router.deliver(dst, pkt); err == nil {
+				return nil
+			} else if errors.Is(err, ErrNoRoute) {
+				// The route's stream vanished between lookup and write.
+				// Dropping with a count, not a device write the kernel
+				// would silently ARP-drop with no warning attached.
+				h.countUnrouted(dst)
+				return nil
+			} else {
+				h.warnf("route %s: %v", dst, err)
+				return nil
+			}
+		}
 	}
 
 	h.wmu.Lock()
