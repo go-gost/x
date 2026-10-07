@@ -198,3 +198,22 @@ func TestStatsEvent_Type(t *testing.T) {
 		t.Errorf("Type = %q, want %q", ev.Type(), observer.EventStats)
 	}
 }
+
+func TestStatsProbeKinds(t *testing.T) {
+	s := NewStats(false)
+	s.Add(KindProbeSent, 1)
+	s.Add(KindProbeAcked, 1)
+	if s.Get(KindProbeSent) != 1 || s.Get(KindProbeAcked) != 1 {
+		t.Fatal("probe counters not tracked")
+	}
+}
+
+func TestStatsProbeReset(t *testing.T) {
+	s := NewStats(false)
+	s.Add(KindProbeSent, 3)
+	s.Add(KindProbeAcked, 2)
+	s.Reset()
+	if s.Get(KindProbeSent) != 0 || s.Get(KindProbeAcked) != 0 {
+		t.Fatal("probe counters survive Reset")
+	}
+}

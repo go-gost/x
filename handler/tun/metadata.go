@@ -17,6 +17,8 @@ type metadata struct {
 	keepAlivePeriod time.Duration
 	passphrase      string
 	p2p             bool
+	probe           bool
+	probeReport     func(sentDelta, ackedDelta uint64)
 }
 
 func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -29,5 +31,13 @@ func (h *tunHandler) parseMetadata(md mdata.Metadata) (err error) {
 
 	h.md.passphrase = mdutil.GetString(md, "tun.token", "token", "passphrase")
 	h.md.p2p = mdutil.GetBool(md, "tun.p2p", "p2p")
+	h.md.probe = mdutil.GetBool(md, "tun.probe", "probe")
+	v := md.Get("tun.probeReport")
+	if v == nil {
+		v = md.Get("probeReport")
+	}
+	if fn, ok := v.(func(uint64, uint64)); ok {
+		h.md.probeReport = fn
+	}
 	return
 }

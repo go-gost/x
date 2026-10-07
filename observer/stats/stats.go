@@ -7,6 +7,13 @@ import (
 	"github.com/go-gost/core/observer/stats"
 )
 
+// Probe statistic kinds, defined here in x because core/ must stay untouched.
+// Core uses 1-5; 101+ is x-private space.
+const (
+	KindProbeSent  stats.Kind = 101
+	KindProbeAcked stats.Kind = 102
+)
+
 // Stats implements the stats.Stats interface using atomic counters.
 // When resetTraffic is true, Get for KindInputBytes and KindOutputBytes
 // atomically swaps the counter with zero, returning the value at the time
@@ -18,6 +25,8 @@ type Stats struct {
 	inputBytes   atomic.Uint64
 	outputBytes  atomic.Uint64
 	totalErrs    atomic.Uint64
+	probeSent    atomic.Uint64
+	probeAcked   atomic.Uint64
 	resetTraffic bool
 }
 
@@ -49,6 +58,14 @@ func (s *Stats) Add(kind stats.Kind, n int64) {
 		if n > 0 {
 			s.totalErrs.Add(uint64(n))
 		}
+	case KindProbeSent:
+		if n > 0 {
+			s.probeSent.Add(uint64(n))
+		}
+	case KindProbeAcked:
+		if n > 0 {
+			s.probeAcked.Add(uint64(n))
+		}
 	}
 	s.updated.Store(true)
 }
@@ -75,6 +92,10 @@ func (s *Stats) Get(kind stats.Kind) uint64 {
 		return s.outputBytes.Load()
 	case stats.KindTotalErrs:
 		return s.totalErrs.Load()
+	case KindProbeSent:
+		return s.probeSent.Load()
+	case KindProbeAcked:
+		return s.probeAcked.Load()
 	}
 	return 0
 }
@@ -86,6 +107,8 @@ func (s *Stats) Reset() {
 	s.inputBytes.Store(0)
 	s.outputBytes.Store(0)
 	s.totalErrs.Store(0)
+	s.probeSent.Store(0)
+	s.probeAcked.Store(0)
 }
 
 func (s *Stats) IsUpdated() bool {
