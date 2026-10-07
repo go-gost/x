@@ -43,6 +43,7 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 		Services:   []*config.ServiceConfig{{Name: "s1"}},
 		Chains:     []*config.ChainConfig{{Name: "c1"}},
 		Hops:       []*config.HopConfig{{Name: "h1"}},
+		Nodes:      []*config.NodeConfig{{Name: "n1", Addr: "n1.example:80"}},
 		Authers:    []*config.AutherConfig{{Name: "a1"}},
 		Admissions: []*config.AdmissionConfig{{Name: "ad1"}},
 		Bypasses:   []*config.BypassConfig{{Name: "b1"}},
@@ -63,6 +64,7 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 		Services:   []*config.ServiceConfig{{Name: "s2"}},
 		Chains:     []*config.ChainConfig{{Name: "c2"}},
 		Hops:       []*config.HopConfig{{Name: "h2"}},
+		Nodes:      []*config.NodeConfig{{Name: "n2", Addr: "n2.example:80"}},
 		Authers:    []*config.AutherConfig{{Name: "a2"}},
 		Admissions: []*config.AdmissionConfig{{Name: "ad2"}},
 		Bypasses:   []*config.BypassConfig{{Name: "b2"}},
@@ -90,6 +92,9 @@ func TestMergeConfig_AppendsAllSlices(t *testing.T) {
 	}
 	if len(got.Hops) != 2 {
 		t.Fatal("hops not properly appended")
+	}
+	if len(got.Nodes) != 2 {
+		t.Fatal("nodes not properly appended")
 	}
 	if len(got.Authers) != 2 {
 		t.Fatal("authers not properly appended")

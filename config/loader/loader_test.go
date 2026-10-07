@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-gost/core/handler"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
@@ -17,6 +18,9 @@ import (
 	"github.com/go-gost/x/config"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/go-gost/x/registry"
+
+	_ "github.com/go-gost/x/connector/http"
+	_ "github.com/go-gost/x/dialer/tcp"
 )
 
 func TestMain(m *testing.M) {
@@ -462,6 +466,77 @@ func TestRegister_Hops(t *testing.T) {
 	}
 	if !r.IsRegistered(name) {
 		t.Fatal("expected hop to be registered")
+	}
+}
+
+func TestRegister_GlobalNodesBeforeHops(t *testing.T) {
+	nodeName := "test-global-node"
+	hopName := "test-global-node-hop"
+	t.Cleanup(func() {
+		registry.HopRegistry().Unregister(hopName)
+		registry.NodeRegistry().Unregister(nodeName)
+	})
+
+	cfg := &config.Config{
+		Nodes: []*config.NodeConfig{{
+			Name: nodeName,
+			Addr: "example.com:8080",
+		}},
+		Hops: []*config.HopConfig{{
+			Name:  hopName,
+			Nodes: []*config.NodeConfig{{Name: nodeName}},
+		}},
+	}
+	if err := register(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	definition := registry.NodeRegistry().Get(nodeName)
+	if definition == nil {
+		t.Fatal("expected global node to be registered")
+	}
+	nodes := registry.HopRegistry().Get(hopName).(hop.NodeList).Nodes()
+	if len(nodes) != 1 || nodes[0].Name != definition.Name || nodes[0].Addr != definition.Addr {
+		t.Fatalf("hop nodes = %v, want global definition %q at %q", nodes, definition.Name, definition.Addr)
+	}
+}
+
+func TestRegister_GlobalNodeReferenceFromYAML(t *testing.T) {
+	const nodeName = "yaml-global-node"
+	const hopName = "yaml-global-hop"
+	t.Cleanup(func() {
+		registry.HopRegistry().Unregister(hopName)
+		registry.NodeRegistry().Unregister(nodeName)
+	})
+
+	cfg := &config.Config{}
+	err := cfg.Read(strings.NewReader(`
+nodes:
+  - name: yaml-global-node
+    addr: global.example:8080
+hops:
+  - name: yaml-global-hop
+    nodes:
+      - name: yaml-global-node
+      - name: inline-node
+        addr: inline.example:8081
+`), "yaml")
+	if err != nil {
+		t.Fatalf("read YAML: %v", err)
+	}
+	if err := register(cfg); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	nodes := registry.HopRegistry().Get(hopName).(hop.NodeList).Nodes()
+	if len(nodes) != 2 {
+		t.Fatalf("hop nodes = %d, want 2", len(nodes))
+	}
+	if nodes[0].Name != nodeName || nodes[0].Addr != "global.example:8080" {
+		t.Fatalf("referenced node = %q at %q", nodes[0].Name, nodes[0].Addr)
+	}
+	if nodes[1].Name != "inline-node" || nodes[1].Addr != "inline.example:8081" {
+		t.Fatalf("inline node = %q at %q", nodes[1].Name, nodes[1].Addr)
 	}
 }
 

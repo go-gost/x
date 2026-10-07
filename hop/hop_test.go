@@ -17,11 +17,12 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/routing"
-	xmd "github.com/go-gost/x/metadata"
+	"github.com/go-gost/x/config"
 	xlogger "github.com/go-gost/x/logger"
-	xselector "github.com/go-gost/x/selector"
-	xrouting "github.com/go-gost/x/routing"
+	xmd "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
+	xrouting "github.com/go-gost/x/routing"
+	xselector "github.com/go-gost/x/selector"
 )
 
 // mustMatcher parses a matcher DSL rule, failing the test on error.
@@ -1035,6 +1036,24 @@ func TestParseNode_ValidJSON(t *testing.T) {
 	}
 }
 
+func TestParseNode_GlobalReference(t *testing.T) {
+	const name = "reloaded-global-node"
+	registry.NodeRegistry().Register(name, &config.NodeConfig{
+		Name: name,
+		Addr: "10.0.0.2:8080",
+	})
+	t.Cleanup(func() { registry.NodeRegistry().Unregister(name) })
+
+	ch := &chainHop{logger: xlogger.Nop(), options: options{name: "test-hop"}}
+	nodes, err := ch.parseNode(strings.NewReader(`[{"name":"reloaded-global-node"}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Name != name || nodes[0].Addr != "10.0.0.2:8080" {
+		t.Fatalf("unexpected nodes: %+v", nodes)
+	}
+}
+
 func TestParseNode_EmptyArray(t *testing.T) {
 	ch := &chainHop{logger: xlogger.Nop()}
 	r := strings.NewReader(`[]`)
@@ -1277,6 +1296,7 @@ func TestSelect_BackupPriority_LowerPriorityPrimaryWins(t *testing.T) {
 		t.Errorf("expected 'primary-low' (lower-priority primary beats higher-priority backup), got %q", node.Name)
 	}
 }
+
 // =============================================================================
 // Interface satisfaction
 // =============================================================================
