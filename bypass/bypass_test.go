@@ -899,6 +899,16 @@ func TestNetworkOnly_NoNetwork_BehavesAsBefore(t *testing.T) {
 	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
 }
 
+func TestNetworkOnly_NoNetwork_WhitelistBypassesAll(t *testing.T) {
+	b := newSyncedBypass(WhitelistOption(true))
+	defer b.Close()
+
+	// No predicates → base match is false, whitelist negates it → bypass all.
+	// This flipped from proxy-all before #129; lock in the new behavior.
+	assert.True(t, b.Contains(context.Background(), "tcp", "192.168.1.1"))
+	assert.True(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+}
+
 func TestNetworkOnly_EmptyAddr_ReturnsFalse(t *testing.T) {
 	b := newSyncedBypass(NetworkOption("tcp"))
 	defer b.Close()
