@@ -22,6 +22,17 @@ import (
 // packet is dropped, the hub keeps reading the device.
 var ErrNoRoute = errors.New("tun: no route")
 
+// ErrRegistrationRefused reports a spoke registration the hub's policy
+// rejected — the authorizer, the passphrase, or the self-loop guard. It is
+// returned — never echoed — so the stream is torn down: the spoke redials
+// and re-registers (a fixed hub recovers on its own) instead of sitting
+// "running" with zero traffic, and the failure surfaces in its counters.
+// Nothing is answered, so a refused peer learns nothing except that the
+// stream died. Malformed frames and bare echoes are not this: they never
+// reach policy, and killing a stream over transport noise would turn one
+// stray datagram into a reconnect storm.
+var ErrRegistrationRefused = errors.New("tun: registration refused")
+
 // peerStream is the hub's half of one inbound stream from one peer: the peer's
 // name, the transport's write side, and the serialization that makes writing
 // one packet at a time true.
@@ -342,10 +353,25 @@ func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 // timeout, with nothing to look at in any log.
 func (h *p2pHub) answerKeepalive(s *peerStream, pkt []byte) error {
 	if _, ok := h.router.table.onKeepalive(s.ctx, pkt, s.key, h.ownNets); !ok {
-		return nil
+		if !isRegistrationFrame(pkt) {
+			// Transport noise — a bare echo, a fragment — that never
+			// reached policy. Drop it and leave the stream up.
+			return nil
+		}
+		return ErrRegistrationRefused
 	}
 
 	return s.write(keepAliveReply(s.key))
+}
+
+// isRegistrationFrame reports whether pkt is shaped like a registration —
+// the parse gates onKeepalive applies before any policy — so the hub can tell
+// a refused claim (drop the stream) from transport noise (drop the frame).
+func isRegistrationFrame(pkt []byte) bool {
+	if len(pkt) <= keepAliveHeaderLength || !bytes.Equal(pkt[:4], magicHeader) {
+		return false
+	}
+	return len(pkt[keepAliveHeaderLength:])%net.IPv6len == 0
 }
 
 // peerGone tears a stream down: close it, and reclaim its routes only if it is

@@ -434,31 +434,6 @@ func TestP2PKeepaliveIsAnsweredAndRegisters(t *testing.T) {
 	}
 }
 
-// A refused registration is not answered: echoing a frame the auther rejected
-// would tell the peer it is registered.
-func TestP2PRefusedKeepaliveIsNotAnswered(t *testing.T) {
-	_, peerEnd := newDatagramPipe(4)
-
-	table := newPeerTable(newMultiAuther("secret", "10.10.0.3"), 0, "tun-service", nil)
-	hub := newP2PHub(nopDevice{}, newPeerRouter(table), nil, nil)
-	s := newPeerStream(context.Background(), "peer-key", peerEnd)
-	hub.router.install(s)
-
-	frame := keepAliveFrame("wrong", net.ParseIP("10.10.0.3"))
-	if err := hub.fromSpoke(s, frame); err != nil {
-		t.Fatalf("fromSpoke: %v", err)
-	}
-
-	select {
-	case pkt := <-peerEnd.queue:
-		t.Fatalf("a refused registration was answered with % x", pkt)
-	default:
-	}
-	if _, ok := table.lookup(net.ParseIP("10.10.0.3")); ok {
-		t.Fatal("a refused registration left a route behind")
-	}
-}
-
 // newP2PAuthorizerHub builds the hub a deployment gets — NewP2PHandler over the
 // tun conn the listener produced — and returns it as the compat suite drives one,
 // so a case writes a registration on a real stream and reads the answer off the
@@ -526,43 +501,6 @@ func TestP2PHandleRegistersAnAuthorizedClaim(t *testing.T) {
 	if len(reply) != keepAliveHeaderLength {
 		t.Fatalf("the reply is %d bytes, want the %d-byte header the spoke detects",
 			len(reply), keepAliveHeaderLength)
-	}
-}
-
-// End to end through the handler: a claim the authorizer refuses registers
-// nothing and is not answered.
-//
-// The route is the load-bearing half of the assertion. A hub that merely stayed
-// quiet would pass a reply-only check while still handing its traffic to a peer
-// that has no right to the address, so the refusal is asserted where it is
-// observable — in the table a packet's destination is resolved against.
-func TestP2PHandleDoesNotRegisterARefusedClaim(t *testing.T) {
-	assigned := net.ParseIP("10.10.0.3")
-	neighbour := net.ParseIP("10.10.0.4")
-	hub := newP2PAuthorizerHub(t, newAssigningAuthorizer(map[string][]net.IP{
-		"peer-key-1": {assigned},
-	}))
-
-	s := hub.spoke(t)
-	_, reply := hub.register(s, keepAliveFrame("secret", neighbour))
-
-	if name, ok := hub.resolve(neighbour); ok {
-		t.Fatalf("a refused claim left the route %q behind for %s", name, neighbour)
-	}
-	if reply != nil {
-		t.Fatalf("a refused registration was answered with % x", reply)
-	}
-
-	// Proof the frame was otherwise acceptable: the same peer claiming the one
-	// address it was assigned registers. Without it the refusal above would be
-	// indistinguishable from a hub that refuses everything, and the authorizer
-	// would go untested.
-	_, reply = hub.register(s, keepAliveFrame("secret", assigned))
-	if !isKeepaliveFrame(reply) {
-		t.Fatalf("the control registration was not answered: % x", reply)
-	}
-	if name, ok := hub.resolve(assigned); !ok || name != s.name {
-		t.Fatalf("the control registration did not take: lookup = %q, %v, want %q", name, ok, s.name)
 	}
 }
 
@@ -952,3 +890,65 @@ var (
 	_ io.ReadWriter  = (*writeRecorder)(nil)
 	_ io.WriteCloser = discard{}
 )
+
+// A refused registration is not answered *and* drops the stream: staying
+// quiet would leave the spoke "running" with zero traffic and nothing to
+// look at, while closing makes the spoke redial — which re-registers, so a
+// fixed hub recovers on its own — and surfaces the failure in its counters.
+func TestP2PRefusedKeepaliveIsRefusedAndDropped(t *testing.T) {
+	_, peerEnd := newDatagramPipe(4)
+
+	table := newPeerTable(newMultiAuther("secret", "10.10.0.3"), 0, "tun-service", nil)
+	hub := newP2PHub(nopDevice{}, newPeerRouter(table), nil, nil)
+	s := newPeerStream(context.Background(), "peer-key", peerEnd)
+	hub.router.install(s)
+
+	frame := keepAliveFrame("wrong", net.ParseIP("10.10.0.3"))
+	err := hub.fromSpoke(s, frame)
+	if !errors.Is(err, ErrRegistrationRefused) {
+		t.Fatalf("fromSpoke(refused keepalive) = %v, want %v", err, ErrRegistrationRefused)
+	}
+
+	select {
+	case pkt := <-peerEnd.queue:
+		t.Fatalf("a refused registration was answered with % x", pkt)
+	default:
+	}
+	if _, ok := table.lookup(net.ParseIP("10.10.0.3")); ok {
+		t.Fatal("a refused registration left a route behind")
+	}
+}
+
+// End to end through the handler: a refused claim tears the stream down, and
+// a reconnect with the authorized claim registers — the redial path a real
+// spoke takes after the drop, which is how a fixed hub recovers on its own.
+func TestP2PRefusedClaimDropsStreamAndReconnectRecovers(t *testing.T) {
+	assigned := net.ParseIP("10.10.0.3")
+	neighbour := net.ParseIP("10.10.0.4")
+	hub := newP2PAuthorizerHub(t, newAssigningAuthorizer(map[string][]net.IP{
+		"peer-key-1": {assigned},
+	}))
+
+	s := hub.spoke(t)
+	_, reply := hub.register(s, keepAliveFrame("secret", neighbour))
+	if reply != nil {
+		t.Fatalf("a refused registration was answered with % x", reply)
+	}
+	if name, ok := hub.resolve(neighbour); ok {
+		t.Fatalf("a refused claim left the route %q behind for %s", name, neighbour)
+	}
+	select {
+	case <-s.conn.done:
+	case <-time.After(compatReadTimeout):
+		t.Fatal("the refused stream stayed open: the spoke would sit silent")
+	}
+
+	s2 := hub.reconnect(s, t)
+	_, reply = hub.register(s2, keepAliveFrame("secret", assigned))
+	if !isKeepaliveFrame(reply) {
+		t.Fatalf("the reconnect registration was not answered: % x", reply)
+	}
+	if name, ok := hub.resolve(assigned); !ok || name != s2.name {
+		t.Fatalf("the reconnect registration did not take: lookup = %q, %v, want %q", name, ok, s2.name)
+	}
+}

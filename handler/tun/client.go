@@ -27,6 +27,15 @@ var (
 	magicHeader = []byte("GOST")
 )
 
+// firstInboundTimeout bounds the wait for the first inbound byte when no
+// keepalive period is configured. A hub that never answers — not started,
+// or silently refusing — would otherwise leave the spoke "running" forever
+// on a link that will never deliver. Expiring makes the caller redial and
+// re-register, which is also how a fixed hub recovers on its own. Any
+// inbound byte clears it: from then on the link has proven itself alive.
+// A variable, not a constant, so tests can shrink the wait.
+var firstInboundTimeout = 30 * time.Second
+
 func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network string, raddr string, config *tun_util.Config, log logger.Logger) error {
 	var ips []net.IP
 	for _, net := range config.Net {
@@ -181,6 +190,20 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 
 	go func() {
 		var b [MaxMessageSize]byte
+		// The wait for the first inbound byte is bounded even without a
+		// keepalive period (the tun entrypoint configures none): silence
+		// means the far side never answered the handshake, and waiting
+		// forever is exactly the silent-"running" this guards against. With
+		// a period the window matches the handshake's own 3×period; without
+		// one the fixed one-shot applies until the first inbound clears it.
+		// (keepalive() sets the same 3×period deadline for its path; the
+		// two agree, and this one is what the read loop below relies on.)
+		oneShot := h.md.keepAlivePeriod <= 0
+		if oneShot {
+			conn.SetReadDeadline(time.Now().Add(firstInboundTimeout))
+		} else {
+			conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
+		}
 		for {
 			select {
 			case <-c.Done():
@@ -201,6 +224,12 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 				// a healthy tunnel after 3×period.
 				if h.md.keepAlivePeriod > 0 {
 					conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
+				} else if oneShot {
+					// The one-shot has served: the link proved itself alive,
+					// so clear it and read without a deadline from here on,
+					// exactly as before this change.
+					oneShot = false
+					conn.SetReadDeadline(time.Time{})
 				}
 
 				// A registration handshake or keepalive echo is protocol, not a

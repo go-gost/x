@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -86,4 +87,78 @@ func TestTransportClientDropsKeepaliveFrames(t *testing.T) {
 	}
 
 	<-errCh // client loop exits on the closed link
+}
+
+// Without a keepalive period the client sets no read deadline at all, so a
+// hub that never answers — not started, or silently refusing — leaves the
+// spoke "running" forever on a link that will never deliver. The transport
+// must give up waiting for the first inbound byte so the caller redials and
+// re-registers; any inbound byte clears the one-shot.
+func TestNoKeepaliveClientTimesOutWaitingForFirstInbound(t *testing.T) {
+	old := firstInboundTimeout
+	firstInboundTimeout = 200 * time.Millisecond
+	defer func() { firstInboundTimeout = old }()
+
+	device, kernelSide := net.Pipe()
+	defer device.Close()
+	defer kernelSide.Close()
+	ccA, ccB := net.Pipe()
+	defer ccB.Close() // the link stays open: silence, not closure, must end it
+
+	h := newTestHandler(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+
+	select {
+	case err := <-errCh:
+		var nerr net.Error
+		if !errors.As(err, &nerr) || !nerr.Timeout() {
+			t.Fatalf("transportClient = %v, want a read timeout", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("transportClient waited forever on a silent link")
+	}
+	// Note: transportClient itself takes ~5s more to return — collectFirstError
+	// waits out the device reader, which blocks on an idle device with no
+	// context-aware read. That wait is pre-existing; the timeout above is what
+	// proves the silent link no longer waits forever.
+}
+
+// The mirror: one inbound byte — even protocol chatter, which never reaches
+// the device — proves the link alive and clears the one-shot, so a healthy
+// but quiet tunnel is never redialed.
+func TestNoKeepaliveClientFirstInboundClearsTimeout(t *testing.T) {
+	old := firstInboundTimeout
+	firstInboundTimeout = 200 * time.Millisecond
+	defer func() { firstInboundTimeout = old }()
+
+	device, kernelSide := net.Pipe()
+	defer device.Close()
+	defer kernelSide.Close()
+	ccA, ccB := net.Pipe()
+
+	h := newTestHandler(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+
+	if _, err := ccB.Write(bareEcho()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Three windows of silence past the one-shot: a cleared deadline stays
+	// cleared, and the transport must not report anything.
+	time.Sleep(3 * firstInboundTimeout)
+	select {
+	case err := <-errCh:
+		t.Fatalf("transportClient reported %v on a healthy quiet link", err)
+	default:
+	}
+
+	ccB.Close() // unblock the reader; the test proved what it had to
 }

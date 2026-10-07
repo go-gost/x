@@ -168,11 +168,13 @@ func compatCases() []struct {
 				t.Fatalf("a refused registration was answered with % x", reply)
 			}
 
-			// Proof the frame was otherwise acceptable: the same registration for a
-			// peer address registers. Without it the refusal above is
-			// indistinguishable from some other check refusing it, and the guard
-			// would go untested.
-			hub.register(spoke, keepAliveFrame("secret", compatPeerA))
+			// Proof the frame was otherwise acceptable: a fresh spoke registering
+			// a peer address registers. Fresh because a refusal may drop the
+			// link — for a real spoke that is the redial — so reusing the
+			// refused link would be driving a redial that never happened.
+			// Without the control the refusal above is indistinguishable from
+			// some other check refusing it, and the guard would go untested.
+			hub.register(hub.spoke(t), keepAliveFrame("secret", compatPeerA))
 			if _, ok := hub.resolve(compatPeerA); !ok {
 				t.Fatal("the control registration did not take, so the test proves nothing")
 			}
