@@ -149,6 +149,7 @@ type Sniffer struct {
 
 	Recorder        recorder.Recorder
 	RecorderOptions *recorder.Options
+	SessionRecorder *xrecorder.SessionRecorder
 
 	// MITM TLS termination
 	Certificate        *x509.Certificate
@@ -208,4 +209,11 @@ func (h *Sniffer) effectiveReadTimeout() time.Duration {
 		return h.ReadTimeout
 	}
 	return DefaultReadTimeout
+}
+
+func (h *Sniffer) sessionRecorder() *xrecorder.SessionRecorder {
+	if h.SessionRecorder != nil {
+		return h.SessionRecorder
+	}
+	return xrecorder.NewSessionRecorder(h.Recorder, xrecorder.SessionRecorderOptions{})
 }

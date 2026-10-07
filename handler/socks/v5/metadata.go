@@ -14,6 +14,8 @@ import (
 )
 
 type metadata struct {
+	recorderPeriod time.Duration // reports a live session on this interval; 0 = one record per session, written when it ends.
+
 	publicAddr string
 	// readTimeout is the deadline for reading the initial SOCKS5
 	// handshake (auth + connect/associate/udp request) from the client
@@ -53,6 +55,8 @@ type metadata struct {
 }
 
 func (h *socks5Handler) parseMetadata(md mdata.Metadata) (err error) {
+	h.md.recorderPeriod = mdutil.GetDuration(md, "recorder.period", "recorder.reportPeriod")
+
 	h.md.publicAddr = mdutil.GetString(md, "socks.publicAddr", "publicAddr")
 	h.md.readTimeout = mdutil.GetDuration(md, "readTimeout")
 	if h.md.readTimeout <= 0 {

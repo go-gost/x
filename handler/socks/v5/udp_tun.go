@@ -139,6 +139,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		"bind": pc.LocalAddr().String(),
 	})
 	ro.SrcAddr = pc.LocalAddr().String()
+	ictx.SessionFromContext(ctx).Start(*ro)
 
 	saddr := gosocks5.Addr{}
 	saddr.ParseFrom(pc.LocalAddr().String())

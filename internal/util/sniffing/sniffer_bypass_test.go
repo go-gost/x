@@ -310,12 +310,12 @@ func (t *countingTransport) count() int {
 func TestServeH2_AuthorizesEveryStream(t *testing.T) {
 	newHandler := func(bp *policyBypass, tr http.RoundTripper) *h2Handler {
 		return &h2Handler{
-			transport:      tr,
-			recorder:       &noopRecorder{},
-			recorderObject: &xrecorder.HandlerRecorderObject{},
-			log:            xlogger.Nop(),
-			handleOptions:  &HandleOptions{Bypass: bp},
-			network:        "tcp",
+			transport:       tr,
+			sessionRecorder: xrecorder.NewSessionRecorder(&noopRecorder{}, xrecorder.SessionRecorderOptions{}),
+			recorderObject:  &xrecorder.HandlerRecorderObject{},
+			log:             xlogger.Nop(),
+			handleOptions:   &HandleOptions{Bypass: bp},
+			network:         "tcp",
 		}
 	}
 
