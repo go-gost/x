@@ -13,6 +13,8 @@ import (
 	"github.com/songgao/water/waterutil"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+
+	listenertun "github.com/go-gost/x/listener/tun"
 )
 
 // ErrNoRoute is what deliver reports when a destination names no peer, or a
@@ -175,6 +177,13 @@ type p2pHub struct {
 	dropDst   string
 	dropSince time.Time
 
+	// overMu guards the oversized-packet tally that countOversize keeps. Same
+	// shape as the unrouted tally above: the first miss is logged at once, the
+	// rest is summarized once per window, so a persistently oversized sender
+	// stays visible instead of becoming a silent blackhole.
+	overMu    sync.Mutex
+	overCount int
+	overSince time.Time
 }
 
 func newP2PHub(device io.ReadWriter, router *peerRouter, ownNets []net.IPNet, warn func(string)) *p2pHub {
@@ -276,6 +285,32 @@ func (h *p2pHub) countUnrouted(dst net.IP) {
 		time.Since(since).Round(time.Millisecond).String())
 }
 
+// countOversize records one dropped oversized packet and reports the running
+// total at most once per window.
+func (h *p2pHub) countOversize(size int) {
+	h.overMu.Lock()
+	now := time.Now()
+	if h.overSince.IsZero() {
+		h.overSince = now
+		h.overCount = 1
+		h.overMu.Unlock()
+		h.warnf("oversized packet (%d bytes), discarded", size)
+		return
+	}
+	h.overCount++
+	// The window only restarts on a report, so a continuous flood reports once
+	// per window instead of once per packet.
+	if now.Sub(h.overSince) < unroutedWindow {
+		h.overMu.Unlock()
+		return
+	}
+	n, since := h.overCount, h.overSince
+	h.overSince, h.overCount = now, 0
+	h.overMu.Unlock()
+	h.warnf("oversized packets discarded: %d in %s", n,
+		time.Since(since).Round(time.Millisecond).String())
+}
+
 // fromSpoke handles one datagram from one peer: a keepalive is answered on the
 // peer it arrived from, anything else is the device's.
 func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
@@ -287,6 +322,13 @@ func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 	defer h.wmu.Unlock()
 
 	_, err := h.device.Write(pkt)
+	if errors.Is(err, listenertun.ErrPacketTooLarge) {
+		// One undeliverable datagram, not a dead device: drop it, count it,
+		// and leave the stream up. Returning the error would tear the peer
+		// down over a sender-side anomaly and turn it into a reconnect storm.
+		h.countOversize(len(pkt))
+		return nil
+	}
 	return err
 }
 

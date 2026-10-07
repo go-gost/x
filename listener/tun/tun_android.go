@@ -50,7 +50,7 @@ func (l *tunListener) createTun() (dev io.ReadWriteCloser, name string, ip net.I
 		return
 	}
 
-	dev, _, err = newTunDevice(ifce)
+	dev, _, err = newTunDevice(ifce, l.md.config.MTU)
 	if err != nil {
 		ifce.Close()
 		return
