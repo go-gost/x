@@ -3,8 +3,12 @@ package tun
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
@@ -125,21 +129,36 @@ func (h *p2pHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 	defer h.hub.peerGone(s)
 
+	// The read error is this peer's story, and it used to leave none: the loop
+	// returned it, service.Serve logged "EOF" at debug, and the only trace of a
+	// peer that had been carrying megabytes before it stopped was a route being
+	// dropped. Counting what arrived makes the log answer that on its own — a peer
+	// that dies having read nothing failed to connect, one that dies mid-transfer
+	// failed in transit, and the difference is the whole diagnosis.
+	started := time.Now()
+	var frames, bytes int64
+
 	var b [MaxMessageSize]byte
 	for {
 		select {
 		case <-ctx.Done():
+			h.logStreamEnd(s, started, frames, bytes, ctx.Err())
 			return ctx.Err()
 		default:
 		}
 
 		n, err := conn.Read(b[:])
+		if n > 0 {
+			frames++
+			bytes += int64(n)
+		}
 		if err != nil {
 			// Returned as-is, and that is the whole convention: a stream that ends
 			// is io.EOF, a closed conn is net.ErrClosed, and a torn-down context is
 			// context.Canceled — service.Serve reads each of those as an ordinary
 			// end and logs it at debug, while anything else is a failure. Wrapping
 			// them here would put a normal reconnect in someone's error log.
+			h.logStreamEnd(s, started, frames, bytes, err)
 			return err
 		}
 		if n == 0 {
@@ -149,10 +168,47 @@ func (h *p2pHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		// anything else to the device under the hub's write lock; the hub logs
 		// its own routing warnings, so a failure here is the write itself.
 		if err := h.hub.fromSpoke(s, b[:n]); err != nil {
+			h.logStreamEnd(s, started, frames, bytes, err)
 			h.log.Warnf("peer %s: %v", s.key, err)
 			return err
 		}
 	}
+}
+
+// logStreamEnd reports how long a peer's stream lived, how much arrived on it,
+// and what ended it. The level follows the cause rather than the volume: a peer
+// that closed its stream, or whose context was cancelled, is the ordinary way a
+// hub learns a spoke left, and it stays at debug; anything else is a failure the
+// operator would otherwise only see as silence.
+func (h *p2pHandler) logStreamEnd(s *peerStream, started time.Time, frames, bytes int64, err error) {
+	fields := []any{
+		"peer", s.key,
+		"age", time.Since(started).Round(time.Millisecond).String(),
+		"frames", frames,
+		"bytes", bytes,
+	}
+	if err != nil {
+		fields = append(fields, "error", err)
+	}
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) {
+		h.log.Debugf("peer stream ended: %s", formatFields(fields))
+		return
+	}
+	h.log.Warnf("peer stream failed: %s", formatFields(fields))
+}
+
+// formatFields renders slog-style fields as "k=v k=v" for the logger interface
+// this handler is given. The hub's other lines use printf formatting, so the
+// counters are assembled here rather than at each call site.
+func formatFields(fields []any) string {
+	var b strings.Builder
+	for i := 0; i+1 < len(fields); i += 2 {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%v=%v", fields[i], fields[i+1])
+	}
+	return b.String()
 }
 
 // Close stops the device reader. The device is what the reader is blocked in, so

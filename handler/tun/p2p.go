@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/songgao/water/waterutil"
 	"golang.org/x/net/ipv4"
@@ -165,6 +166,15 @@ type p2pHub struct {
 	// wmu serializes device writes; see above. Reads are not locked because
 	// there is only one of them, and it is not this lock's business.
 	wmu sync.Mutex
+
+	// dropMu guards the unrouted-packet tally that countUnrouted keeps, so a
+	// flood of discards costs one counter increment per packet and one log line
+	// per window instead of one line per packet.
+	dropMu    sync.Mutex
+	dropCount int
+	dropDst   string
+	dropSince time.Time
+
 }
 
 func newP2PHub(device io.ReadWriter, router *peerRouter, ownNets []net.IPNet, warn func(string)) *p2pHub {
@@ -219,10 +229,51 @@ func (h *p2pHub) dispatch(pkt []byte) {
 		// registration handshake is gated on network == "udp" (client.go), and a
 		// p2p link is "ip", so a spoke configured with keepalive:0 never
 		// registers at all.
-		h.warnf("no route for %s, packet discarded", dst)
+		//
+		// Counted rather than logged per packet: an unrouted destination under
+		// load produces one line per packet, which buries every other line and
+		// turns a routing gap into a log flood that hides the event that caused
+		// it. The first miss is logged immediately (a spoke that never registers
+		// must still be visible), and after that the summary carries the count and
+		// the span it covers.
+		h.countUnrouted(dst)
 	case err != nil:
 		h.warnf("route %s: %v", dst, err)
 	}
+}
+
+// unroutedWindow is how long unrouted packets are counted before the summary is
+// reported. Long enough that a brief gap is one line, short enough to appear
+// within the same log window as the failure that caused it.
+const unroutedWindow = 5 * time.Second
+
+// countUnrouted records one unrouted destination and reports the running total
+// at most once per window. dst is reported rather than counted per address: a
+// hub's unrouted traffic is normally one peer (the one whose route is missing),
+// and a map of addresses would be a second routing table to keep honest.
+func (h *p2pHub) countUnrouted(dst net.IP) {
+	h.dropMu.Lock()
+	now := time.Now()
+	if h.dropSince.IsZero() {
+		h.dropSince = now
+		h.dropDst = dst.String()
+		h.dropCount = 1
+		h.dropMu.Unlock()
+		h.warnf("no route for %s, packet discarded", dst)
+		return
+	}
+	h.dropCount++
+	// The window only restarts on a report, so a continuous flood reports once
+	// per window instead of once per packet.
+	if now.Sub(h.dropSince) < unroutedWindow {
+		h.dropMu.Unlock()
+		return
+	}
+	n, since, d := h.dropCount, h.dropSince, h.dropDst
+	h.dropSince, h.dropCount = now, 0
+	h.dropMu.Unlock()
+	h.warnf("no route for %s, %d packets discarded in %s", d, n,
+		time.Since(since).Round(time.Millisecond).String())
 }
 
 // fromSpoke handles one datagram from one peer: a keepalive is answered on the

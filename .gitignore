@@ -15,6 +15,7 @@ package-lock.json
 .codegraph/
 .claude/
 .remember/
+.memory/
 .build/
 __pycache__/
 
