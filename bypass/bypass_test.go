@@ -765,7 +765,40 @@ func TestContains_NetworkMatch_WhitelistBypass(t *testing.T) {
 	assert.True(t, b.Contains(context.Background(), "udp", "10.0.0.1"))
 }
 
-func TestContains_NetworkMismatch_ReturnsFalse(t *testing.T) {
+func TestContains_WhitelistNegatesCombinedMatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		whitelist bool
+		network   string
+		addr      string
+		wantProxy bool
+	}{
+		{name: "blacklist both match", network: "tcp", addr: "192.168.1.1", wantProxy: false},
+		{name: "blacklist network fails", network: "udp", addr: "192.168.1.1", wantProxy: true},
+		{name: "blacklist matcher fails", network: "tcp", addr: "10.0.0.1", wantProxy: true},
+		{name: "blacklist both fail", network: "udp", addr: "10.0.0.1", wantProxy: true},
+		{name: "whitelist both match", whitelist: true, network: "tcp", addr: "192.168.1.1", wantProxy: true},
+		{name: "whitelist network fails", whitelist: true, network: "udp", addr: "192.168.1.1", wantProxy: false},
+		{name: "whitelist matcher fails", whitelist: true, network: "tcp", addr: "10.0.0.1", wantProxy: false},
+		{name: "whitelist both fail", whitelist: true, network: "udp", addr: "10.0.0.1", wantProxy: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newSyncedBypass(
+				WhitelistOption(tt.whitelist),
+				NetworkOption("tcp"),
+				MatchersOption([]string{"192.168.1.1"}),
+			)
+			defer b.Close()
+
+			gotProxy := !b.Contains(context.Background(), tt.network, tt.addr)
+			assert.Equal(t, tt.wantProxy, gotProxy)
+		})
+	}
+}
+
+func TestContains_NetworkMismatch_BlacklistReturnsFalse(t *testing.T) {
 	b := newSyncedBypass(
 		NetworkOption("tcp"),
 		MatchersOption([]string{"192.168.1.1"}),
@@ -789,7 +822,7 @@ func TestContains_NetworkMismatch_EmptyAddr(t *testing.T) {
 	assert.False(t, b.Contains(context.Background(), "tcp", ""))
 }
 
-func TestContains_NetworkMismatch_WhitelistReturnsFalse(t *testing.T) {
+func TestContains_NetworkMismatch_WhitelistBypasses(t *testing.T) {
 	b := newSyncedBypass(
 		WhitelistOption(true),
 		NetworkOption("tcp"),
@@ -797,9 +830,9 @@ func TestContains_NetworkMismatch_WhitelistReturnsFalse(t *testing.T) {
 	)
 	defer b.Close()
 
-	// Network does not match → bypass returns false even in whitelist mode
-	assert.False(t, b.Contains(context.Background(), "udp", "10.0.0.1"))
-	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+	// Network fails the combined predicate, then whitelist mode negates it.
+	assert.True(t, b.Contains(context.Background(), "udp", "10.0.0.1"))
+	assert.True(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
 }
 
 func TestContains_PatternSetPassesThroughNetworkFilter(t *testing.T) {
@@ -846,15 +879,15 @@ func TestNetworkOnly_Whitelist_ProxiesMatchingNetwork(t *testing.T) {
 	assert.False(t, b.Contains(context.Background(), "tcp", "10.0.0.1"))
 }
 
-func TestNetworkOnly_Whitelist_NonMatchingNotAffected(t *testing.T) {
+func TestNetworkOnly_Whitelist_NonMatchingBypasses(t *testing.T) {
 	b := newSyncedBypass(
 		WhitelistOption(true),
 		NetworkOption("tcp"),
 	)
 	defer b.Close()
 
-	// network: tcp 是作用域限定，非 TCP 流量不受影响
-	assert.False(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
+	// The network predicate fails, then whitelist mode negates it.
+	assert.True(t, b.Contains(context.Background(), "udp", "192.168.1.1"))
 }
 
 func TestNetworkOnly_NoNetwork_BehavesAsBefore(t *testing.T) {
