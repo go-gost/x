@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/recorder"
+	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/internal/util/httpcache"
 	tls_util "github.com/go-gost/x/internal/util/tls"
 	xrecorder "github.com/go-gost/x/recorder"
@@ -51,6 +52,27 @@ type HandleOptions struct {
 	Bypass         bypass.Bypass
 	RecorderObject *xrecorder.HandlerRecorderObject
 	Log            logger.Logger
+}
+
+// checkBypass reports whether the bypass in effect right now refuses host,
+// returning xbypass.ErrBypass when it does.
+//
+// Call it once per request, never once per connection. A bypass can be
+// reloaded while a connection is open, and one connection can carry a
+// different host per request: HTTP/1.1 keep-alive sends a Host per request and
+// HTTP/2 an :authority per stream. A check performed only at connection setup
+// authorizes the first request and then nothing.
+func (ho *HandleOptions) CheckBypass(ctx context.Context, network, host string, opts ...bypass.Option) error {
+	// Nil-receiver safe: a handler that serves a connection without options
+	// has no rules to apply, and a data path must not panic over it.
+	if ho == nil || host == "" || ho.Bypass == nil {
+		return nil
+	}
+	opts = append(opts, bypass.WithService(ho.Service))
+	if ho.Bypass.Contains(ctx, network, host, opts...) {
+		return xbypass.ErrBypass
+	}
+	return nil
 }
 
 // HandleOption configures HandleOptions for sniffing handlers.
