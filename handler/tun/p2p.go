@@ -264,12 +264,30 @@ func (h *p2pHub) dispatch(pkt []byte) {
 		return
 	}
 
+	// The requester an allow list gates is the member that owns the packet's
+	// source address: a member's tun IP maps to its peer key at
+	// registration, so a packet from that address is that member's to answer
+	// for. A source no member owns resolves to no requester, the empty key.
+	from := ""
+	if src, ok := sourceOf(pkt); ok {
+		if owner, ok := h.router.table.lookup(src); ok {
+			from = owner
+		}
+	}
+
 	// deliverFrom, not deliver: a destination no exact route claims may sit
 	// in a LAN one member sits in front of, and the prefix table — consulted
 	// only after the exact table misses — names the member that reaches it.
-	// The hub itself is the requester: its device traffic originates with no
-	// peer, so from is empty and an allow list gates it like anyone else.
-	switch err := h.router.deliverFrom(dst, pkt, ""); {
+	//
+	// The empty requester key is a choice with two edges, both deliberate.
+	// An unrestricted route (no allow list) admits it: a host on the LAN
+	// behind a spoke is not a member — its address is a LAN address, not
+	// any member's tun IP — and LAN-to-LAN through the hub is the very
+	// traffic a prefix route exists to carry, so denying no-requester
+	// sources would strand exactly that traffic. A restricted route denies
+	// it: no allow list names the empty key, so a requester nobody can
+	// vouch for never crosses a gate someone drew.
+	switch err := h.router.deliverFrom(dst, pkt, from); {
 	case errors.Is(err, ErrNoRoute):
 		// The destination is named in the warning because a spoke that never
 		// registered is otherwise indistinguishable from silence: the
@@ -466,6 +484,41 @@ func keepAliveReply(peerKey string) []byte {
 	copy(reply[:4], magicHeader)
 	copy(reply[4:], peerKey)
 	return reply
+}
+
+// sourceOf parses the source address out of an IP packet, IPv4 or IPv6 —
+// the other half of destinationOf, and the address the requester resolution
+// in dispatch keys on. Same refusal contract: ok is false for anything that
+// is neither or whose header does not parse.
+//
+// It is a sibling rather than destinationOf returning both because every
+// existing caller wants exactly one end of the packet; one function per end
+// leaves them all untouched.
+func sourceOf(pkt []byte) (net.IP, bool) {
+	// waterutil.IsIPv4 indexes packet[0] unconditionally, so an empty buffer —
+	// a device that returned no bytes — panics there rather than reporting
+	// "unknown packet".
+	if len(pkt) == 0 {
+		return nil, false
+	}
+
+	if waterutil.IsIPv4(pkt) {
+		header, err := ipv4.ParseHeader(pkt)
+		if err != nil {
+			return nil, false
+		}
+		return header.Src, true
+	}
+
+	if waterutil.IsIPv6(pkt) {
+		header, err := ipv6.ParseHeader(pkt)
+		if err != nil {
+			return nil, false
+		}
+		return header.Src, true
+	}
+
+	return nil, false
 }
 
 // destinationOf parses the destination address out of an IP packet, IPv4 or
