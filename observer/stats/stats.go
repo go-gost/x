@@ -12,6 +12,13 @@ import (
 const (
 	KindProbeSent  stats.Kind = 101
 	KindProbeAcked stats.Kind = 102
+	// LAN kinds count a tun hub's peer-LAN routing: what the hub refused,
+	// what it put into its table, and what it took out again. They are
+	// counted by the hub's RIB, not by the packet path, because the RIB is
+	// where those three decisions are actually made.
+	KindLanRouted    stats.Kind = 103
+	KindLanDenied    stats.Kind = 104
+	KindLanWithdrawn stats.Kind = 105
 )
 
 // Stats implements the stats.Stats interface using atomic counters.
@@ -27,6 +34,9 @@ type Stats struct {
 	totalErrs    atomic.Uint64
 	probeSent    atomic.Uint64
 	probeAcked   atomic.Uint64
+	lanRouted    atomic.Uint64
+	lanDenied    atomic.Uint64
+	lanWithdrawn atomic.Uint64
 	resetTraffic bool
 }
 
@@ -66,6 +76,18 @@ func (s *Stats) Add(kind stats.Kind, n int64) {
 		if n > 0 {
 			s.probeAcked.Add(uint64(n))
 		}
+	case KindLanRouted:
+		if n > 0 {
+			s.lanRouted.Add(uint64(n))
+		}
+	case KindLanDenied:
+		if n > 0 {
+			s.lanDenied.Add(uint64(n))
+		}
+	case KindLanWithdrawn:
+		if n > 0 {
+			s.lanWithdrawn.Add(uint64(n))
+		}
 	}
 	s.updated.Store(true)
 }
@@ -96,6 +118,12 @@ func (s *Stats) Get(kind stats.Kind) uint64 {
 		return s.probeSent.Load()
 	case KindProbeAcked:
 		return s.probeAcked.Load()
+	case KindLanRouted:
+		return s.lanRouted.Load()
+	case KindLanDenied:
+		return s.lanDenied.Load()
+	case KindLanWithdrawn:
+		return s.lanWithdrawn.Load()
 	}
 	return 0
 }
@@ -109,6 +137,9 @@ func (s *Stats) Reset() {
 	s.totalErrs.Store(0)
 	s.probeSent.Store(0)
 	s.probeAcked.Store(0)
+	s.lanRouted.Store(0)
+	s.lanDenied.Store(0)
+	s.lanWithdrawn.Store(0)
 }
 
 func (s *Stats) IsUpdated() bool {
