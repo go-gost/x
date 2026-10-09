@@ -13,7 +13,7 @@ import (
 
 func TestPrefixLookupLongestPrefixAndAllow(t *testing.T) {
 	pt := newPeerTable(nil, 0, "tun-service", nil)
-	pt.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+	pt.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
 		netip.MustParsePrefix("192.168.0.0/16"):  {Peer: "peerWide"},
 		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peerB"},
 	})
@@ -30,11 +30,37 @@ func TestPrefixLookupLongestPrefixAndAllow(t *testing.T) {
 		t.Fatal("an exact route must outrank a prefix")
 	}
 	// An allow list gates use.
-	pt.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+	pt.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
 		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peerB", Allow: []string{"peerA"}},
 	})
 	if _, ok := pt.lookupPrefix(net.ParseIP("192.168.50.9"), "peerZ"); ok {
 		t.Fatal("a peer outside allow must not use the route")
+	}
+}
+
+// TestP2PHandlerSetPrefixRoutes: the hub a p2p entrypoint builds installs its
+// LAN routes through the same call the socket handler takes, because the
+// consumer that holds the routes (wisper's hub) is handed only the
+// handler.Handler interface and reaches the method by shape. What it installs
+// has to land in the table the packet path reads.
+func TestP2PHandlerSetPrefixRoutes(t *testing.T) {
+	devA, devB := net.Pipe()
+	defer devA.Close()
+	defer devB.Close()
+
+	h := NewP2PHandler(devA, nil).(*p2pHandler)
+	h.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
+		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peerB", Allow: []string{"peerA"}},
+	})
+
+	if name, ok := h.router.table.lookupPrefix(net.ParseIP("192.168.50.9"), "peerA"); !ok || name != "peerB" {
+		t.Fatalf("a LAN address resolved to (%q,%v), want (peerB,true)", name, ok)
+	}
+	if _, ok := h.router.table.lookupPrefix(net.ParseIP("192.168.50.9"), "peerZ"); ok {
+		t.Fatal("a peer outside the route's allow list must not resolve it")
+	}
+	if _, ok := h.router.table.lookupPrefix(net.ParseIP("8.8.8.8"), "peerA"); ok {
+		t.Fatal("an address no prefix covers must not resolve")
 	}
 }
 
@@ -51,7 +77,7 @@ func TestDispatchFallsThroughExactThenPrefixThenNoRoute(t *testing.T) {
 	router := newTestRouter()
 	router.install(newPeerStream(context.Background(), "peer-lan", peerLanEnd))
 	router.install(newPeerStream(context.Background(), "peer-other", peerOtherEnd))
-	router.table.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+	router.table.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
 		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peer-lan"},
 	})
 
@@ -104,7 +130,7 @@ func TestDispatchHubLocalRequesterResolvedFromSource(t *testing.T) {
 	// member sits inside the route's allow list, one outside it.
 	router.table.set(net.ParseIP("10.10.0.3"), "peer-in")
 	router.table.set(net.ParseIP("10.10.0.4"), "peer-out")
-	router.table.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+	router.table.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
 		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peer-lan", Allow: []string{"peer-in"}},
 	})
 
@@ -191,7 +217,7 @@ func TestFromSpokeAllowGatesOnAuthenticatedPeer(t *testing.T) {
 	// peer-in's tun address as their source: only the stream a packet
 	// arrives on tells the two members apart.
 	router.table.set(net.ParseIP("10.10.0.3"), "peer-in")
-	router.table.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+	router.table.SetPrefixRoutes(map[netip.Prefix]PrefixRoute{
 		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peer-lan", Allow: []string{"peer-in"}},
 	})
 

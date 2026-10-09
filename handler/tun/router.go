@@ -37,7 +37,7 @@ type peerTable struct {
 	// hub approved, not a fact a keepalive reports — so they are a plain map
 	// replaced under mu rather than entries in routes' sync.Map. See
 	// SetPrefixRoutes.
-	prefixes map[netip.Prefix]prefixRoute
+	prefixes map[netip.Prefix]PrefixRoute
 
 	// mu guards prefixes. routes needs no lock of its own (its sync.Map is
 	// its), and every operation on prefixes is either a wholesale replace or
@@ -212,8 +212,8 @@ func (pt *peerTable) lookup(dst net.IP) (string, bool) {
 // SetPrefixRoutes replaces the prefix table, deep-copied — the allow lists'
 // backing arrays are walked by lookups, so the caller keeps ownership of
 // everything it passed and cannot race the walks by mutating it afterwards.
-func (pt *peerTable) SetPrefixRoutes(routes map[netip.Prefix]prefixRoute) {
-	cp := make(map[netip.Prefix]prefixRoute, len(routes))
+func (pt *peerTable) SetPrefixRoutes(routes map[netip.Prefix]PrefixRoute) {
+	cp := make(map[netip.Prefix]PrefixRoute, len(routes))
 	for p, r := range routes {
 		r.Allow = slices.Clone(r.Allow)
 		cp[p] = r
@@ -262,7 +262,7 @@ func (pt *peerTable) lookupPrefix(dst net.IP, from string) (string, bool) {
 	pt.mu.RLock()
 	var (
 		best  = -1
-		route prefixRoute
+		route PrefixRoute
 	)
 	for p, r := range pt.prefixes {
 		if p.Bits() <= best || !p.Contains(addr) {

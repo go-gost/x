@@ -68,7 +68,7 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 // It is meaningless on a spoke: a spoke routes no inbound peer, so it has no
 // delivery decision for a prefix to inform, and the table it would install
 // is never consulted.
-func (h *tunHandler) SetPrefixRoutes(routes map[netip.Prefix]prefixRoute) {
+func (h *tunHandler) SetPrefixRoutes(routes map[netip.Prefix]PrefixRoute) {
 	h.router.SetPrefixRoutes(routes)
 }
 

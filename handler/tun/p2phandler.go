@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,20 @@ func NewP2PHandler(device net.Conn, authorizer PeerAuthorizer, opts ...handler.O
 // context, which exists before any metadata does — and the p2p endpoint that
 // builds this handler is what turns config into them.
 func (h *p2pHandler) Init(md md.Metadata) error { return nil }
+
+// SetPrefixRoutes replaces the prefix table the packet path consults after an
+// exact route misses: a LAN one member sits in front of, routed to that member
+// by longest prefix (see peerTable.lookupPrefix). Same contract as
+// tunHandler's — a member's registered address is unmatched authority, and
+// the table it installs is never consulted on a spoke, where no inbound peer
+// is routed.
+//
+// It exists here because this is the handler a p2p hub builds: the hub that
+// decides which LANs exist is handed this handler as a handler.Handler, and
+// the only way it can install anything is a method it can reach by shape.
+func (h *p2pHandler) SetPrefixRoutes(routes map[netip.Prefix]PrefixRoute) {
+	h.router.table.SetPrefixRoutes(routes)
+}
 
 // Handle runs one accepted peer stream for as long as it lives.
 //
