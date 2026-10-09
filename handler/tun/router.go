@@ -209,16 +209,30 @@ func (pt *peerTable) lookup(dst net.IP) (string, bool) {
 	return r.name, true
 }
 
-// SetPrefixRoutes replaces the prefix table. The map is copied, so a caller
-// that mutates its map afterwards cannot race the walks reading it.
+// SetPrefixRoutes replaces the prefix table, deep-copied — the allow lists'
+// backing arrays are walked by lookups, so the caller keeps ownership of
+// everything it passed and cannot race the walks by mutating it afterwards.
 func (pt *peerTable) SetPrefixRoutes(routes map[netip.Prefix]prefixRoute) {
 	cp := make(map[netip.Prefix]prefixRoute, len(routes))
 	for p, r := range routes {
+		r.Allow = slices.Clone(r.Allow)
 		cp[p] = r
 	}
 	pt.mu.Lock()
 	pt.prefixes = cp
 	pt.mu.Unlock()
+}
+
+// ipToAddr converts a net.IP to the netip.Addr a prefix Contains. To4
+// collapses a 4-byte or a 4-in-6 net.IP to the 4-byte form a v4 prefix
+// contains, and leaves a real v6 address alone; without it a 16-byte IPv4
+// would never match an IPv4 prefix. ok is false for a slice that is neither
+// 4 nor 16 bytes, which no packet header produces.
+func ipToAddr(ip net.IP) (netip.Addr, bool) {
+	if v4 := ip.To4(); v4 != nil {
+		return netip.AddrFromSlice(v4)
+	}
+	return netip.AddrFromSlice(ip)
 }
 
 // lookupPrefix returns the peer owning dst by longest prefix, and whether the
@@ -236,14 +250,9 @@ func (pt *peerTable) lookupPrefix(dst net.IP, from string) (string, bool) {
 		return name, true
 	}
 
-	// To4 collapses a 4-byte or a 4-in-6 net.IP to the 4-byte form a v4
-	// prefix contains, and leaves a real v6 address alone; without it a
-	// 16-byte IPv4 would never match an IPv4 prefix.
-	var addr netip.Addr
-	if v4 := dst.To4(); v4 != nil {
-		addr, _ = netip.AddrFromSlice(v4)
-	} else {
-		addr, _ = netip.AddrFromSlice(dst)
+	addr, ok := ipToAddr(dst)
+	if !ok {
+		return "", false
 	}
 
 	// The walk keeps the longest match rather than returning the first: a
@@ -270,6 +279,27 @@ func (pt *peerTable) lookupPrefix(dst net.IP, from string) (string, bool) {
 		return "", false
 	}
 	return route.Peer, true
+}
+
+// prefixCovered reports whether any installed prefix contains dst — the match
+// lookupPrefix gates, before the gate. A caller that just got ("" ,false)
+// from lookupPrefix needs the two cases apart: a destination no route
+// covers is the device's to route, while a destination a route covers but
+// its allow list refuses must be dropped where it stands — forwarded on to
+// the device, its self-declared source could vouch for it there.
+func (pt *peerTable) prefixCovered(dst net.IP) bool {
+	addr, ok := ipToAddr(dst)
+	if !ok {
+		return false
+	}
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+	for p := range pt.prefixes {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // dropPeer removes every route registered by name, leaving other peers' routes

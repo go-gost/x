@@ -157,8 +157,11 @@ func (r *peerRouter) deliver(dst net.IP, pkt []byte) error {
 // deliverFrom is deliver with one more lookup dimension: when no exact route
 // owns dst, the prefix table may — a LAN one member sits in front of, routed
 // to that member by longest prefix (see peerTable.lookupPrefix). from is the
-// packet's requester: the peer key a prefix route's allow list gates, or
-// empty for the hub's own traffic, which no allow list names.
+// packet's requester, the peer an allow list gates: the authenticated stream
+// peer on the fromSpoke path; on the dispatch path, where the packet
+// originated on the hub's own host, the owner of the source address
+// best-effort — the empty key when no member owns it, which no allow list
+// names.
 //
 // The denied cases are ErrNoRoute, not a new error: a requester an allow list
 // excludes is as unroutable as a destination no route covers, and deliver's
@@ -264,10 +267,15 @@ func (h *p2pHub) dispatch(pkt []byte) {
 		return
 	}
 
-	// The requester an allow list gates is the member that owns the packet's
-	// source address: a member's tun IP maps to its peer key at
-	// registration, so a packet from that address is that member's to answer
-	// for. A source no member owns resolves to no requester, the empty key.
+	// The requester, for hub-local traffic only. Everything a remote peer
+	// sends enters through fromSpoke, where the authenticated stream peer
+	// is the requester and the allow gate is enforced before the device; a
+	// packet read here originated on the hub's own host, which has no peer
+	// key, so the requester is resolved best-effort from the source address
+	// — the hub's own stack, trusted in a way a remote sender's source field
+	// is not. An unowned source — the hub's own address, which the
+	// self-loop guard never lets register, or a host no member claimed —
+	// resolves to the empty key.
 	from := ""
 	if src, ok := sourceOf(pkt); ok {
 		if owner, ok := h.router.table.lookup(src); ok {
@@ -400,6 +408,47 @@ func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 				h.warnf("route %s: %v", dst, err)
 				return nil
 			}
+		}
+
+		// The prefix table, consulted only after the exact table misses, and
+		// gated on the authenticated stream peer — s.key is the key the
+		// registration authenticated, not an address anyone can put in a
+		// packet's source field, so an allow list here gates the member the
+		// packet actually arrived from. A member outside the route's allow
+		// list is denied below, dropped where it stands: sent on to the
+		// device instead, the packet would come back through dispatch, whose
+		// requester is the source field's owner — self-declared, and able to
+		// claim an allow-listed member's address.
+		//
+		// Delivered directly, like the exact shortcut above, for the same
+		// reason: a LAN one member fronts is reached without the kernel's
+		// same-interface forwarding.
+		if name, found := h.router.table.lookupPrefix(dst, s.key); found {
+			if name == s.key {
+				// The sender addressed a LAN it itself fronts: delivering
+				// would echo the packet back down the stream it arrived on.
+				h.countUnrouted(dst)
+				return nil
+			}
+			if err := h.router.deliverFrom(dst, pkt, s.key); err == nil {
+				return nil
+			} else if errors.Is(err, ErrNoRoute) {
+				// The route's stream vanished between lookup and write.
+				// Dropping with a count, same as the exact path above.
+				h.countUnrouted(dst)
+				return nil
+			} else {
+				h.warnf("route %s: %v", dst, err)
+				return nil
+			}
+		}
+		// Covered but refused: a route matches and its allow list excludes
+		// the authenticated peer. Denied is unrouted, the same accounting a
+		// missing route gets — never a device write, which is the spoof's
+		// road back in.
+		if h.router.table.prefixCovered(dst) {
+			h.countUnrouted(dst)
+			return nil
 		}
 	}
 

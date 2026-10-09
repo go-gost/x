@@ -62,6 +62,9 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 // longest-prefix-first, and only after an exact peerTable match — a member's
 // registered /32 is unmatched authority and never displaced by a LAN route.
 //
+// It must be called after Init, which builds the router it installs into:
+// before Init there is no table to install into, and the call panics.
+//
 // It is meaningless on a spoke: a spoke routes no inbound peer, so it has no
 // delivery decision for a prefix to inform, and the table it would install
 // is never consulted.

@@ -41,11 +41,10 @@ func TestPrefixLookupLongestPrefixAndAllow(t *testing.T) {
 func TestDispatchFallsThroughExactThenPrefixThenNoRoute(t *testing.T) {
 	// One destination in a claimed LAN is delivered by prefix: the table has
 	// no exact route for it, the prefix table names the LAN's owner, and the
-	// packet reaches that peer's stream and no other. The source is owned
-	// by no member and the route is unrestricted, so this case also pins the
-	// no-requester edge: a LAN host is not a member, and an empty allow list
-	// must admit it or the LAN-to-LAN traffic the route exists for never
-	// moves.
+	// packet reaches that peer's stream and no other. The source is owned by
+	// no member — this is hub-local traffic, which has no member key — and
+	// the route is unrestricted, so this case also pins the no-requester
+	// edge: no allow list is drawn, so the hub's own traffic crosses.
 	_, peerLanEnd := newDatagramPipe(4)
 	_, peerOtherEnd := newDatagramPipe(4)
 
@@ -84,22 +83,25 @@ func TestDispatchFallsThroughExactThenPrefixThenNoRoute(t *testing.T) {
 	}
 }
 
-// A restricted LAN route admits its allow list and no one else, and the
-// requester it gates is resolved per packet from the source address: the
-// member that owns the source is the member asking. A member inside the
-// list is delivered; a member outside it is denied; a source no member owns
-// has no requester to vouch for it, so it is denied too. The denials are
-// unrouted events in the existing accounting, not a new failure path.
-func TestDispatchAllowGatesBySourceOwner(t *testing.T) {
+// A restricted LAN route admits its allow list and no one else, and for
+// hub-local traffic — the only traffic dispatch sees, every remote peer
+// entering through fromSpoke's authenticated gate — the requester is
+// resolved from the source address, best-effort: the hub's own host is the
+// only stack that can originate here, and no member key vouches for it. A
+// source owned by a member inside the list is delivered; one owned by a
+// member outside it is denied; a source no member owns has no requester to
+// vouch for it, so it is denied too. The denials are unrouted events in the
+// existing accounting, not a new failure path.
+func TestDispatchHubLocalRequesterResolvedFromSource(t *testing.T) {
 	_, peerLanEnd := newDatagramPipe(4)
 
 	var mu sync.Mutex
 	var warnings []string
 	router := newTestRouter()
 	router.install(newPeerStream(context.Background(), "peer-lan", peerLanEnd))
-	// The requesting members, one inside the route's allow list and one
-	// outside it. Their tun addresses are what the requester resolution keys
-	// on — the peer keys travel in no packet.
+	// The requester resolution keys on the source address: a hub-host
+	// process using a member's tun address resolves to that member. One
+	// member sits inside the route's allow list, one outside it.
 	router.table.set(net.ParseIP("10.10.0.3"), "peer-in")
 	router.table.set(net.ParseIP("10.10.0.4"), "peer-out")
 	router.table.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
@@ -121,7 +123,7 @@ func TestDispatchAllowGatesBySourceOwner(t *testing.T) {
 		})
 	}
 
-	// A member inside the allow list is delivered.
+	// A source owned by a member inside the allow list is delivered.
 	hub := newHub()
 	in := udpPacket("10.10.0.3", "192.168.50.9", 1, 1)
 	hub.dispatch(in)
@@ -134,8 +136,8 @@ func TestDispatchAllowGatesBySourceOwner(t *testing.T) {
 		t.Fatalf("peer-lan got % x, want % x", got[:n], in)
 	}
 
-	// A member outside the allow list is denied: no delivery, and the denial
-	// is the existing unrouted accounting.
+	// A source owned by a member outside the allow list is denied: no
+	// delivery, and the denial is the existing unrouted accounting.
 	hub = newHub()
 	hub.dispatch(udpPacket("10.10.0.4", "192.168.50.9", 2, 1))
 	select {
@@ -164,5 +166,82 @@ func TestDispatchAllowGatesBySourceOwner(t *testing.T) {
 	mu.Unlock()
 	if len(w) != 1 || !strings.Contains(w[0], "no route for 192.168.50.9") {
 		t.Fatalf("warnings = %v, want one unrouted warning for the unowned source", w)
+	}
+}
+
+// The allow gate keys off the authenticated stream peer, not the packet's
+// self-declared source field: a packet arriving on a spoke's stream whose
+// source claims an allow-listed member's address is denied when the spoke it
+// arrived from is outside the route's allow list. Dropped before the device,
+// too — sent on instead, it would come back through dispatch, whose requester
+// is the source field's owner, and the claimed source would vouch for it.
+func TestFromSpokeAllowGatesOnAuthenticatedPeer(t *testing.T) {
+	device := newWriteRecorder(MaxMessageSize)
+	_, peerLanEnd := newDatagramPipe(4)
+	_, outEnd := newDatagramPipe(4)
+	_, inEnd := newDatagramPipe(4)
+
+	router := newTestRouter()
+	router.install(newPeerStream(context.Background(), "peer-lan", peerLanEnd))
+	out := newPeerStream(context.Background(), "peer-out", outEnd)
+	in := newPeerStream(context.Background(), "peer-in", inEnd)
+	router.install(out)
+	router.install(in)
+	// The route is restricted to peer-in, and the packets below all claim
+	// peer-in's tun address as their source: only the stream a packet
+	// arrives on tells the two members apart.
+	router.table.set(net.ParseIP("10.10.0.3"), "peer-in")
+	router.table.SetPrefixRoutes(map[netip.Prefix]prefixRoute{
+		netip.MustParsePrefix("192.168.50.0/24"): {Peer: "peer-lan", Allow: []string{"peer-in"}},
+	})
+
+	var mu sync.Mutex
+	var warnings []string
+	hub := newP2PHub(device, router, nil, func(msg string) {
+		mu.Lock()
+		warnings = append(warnings, msg)
+		mu.Unlock()
+	})
+
+	// A spoofed source does not cross the gate: the destination matches the
+	// route, the route admits peer-in, and the source claims peer-in's
+	// address — but the packet arrives on peer-out's stream, so it is denied:
+	// not delivered, not written to the device, and counted as unrouted.
+	pkt := udpPacket("10.10.0.3", "192.168.50.9", 1, 1)
+	if err := hub.fromSpoke(out, pkt); err != nil {
+		t.Fatalf("fromSpoke(spoofed source): %v", err)
+	}
+	select {
+	case pkt := <-peerLanEnd.queue:
+		t.Fatalf("a spoofed source crossed the allow gate: % x", pkt)
+	default:
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("a denied packet was written to the device: % x", got)
+	}
+	mu.Lock()
+	w := append([]string(nil), warnings...)
+	mu.Unlock()
+	if len(w) != 1 || !strings.Contains(w[0], "no route for 192.168.50.9") {
+		t.Fatalf("warnings = %v, want one unrouted warning for the denied spoke", w)
+	}
+
+	// The authenticated peer crosses: the same claimed source, arriving on
+	// peer-in's own stream, is delivered by prefix — and directly, not
+	// through the device.
+	pkt = udpPacket("10.10.0.3", "192.168.50.9", 2, 1)
+	if err := hub.fromSpoke(in, pkt); err != nil {
+		t.Fatalf("fromSpoke(allowed): %v", err)
+	}
+	var got [MaxMessageSize]byte
+	n, err := peerLanEnd.Read(got[:])
+	if err != nil {
+		t.Fatalf("peer-lan read: %v", err)
+	}
+	if !bytes.Equal(got[:n], pkt) {
+		t.Fatalf("peer-lan got % x, want % x", got[:n], pkt)
+	}
+	if got := device.received(); len(got) != 0 {
+		t.Fatalf("an allowed packet took the device: % x", got)
 	}
 }
