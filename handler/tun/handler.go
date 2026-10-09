@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"time"
 
@@ -55,6 +56,17 @@ func (h *tunHandler) Init(md md.Metadata) (err error) {
 	h.router = newPeerTable(h.options.Auther, h.md.keepAlivePeriod, h.options.Service, h.options.Logger)
 
 	return
+}
+
+// SetPrefixRoutes replaces the hub's prefix table. Routes are matched
+// longest-prefix-first, and only after an exact peerTable match — a member's
+// registered /32 is unmatched authority and never displaced by a LAN route.
+//
+// It is meaningless on a spoke: a spoke routes no inbound peer, so it has no
+// delivery decision for a prefix to inform, and the table it would install
+// is never consulted.
+func (h *tunHandler) SetPrefixRoutes(routes map[netip.Prefix]prefixRoute) {
+	h.router.SetPrefixRoutes(routes)
 }
 
 // Forward implements handler.Forwarder.

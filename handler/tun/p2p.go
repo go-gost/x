@@ -154,6 +154,28 @@ func (r *peerRouter) deliver(dst net.IP, pkt []byte) error {
 	return s.write(pkt)
 }
 
+// deliverFrom is deliver with one more lookup dimension: when no exact route
+// owns dst, the prefix table may — a LAN one member sits in front of, routed
+// to that member by longest prefix (see peerTable.lookupPrefix). from is the
+// packet's requester: the peer key a prefix route's allow list gates, or
+// empty for the hub's own traffic, which no allow list names.
+//
+// The denied cases are ErrNoRoute, not a new error: a requester an allow list
+// excludes is as unroutable as a destination no route covers, and deliver's
+// callers already account for exactly that.
+func (r *peerRouter) deliverFrom(dst net.IP, pkt []byte, from string) error {
+	name, ok := r.table.lookupPrefix(dst, from)
+	if !ok {
+		return ErrNoRoute
+	}
+
+	s := r.stream(name)
+	if s == nil {
+		return ErrNoRoute
+	}
+	return s.write(pkt)
+}
+
 // p2pHub is the p2p hub's device engine: one goroutine reads the tun device,
 // and every write to the device — from every peer's stream — goes through one
 // lock.
@@ -242,7 +264,12 @@ func (h *p2pHub) dispatch(pkt []byte) {
 		return
 	}
 
-	switch err := h.router.deliver(dst, pkt); {
+	// deliverFrom, not deliver: a destination no exact route claims may sit
+	// in a LAN one member sits in front of, and the prefix table — consulted
+	// only after the exact table misses — names the member that reaches it.
+	// The hub itself is the requester: its device traffic originates with no
+	// peer, so from is empty and an allow list gates it like anyone else.
+	switch err := h.router.deliverFrom(dst, pkt, ""); {
 	case errors.Is(err, ErrNoRoute):
 		// The destination is named in the warning because a spoke that never
 		// registered is otherwise indistinguishable from silence: the

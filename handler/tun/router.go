@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -30,6 +32,18 @@ type peerTable struct {
 	// concurrent set() calls could leave them disagreeing about who owned an
 	// address, after which dropPeer deleted the winner's route. See set.
 	routes sync.Map // tunRouteKey -> peerRoute
+
+	// prefixes are the LAN routes the hub installs wholesale — a claim the
+	// hub approved, not a fact a keepalive reports — so they are a plain map
+	// replaced under mu rather than entries in routes' sync.Map. See
+	// SetPrefixRoutes.
+	prefixes map[netip.Prefix]prefixRoute
+
+	// mu guards prefixes. routes needs no lock of its own (its sync.Map is
+	// its), and every operation on prefixes is either a wholesale replace or
+	// a read-only walk, which is the plain-map-with-RWMutex shape this
+	// package already uses for peerRouter.streams.
+	mu sync.RWMutex
 
 	auther     auth.Authenticator
 	authorizer PeerAuthorizer
@@ -193,6 +207,69 @@ func (pt *peerTable) lookup(dst net.IP) (string, bool) {
 		return "", false
 	}
 	return r.name, true
+}
+
+// SetPrefixRoutes replaces the prefix table. The map is copied, so a caller
+// that mutates its map afterwards cannot race the walks reading it.
+func (pt *peerTable) SetPrefixRoutes(routes map[netip.Prefix]prefixRoute) {
+	cp := make(map[netip.Prefix]prefixRoute, len(routes))
+	for p, r := range routes {
+		cp[p] = r
+	}
+	pt.mu.Lock()
+	pt.prefixes = cp
+	pt.mu.Unlock()
+}
+
+// lookupPrefix returns the peer owning dst by longest prefix, and whether the
+// requesting peer key may use it.
+//
+// The exact table is consulted first: a member's registered address is that
+// member's alone, so a LAN route can never displace or shadow it — a prefix
+// is the answer only when no exact route exists. That order is this method,
+// not its caller's discipline, so no caller can get it wrong.
+//
+// A match whose Allow list is non-empty and does not name from is not a
+// route: ok is false, the same answer as no match at all.
+func (pt *peerTable) lookupPrefix(dst net.IP, from string) (string, bool) {
+	if name, ok := pt.lookup(dst); ok {
+		return name, true
+	}
+
+	// To4 collapses a 4-byte or a 4-in-6 net.IP to the 4-byte form a v4
+	// prefix contains, and leaves a real v6 address alone; without it a
+	// 16-byte IPv4 would never match an IPv4 prefix.
+	var addr netip.Addr
+	if v4 := dst.To4(); v4 != nil {
+		addr, _ = netip.AddrFromSlice(v4)
+	} else {
+		addr, _ = netip.AddrFromSlice(dst)
+	}
+
+	// The walk keeps the longest match rather than returning the first: a
+	// hub with 192.168.0.0/16 and 192.168.50.0/24 installed must send a
+	// 192.168.50.x packet to the /24's member, not whichever entry the map
+	// happened to yield first.
+	pt.mu.RLock()
+	var (
+		best  = -1
+		route prefixRoute
+	)
+	for p, r := range pt.prefixes {
+		if p.Bits() <= best || !p.Contains(addr) {
+			continue
+		}
+		best, route = p.Bits(), r
+	}
+	pt.mu.RUnlock()
+	if best < 0 {
+		return "", false
+	}
+
+	if len(route.Allow) > 0 && !slices.Contains(route.Allow, from) {
+		return "", false
+	}
+	return route.Peer, true
 }
 
 // dropPeer removes every route registered by name, leaving other peers' routes
