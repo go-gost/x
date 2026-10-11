@@ -245,8 +245,10 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		sniffConn := xnet.NewReadWriteConn(io.TeeReader(br, capture), origConn, origConn)
 
 		var sniffErr error
+		var handled bool
 		switch proto {
 		case sniffing.ProtoHTTP:
+			handled = true
 			sniffErr = sniffer.HandleHTTP(ctx, "tcp", sniffConn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
@@ -260,6 +262,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				return nil
 			}
 		case sniffing.ProtoTLS:
+			handled = true
 			sniffErr = sniffer.HandleTLS(ctx, ro.Network, sniffConn,
 				sniffing.WithService(h.options.Service),
 				sniffing.WithDial(dial),
@@ -273,13 +276,22 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 			}
 		}
 
-		if h.md.sniffingFallback {
+		// A protocol the sniffer does not classify (ssh, redis, or "" when
+		// nothing arrives within sniffing.timeout) has no error to report and
+		// nothing to fall back from, so it always reaches raw forwarding to the
+		// original dstAddr — the way every non-HTTP/TLS protocol was handled
+		// before sniffing gained a failure path. sniffing.fallback only governs
+		// what happens after HTTP/TLS handling itself fails (e.g. an empty SNI,
+		// gost#891).
+		if !handled {
+			log.Debugf("sniffing: protocol %q not handled, forwarding raw", proto)
+		} else if h.md.sniffingFallback {
 			log.Debugf("sniffing(%s) failed, falling back: %v", proto, sniffErr)
-			conn = xnet.NewReadWriteConn(io.MultiReader(capture, br), origConn, origConn)
-			// fall through to raw forwarding below
 		} else {
 			return sniffErr
 		}
+		conn = xnet.NewReadWriteConn(io.MultiReader(capture, br), origConn, origConn)
+		// fall through to raw forwarding below
 	}
 
 	// Re-check bypass on dstAddr before raw forwarding. In whitelist mode the
