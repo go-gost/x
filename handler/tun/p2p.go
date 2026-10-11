@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -387,14 +388,22 @@ func (h *p2pHub) countOversize(size int) {
 // tallies above, for the same reason: the condition is a symptom of a link
 // losing its framing, so it arrives in bursts and has to stay countable
 // without becoming the log.
-func (h *p2pHub) countNonIP(size int) {
+//
+// The head bytes are logged because a 4-byte frame was seen in the field and
+// its source was never pinned down. channelTag = "P2PU" is exactly 4 bytes,
+// which makes a tag leak the obvious suspect, but the sequence that preceded
+// the sighting -- an untagged inbound delivery after a peek timeout -- was
+// then reproduced 23 times without one, so the suspect is unconfirmed either
+// way. Without the bytes the next occurrence is just another anonymous
+// discard, so they stay.
+func (h *p2pHub) countNonIP(pkt []byte) {
 	h.nonIPMu.Lock()
 	now := time.Now()
 	if h.nonIPSince.IsZero() {
 		h.nonIPSince = now
 		h.nonIPCount = 1
 		h.nonIPMu.Unlock()
-		h.warnf("non-IP frame (%d bytes), discarded", size)
+		h.warnf("non-IP frame (%d bytes, head=%s), discarded", len(pkt), headBytes(pkt))
 		return
 	}
 	h.nonIPCount++
@@ -405,8 +414,26 @@ func (h *p2pHub) countNonIP(size int) {
 	n, since := h.nonIPCount, h.nonIPSince
 	h.nonIPSince, h.nonIPCount = now, 0
 	h.nonIPMu.Unlock()
-	h.warnf("non-IP frames discarded: %d in %s", n,
-		time.Since(since).Round(time.Millisecond).String())
+	h.warnf("non-IP frames discarded: %d in %s (last head=%s)", n,
+		time.Since(since).Round(time.Millisecond).String(), headBytes(pkt))
+}
+
+// headBytes renders at most the first 8 bytes as hex, so a dropped frame can
+// be identified from the log alone. The remainder is elided rather than
+// truncated silently, so a short frame reads as short.
+func headBytes(pkt []byte) string {
+	n := min(len(pkt), 8)
+	if n == 0 {
+		return "(empty)"
+	}
+	var sb strings.Builder
+	for _, b := range pkt[:n] {
+		fmt.Fprintf(&sb, "%02x ", b)
+	}
+	if len(pkt) > n {
+		sb.WriteString("...")
+	}
+	return sb.String()
 }
 
 // fromSpoke handles one datagram from one peer: a keepalive is answered on the
@@ -497,7 +524,7 @@ func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 		// the same frames before its device write (client.go), which is why a
 		// phone logs "unknown packet, discarded" all day and never dies while
 		// the hub had no equivalent.
-		h.countNonIP(len(pkt))
+		h.countNonIP(pkt)
 		return nil
 	}
 
