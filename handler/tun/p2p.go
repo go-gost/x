@@ -220,6 +220,13 @@ type p2pHub struct {
 	overMu    sync.Mutex
 	overCount int
 	overSince time.Time
+
+	// nonIPMu guards the tally that countNonIP keeps. Same shape again: a peer
+	// whose link is losing frame boundaries sends these continuously, and one
+	// line per packet would bury the log it is meant to explain.
+	nonIPMu    sync.Mutex
+	nonIPCount int
+	nonIPSince time.Time
 }
 
 func newP2PHub(device io.ReadWriter, router *peerRouter, ownNets []net.IPNet, warn func(string)) *p2pHub {
@@ -375,6 +382,33 @@ func (h *p2pHub) countOversize(size int) {
 		time.Since(since).Round(time.Millisecond).String())
 }
 
+// countNonIP records one frame that was not a parseable IP packet, reporting
+// the first at once and the rest once per window — the same shape as the two
+// tallies above, for the same reason: the condition is a symptom of a link
+// losing its framing, so it arrives in bursts and has to stay countable
+// without becoming the log.
+func (h *p2pHub) countNonIP(size int) {
+	h.nonIPMu.Lock()
+	now := time.Now()
+	if h.nonIPSince.IsZero() {
+		h.nonIPSince = now
+		h.nonIPCount = 1
+		h.nonIPMu.Unlock()
+		h.warnf("non-IP frame (%d bytes), discarded", size)
+		return
+	}
+	h.nonIPCount++
+	if now.Sub(h.nonIPSince) < unroutedWindow {
+		h.nonIPMu.Unlock()
+		return
+	}
+	n, since := h.nonIPCount, h.nonIPSince
+	h.nonIPSince, h.nonIPCount = now, 0
+	h.nonIPMu.Unlock()
+	h.warnf("non-IP frames discarded: %d in %s", n,
+		time.Since(since).Round(time.Millisecond).String())
+}
+
 // fromSpoke handles one datagram from one peer: a keepalive is answered on the
 // peer it arrived from, a packet for another registered peer is delivered
 // straight to that peer's stream, and anything else is the device's.
@@ -450,6 +484,21 @@ func (h *p2pHub) fromSpoke(s *peerStream, pkt []byte) error {
 			h.countUnrouted(dst)
 			return nil
 		}
+	} else {
+		// Not a parseable IPv4 or IPv6 packet, which is the one thing the
+		// kernel is certain to refuse. Measured on a real up tun device: the
+		// version nibble is the *only* thing it inspects — anything but 4 or 6
+		// comes back EINVAL at any length, while 1421, 1500 and 2000-byte
+		// frames with a valid header all go through untouched. So this branch,
+		// not size, is the one that killed the hub: the error left fromSpoke,
+		// unwound Handle, and took a 54-minute peer stream down with it.
+		//
+		// Dropping here is also the symmetric choice: the spoke already refuses
+		// the same frames before its device write (client.go), which is why a
+		// phone logs "unknown packet, discarded" all day and never dies while
+		// the hub had no equivalent.
+		h.countNonIP(len(pkt))
+		return nil
 	}
 
 	h.wmu.Lock()
