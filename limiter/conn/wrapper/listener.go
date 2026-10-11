@@ -7,6 +7,13 @@ import (
 	limiter "github.com/go-gost/core/limiter/conn"
 )
 
+// ErrConnLimit reports that a connection was refused because it exceeded the
+// connection limit. It is a sentinel so callers can tell a single refused
+// connection apart from a listener that has genuinely failed: the refusal is
+// per-connection and leaves the listener usable, so it must not end an accept
+// loop.
+var ErrConnLimit = errors.New("connection limit exceeded")
+
 type listener struct {
 	net.Listener
 	limiter limiter.ConnLimiter
@@ -39,7 +46,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 			return WrapConn(lim, c), nil
 		}
 		c.Close()
-		return nil, errors.New("connection limit exceeded")
+		return nil, ErrConnLimit
 	}
 
 	return c, nil

@@ -21,6 +21,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	xctx "github.com/go-gost/x/ctx"
+	connwrapper "github.com/go-gost/x/limiter/conn/wrapper"
 	xlogger "github.com/go-gost/x/logger"
 )
 
@@ -232,6 +233,52 @@ func TestServeAcceptsConnection(t *testing.T) {
 
 	if handled.Load() != 1 {
 		t.Errorf("handled = %d, want 1", handled.Load())
+	}
+}
+
+// gost#914: a single rejected connection must not end the accept loop. The conn
+// limiter's wrapper signals an over-limit connection by returning a plain error
+// from Accept, which the loop used to treat as fatal — so one rejection took the
+// whole service down and every later connection was refused until a restart.
+// The connection that was over the limit is refused; the service is not.
+func TestServeSurvivesRejectedConnection(t *testing.T) {
+	ln := newMockListener()
+	var handled atomic.Int32
+	h := newMockHandler(func(ctx context.Context, conn net.Conn) error {
+		handled.Add(1)
+		return nil
+	})
+	svc := NewService("test", ln, h).(*defaultService)
+
+	done := make(chan error, 1)
+	go func() { done <- svc.Serve() }()
+
+	newAddr := func(port int) *net.TCPAddr {
+		return &net.TCPAddr{IP: net.ParseIP("192.168.1.1"), Port: port}
+	}
+
+	// One connection is accepted, then the limiter rejects the next.
+	ln.connCh <- &mockConn{remoteAddr: newAddr(1234), localAddr: ln.addr}
+	ln.errCh <- connwrapper.ErrConnLimit
+
+	// The loop must still be running: a later connection has to be served.
+	ln.connCh <- &mockConn{remoteAddr: newAddr(1235), localAddr: ln.addr}
+
+	select {
+	case err := <-done:
+		t.Fatalf("accept loop exited after a rejected connection: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	ln.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("accept loop did not exit after the listener closed")
+	}
+
+	if got := handled.Load(); got != 2 {
+		t.Errorf("handled = %d, want 2 (the connection after the rejection must be served)", got)
 	}
 }
 
@@ -589,7 +636,8 @@ func TestCloseJoinsErrors(t *testing.T) {
 type closeErrHandler struct {
 	err error
 }
-func (h *closeErrHandler) Init(metadata.Metadata) error                { return nil }
+
+func (h *closeErrHandler) Init(metadata.Metadata) error { return nil }
 func (h *closeErrHandler) Handle(context.Context, net.Conn, ...handler.HandleOption) error {
 	return nil
 }

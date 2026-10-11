@@ -24,10 +24,11 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/service"
-	xctx "github.com/go-gost/x/ctx"
-	xlogger "github.com/go-gost/x/logger"
 	xbypass "github.com/go-gost/x/bypass"
+	xctx "github.com/go-gost/x/ctx"
+	connwrapper "github.com/go-gost/x/limiter/conn/wrapper"
 	rate_limiter "github.com/go-gost/x/limiter/rate"
+	xlogger "github.com/go-gost/x/logger"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/google/shlex"
@@ -229,6 +230,17 @@ func (s *defaultService) Serve() error {
 		if e != nil {
 			if _, ok := e.(*listener.AcceptError); ok {
 				tempDelay = 0
+			}
+
+			// A connection refused by the conn limiter is a per-connection
+			// outcome, not a listener failure: that connection is already
+			// closed and the listener is still usable. Returning it as fatal
+			// ended the accept loop, so one rejection stopped the service for
+			// good and every later connection was refused until a restart
+			// (gost#914). Keep accepting.
+			if errors.Is(e, connwrapper.ErrConnLimit) {
+				log.Warnf("accept: %v", e)
+				continue
 			}
 
 			// TODO: remove Temporary checking

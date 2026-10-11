@@ -3,7 +3,6 @@
 package pht
 
 import (
-	"errors"
 	"net"
 
 	"github.com/go-gost/core/limiter"
@@ -125,7 +124,7 @@ func (l *phtListener) Accept() (conn net.Conn, err error) {
 			if lim := l.options.ConnLimiter.Limiter(host); lim != nil {
 				if !lim.Allow(1) {
 					conn.Close()
-					return nil, errors.New("connection limit exceeded")
+					return nil, climiter.ErrConnLimit
 				}
 				conn = climiter.WrapConn(lim, conn)
 			}
