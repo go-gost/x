@@ -147,7 +147,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 					return fmt.Errorf("%w: read: %w", ErrTun, err)
 				}
 
-				if waterutil.IsIPv4(b[:n]) {
+				if tun_util.IPv4Packet(b[:n]) {
 					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
@@ -159,7 +159,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 							header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
 							header.Len, header.TotalLen, header.ID, header.Flags)
 					}
-				} else if waterutil.IsIPv6(b[:n]) {
+				} else if tun_util.IPv6Packet(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
@@ -248,7 +248,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 					return nil
 				}
 
-				if waterutil.IsIPv4(b[:n]) {
+				if tun_util.IPv4Packet(b[:n]) {
 					header, err := ipv4.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)
@@ -260,7 +260,7 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 							header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(b[:n])),
 							header.Len, header.TotalLen, header.ID, header.Flags)
 					}
-				} else if waterutil.IsIPv6(b[:n]) {
+				} else if tun_util.IPv6Packet(b[:n]) {
 					header, err := ipv6.ParseHeader(b[:n])
 					if err != nil {
 						log.Warn(err)

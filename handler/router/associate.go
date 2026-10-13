@@ -16,6 +16,7 @@ import (
 	"github.com/go-gost/core/router"
 	"github.com/go-gost/core/sd"
 	"github.com/go-gost/relay"
+	tun_util "github.com/go-gost/x/internal/util/tun"
 	xip "github.com/go-gost/x/internal/net/ip"
 	"github.com/go-gost/x/internal/util/cache"
 	traffic_wrapper "github.com/go-gost/x/limiter/traffic/wrapper"
@@ -234,7 +235,7 @@ func (h *routerHandler) sdRenew(ctx context.Context, clientID string, connectorI
 func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID relay.TunnelID, log logger.Logger) error {
 	// ---- Parse IP header ----
 	var dstIP net.IP
-	if waterutil.IsIPv4(data) {
+	if tun_util.IPv4Packet(data) {
 		header, err := ipv4.ParseHeader(data)
 		if err != nil {
 			return err
@@ -247,7 +248,7 @@ func (h *routerHandler) handlePacket(ctx context.Context, data []byte, routerID 
 				header.Src, header.Dst, xip.Protocol(waterutil.IPv4Protocol(data)),
 				header.Len, header.TotalLen, header.ID, header.Flags)
 		}
-	} else if waterutil.IsIPv6(data) {
+	} else if tun_util.IPv6Packet(data) {
 		header, err := ipv6.ParseHeader(data)
 		if err != nil {
 			return err
