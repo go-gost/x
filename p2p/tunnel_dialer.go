@@ -55,8 +55,8 @@ func NewTunnelDialer(inner dialer.Dialer, t Tunnel, opts ...TunnelOption) dialer
 // protocol on top of a p2p tunnel. The wrapper's implicit contract is
 // "inner dials one plain conn via options.Dialer and uses it as its base" —
 // a byte stream for the stream dialers (mux inners dial it once per session
-// and multiplex streams over it), a datagram stream for udp. kcp/quic
-// bases, http2 probes and destroys tunnels. Fail closed: new dialers are
+// and multiplex streams over it), a datagram stream for udp. kcp/quic bases
+// break that contract and destroy tunnels. Fail closed: new dialers are
 // unsupported until verified.
 func SupportedDialer(name string) bool {
 	switch name {

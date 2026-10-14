@@ -396,12 +396,12 @@ func TestHandshakeForward(t *testing.T) {
 }
 
 func TestSupportedDialer(t *testing.T) {
-	for _, name := range []string{"tcp", "tls", "ws", "mtcp", "mtls", "mws", "udp"} {
+	for _, name := range []string{"tcp", "tls", "ws", "wss", "grpc", "http2", "h2", "ssh", "sshd", "mtcp", "mtls", "mws", "mwss", "udp"} {
 		if !xp2p.SupportedDialer(name) {
 			t.Errorf("SupportedDialer(%q) = false, want true", name)
 		}
 	}
-	for _, name := range []string{"kcp", "quic", "grpc", "http2", ""} {
+	for _, name := range []string{"kcp", "quic", "bogus", ""} {
 		if xp2p.SupportedDialer(name) {
 			t.Errorf("SupportedDialer(%q) = true, want false (fail closed)", name)
 		}
