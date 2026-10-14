@@ -10,12 +10,18 @@ import (
 	"strings"
 )
 
+// resolvConfPath is the file systemNameservers reads. It is a var so tests
+// can redirect it: the system DNS configuration is per-environment, and
+// tests exercising the Init fallback chain must be hermetic against the
+// host's (or CI runner's) resolv.conf.
+var resolvConfPath = "/etc/resolv.conf"
+
 // systemNameservers reads the system DNS configuration from /etc/resolv.conf
 // and returns the nameserver addresses as URL-like strings suitable for
 // exchanger.NewExchanger (e.g., "udp://1.1.1.1:53").
 // Returns nil if the file cannot be read or contains no nameserver entries.
 func systemNameservers() []string {
-	f, err := os.Open("/etc/resolv.conf")
+	f, err := os.Open(resolvConfPath)
 	if err != nil {
 		return nil
 	}
@@ -33,15 +39,18 @@ func systemNameservers() []string {
 			continue
 		}
 		addr := fields[1]
-		// Verify it's a valid IP address.
-		if ip := net.ParseIP(addr); ip == nil {
+		// The port is optional in resolv.conf; default it to 53 when
+		// absent. Validate the host part only: net.ParseIP rejects a
+		// host:port string, so validating addr itself would drop every
+		// nameserver that carries an explicit port.
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil || port == "" {
+			host, port = addr, "53"
+		}
+		if ip := net.ParseIP(host); ip == nil {
 			continue
 		}
-		// If no port, default to 53.
-		if _, _, err := net.SplitHostPort(addr); err != nil {
-			addr = net.JoinHostPort(addr, "53")
-		}
-		servers = append(servers, fmt.Sprintf("udp://%s", addr))
+		servers = append(servers, fmt.Sprintf("udp://%s", net.JoinHostPort(host, port)))
 	}
 	if err := scanner.Err(); err != nil {
 		return nil

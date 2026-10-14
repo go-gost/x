@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -314,6 +315,13 @@ func TestNewHandler(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestInit_DefaultExchanger(t *testing.T) {
+	// Redirect the system config to a nonexistent path: a resolv.conf on
+	// the host (or CI runner) would otherwise preempt this fallback with
+	// "system-N" exchangers and the default would never be reached.
+	restore := resolvConfPath
+	resolvConfPath = filepath.Join(t.TempDir(), "resolv.conf")
+	t.Cleanup(func() { resolvConfPath = restore })
+
 	h := newTestHandler()
 	if err := h.Init(xmd.NewMetadata(nil)); err != nil {
 		t.Fatalf("Init: %v", err)
