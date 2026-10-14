@@ -115,17 +115,21 @@ func pipeHalf(ctx context.Context, src, dst io.ReadWriteCloser, readTimeout time
 
 			// 读取数据
 			nr, err := reader.Read(buf)
+
+			// A Read may return data together with an error (e.g. quic-go
+			// returns the last bytes of a stream together with io.EOF).
+			// Write the data first, otherwise the tail of the stream is lost.
+			if nr > 0 {
+				if _, werr := dst.Write(buf[:nr]); werr != nil {
+					return werr
+				}
+			}
+
 			if err != nil {
 				if err != io.EOF {
 					return err
 				}
 				return nil // 正常结束
-			}
-
-			// 写入数据
-			_, err = dst.Write(buf[:nr])
-			if err != nil {
-				return err
 			}
 		}
 	}
