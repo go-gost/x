@@ -36,6 +36,11 @@ var (
 // A variable, not a constant, so tests can shrink the wait.
 var firstInboundTimeout = 30 * time.Second
 
+// p2pRegisterInterval is how often a p2p dial re-sends the registration
+// handshake when no keepalive period is configured. A variable, not a
+// constant, so tests can shrink the wait (same as firstInboundTimeout).
+var p2pRegisterInterval = defaultKeepAlivePeriod
+
 func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network string, raddr string, config *tun_util.Config, log logger.Logger) error {
 	var ips []net.IP
 	for _, net := range config.Net {
@@ -59,16 +64,20 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 			// address, and this is the sole source of that mapping. Without it
 			// the link is one-way: traffic leaves, and nothing can come back.
 			//
-			// A configured keepalive period only decides whether the handshake
-			// then repeats, which matters against a server reached over UDP:
+			// A configured keepalive period decides how often the handshake
+			// repeats, which matters against a server reached over UDP:
 			// UDP is connectionless, so silence is the only signal that a peer
-			// has left, and a repeat is what lets a route expire. On a p2p link
-			// the period buys nothing — closing the stream says the peer is
-			// gone — so a one-shot is the whole of it there.
+			// has left, and a repeat is what lets a route expire. A p2p dial
+			// needs the repeat for a reason UDP does not have: its stream
+			// outlives the peer session under it, so the far side can reclaim
+			// the route to this device while the dial still reads as alive —
+			// and then every return packet is dropped for want of it, at both
+			// ends silently. keepalive() therefore refreshes on a p2p dial
+			// even without a period configured (see p2pRegisterInterval).
 			iterCtx, iterCancel := context.WithCancel(ctx)
 			defer iterCancel()
 
-			go h.keepalive(iterCtx, cc, ips)
+			go h.keepalive(iterCtx, cc, ips, network)
 
 			if h.md.probe {
 				go h.probeDevice(iterCtx, conn, ips)
@@ -85,7 +94,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 	}
 }
 
-func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP) {
+func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP, network string) {
 	// handshake
 	keepAliveData := bufpool.Get(keepAliveHeaderLength + len(ips)*net.IPv6len)
 	defer bufpool.Put(keepAliveData)
@@ -101,12 +110,27 @@ func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP)
 		return
 	}
 
-	if h.md.keepAlivePeriod <= 0 {
-		return
+	period := h.md.keepAlivePeriod
+	if period <= 0 {
+		if network != "ip" {
+			// A socket dial's own transport reports the far side gone, so a
+			// one-shot handshake is the whole of it there.
+			return
+		}
+		// A p2p dial (network "ip": a bare peer key, not an address) has no
+		// such signal: its stream is kept across a peer session rebuild, so
+		// the far side can drop the route to this device under a dial that
+		// still reads as alive. Repeating the handshake is the only thing
+		// that puts the address back, so do it on a fixed interval.
+		period = p2pRegisterInterval
+		if period <= 0 {
+			return
+		}
+	} else {
+		conn.SetReadDeadline(time.Now().Add(period * 3))
 	}
-	conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
 
-	ticker := time.NewTicker(h.md.keepAlivePeriod)
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
 	for {
@@ -115,7 +139,14 @@ func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP)
 			if _, err := conn.Write(keepAliveData); err != nil {
 				return
 			}
-			h.options.Logger.Debugf("keepalive sended")
+			if h.md.keepAlivePeriod > 0 {
+				h.options.Logger.Debugf("keepalive sended")
+			} else {
+				// Not the configured keepalive but the p2p registration
+				// refresh: trace, so a line every interval cannot bury the
+				// events a diagnosis needs.
+				h.options.Logger.Tracef("registration refreshed")
+			}
 		case <-ctx.Done():
 			return
 		}
