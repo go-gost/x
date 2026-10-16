@@ -325,13 +325,16 @@ func (h *p2pHub) dispatch(pkt []byte) {
 
 // unroutedWindow is how long unrouted packets are counted before the summary is
 // reported. Long enough that a brief gap is one line, short enough to appear
-// within the same log window as the failure that caused it.
-const unroutedWindow = 5 * time.Second
+// within the same log window as the failure that caused it. A variable, not a
+// constant, so tests can shrink the window.
+var unroutedWindow = 5 * time.Second
 
 // countUnrouted records one unrouted destination and reports the running total
-// at most once per window. dst is reported rather than counted per address: a
-// hub's unrouted traffic is normally one peer (the one whose route is missing),
-// and a map of addresses would be a second routing table to keep honest.
+// at most once per window. The window names the destination that opened it —
+// the first miss after the last report, which is also the one logged at once —
+// rather than counting per address: a hub's unrouted traffic is normally one
+// packet shape (its own MLD noise) plus the peer whose route is missing, and a
+// map of addresses would be a second routing table to keep honest.
 func (h *p2pHub) countUnrouted(dst net.IP) {
 	h.dropMu.Lock()
 	now := time.Now()
@@ -344,6 +347,11 @@ func (h *p2pHub) countUnrouted(dst net.IP) {
 		return
 	}
 	h.dropCount++
+	// The window names the miss that opened it, so the report cannot be stuck
+	// on a destination some earlier window happened to see first.
+	if h.dropDst == "" {
+		h.dropDst = dst.String()
+	}
 	// The window only restarts on a report, so a continuous flood reports once
 	// per window instead of once per packet.
 	if now.Sub(h.dropSince) < unroutedWindow {
@@ -351,7 +359,7 @@ func (h *p2pHub) countUnrouted(dst net.IP) {
 		return
 	}
 	n, since, d := h.dropCount, h.dropSince, h.dropDst
-	h.dropSince, h.dropCount = now, 0
+	h.dropSince, h.dropCount, h.dropDst = now, 0, ""
 	h.dropMu.Unlock()
 	h.warnf("no route for %s, %d packets discarded in %s", d, n,
 		time.Since(since).Round(time.Millisecond).String())
