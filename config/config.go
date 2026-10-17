@@ -205,7 +205,8 @@ type BypassConfig struct {
 }
 
 type FileLoader struct {
-	Path string `json:"path"`
+	Path   string `json:"path"`
+	Format string `yaml:",omitempty" json:"format,omitempty"`
 }
 
 type RedisLoader struct {
@@ -220,6 +221,7 @@ type RedisLoader struct {
 type HTTPLoader struct {
 	URL     string        `yaml:"url" json:"url"`
 	Timeout time.Duration `yaml:",omitempty" json:"timeout,omitempty"`
+	Format  string        `yaml:",omitempty" json:"format,omitempty"`
 }
 
 type NameserverConfig struct {

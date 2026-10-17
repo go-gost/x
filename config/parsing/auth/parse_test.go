@@ -197,7 +197,8 @@ func TestParseAuther_HTTPLoader(t *testing.T) {
 	a := ParseAuther(&config.AutherConfig{
 		Name: "http-loader-auth",
 		HTTP: &config.HTTPLoader{
-			URL: "http://localhost:8080/auth",
+			URL:    "http://localhost:8080/auth",
+			Format: "json",
 		},
 	})
 	if a == nil {

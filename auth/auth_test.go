@@ -341,6 +341,74 @@ func TestParseAuths_WhitespaceOnlyLines(t *testing.T) {
 	}
 }
 
+func TestParseFileAuthsStructured(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		data   string
+	}{
+		{"json", "json", `{"auths":[{"username":"alice","password":"secret"},{"username":"guest","password":""}]}`},
+		{"yaml", "yaml", "auths:\n  - username: alice\n    password: secret\n  - username: guest\n    password: ''\n"},
+		{"yml alias", "yml", "auths:\n  - username: alice\n    password: secret\n  - username: guest\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &authenticator{options: options{fileFormat: tt.format}}
+			auths, err := p.parseFileAuths(strings.NewReader(tt.data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(auths) != 2 || auths["alice"] != "secret" || auths["guest"] != "" {
+				t.Fatalf("unexpected auths: %#v", auths)
+			}
+		})
+	}
+}
+
+func TestParseFileAuthsDefaultText(t *testing.T) {
+	p := &authenticator{}
+	auths, err := p.parseFileAuths(strings.NewReader("alice\tsecret"))
+	if err != nil || auths["alice"] != "secret" {
+		t.Fatalf("unexpected result: %#v, %v", auths, err)
+	}
+}
+
+func TestParseFileAuthsUnsupportedFormat(t *testing.T) {
+	p := &authenticator{options: options{fileFormat: "toml"}}
+	if _, err := p.parseFileAuths(strings.NewReader("")); err == nil {
+		t.Fatal("expected unsupported format error")
+	}
+}
+
+func TestLoadHTTPStructuredAuths(t *testing.T) {
+	tests := []struct {
+		format string
+		data   string
+	}{
+		{"json", `{"auths":[{"username":"alice","password":"secret"}]}`},
+		{"yaml", "auths:\n  - username: alice\n    password: secret\n"},
+		{"yml", "auths:\n  - username: alice\n    password: secret\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.format, func(t *testing.T) {
+			p := &authenticator{
+				options: options{
+					httpLoader: &mockLoader{loadData: tt.data},
+					httpFormat: tt.format,
+				},
+				logger: xlogger.Nop(),
+			}
+			auths, err := p.load(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(auths) != 1 || auths["alice"] != "secret" {
+				t.Fatalf("unexpected auths: %#v", auths)
+			}
+		})
+	}
+}
+
 // --- load tests ---
 
 func TestLoad_NoLoaders(t *testing.T) {
