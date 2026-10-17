@@ -113,7 +113,7 @@ func TestTransportClientDropsNonIPFrames(t *testing.T) {
 	}()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+	go func() { errCh <- h.transportClient(ctx, device, ccA, false, xlogger.Nop()) }()
 
 	bad := make([]byte, 60)
 	for i := range bad {

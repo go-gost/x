@@ -3,6 +3,7 @@ package tun
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -109,5 +110,99 @@ func TestSocketDialSendsRegistrationOnce(t *testing.T) {
 
 	if got := countHandshakes(t, peer, 300*time.Millisecond, 2); got != 1 {
 		t.Fatalf("socket dial sent %d registration handshake(s), want 1", got)
+	}
+}
+
+// nudgeDevice is a device whose reader the test wakes on demand: Read blocks
+// until fed. The transport's device reader is not context-aware, so a test
+// that ends the link feeds it once to let the transport unwind — the same
+// wait collectFirstError documents.
+type nudgeDevice struct{ ch chan []byte }
+
+func (d *nudgeDevice) Read(p []byte) (int, error) {
+	b, ok := <-d.ch
+	if !ok {
+		return 0, io.EOF
+	}
+	return copy(p, b), nil
+}
+
+func (d *nudgeDevice) Write(p []byte) (int, error) { return len(p), nil }
+
+func (d *nudgeDevice) Close() error                     { return nil }
+func (d *nudgeDevice) LocalAddr() net.Addr              { return nil }
+func (d *nudgeDevice) RemoteAddr() net.Addr             { return nil }
+func (d *nudgeDevice) SetDeadline(time.Time) error      { return nil }
+func (d *nudgeDevice) SetReadDeadline(time.Time) error  { return nil }
+func (d *nudgeDevice) SetWriteDeadline(time.Time) error { return nil }
+
+// A hub side that rebuilt its session under this dial stops echoing the
+// registration: on this side the stream is a zombie. Nothing closes the dial,
+// and once the first echo cleared the one-shot no read deadline is left, so
+// before the watchdog the spoke stayed mute forever — 2026-10-17, 17 minutes
+// of blackhole with both ends reporting the path up, healed only by a manual
+// entrypoint restart. Silence after the first echo must end the dial, so the
+// caller redials and re-registers: that re-dial is what heals a hub-side
+// rebuild (observed as `peer relay session up … gen=43 client=true`).
+func TestP2PDialRedialsWhenEchoesStop(t *testing.T) {
+	oldReg := p2pRegisterInterval
+	p2pRegisterInterval = 20 * time.Millisecond
+	defer func() { p2pRegisterInterval = oldReg }()
+
+	oldInbound := p2pInboundTimeout
+	p2pInboundTimeout = 150 * time.Millisecond
+	defer func() { p2pInboundTimeout = oldInbound }()
+
+	peers := make(chan net.Conn, 4)
+	router := &fakeRouter{dialFunc: func(context.Context, string, string) (net.Conn, error) {
+		local, peer := net.Pipe()
+		peers <- peer
+		return local, nil
+	}}
+
+	device := &nudgeDevice{ch: make(chan []byte, 4)}
+	// Closing the device wakes its reader with EOF, which is how the dial
+	// loop unwinds (ErrTun) and this test leaves no dialing goroutine behind.
+	defer close(device.ch)
+
+	h := newTestHandler(nil, router)
+	h.md.passphrase = testPassphrase
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = h.handleClient(ctx, device, "ip", testPeerKey, testConfig(), xlogger.Nop())
+	}()
+
+	var peer1 net.Conn
+	select {
+	case peer1 = <-peers:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no dial")
+	}
+	drained := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, peer1)
+		close(drained)
+	}()
+
+	// One echo proves the link alive; the hub then goes silent.
+	if _, err := peer1.Write(bareEcho()); err != nil {
+		t.Fatal(err)
+	}
+	// Past the silence window, wake the device reader so the transport can
+	// unwind once its read deadline has already fired.
+	time.Sleep(3 * p2pInboundTimeout)
+	device.ch <- realIPv4Packet()
+
+	select {
+	case <-peers:
+	case <-time.After(5 * time.Second):
+		t.Fatal("dial did not end (and redial) after the hub stopped answering")
+	}
+	select {
+	case <-drained:
+	case <-time.After(time.Second):
+		t.Fatal("the silent dial was not closed")
 	}
 }

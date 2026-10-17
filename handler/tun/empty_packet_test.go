@@ -75,7 +75,7 @@ func TestTransportClientSurvivesAnEmptyPacketRead(t *testing.T) {
 				panicked <- r
 			}
 		}()
-		errCh <- h.transportClient(ctx, dev, ccA, xlogger.Nop())
+		errCh <- h.transportClient(ctx, dev, ccA, false, xlogger.Nop())
 	}()
 
 	select {

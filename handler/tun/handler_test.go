@@ -19,11 +19,18 @@ type fakeRouter struct {
 	// dialConn, when set, is what Dial hands back — the test holds the far
 	// end of it, which is how a dial is driven without a network.
 	dialConn net.Conn
+	// dialFunc, when set, takes precedence over dialConn: it lets a test
+	// hand out a fresh link per dial, which one static conn cannot — the
+	// shape a redial loop needs.
+	dialFunc func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 func (r *fakeRouter) Options() *chain.RouterOptions { return r.options }
 
 func (r *fakeRouter) Dial(ctx context.Context, network, address string, opts ...chain.DialOption) (net.Conn, error) {
+	if r.dialFunc != nil {
+		return r.dialFunc(ctx, network, address)
+	}
 	if r.dialConn != nil {
 		return r.dialConn, nil
 	}

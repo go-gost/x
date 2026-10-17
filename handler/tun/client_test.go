@@ -65,7 +65,7 @@ func TestTransportClientDropsKeepaliveFrames(t *testing.T) {
 	}()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+	go func() { errCh <- h.transportClient(ctx, device, ccA, false, xlogger.Nop()) }()
 
 	// Protocol frames must be swallowed...
 	if _, err := ccB.Write(registrationFrame()); err != nil {
@@ -110,7 +110,7 @@ func TestNoKeepaliveClientTimesOutWaitingForFirstInbound(t *testing.T) {
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+	go func() { errCh <- h.transportClient(ctx, device, ccA, false, xlogger.Nop()) }()
 
 	select {
 	case err := <-errCh:
@@ -129,7 +129,9 @@ func TestNoKeepaliveClientTimesOutWaitingForFirstInbound(t *testing.T) {
 
 // The mirror: one inbound byte — even protocol chatter, which never reaches
 // the device — proves the link alive and clears the one-shot, so a healthy
-// but quiet tunnel is never redialed.
+// but quiet tunnel is never redialed. This is the socket arm; a p2p dial
+// re-arms the bound after the first byte instead of clearing it, which
+// TestP2PDialRedialsWhenEchoesStop covers.
 func TestNoKeepaliveClientFirstInboundClearsTimeout(t *testing.T) {
 	old := firstInboundTimeout
 	firstInboundTimeout = 200 * time.Millisecond
@@ -145,7 +147,7 @@ func TestNoKeepaliveClientFirstInboundClearsTimeout(t *testing.T) {
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- h.transportClient(ctx, device, ccA, xlogger.Nop()) }()
+	go func() { errCh <- h.transportClient(ctx, device, ccA, false, xlogger.Nop()) }()
 
 	if _, err := ccB.Write(bareEcho()); err != nil {
 		t.Fatal(err)
@@ -161,4 +163,41 @@ func TestNoKeepaliveClientFirstInboundClearsTimeout(t *testing.T) {
 	}
 
 	ccB.Close() // unblock the reader; the test proved what it had to
+}
+
+// The p2p arm of the bound: after the first inbound byte the rolling
+// deadline is armed, and silence past p2pInboundTimeout must report a read
+// timeout — which the dial loop turns into a redial.
+func TestP2PDialTimesOutAfterSilenceOnceLinkProven(t *testing.T) {
+	old := p2pInboundTimeout
+	p2pInboundTimeout = 100 * time.Millisecond
+	defer func() { p2pInboundTimeout = old }()
+
+	device, kernelSide := net.Pipe()
+	defer device.Close()
+	defer kernelSide.Close()
+	ccA, ccB := net.Pipe()
+	defer ccA.Close()
+	defer ccB.Close()
+
+	h := newTestHandler(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.transportClient(ctx, device, ccA, true, xlogger.Nop()) }()
+
+	if _, err := ccB.Write(bareEcho()); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-errCh:
+		var nerr net.Error
+		if !errors.As(err, &nerr) || !nerr.Timeout() {
+			t.Fatalf("transportClient = %v, want a read timeout", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("a p2p dial survived silence after the link proved itself")
+	}
 }

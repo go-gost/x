@@ -31,10 +31,25 @@ var (
 // keepalive period is configured. A hub that never answers — not started,
 // or silently refusing — would otherwise leave the spoke "running" forever
 // on a link that will never deliver. Expiring makes the caller redial and
-// re-register, which is also how a fixed hub recovers on its own. Any
-// inbound byte clears it: from then on the link has proven itself alive.
+// re-register, which is also how a fixed hub recovers on its own. On a
+// socket dial any inbound byte clears it, from then on the link has proven
+// itself alive; a p2p dial instead turns it into the rolling bound below,
+// because its link can silently outlive the far side's session.
 // A variable, not a constant, so tests can shrink the wait.
 var firstInboundTimeout = 30 * time.Second
+
+// p2pInboundTimeout bounds the silence on a p2p dial once the first inbound
+// byte has proved the link alive. The registration handshake repeats every
+// p2pRegisterInterval and the hub echoes each one back over the same stream,
+// so ongoing silence means the hub stopped answering this dial: its session
+// was rebuilt and this stream is a zombie (2026-10-17: 17 minutes of two-way
+// blackhole while both ends read the path up), or the route was reclaimed.
+// Nothing else ends such a dial — writes succeed into the void and no
+// transport reports an error — so a rolling no-inbound bound is the only
+// signal. Ending it makes the caller redial, and the redial is what
+// re-registers and heals a hub-side rebuild. Three missed echoes at the
+// default 10s cadence. A variable, not a constant, so tests can shrink it.
+var p2pInboundTimeout = 30 * time.Second
 
 // p2pRegisterInterval is how often a p2p dial re-sends the registration
 // handshake when no keepalive period is configured. A variable, not a
@@ -73,7 +88,10 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 			// the route to this device while the dial still reads as alive —
 			// and then every return packet is dropped for want of it, at both
 			// ends silently. keepalive() therefore refreshes on a p2p dial
-			// even without a period configured (see p2pRegisterInterval).
+			// even without a period configured (see p2pRegisterInterval),
+			// and that refresh cuts both ways: the hub's echo of it is this
+			// side's proof the route is real, so a hub that stopped answering
+			// ends the dial on p2pInboundTimeout instead of leaving it mute.
 			iterCtx, iterCancel := context.WithCancel(ctx)
 			defer iterCancel()
 
@@ -83,7 +101,7 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 				go h.probeDevice(iterCtx, conn, ips)
 			}
 
-			return h.transportClient(ctx, conn, cc, log)
+			return h.transportClient(ctx, conn, cc, network == "ip", log)
 		}()
 		if errors.Is(err, ErrTun) {
 			return err
@@ -153,7 +171,7 @@ func (h *tunHandler) keepalive(ctx context.Context, conn net.Conn, ips []net.IP,
 	}
 }
 
-func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, conn net.Conn, log logger.Logger) error {
+func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, conn net.Conn, p2p bool, log logger.Logger) error {
 	c, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -227,8 +245,11 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 		// forever is exactly the silent-"running" this guards against. With
 		// a period the window matches the handshake's own 3×period; without
 		// one the fixed one-shot applies until the first inbound clears it.
-		// (keepalive() sets the same 3×period deadline for its path; the
-		// two agree, and this one is what the read loop below relies on.)
+		// On a p2p dial that first byte re-arms the bound instead of
+		// clearing it (p2pInboundTimeout): its stream can silently outlive
+		// the hub-side session under it, so ongoing silence has to end the
+		// dial. (keepalive() sets the same 3×period deadline for its path;
+		// the two agree, and this one is what the read loop below relies on.)
 		oneShot := h.md.keepAlivePeriod <= 0
 		if oneShot {
 			conn.SetReadDeadline(time.Now().Add(firstInboundTimeout))
@@ -255,6 +276,16 @@ func (h *tunHandler) transportClient(ctx context.Context, tun io.ReadWriter, con
 				// a healthy tunnel after 3×period.
 				if h.md.keepAlivePeriod > 0 {
 					conn.SetReadDeadline(time.Now().Add(h.md.keepAlivePeriod * 3))
+				} else if p2p {
+					// A p2p dial keeps the bound rolling for its whole life.
+					// The registration refresh is echoed by the hub while the
+					// route to this device is real, so silence past
+					// p2pInboundTimeout means the echo stopped: the hub-side
+					// session under this dial was rebuilt and the stream is a
+					// zombie, or the route was reclaimed. Nothing else ends
+					// such a dial, and ending it is the whole cure — the
+					// caller redials and re-registers (see handleClient).
+					conn.SetReadDeadline(time.Now().Add(p2pInboundTimeout))
 				} else if oneShot {
 					// The one-shot has served: the link proved itself alive,
 					// so clear it and read without a deadline from here on,
