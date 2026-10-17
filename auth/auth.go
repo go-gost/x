@@ -3,6 +3,8 @@ package auth
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"strings"
@@ -11,15 +13,19 @@ import (
 
 	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
+	yaml "github.com/goccy/go-yaml"
 )
 
 type options struct {
 	auths       map[string]string
 	fileLoader  loader.Loader
+	fileFormat  string
 	redisLoader loader.Loader
 	httpLoader  loader.Loader
+	httpFormat  string
 	period      time.Duration
 	logger      logger.Logger
 }
@@ -44,6 +50,12 @@ func FileLoaderOption(fileLoader loader.Loader) Option {
 	}
 }
 
+func FileFormatOption(format string) Option {
+	return func(opts *options) {
+		opts.fileFormat = format
+	}
+}
+
 func RedisLoaderOption(redisLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.redisLoader = redisLoader
@@ -53,6 +65,12 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+func HTTPFormatOption(format string) Option {
+	return func(opts *options) {
+		opts.httpFormat = format
 	}
 }
 
@@ -177,7 +195,7 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				p.logger.Warnf("file loader: %v", er)
 				loadErr = er
 			}
-			if auths, err := p.parseAuths(r); err == nil {
+			if auths, err := p.parseFileAuths(r); err == nil {
 				m = auths
 			} else {
 				p.logger.Warnf("file loader parse: %v", err)
@@ -217,7 +235,7 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				loadErr = er
 			}
 		}
-		if auths, err := p.parseAuths(r); err == nil {
+		if auths, err := p.parseAuthsFormat(r, p.options.httpFormat); err == nil {
 			maps.Copy(m, auths)
 		} else {
 			p.logger.Warnf("http loader parse: %v", err)
@@ -225,6 +243,44 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 	}
 
 	return m, loadErr
+}
+
+func (p *authenticator) parseFileAuths(r io.Reader) (map[string]string, error) {
+	return p.parseAuthsFormat(r, p.options.fileFormat)
+}
+
+func (p *authenticator) parseAuthsFormat(r io.Reader, format string) (map[string]string, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "text":
+		return p.parseAuths(r)
+	case "json":
+		return parseStructuredAuths(r, json.NewDecoder(r).Decode)
+	case "yml", "yaml":
+		return parseStructuredAuths(r, yaml.NewDecoder(r).Decode)
+	default:
+		return nil, fmt.Errorf("unsupported auth format %q", format)
+	}
+}
+
+func parseStructuredAuths(r io.Reader, decode func(any) error) (map[string]string, error) {
+	if r == nil {
+		return nil, nil
+	}
+
+	var data struct {
+		Auths []config.AuthConfig `json:"auths" yaml:"auths"`
+	}
+	if err := decode(&data); err != nil {
+		return nil, err
+	}
+
+	auths := make(map[string]string, len(data.Auths))
+	for _, auth := range data.Auths {
+		if auth.Username != "" {
+			auths[auth.Username] = auth.Password
+		}
+	}
+	return auths, nil
 }
 
 func (p *authenticator) parseAuths(r io.Reader) (auths map[string]string, err error) {
