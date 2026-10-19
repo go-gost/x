@@ -97,10 +97,6 @@ func (h *tunHandler) handleClient(ctx context.Context, conn net.Conn, network st
 
 			go h.keepalive(iterCtx, cc, ips, network)
 
-			if h.md.probe {
-				go h.probeDevice(iterCtx, conn, ips)
-			}
-
 			return h.transportClient(ctx, conn, cc, network == "ip", log)
 		}()
 		if errors.Is(err, ErrTun) {

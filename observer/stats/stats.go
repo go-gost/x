@@ -7,11 +7,9 @@ import (
 	"github.com/go-gost/core/observer/stats"
 )
 
-// Probe statistic kinds, defined here in x because core/ must stay untouched.
+// LAN statistic kinds, defined here in x because core/ must stay untouched.
 // Core uses 1-5; 101+ is x-private space.
 const (
-	KindProbeSent  stats.Kind = 101
-	KindProbeAcked stats.Kind = 102
 	// LAN kinds count a tun hub's peer-LAN routing: what the hub refused,
 	// what it put into its table, and what it took out again. They are
 	// counted by the hub's RIB, not by the packet path, because the RIB is
@@ -32,8 +30,6 @@ type Stats struct {
 	inputBytes   atomic.Uint64
 	outputBytes  atomic.Uint64
 	totalErrs    atomic.Uint64
-	probeSent    atomic.Uint64
-	probeAcked   atomic.Uint64
 	lanRouted    atomic.Uint64
 	lanDenied    atomic.Uint64
 	lanWithdrawn atomic.Uint64
@@ -67,14 +63,6 @@ func (s *Stats) Add(kind stats.Kind, n int64) {
 	case stats.KindTotalErrs:
 		if n > 0 {
 			s.totalErrs.Add(uint64(n))
-		}
-	case KindProbeSent:
-		if n > 0 {
-			s.probeSent.Add(uint64(n))
-		}
-	case KindProbeAcked:
-		if n > 0 {
-			s.probeAcked.Add(uint64(n))
 		}
 	case KindLanRouted:
 		if n > 0 {
@@ -114,10 +102,6 @@ func (s *Stats) Get(kind stats.Kind) uint64 {
 		return s.outputBytes.Load()
 	case stats.KindTotalErrs:
 		return s.totalErrs.Load()
-	case KindProbeSent:
-		return s.probeSent.Load()
-	case KindProbeAcked:
-		return s.probeAcked.Load()
 	case KindLanRouted:
 		return s.lanRouted.Load()
 	case KindLanDenied:
@@ -135,8 +119,6 @@ func (s *Stats) Reset() {
 	s.inputBytes.Store(0)
 	s.outputBytes.Store(0)
 	s.totalErrs.Store(0)
-	s.probeSent.Store(0)
-	s.probeAcked.Store(0)
 	s.lanRouted.Store(0)
 	s.lanDenied.Store(0)
 	s.lanWithdrawn.Store(0)
