@@ -73,7 +73,10 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		})),
 	}
 	if cfg.File != nil && cfg.File.Path != "" {
-		opts = append(opts, xauth.FileLoaderOption(loader.FileLoader(cfg.File.Path)))
+		opts = append(opts,
+			xauth.FileLoaderOption(loader.FileLoader(cfg.File.Path)),
+			xauth.FileFormatOption(cfg.File.Format),
+		)
 	}
 	if cfg.Redis != nil && cfg.Redis.Addr != "" {
 		opts = append(opts, xauth.RedisLoaderOption(loader.RedisHashLoader(
@@ -85,10 +88,13 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		)))
 	}
 	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
-		opts = append(opts, xauth.HTTPLoaderOption(loader.HTTPLoader(
-			cfg.HTTP.URL,
-			loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
-		)))
+		opts = append(opts,
+			xauth.HTTPLoaderOption(loader.HTTPLoader(
+				cfg.HTTP.URL,
+				loader.TimeoutHTTPLoaderOption(cfg.HTTP.Timeout),
+			)),
+			xauth.HTTPFormatOption(cfg.HTTP.Format),
+		)
 	}
 	return xauth.NewAuthenticator(opts...)
 }
