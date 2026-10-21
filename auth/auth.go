@@ -188,7 +188,11 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				p.logger.Warnf("file loader: %v", er)
 				loadErr = er
 			}
-			m = auths
+			// Never assign a nil map: m is merged into by the other
+			// loaders below, and merging into a nil map panics.
+			if auths != nil {
+				m = auths
+			}
 		} else {
 			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
@@ -196,7 +200,9 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				loadErr = er
 			}
 			if auths, err := p.parseFileAuths(r); err == nil {
-				m = auths
+				if auths != nil {
+					m = auths
+				}
 			} else {
 				p.logger.Warnf("file loader parse: %v", err)
 			}
