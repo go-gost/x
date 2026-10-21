@@ -137,6 +137,43 @@ func TestParseFileAuths_StructuredIgnoresAuthFileField(t *testing.T) {
 	}
 }
 
+// A YAML decode error carries the offending source lines, which may include
+// passwords. The logged message must not contain them.
+func TestRedactAuthError(t *testing.T) {
+	p := &authenticator{options: options{fileFormat: "yaml"}}
+	_, err := p.parseFileAuths(strings.NewReader(
+		"auths:\n  - username: admin\n    password: \"s3cr3t\n"))
+	if err == nil {
+		t.Fatal("want a parse error")
+	}
+	// The raw goccy error carries the offending source line.
+	if !strings.Contains(err.Error(), "s3cr3t") {
+		t.Fatalf("expected the raw error to contain the source line, got: %v", err)
+	}
+	redacted := redactAuthError(err)
+	if strings.Contains(redacted.Error(), "s3cr3t") {
+		t.Fatalf("the redacted error leaks the password: %v", redacted)
+	}
+	if redacted.Error() == "" {
+		t.Fatal("the redacted error is empty")
+	}
+	t.Logf("raw:     %v", err)
+	t.Logf("redacted: %s", redacted.Error())
+}
+
+// A JSON decode error does not carry the source, so it is passed through
+// unchanged.
+func TestRedactAuthError_Passthrough(t *testing.T) {
+	p := &authenticator{options: options{fileFormat: "json"}}
+	_, err := p.parseFileAuths(strings.NewReader(`{"auths":[`))
+	if err == nil {
+		t.Fatal("want a parse error")
+	}
+	if got := redactAuthError(err); got.Error() != err.Error() {
+		t.Fatalf("got %v, want %v", got, err)
+	}
+}
+
 // A failing file loader followed by a working http loader must not panic on
 // the nil map.
 func TestLoad_FailedFileLoaderThenWorkingHTTPLoader(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -233,7 +234,7 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 					m = auths
 				}
 			} else {
-				p.logger.Warnf("file loader parse: %v", err)
+				p.logger.Warnf("file loader parse: %v", redactAuthError(err))
 			}
 		}
 	}
@@ -258,7 +259,7 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 			if auths, err := p.parseAuths(r); err == nil {
 				maps.Copy(m, auths)
 			} else {
-				p.logger.Warnf("redis loader parse: %v", err)
+				p.logger.Warnf("redis loader parse: %v", redactAuthError(err))
 			}
 		}
 	}
@@ -273,11 +274,25 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 		if auths, err := p.parseAuthsFormat(r, p.options.httpFormat); err == nil {
 			maps.Copy(m, auths)
 		} else {
-			p.logger.Warnf("http loader parse: %v", err)
+			p.logger.Warnf("http loader parse: %v", redactAuthError(err))
 		}
 	}
 
 	return m, loadErr
+}
+
+// redactAuthError strips the source excerpt from a YAML decode error. The
+// excerpt contains the offending lines of the auth file, which may include
+// passwords, so it must not end up in the log.
+func redactAuthError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var yamlErr yaml.Error
+	if errors.As(err, &yamlErr) {
+		return errors.New(yaml.FormatError(err, false, false))
+	}
+	return err
 }
 
 func (p *authenticator) parseFileAuths(r io.Reader) (map[string]string, error) {
