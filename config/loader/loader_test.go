@@ -561,16 +561,18 @@ func TestRegister_Chains(t *testing.T) {
 // stubListener satisfies listener.Listener for testing.
 type stubListener struct{}
 
-func (l *stubListener) Init(md metadata.Metadata) error                 { return nil }
-func (l *stubListener) Accept() (net.Conn, error)                       { return nil, net.ErrClosed }
-func (l *stubListener) Addr() net.Addr                                  { return &net.TCPAddr{IP: net.IPv4zero, Port: 0} }
-func (l *stubListener) Close() error                                    { return nil }
+func (l *stubListener) Init(md metadata.Metadata) error { return nil }
+func (l *stubListener) Accept() (net.Conn, error)       { return nil, net.ErrClosed }
+func (l *stubListener) Addr() net.Addr                  { return &net.TCPAddr{IP: net.IPv4zero, Port: 0} }
+func (l *stubListener) Close() error                    { return nil }
 
 // stubHandler satisfies handler.Handler for testing.
 type stubHandler struct{}
 
-func (h *stubHandler) Init(md metadata.Metadata) error                  { return nil }
-func (h *stubHandler) Handle(_ context.Context, _ net.Conn, _ ...handler.HandleOption) error { return nil }
+func (h *stubHandler) Init(md metadata.Metadata) error { return nil }
+func (h *stubHandler) Handle(_ context.Context, _ net.Conn, _ ...handler.HandleOption) error {
+	return nil
+}
 
 func TestRegister_Services(t *testing.T) {
 	// ParseService needs "tcp" listener and "auto" handler in registries.
@@ -807,11 +809,11 @@ func newCountingRegistry[T any]() *countingRegistry[T] {
 	return &countingRegistry[T]{m: make(map[string]T)}
 }
 
-func (r *countingRegistry[T]) Register(name string, v T) error      { r.m[name] = v; return nil }
-func (r *countingRegistry[T]) Unregister(name string)                { delete(r.m, name); r.close++ }
-func (r *countingRegistry[T]) IsRegistered(name string) bool         { _, ok := r.m[name]; return ok }
-func (r *countingRegistry[T]) Get(name string) T                     { return r.m[name] }
-func (r *countingRegistry[T]) GetAll() map[string]T                  { return r.m }
+func (r *countingRegistry[T]) Register(name string, v T) error { r.m[name] = v; return nil }
+func (r *countingRegistry[T]) Unregister(name string)          { delete(r.m, name); r.close++ }
+func (r *countingRegistry[T]) IsRegistered(name string) bool   { _, ok := r.m[name]; return ok }
+func (r *countingRegistry[T]) Get(name string) T               { return r.m[name] }
+func (r *countingRegistry[T]) GetAll() map[string]T            { return r.m }
 
 func TestRegisterGroup_UnregistersAllOldEntries(t *testing.T) {
 	r := newCountingRegistry[int]()
