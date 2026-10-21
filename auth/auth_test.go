@@ -132,7 +132,12 @@ func TestNewAuthenticator_Defaults(t *testing.T) {
 	if ap.cancelFunc == nil {
 		t.Fatal("expected cancelFunc to be set")
 	}
-	if len(ap.kvs) != 0 {
+	// The background reload goroutine writes kvs under the lock, so read
+	// it under the lock too.
+	ap.mu.RLock()
+	n := len(ap.kvs)
+	ap.mu.RUnlock()
+	if n != 0 {
 		t.Fatal("expected empty kvs")
 	}
 }
