@@ -72,3 +72,10 @@ func (c *quicConn) CloseRead() error {
 	c.Stream.CancelRead(0)
 	return nil
 }
+
+// CloseWrite closes the send direction of the stream, leaving the receive
+// direction open. It is the QUIC equivalent of a TCP half-close: the peer
+// sees the end of the request, and the response can still be read.
+func (c *quicConn) CloseWrite() error {
+	return c.Stream.Close()
+}

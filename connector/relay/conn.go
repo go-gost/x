@@ -13,6 +13,7 @@ import (
 	"github.com/go-gost/core/common/bufpool"
 	mdata "github.com/go-gost/core/metadata"
 	"github.com/go-gost/relay"
+	xio "github.com/go-gost/x/internal/io"
 	xrelay "github.com/go-gost/x/internal/util/relay"
 )
 
@@ -50,6 +51,27 @@ func (c *tcpConn) Write(b []byte) (n int, err error) {
 	}
 	_, err = c.Conn.Write(b)
 	return
+}
+
+// CloseRead closes the read side of the wrapped conn. tcpConn embeds the
+// net.Conn interface, so the half-close methods of the conn it wraps are
+// not promoted; without this, a pipe that half-closes cannot release the
+// read side of a QUIC conn and its flow control credit.
+func (c *tcpConn) CloseRead() error {
+	if cr, ok := c.Conn.(xio.CloseRead); ok {
+		return cr.CloseRead()
+	}
+	return xio.ErrUnsupported
+}
+
+// CloseWrite closes the write side of the wrapped conn. It reports
+// ErrUnsupported when the wrapped conn cannot half-close, so that the
+// caller falls back to a full close.
+func (c *tcpConn) CloseWrite() error {
+	if cw, ok := c.Conn.(xio.CloseWrite); ok {
+		return cw.CloseWrite()
+	}
+	return xio.ErrUnsupported
 }
 
 type udpConn struct {
