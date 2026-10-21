@@ -868,14 +868,16 @@ func parseAuthFromCmd(sa string) (*config.AuthConfig, error) {
 }
 
 // parseSelector extracts selector configuration (strategy, maxFails,
-// failTimeout) from metadata and removes the consumed keys. Returns nil
-// if no selector parameters are present.
+// failTimeout, maxParallel, parallelMode) from metadata and removes the
+// consumed keys. Returns nil if no selector parameters are present.
 func parseSelector(m map[string]any) *config.SelectorConfig {
 	md := mdx.NewMetadata(m)
 	strategy := mdutil.GetString(md, "strategy")
 	maxFails := mdutil.GetInt(md, "maxFails", "max_fails")
 	failTimeout := mdutil.GetDuration(md, "failTimeout", "fail_timeout")
-	if strategy == "" && maxFails <= 0 && failTimeout <= 0 {
+	maxParallel := mdutil.GetInt(md, "maxParallel", "max_parallel")
+	parallelMode := mdutil.GetString(md, "parallelMode", "parallel_mode")
+	if strategy == "" && maxFails <= 0 && failTimeout <= 0 && maxParallel <= 0 && parallelMode == "" {
 		return nil
 	}
 	if strategy == "" {
@@ -893,11 +895,17 @@ func parseSelector(m map[string]any) *config.SelectorConfig {
 	delete(m, "max_fails")
 	delete(m, "failTimeout")
 	delete(m, "fail_timeout")
+	delete(m, "maxParallel")
+	delete(m, "max_parallel")
+	delete(m, "parallelMode")
+	delete(m, "parallel_mode")
 
 	return &config.SelectorConfig{
-		Strategy:    strategy,
-		MaxFails:    maxFails,
-		FailTimeout: failTimeout,
+		Strategy:     strategy,
+		MaxFails:     maxFails,
+		FailTimeout:  failTimeout,
+		MaxParallel:  maxParallel,
+		ParallelMode: parallelMode,
 	}
 }
 

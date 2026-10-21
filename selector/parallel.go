@@ -3,8 +3,12 @@ package selector
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"net"
+	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/connector"
@@ -13,12 +17,71 @@ import (
 	xnet "github.com/go-gost/x/internal/net"
 )
 
-type parallelStrategy[T any] struct{}
+// parallelMode determines how the racing subset is picked from the
+// candidate pool.
+type parallelMode int
+
+const (
+	// parallelModeRoundRobin rotates through the pool so that every node
+	// takes part in the same number of races.
+	parallelModeRoundRobin parallelMode = iota
+	// parallelModeRandom samples the pool at random.
+	parallelModeRandom
+)
+
+type parallelConfig struct {
+	maxParallel int
+	mode        parallelMode
+}
+
+// ParallelOption configures the parallel strategy.
+type ParallelOption func(*parallelConfig)
+
+// ParallelLimit sets the maximum number of nodes racing concurrently in a
+// single connection attempt. The remaining nodes stay in the candidate pool
+// and take part in later races. A value <= 0 means no limit: all nodes race.
+func ParallelLimit(n int) ParallelOption {
+	return func(c *parallelConfig) {
+		c.maxParallel = n
+	}
+}
+
+// ParallelMode sets how the racing subset is selected from the candidate
+// pool. Supported modes are "round" (round-robin, the default) and "random".
+// An unrecognized mode falls back to round-robin.
+func ParallelMode(mode string) ParallelOption {
+	return func(c *parallelConfig) {
+		switch strings.ToLower(strings.TrimSpace(mode)) {
+		case "random", "rand":
+			c.mode = parallelModeRandom
+		default:
+			c.mode = parallelModeRoundRobin
+		}
+	}
+}
+
+type parallelStrategy[T any] struct {
+	cfg     parallelConfig
+	counter uint64
+	rng     *rand.Rand
+	mu      sync.Mutex
+}
 
 // ParallelStrategy is a strategy for node selector.
-// It dials all nodes concurrently and uses the first successful connection.
-func ParallelStrategy[T any]() selector.Strategy[T] {
-	return &parallelStrategy[T]{}
+// It dials the selected nodes concurrently and uses the first successful
+// connection. Without a limit all nodes take part in every race; with a
+// limit only that many nodes are picked from the candidate pool for each
+// connection attempt.
+func ParallelStrategy[T any](opts ...ParallelOption) selector.Strategy[T] {
+	cfg := parallelConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &parallelStrategy[T]{
+		cfg: cfg,
+		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
 }
 
 func (s *parallelStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
@@ -38,8 +101,61 @@ func (s *parallelStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 		nodes = append(nodes, n)
 	}
 
+	nodes = s.selectNodes(nodes)
+
 	vn := chain.NewNode("parallel", "", chain.TransportNodeOption(&parallelTransporter{nodes: nodes}))
 	return any(vn).(T)
+}
+
+// selectNodes returns the subset of nodes taking part in a single race.
+// The pool is returned unchanged when no limit is configured or when the pool
+// is not larger than the limit.
+func (s *parallelStrategy[T]) selectNodes(nodes []*chain.Node) []*chain.Node {
+	limit := s.cfg.maxParallel
+	if limit <= 0 || limit >= len(nodes) {
+		return nodes
+	}
+
+	switch s.cfg.mode {
+	case parallelModeRandom:
+		return s.selectRandom(nodes, limit)
+	default:
+		return s.selectRoundRobin(nodes, limit)
+	}
+}
+
+// selectRoundRobin takes limit consecutive nodes starting at an offset that
+// advances by limit on every call. The pool is therefore covered evenly over
+// time: with 32 nodes and a limit of 4 the races use the disjoint groups
+// 0-3, 4-7, 8-11 and so on.
+func (s *parallelStrategy[T]) selectRoundRobin(nodes []*chain.Node, limit int) []*chain.Node {
+	n := uint64(len(nodes))
+	start := (atomic.AddUint64(&s.counter, 1) - 1) * uint64(limit) % n
+
+	selected := make([]*chain.Node, 0, limit)
+	for i := 0; i < limit; i++ {
+		selected = append(selected, nodes[(start+uint64(i))%n])
+	}
+	return selected
+}
+
+// selectRandom samples limit distinct nodes uniformly at random.
+func (s *parallelStrategy[T]) selectRandom(nodes []*chain.Node, limit int) []*chain.Node {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Partial Fisher-Yates shuffle: only the first limit entries are
+	// rearranged, the rest of the pool is left untouched.
+	pool := make([]*chain.Node, len(nodes))
+	copy(pool, nodes)
+	for i := 0; i < limit; i++ {
+		j := i + s.rng.Intn(len(pool)-i)
+		pool[i], pool[j] = pool[j], pool[i]
+	}
+
+	selected := make([]*chain.Node, limit)
+	copy(selected, pool[:limit])
+	return selected
 }
 
 type parallelConn struct {

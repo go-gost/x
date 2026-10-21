@@ -211,13 +211,13 @@ func TestNorm(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "empty string",
-			input: "",
+			name:    "empty string",
+			input:   "",
 			wantErr: true,
 		},
 		{
-			name:  "whitespace only",
-			input: "   ",
+			name:    "whitespace only",
+			input:   "   ",
 			wantErr: true,
 		},
 		{
@@ -326,12 +326,14 @@ func TestCutHost(t *testing.T) {
 
 func TestParseSelector(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      map[string]any
-		wantNil    bool
-		wantStrat  string
-		wantFails  int
-		wantDurGt  bool // failTimeout > 0
+		name      string
+		input     map[string]any
+		wantNil   bool
+		wantStrat string
+		wantFails int
+		wantDurGt bool // failTimeout > 0
+		wantPar   int
+		wantMode  string
 	}{
 		{
 			name:    "no params",
@@ -359,9 +361,9 @@ func TestParseSelector(t *testing.T) {
 		{
 			name: "all params with failTimeout",
 			input: map[string]any{
-				"strategy":     "hash",
-				"maxFails":     5,
-				"failTimeout":  "10s",
+				"strategy":    "hash",
+				"maxFails":    5,
+				"failTimeout": "10s",
 			},
 			wantStrat: "hash",
 			wantFails: 5,
@@ -377,6 +379,32 @@ func TestParseSelector(t *testing.T) {
 			wantStrat: "fifo",
 			wantFails: 2,
 			wantDurGt: true,
+		},
+		{
+			name: "parallel params",
+			input: map[string]any{
+				"strategy":     "parallel",
+				"maxParallel":  4,
+				"parallelMode": "random",
+			},
+			wantStrat: "parallel",
+			wantFails: 1,
+			wantDurGt: true,
+			wantPar:   4,
+			wantMode:  "random",
+		},
+		{
+			name: "parallel params with underscore",
+			input: map[string]any{
+				"strategy":      "parallel",
+				"max_parallel":  2,
+				"parallel_mode": "round",
+			},
+			wantStrat: "parallel",
+			wantFails: 1,
+			wantDurGt: true,
+			wantPar:   2,
+			wantMode:  "round",
 		},
 	}
 
@@ -400,6 +428,12 @@ func TestParseSelector(t *testing.T) {
 			}
 			if tt.wantDurGt && got.FailTimeout <= 0 {
 				t.Errorf("FailTimeout = %v, want > 0", got.FailTimeout)
+			}
+			if got.MaxParallel != tt.wantPar {
+				t.Errorf("MaxParallel = %d, want %d", got.MaxParallel, tt.wantPar)
+			}
+			if got.ParallelMode != tt.wantMode {
+				t.Errorf("ParallelMode = %q, want %q", got.ParallelMode, tt.wantMode)
 			}
 		})
 	}
@@ -455,8 +489,8 @@ func TestCopyConnectorConfig(t *testing.T) {
 
 	t.Run("non-nil deep copy", func(t *testing.T) {
 		orig := &config.ConnectorConfig{
-			Type: "http",
-			Auth: &config.AuthConfig{Username: "u", Password: "p"},
+			Type:     "http",
+			Auth:     &config.AuthConfig{Username: "u", Password: "p"},
 			Metadata: map[string]any{"k": "v"},
 		}
 		c := copyConnectorConfig(orig)
@@ -487,9 +521,9 @@ func TestCopyDialerConfig(t *testing.T) {
 
 	t.Run("non-nil deep copy", func(t *testing.T) {
 		orig := &config.DialerConfig{
-			Type: "tls",
-			TLS:  &config.TLSConfig{ServerName: "example.com"},
-			Auth: &config.AuthConfig{Username: "u"},
+			Type:     "tls",
+			TLS:      &config.TLSConfig{ServerName: "example.com"},
+			Auth:     &config.AuthConfig{Username: "u"},
 			Metadata: map[string]any{"k": "v"},
 		}
 		c := copyDialerConfig(orig)
@@ -1841,7 +1875,6 @@ func mustURL(raw string) *url.URL {
 	return u
 }
 
-
 func TestBuildServiceConfig_RelayTLSForward(t *testing.T) {
 	// relay+tls scheme: handler=relay, listener=tls.
 	// relay not in test registry → handler falls back to auto, listener falls back to tcp.
@@ -1952,4 +1985,3 @@ func TestBuildNodeConfig_TLSOnlySecure(t *testing.T) {
 		t.Error("TLS.Secure should be true")
 	}
 }
-

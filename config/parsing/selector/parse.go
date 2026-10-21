@@ -54,7 +54,10 @@ func ParseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node
 	case "hash":
 		strategy = xs.HashStrategy[*chain.Node]()
 	case "parallel":
-		strategy = xs.ParallelStrategy[*chain.Node]()
+		strategy = xs.ParallelStrategy[*chain.Node](
+			xs.ParallelLimit(cfg.MaxParallel),
+			xs.ParallelMode(cfg.ParallelMode),
+		)
 	case "lowestlatency", "lowest", "ll":
 		strategy = xs.LowestLatencyStrategy[*chain.Node]()
 	default:

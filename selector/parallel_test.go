@@ -46,9 +46,9 @@ func (m *mockTransport) Bind(ctx context.Context, conn net.Conn, network, addres
 	return net.Listen("tcp", "127.0.0.1:0")
 }
 
-func (m *mockTransport) Multiplex() bool                    { return false }
-func (m *mockTransport) Options() *chain.TransportOptions   { return &chain.TransportOptions{} }
-func (m *mockTransport) Copy() chain.Transporter            { return m }
+func (m *mockTransport) Multiplex() bool                  { return false }
+func (m *mockTransport) Options() *chain.TransportOptions { return &chain.TransportOptions{} }
+func (m *mockTransport) Copy() chain.Transporter          { return m }
 
 func makeNode(tr chain.Transporter) *chain.Node {
 	return chain.NewNode("test", "127.0.0.1:0", chain.TransportNodeOption(tr))
@@ -98,6 +98,167 @@ func TestParallelStrategy_NonNodeInput(t *testing.T) {
 	// Multiple non-node inputs: type assertion fails, returns zero value
 	if v := s.Apply(context.Background(), "a", "b"); v != "" {
 		t.Fatalf("expected zero value for multiple non-node inputs, got %q", v)
+	}
+}
+
+// --- parallel limit tests ---
+
+// parallelNodes returns the nodes held by the parallel transporter of the
+// selected node.
+func parallelNodes(t *testing.T, node *chain.Node) []*chain.Node {
+	t.Helper()
+
+	tr, ok := node.Options().Transport.(*parallelTransporter)
+	if !ok {
+		t.Fatalf("expected *parallelTransporter, got %T", node.Options().Transport)
+	}
+	return tr.nodes
+}
+
+// makeNodes builds n distinguishable nodes.
+func makeNodes(n int) []*chain.Node {
+	nodes := make([]*chain.Node, n)
+	for i := range nodes {
+		nodes[i] = makeNode(&mockTransport{})
+	}
+	return nodes
+}
+
+func TestParallelStrategy_NoLimit(t *testing.T) {
+	s := ParallelStrategy[*chain.Node]()
+	nodes := makeNodes(3)
+
+	got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+	if len(got) != 3 {
+		t.Fatalf("expected all 3 nodes to race, got %d", len(got))
+	}
+}
+
+func TestParallelStrategy_LimitNotSmallerThanPool(t *testing.T) {
+	nodes := makeNodes(3)
+
+	for _, limit := range []int{3, 4, 100} {
+		s := ParallelStrategy[*chain.Node](ParallelLimit(limit))
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		if len(got) != 3 {
+			t.Fatalf("limit %d: expected all 3 nodes to race, got %d", limit, len(got))
+		}
+	}
+}
+
+func TestParallelStrategy_NegativeLimit(t *testing.T) {
+	s := ParallelStrategy[*chain.Node](ParallelLimit(-1))
+	nodes := makeNodes(3)
+
+	got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+	if len(got) != 3 {
+		t.Fatalf("expected all 3 nodes to race, got %d", len(got))
+	}
+}
+
+func TestParallelStrategy_LimitRoundRobin(t *testing.T) {
+	s := ParallelStrategy[*chain.Node](ParallelLimit(2))
+	nodes := makeNodes(8)
+
+	// The offset advances by the limit on every call, so consecutive races
+	// use disjoint groups.
+	for i := 0; i < 4; i++ {
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		if len(got) != 2 {
+			t.Fatalf("race %d: expected 2 nodes, got %d", i, len(got))
+		}
+		want := nodes[i*2 : i*2+2]
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("race %d: node %d is %p, want %p", i, j, got[j], want[j])
+			}
+		}
+	}
+}
+
+func TestParallelStrategy_LimitRoundRobinWrapsAround(t *testing.T) {
+	s := ParallelStrategy[*chain.Node](ParallelLimit(3))
+	nodes := makeNodes(8)
+
+	// 8 nodes with a limit of 3 does not divide evenly, the selection must
+	// still wrap around without repeating a node within a race.
+	for i := 0; i < 6; i++ {
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		if len(got) != 3 {
+			t.Fatalf("race %d: expected 3 nodes, got %d", i, len(got))
+		}
+		seen := map[*chain.Node]bool{}
+		for _, n := range got {
+			if seen[n] {
+				t.Fatalf("race %d: duplicate node selected", i)
+			}
+			seen[n] = true
+		}
+	}
+}
+
+func TestParallelStrategy_LimitRandom(t *testing.T) {
+	s := ParallelStrategy[*chain.Node](ParallelLimit(3), ParallelMode("random"))
+	nodes := makeNodes(10)
+
+	seen := map[*chain.Node]bool{}
+	for i := 0; i < 200; i++ {
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		if len(got) != 3 {
+			t.Fatalf("race %d: expected 3 nodes, got %d", i, len(got))
+		}
+		race := map[*chain.Node]bool{}
+		for _, n := range got {
+			if race[n] {
+				t.Fatalf("race %d: duplicate node selected", i)
+			}
+			race[n] = true
+			seen[n] = true
+		}
+	}
+
+	// Over 200 races of 3 out of 10 nodes every node is expected to have
+	// taken part at least once.
+	for _, n := range nodes {
+		if !seen[n] {
+			t.Fatal("node never took part in a race")
+		}
+	}
+}
+
+func TestParallelStrategy_ModeUnknownFallsBackToRoundRobin(t *testing.T) {
+	s := ParallelStrategy[*chain.Node](ParallelLimit(2), ParallelMode("bogus"))
+	nodes := makeNodes(4)
+
+	got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+	want := nodes[0:2]
+	for j := range want {
+		if got[j] != want[j] {
+			t.Fatalf("node %d is %p, want %p", j, got[j], want[j])
+		}
+	}
+}
+
+func TestParallelStrategy_ModeAliases(t *testing.T) {
+	nodes := makeNodes(4)
+
+	for _, mode := range []string{"", "round", "rr", "roundrobin", "ROUND"} {
+		s := ParallelStrategy[*chain.Node](ParallelLimit(2), ParallelMode(mode))
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		want := nodes[0:2]
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("mode %q: node %d is %p, want %p", mode, j, got[j], want[j])
+			}
+		}
+	}
+
+	for _, mode := range []string{"random", "rand", "Random"} {
+		s := ParallelStrategy[*chain.Node](ParallelLimit(2), ParallelMode(mode))
+		got := parallelNodes(t, s.Apply(context.Background(), nodes...))
+		if len(got) != 2 {
+			t.Fatalf("mode %q: expected 2 nodes, got %d", mode, len(got))
+		}
 	}
 }
 

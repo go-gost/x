@@ -175,6 +175,14 @@ type SelectorConfig struct {
 	MaxFails    int           `yaml:"maxFails" json:"maxFails"`
 	FailTimeout time.Duration `yaml:"failTimeout" json:"failTimeout"`
 	MaxLatency  time.Duration `yaml:"maxLatency,omitempty" json:"maxLatency,omitempty"`
+	// MaxParallel limits the number of nodes racing concurrently in a
+	// single connection attempt. It only applies to the parallel strategy.
+	// A value <= 0 means no limit.
+	MaxParallel int `yaml:"maxParallel,omitempty" json:"maxParallel,omitempty"`
+	// ParallelMode selects how the racing nodes are picked from the
+	// candidate pool: "round" (default) or "random". It only applies to the
+	// parallel strategy.
+	ParallelMode string `yaml:"parallelMode,omitempty" json:"parallelMode,omitempty"`
 }
 
 type AdmissionConfig struct {
