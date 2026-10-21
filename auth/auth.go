@@ -250,13 +250,20 @@ func (p *authenticator) parseFileAuths(r io.Reader) (map[string]string, error) {
 }
 
 func (p *authenticator) parseAuthsFormat(r io.Reader, format string) (map[string]string, error) {
+	// A nil reader means the loader failed. Return before touching the
+	// reader: encoding/json panics when it is given a nil io.Reader, and
+	// the panic would take down the whole process from the reload goroutine.
+	if r == nil {
+		return nil, nil
+	}
+
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "", "text":
 		return p.parseAuths(r)
 	case "json":
-		return parseStructuredAuths(r, json.NewDecoder(r).Decode)
+		return parseStructuredAuths(r, func(v any) error { return json.NewDecoder(r).Decode(v) })
 	case "yml", "yaml":
-		return parseStructuredAuths(r, yaml.NewDecoder(r).Decode)
+		return parseStructuredAuths(r, func(v any) error { return yaml.NewDecoder(r).Decode(v) })
 	default:
 		return nil, fmt.Errorf("unsupported auth format %q", format)
 	}
