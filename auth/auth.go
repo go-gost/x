@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -18,6 +19,35 @@ import (
 	xlogger "github.com/go-gost/x/logger"
 	yaml "github.com/goccy/go-yaml"
 )
+
+// Supported auth file formats.
+const (
+	// FormatText is the default format: one "username<space>password" pair
+	// per line, "#" starting a comment.
+	FormatText = "text"
+	// FormatJSON is a JSON document with an "auths" array of
+	// {"username": ..., "password": ...} objects.
+	FormatJSON = "json"
+	// FormatYAML is a YAML document with an "auths" sequence of
+	// {username: ..., password: ...} mappings.
+	FormatYAML = "yaml"
+)
+
+// ValidateFormat reports whether format is a supported auth file format.
+// The empty format is valid and means FormatText.
+func ValidateFormat(format string) error {
+	switch normalizeFormat(format) {
+	case "", FormatText, FormatJSON, FormatYAML, "yml":
+		return nil
+	}
+	return fmt.Errorf("unsupported auth format %q", format)
+}
+
+// normalizeFormat canonicalizes a format name so that it can be compared
+// case-insensitively and ignores surrounding whitespace.
+func normalizeFormat(format string) string {
+	return strings.ToLower(strings.TrimSpace(format))
+}
 
 type options struct {
 	auths       map[string]string
@@ -188,7 +218,11 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				p.logger.Warnf("file loader: %v", er)
 				loadErr = er
 			}
-			m = auths
+			// Never assign a nil map: m is merged into by the other
+			// loaders below, and merging into a nil map panics.
+			if auths != nil {
+				m = auths
+			}
 		} else {
 			r, er := p.options.fileLoader.Load(ctx)
 			if er != nil {
@@ -196,9 +230,11 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 				loadErr = er
 			}
 			if auths, err := p.parseFileAuths(r); err == nil {
-				m = auths
+				if auths != nil {
+					m = auths
+				}
 			} else {
-				p.logger.Warnf("file loader parse: %v", err)
+				p.logger.Warnf("file loader parse: %v", redactAuthError(err))
 			}
 		}
 	}
@@ -223,7 +259,7 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 			if auths, err := p.parseAuths(r); err == nil {
 				maps.Copy(m, auths)
 			} else {
-				p.logger.Warnf("redis loader parse: %v", err)
+				p.logger.Warnf("redis loader parse: %v", redactAuthError(err))
 			}
 		}
 	}
@@ -238,11 +274,25 @@ func (p *authenticator) load(ctx context.Context) (map[string]string, error) {
 		if auths, err := p.parseAuthsFormat(r, p.options.httpFormat); err == nil {
 			maps.Copy(m, auths)
 		} else {
-			p.logger.Warnf("http loader parse: %v", err)
+			p.logger.Warnf("http loader parse: %v", redactAuthError(err))
 		}
 	}
 
 	return m, loadErr
+}
+
+// redactAuthError strips the source excerpt from a YAML decode error. The
+// excerpt contains the offending lines of the auth file, which may include
+// passwords, so it must not end up in the log.
+func redactAuthError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var yamlErr yaml.Error
+	if errors.As(err, &yamlErr) {
+		return errors.New(yaml.FormatError(err, false, false))
+	}
+	return err
 }
 
 func (p *authenticator) parseFileAuths(r io.Reader) (map[string]string, error) {
@@ -250,18 +300,29 @@ func (p *authenticator) parseFileAuths(r io.Reader) (map[string]string, error) {
 }
 
 func (p *authenticator) parseAuthsFormat(r io.Reader, format string) (map[string]string, error) {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "", "text":
+	// A nil reader means the loader failed. Return before touching the
+	// reader: encoding/json panics when it is given a nil io.Reader, and
+	// the panic would take down the whole process from the reload goroutine.
+	if r == nil {
+		return nil, nil
+	}
+
+	switch normalizeFormat(format) {
+	case "", FormatText:
 		return p.parseAuths(r)
-	case "json":
-		return parseStructuredAuths(r, json.NewDecoder(r).Decode)
-	case "yml", "yaml":
-		return parseStructuredAuths(r, yaml.NewDecoder(r).Decode)
+	case FormatJSON:
+		return parseStructuredAuths(r, func(v any) error { return json.NewDecoder(r).Decode(v) })
+	case FormatYAML, "yml":
+		return parseStructuredAuths(r, func(v any) error { return yaml.NewDecoder(r).Decode(v) })
 	default:
 		return nil, fmt.Errorf("unsupported auth format %q", format)
 	}
 }
 
+// parseStructuredAuths decodes a document with an "auths" array of
+// username/password entries. The per-user "file" field of
+// config.AuthConfig is not supported here: the password is always taken
+// from the "password" field.
 func parseStructuredAuths(r io.Reader, decode func(any) error) (map[string]string, error) {
 	if r == nil {
 		return nil, nil
@@ -276,9 +337,13 @@ func parseStructuredAuths(r io.Reader, decode func(any) error) (map[string]strin
 
 	auths := make(map[string]string, len(data.Auths))
 	for _, auth := range data.Auths {
-		if auth.Username != "" {
-			auths[auth.Username] = auth.Password
+		// Trim like the text parser does, so that moving a file from the
+		// text format to a structured one keeps the same credentials.
+		username := strings.TrimSpace(auth.Username)
+		if username == "" {
+			continue
 		}
+		auths[username] = strings.TrimSpace(auth.Password)
 	}
 	return auths, nil
 }

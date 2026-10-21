@@ -22,9 +22,25 @@ import (
 // ParseAuther converts an AutherConfig into an auth.Authenticator. It handles
 // plugin backends (HTTP or gRPC), inline auth credentials, and optional file,
 // Redis, and HTTP hot-reload sources.
+//
+// A configuration error, e.g. an unsupported auth file format, is logged and
+// the affected loader is skipped. Use [ParseAutherWithError] to get the error
+// instead.
 func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
+	a, err := ParseAutherWithError(cfg)
+	if err != nil {
+		logger.Default().Errorf("auther %s: %v", cfg.Name, err)
+	}
+	return a
+}
+
+// ParseAutherWithError is like [ParseAuther] but reports a configuration
+// error, e.g. an unsupported auth file format. An invalid format is a
+// configuration error: it is reported instead of being silently ignored,
+// because silently ignoring it would leave the auther without credentials.
+func ParseAutherWithError(cfg *config.AutherConfig) (auth.Authenticator, error) {
 	if cfg == nil {
-		return nil
+		return nil, nil
 	}
 
 	if cfg.Plugin != nil {
@@ -45,13 +61,13 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
-			)
+			), nil
 		default:
 			return auth_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
-			)
+			), nil
 		}
 	}
 
@@ -73,6 +89,9 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		})),
 	}
 	if cfg.File != nil && cfg.File.Path != "" {
+		if err := xauth.ValidateFormat(cfg.File.Format); err != nil {
+			return nil, err
+		}
 		opts = append(opts,
 			xauth.FileLoaderOption(loader.FileLoader(cfg.File.Path)),
 			xauth.FileFormatOption(cfg.File.Format),
@@ -88,6 +107,9 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 		)))
 	}
 	if cfg.HTTP != nil && cfg.HTTP.URL != "" {
+		if err := xauth.ValidateFormat(cfg.HTTP.Format); err != nil {
+			return nil, err
+		}
 		opts = append(opts,
 			xauth.HTTPLoaderOption(loader.HTTPLoader(
 				cfg.HTTP.URL,
@@ -96,7 +118,7 @@ func ParseAuther(cfg *config.AutherConfig) auth.Authenticator {
 			xauth.HTTPFormatOption(cfg.HTTP.Format),
 		)
 	}
-	return xauth.NewAuthenticator(opts...)
+	return xauth.NewAuthenticator(opts...), nil
 }
 
 // ParseAutherFromAuth creates a simple authenticator from a single
