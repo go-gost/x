@@ -152,7 +152,11 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[auth.Authenticator]
 		for _, c := range cfg.Authers {
-			entries = append(entries, named[auth.Authenticator]{c.Name, auth_parser.ParseAuther(c)})
+			a, err := auth_parser.ParseAutherWithError(c)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, named[auth.Authenticator]{c.Name, a})
 		}
 		if err := registerGroup(entries, registry.AutherRegistry()); err != nil {
 			return err
