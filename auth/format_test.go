@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	xlogger "github.com/go-gost/x/logger"
@@ -84,6 +85,55 @@ func TestValidateFormat(t *testing.T) {
 		if err := ValidateFormat(format); err == nil {
 			t.Errorf("ValidateFormat(%q) = nil, want an error", format)
 		}
+	}
+}
+
+// The structured formats must accept the same credentials as the text
+// format, so that moving a file from one to the other does not change
+// which users can authenticate.
+func TestParseFileAuths_WhitespaceParity(t *testing.T) {
+	text := &authenticator{}
+	tm, err := text.parseFileAuths(strings.NewReader("alice\tsecret\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			var data string
+			if format == "json" {
+				data = `{"auths":[{"username":" alice ","password":" secret "}]}`
+			} else {
+				data = "auths:\n  - username: \" alice \"\n    password: \" secret \"\n"
+			}
+			p := &authenticator{options: options{fileFormat: format}}
+			m, err := p.parseFileAuths(strings.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m) != len(tm) {
+				t.Fatalf("m = %v, want %v", m, tm)
+			}
+			for k, v := range tm {
+				if m[k] != v {
+					t.Fatalf("m = %v, want %v", m, tm)
+				}
+			}
+		})
+	}
+}
+
+// The per-user "file" field of config.AuthConfig is not supported by the
+// structured formats; the password always comes from the "password" field.
+func TestParseFileAuths_StructuredIgnoresAuthFileField(t *testing.T) {
+	p := &authenticator{options: options{fileFormat: "json"}}
+	m, err := p.parseFileAuths(strings.NewReader(
+		`{"auths":[{"username":"alice","password":"secret","file":"/etc/gost/alice.key"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["alice"] != "secret" {
+		t.Fatalf("m = %v, want the password field", m)
 	}
 }
 

@@ -304,6 +304,10 @@ func (p *authenticator) parseAuthsFormat(r io.Reader, format string) (map[string
 	}
 }
 
+// parseStructuredAuths decodes a document with an "auths" array of
+// username/password entries. The per-user "file" field of
+// config.AuthConfig is not supported here: the password is always taken
+// from the "password" field.
 func parseStructuredAuths(r io.Reader, decode func(any) error) (map[string]string, error) {
 	if r == nil {
 		return nil, nil
@@ -318,9 +322,13 @@ func parseStructuredAuths(r io.Reader, decode func(any) error) (map[string]strin
 
 	auths := make(map[string]string, len(data.Auths))
 	for _, auth := range data.Auths {
-		if auth.Username != "" {
-			auths[auth.Username] = auth.Password
+		// Trim like the text parser does, so that moving a file from the
+		// text format to a structured one keeps the same credentials.
+		username := strings.TrimSpace(auth.Username)
+		if username == "" {
+			continue
 		}
+		auths[username] = strings.TrimSpace(auth.Password)
 	}
 	return auths, nil
 }
