@@ -294,6 +294,219 @@ func TestParse_MultiFile(t *testing.T) {
 	}
 }
 
+// writeAPIConfigFile writes a configuration file containing an api section and
+// returns its path.
+func writeAPIConfigFile(t *testing.T, cfg *config.Config) string {
+	t.Helper()
+
+	f, err := os.Create(filepath.Join(t.TempDir(), "cfg.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	if err := cfg.Write(f, "yaml"); err != nil {
+		t.Fatal(err)
+	}
+	return f.Name()
+}
+
+// A unix domain socket address carries its path in the URL path, not in the
+// host. The path must survive parsing, otherwise the api service falls back
+// to a wildcard TCP listener.
+func TestParse_APIUnixSocketAddr(t *testing.T) {
+	Init(Args{
+		ApiAddr: "unix:///var/run/gost.sock",
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.API == nil {
+		t.Fatal("API config not set")
+	}
+	if got.API.Addr != "unix:///var/run/gost.sock" {
+		t.Fatalf("API addr: got %q, want %q", got.API.Addr, "unix:///var/run/gost.sock")
+	}
+}
+
+// The GOST_API environment variable accepts the same syntax as the -api flag,
+// including inline credentials.
+func TestParse_APIEnvVarWithCredentials(t *testing.T) {
+	t.Setenv("GOST_API", "user:pass@:18099")
+
+	Init(Args{
+		Services: []string{"http://:8080"},
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.API == nil {
+		t.Fatal("API config not set")
+	}
+	if got.API.Addr != ":18099" {
+		t.Fatalf("API addr: got %q, want %q", got.API.Addr, ":18099")
+	}
+	if got.API.Auth == nil {
+		t.Fatal("API auth not set from GOST_API")
+	}
+	if got.API.Auth.Username != "user" || got.API.Auth.Password != "pass" {
+		t.Fatalf("API auth: got %+v, want user/pass", got.API.Auth)
+	}
+}
+
+// GOST_API takes the same place as the -api flag: it replaces the api
+// section of the configuration file as a whole.
+func TestParse_APIEnvVarOverridesConfigFile(t *testing.T) {
+	file := writeAPIConfigFile(t, &config.Config{
+		API: &config.APIConfig{
+			Addr: ":18080",
+			Auth: &config.AuthConfig{Username: "user", Password: "pass"},
+		},
+	})
+	t.Setenv("GOST_API", ":19090")
+
+	Init(Args{
+		CfgFiles: []string{file},
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.API == nil {
+		t.Fatal("API config not set")
+	}
+	if got.API.Addr != ":19090" {
+		t.Fatalf("API addr: got %q, want %q", got.API.Addr, ":19090")
+	}
+	if got.API.Auth != nil {
+		t.Fatalf("API auth: got %+v, want nil, GOST_API replaces the api section", got.API.Auth)
+	}
+}
+
+// The GOST_METRICS environment variable accepts the same syntax as the
+// -metrics flag, including inline credentials.
+func TestParse_MetricsEnvVarWithCredentials(t *testing.T) {
+	t.Setenv("GOST_METRICS", "user:pass@:9090")
+
+	Init(Args{
+		Services: []string{"http://:8080"},
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.Metrics == nil {
+		t.Fatal("Metrics config not set")
+	}
+	if got.Metrics.Addr != ":9090" {
+		t.Fatalf("Metrics addr: got %q, want %q", got.Metrics.Addr, ":9090")
+	}
+	if got.Metrics.Auth == nil {
+		t.Fatal("Metrics auth not set from GOST_METRICS")
+	}
+	if got.Metrics.Auth.Username != "user" || got.Metrics.Auth.Password != "pass" {
+		t.Fatalf("Metrics auth: got %+v, want user/pass", got.Metrics.Auth)
+	}
+}
+
+// GOST_METRICS takes the same place as the -metrics flag: it replaces the
+// metrics section of the configuration file as a whole.
+func TestParse_MetricsEnvVarOverridesConfigFile(t *testing.T) {
+	file := writeAPIConfigFile(t, &config.Config{
+		Metrics: &config.MetricsConfig{
+			Addr: ":9091",
+			Path: "/m",
+			Auth: &config.AuthConfig{Username: "user", Password: "pass"},
+		},
+	})
+	t.Setenv("GOST_METRICS", ":9090")
+
+	Init(Args{
+		CfgFiles: []string{file},
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.Metrics == nil {
+		t.Fatal("Metrics config not set")
+	}
+	if got.Metrics.Addr != ":9090" {
+		t.Fatalf("Metrics addr: got %q, want %q", got.Metrics.Addr, ":9090")
+	}
+	if got.Metrics.Auth != nil {
+		t.Fatalf("Metrics auth: got %+v, want nil, GOST_METRICS replaces the metrics section", got.Metrics.Auth)
+	}
+}
+
+// The -api flag replaces the api section of the configuration file. Passing
+// it on the command line is a deliberate override, not a merge: the user
+// usually wants a throwaway instance and not the configured credentials.
+func TestParse_APIFlagOverridesConfigFile(t *testing.T) {
+	file := writeAPIConfigFile(t, &config.Config{
+		API: &config.APIConfig{
+			Addr: ":18080",
+			Auth: &config.AuthConfig{Username: "user", Password: "pass"},
+		},
+	})
+
+	Init(Args{
+		CfgFiles: []string{file},
+		ApiAddr:  ":19090",
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.API == nil {
+		t.Fatal("API config not set")
+	}
+	if got.API.Addr != ":19090" {
+		t.Fatalf("API addr: got %q, want %q", got.API.Addr, ":19090")
+	}
+	if got.API.Auth != nil {
+		t.Fatalf("API auth: got %+v, want nil, the -api flag replaces the api section", got.API.Auth)
+	}
+}
+
+// Credentials given on the command line take precedence over the ones in the
+// configuration file.
+func TestParse_APIFlagCredentialsOverrideConfigFile(t *testing.T) {
+	file := writeAPIConfigFile(t, &config.Config{
+		API: &config.APIConfig{
+			Addr: ":18080",
+			Auth: &config.AuthConfig{Username: "user", Password: "pass"},
+		},
+	})
+
+	Init(Args{
+		CfgFiles: []string{file},
+		ApiAddr:  "flaguser:flagpass@:19090",
+	})
+
+	got, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse(): %v", err)
+	}
+	if got.API == nil {
+		t.Fatal("API config not set")
+	}
+	if got.API.Auth == nil {
+		t.Fatal("API auth not set")
+	}
+	if got.API.Auth.Username != "flaguser" || got.API.Auth.Password != "flagpass" {
+		t.Fatalf("API auth: got %+v, want flaguser/flagpass", got.API.Auth)
+	}
+}
+
 func TestIsHTTPURL(t *testing.T) {
 	tests := []struct {
 		input    string

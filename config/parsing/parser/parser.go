@@ -106,16 +106,17 @@ func (p *parser) Parse() (*config.Config, error) {
 		cfg.Log.Level = v
 	}
 	if v := os.Getenv("GOST_API"); v != "" {
-		if cfg.API == nil {
-			cfg.API = &config.APIConfig{}
-		}
-		cfg.API.Addr = v
+		// GOST_API takes the same place as the -api flag: it replaces the
+		// api section of the configuration file as a whole.
+		cfg.API = &config.APIConfig{}
+		applyAPIAddr(cfg.API, v)
 	}
 	if v := os.Getenv("GOST_METRICS"); v != "" {
-		if cfg.Metrics == nil {
-			cfg.Metrics = &config.MetricsConfig{}
-		}
-		cfg.Metrics.Addr = v
+		// GOST_METRICS takes the same place as the -metrics flag: it
+		// replaces the metrics section of the configuration file as a
+		// whole.
+		cfg.Metrics = &config.MetricsConfig{}
+		applyMetricsAddr(cfg.Metrics, v)
 	}
 	if v := os.Getenv("GOST_PROFILING"); v != "" {
 		if cfg.Profiling == nil {
@@ -136,56 +137,119 @@ func (p *parser) Parse() (*config.Config, error) {
 	}
 
 	if p.args.ApiAddr != "" {
-		cfg.API = &config.APIConfig{
-			Addr: p.args.ApiAddr,
-		}
-		if url, _ := cmd.Norm(p.args.ApiAddr); url != nil {
-			cfg.API.Addr = url.Host
-			if url.User != nil {
-				username := url.User.Username()
-				password, _ := url.User.Password()
-				cfg.API.Auth = &config.AuthConfig{
-					Username: username,
-					Password: password,
-				}
-			}
-			m := map[string]any{}
-			for k, v := range url.Query() {
-				if len(v) > 0 {
-					m[k] = v[0]
-				}
-			}
-			md := xmd.NewMetadata(m)
-			cfg.API.PathPrefix = mdutil.GetString(md, "pathPrefix")
-			cfg.API.AccessLog = mdutil.GetBool(md, "accesslog")
-		}
+		// The -api flag replaces the api section of the configuration file
+		// as a whole. Passing it on the command line is a deliberate
+		// override, so the configured credentials must not leak into it.
+		cfg.API = &config.APIConfig{}
+		applyAPIAddr(cfg.API, p.args.ApiAddr)
 	}
 	if p.args.MetricsAddr != "" {
-		cfg.Metrics = &config.MetricsConfig{
-			Addr: p.args.MetricsAddr,
-		}
-		if url, _ := cmd.Norm(p.args.MetricsAddr); url != nil {
-			cfg.Metrics.Addr = url.Host
-			if url.User != nil {
-				username := url.User.Username()
-				password, _ := url.User.Password()
-				cfg.Metrics.Auth = &config.AuthConfig{
-					Username: username,
-					Password: password,
-				}
-			}
-			m := map[string]any{}
-			for k, v := range url.Query() {
-				if len(v) > 0 {
-					m[k] = v[0]
-				}
-			}
-			md := xmd.NewMetadata(m)
-			cfg.Metrics.Path = mdutil.GetString(md, "path")
-		}
+		cfg.Metrics = &config.MetricsConfig{}
+		applyMetricsAddr(cfg.Metrics, p.args.MetricsAddr)
 	}
 
 	return cfg, nil
+}
+
+// applyAPIAddr parses an API listen address and applies the settings it
+// specifies to cfg. Settings that the address does not specify are left
+// untouched; whether the caller replaces the whole api section or extends it
+// is up to the caller.
+//
+// The address may carry inline credentials ("user:pass@host:port") and query
+// options ("?pathPrefix=/api&accesslog=true"). A unix domain socket address
+// ("unix:///var/run/gost.sock") keeps its scheme and path, as it carries the
+// socket path in the URL path rather than in the host.
+func applyAPIAddr(cfg *config.APIConfig, addr string) {
+	u, err := cmd.Norm(addr)
+	if err != nil || u == nil {
+		cfg.Addr = addr
+		return
+	}
+
+	switch {
+	case u.Scheme == "unix":
+		cfg.Addr = "unix://" + u.Host + u.Path
+	case u.Host != "":
+		cfg.Addr = u.Host
+	default:
+		// The address does not carry a host:port pair. Keep it as given so
+		// that the failure surfaces at bind time instead of silently
+		// turning into a wildcard listener.
+		cfg.Addr = addr
+	}
+
+	if u.User != nil {
+		username := u.User.Username()
+		password, _ := u.User.Password()
+		cfg.Auth = &config.AuthConfig{
+			Username: username,
+			Password: password,
+		}
+	}
+
+	m := map[string]any{}
+	for k, v := range u.Query() {
+		if len(v) > 0 {
+			m[k] = v[0]
+		}
+	}
+	md := xmd.NewMetadata(m)
+	if mdutil.IsExists(md, "pathPrefix") {
+		cfg.PathPrefix = mdutil.GetString(md, "pathPrefix")
+	}
+	if mdutil.IsExists(md, "accesslog") {
+		cfg.AccessLog = mdutil.GetBool(md, "accesslog")
+	}
+}
+
+// applyMetricsAddr parses a metrics listen address and applies the settings
+// it specifies to cfg. Settings that the address does not specify are left
+// untouched; whether the caller replaces the whole metrics section or extends
+// it is up to the caller.
+//
+// The address may carry inline credentials ("user:pass@host:port") and the
+// path option ("?path=/metrics"). A unix domain socket address
+// ("unix:///var/run/gost.sock") keeps its scheme and path, as it carries the
+// socket path in the URL path rather than in the host.
+func applyMetricsAddr(cfg *config.MetricsConfig, addr string) {
+	u, err := cmd.Norm(addr)
+	if err != nil || u == nil {
+		cfg.Addr = addr
+		return
+	}
+
+	switch {
+	case u.Scheme == "unix":
+		cfg.Addr = "unix://" + u.Host + u.Path
+	case u.Host != "":
+		cfg.Addr = u.Host
+	default:
+		// The address does not carry a host:port pair. Keep it as given so
+		// that the failure surfaces at bind time instead of silently
+		// turning into a wildcard listener.
+		cfg.Addr = addr
+	}
+
+	if u.User != nil {
+		username := u.User.Username()
+		password, _ := u.User.Password()
+		cfg.Auth = &config.AuthConfig{
+			Username: username,
+			Password: password,
+		}
+	}
+
+	m := map[string]any{}
+	for k, v := range u.Query() {
+		if len(v) > 0 {
+			m[k] = v[0]
+		}
+	}
+	md := xmd.NewMetadata(m)
+	if mdutil.IsExists(md, "path") {
+		cfg.Path = mdutil.GetString(md, "path")
+	}
 }
 
 // readConfig reads a single configuration source, which may be "-" (stdin),
