@@ -218,6 +218,52 @@ func TestParseAuther_FileLoader(t *testing.T) {
 	}
 }
 
+// An unsupported auth file format is a configuration error and must be
+// reported, not silently ignored: ignoring it would leave the auther
+// without credentials and reject every user.
+func TestParseAutherWithError_UnsupportedFormat(t *testing.T) {
+	for _, c := range []*config.AutherConfig{
+		{
+			Name: "file-loader-auth",
+			File: &config.FileLoader{Path: "/tmp/auth.txt", Format: "toml"},
+		},
+		{
+			Name: "http-loader-auth",
+			HTTP: &config.HTTPLoader{URL: "http://localhost:8080/auth", Format: "toml"},
+		},
+	} {
+		a, err := ParseAutherWithError(c)
+		if err == nil {
+			t.Errorf("%s: want an error for an unsupported format", c.Name)
+		}
+		if a != nil {
+			t.Errorf("%s: want a nil authenticator, got %v", c.Name, a)
+		}
+	}
+}
+
+func TestParseAutherWithError_SupportedFormats(t *testing.T) {
+	for _, format := range []string{"", "text", "json", "yaml", "yml"} {
+		a, err := ParseAutherWithError(&config.AutherConfig{
+			Name: "file-loader-auth",
+			File: &config.FileLoader{Path: "/tmp/auth.txt", Format: format},
+		})
+		if err != nil {
+			t.Errorf("format %q: %v", format, err)
+		}
+		if a == nil {
+			t.Errorf("format %q: want a non-nil authenticator", format)
+		}
+	}
+}
+
+func TestParseAutherWithError_Nil(t *testing.T) {
+	a, err := ParseAutherWithError(nil)
+	if err != nil || a != nil {
+		t.Fatalf("got %v, %v, want nil, nil", a, err)
+	}
+}
+
 func TestParseAuther_RedisLoader(t *testing.T) {
 	a := ParseAuther(&config.AutherConfig{
 		Name: "redis-loader-auth",
