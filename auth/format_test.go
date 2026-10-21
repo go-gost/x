@@ -74,6 +74,19 @@ func TestLoad_HTTPLoaderErrorWithJSONFormat(t *testing.T) {
 	}
 }
 
+func TestValidateFormat(t *testing.T) {
+	for _, format := range []string{"", " ", "text", "TEXT", " json ", "json", "yaml", "YML", "yml"} {
+		if err := ValidateFormat(format); err != nil {
+			t.Errorf("ValidateFormat(%q) = %v, want nil", format, err)
+		}
+	}
+	for _, format := range []string{"toml", "xml", "csv", "jsonn"} {
+		if err := ValidateFormat(format); err == nil {
+			t.Errorf("ValidateFormat(%q) = nil, want an error", format)
+		}
+	}
+}
+
 // A failing file loader followed by a working http loader must not panic on
 // the nil map.
 func TestLoad_FailedFileLoaderThenWorkingHTTPLoader(t *testing.T) {

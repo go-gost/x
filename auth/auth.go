@@ -19,6 +19,35 @@ import (
 	yaml "github.com/goccy/go-yaml"
 )
 
+// Supported auth file formats.
+const (
+	// FormatText is the default format: one "username<space>password" pair
+	// per line, "#" starting a comment.
+	FormatText = "text"
+	// FormatJSON is a JSON document with an "auths" array of
+	// {"username": ..., "password": ...} objects.
+	FormatJSON = "json"
+	// FormatYAML is a YAML document with an "auths" sequence of
+	// {username: ..., password: ...} mappings.
+	FormatYAML = "yaml"
+)
+
+// ValidateFormat reports whether format is a supported auth file format.
+// The empty format is valid and means FormatText.
+func ValidateFormat(format string) error {
+	switch normalizeFormat(format) {
+	case "", FormatText, FormatJSON, FormatYAML, "yml":
+		return nil
+	}
+	return fmt.Errorf("unsupported auth format %q", format)
+}
+
+// normalizeFormat canonicalizes a format name so that it can be compared
+// case-insensitively and ignores surrounding whitespace.
+func normalizeFormat(format string) string {
+	return strings.ToLower(strings.TrimSpace(format))
+}
+
 type options struct {
 	auths       map[string]string
 	fileLoader  loader.Loader
@@ -263,12 +292,12 @@ func (p *authenticator) parseAuthsFormat(r io.Reader, format string) (map[string
 		return nil, nil
 	}
 
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "", "text":
+	switch normalizeFormat(format) {
+	case "", FormatText:
 		return p.parseAuths(r)
-	case "json":
+	case FormatJSON:
 		return parseStructuredAuths(r, func(v any) error { return json.NewDecoder(r).Decode(v) })
-	case "yml", "yaml":
+	case FormatYAML, "yml":
 		return parseStructuredAuths(r, func(v any) error { return yaml.NewDecoder(r).Decode(v) })
 	default:
 		return nil, fmt.Errorf("unsupported auth format %q", format)
