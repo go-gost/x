@@ -1,6 +1,7 @@
 package http2
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -9,6 +10,7 @@ import (
 
 // HTTP2 connection, wrapped up just like a net.Conn.
 type http2Conn struct {
+	cancel     context.CancelFunc
 	r          io.Reader
 	w          io.Writer
 	remoteAddr net.Addr
@@ -24,6 +26,9 @@ func (c *http2Conn) Write(b []byte) (n int, err error) {
 }
 
 func (c *http2Conn) Close() (err error) {
+	if c.cancel != nil {
+		c.cancel()
+	}
 	if r, ok := c.r.(io.Closer); ok {
 		err = r.Close()
 	}
