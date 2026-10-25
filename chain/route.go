@@ -230,7 +230,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		}
 	}()
 
-	addr, err := xnet.Resolve(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
+	addrs, err := xnet.ResolveAll(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
 	marker := node.Marker()
 	if err != nil {
 		if marker != nil {
@@ -240,17 +240,26 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	}
 
 	start := time.Now()
-	cc, err := node.Options().Transport.Dial(ctx, addr)
-	if err != nil {
-		if marker != nil {
-			marker.Mark()
+	var cn net.Conn
+	for _, addr := range orderCandidates(node.Addr, addrs) {
+		cc, derr := node.Options().Transport.Dial(ctx, addr)
+		if derr != nil {
+			err = derr
+			markAddrFailed(node.Addr, addr)
+			continue
 		}
-		return
+		hn, herr := node.Options().Transport.Handshake(ctx, cc)
+		if herr != nil {
+			cc.Close()
+			err = herr
+			markAddrFailed(node.Addr, addr)
+			continue
+		}
+		markAddrOK(node.Addr, addr)
+		cn, err = hn, nil
+		break
 	}
-
-	cn, err := node.Options().Transport.Handshake(ctx, cc)
 	if err != nil {
-		cc.Close()
 		if marker != nil {
 			marker.Mark()
 		}
@@ -272,6 +281,10 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	}
 
 	preNode := node
+	var (
+		addr string
+		cc   net.Conn
+	)
 	for _, node := range r.nodes[1:] {
 		marker := node.Marker()
 		addr, err = xnet.Resolve(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
