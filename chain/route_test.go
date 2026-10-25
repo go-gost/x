@@ -159,3 +159,46 @@ func TestMarkAddrOK_ClearsFailure(t *testing.T) {
 	_, ok := failedAddrs.Load(addrKey(nodeAddr, "10.0.0.1:443"))
 	require.False(t, ok)
 }
+
+func TestChainRoute_Connect_HandshakeFailureDeprioritizes(t *testing.T) {
+	var mu sync.Mutex
+	var dialed []string
+	var lastDialed string
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		mu.Lock()
+		dialed = append(dialed, addr)
+		lastDialed = addr
+		mu.Unlock()
+		return &testConn{}, nil
+	}}
+	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
+		if lastDialed == "10.0.0.1:443" {
+			return nil, errors.New("handshake failed")
+		}
+		return conn, nil
+	}}
+	node := chain.NewNode("n1", "failover-hs.test:443",
+		chain.TransportNodeOption(NewTransport(d, c)),
+		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{
+			"failover-hs.test": {net.ParseIP("10.0.0.1"), net.ParseIP("10.0.0.2")},
+		}}),
+	)
+	rt := NewRoute()
+	rt.addNode(node)
+
+	failed := false
+	for i := 0; i < 50 && !failed; i++ {
+		dialed = nil
+		_, err := rt.connect(context.Background(), xlogger.Nop())
+		require.NoError(t, err)
+		failed = containsAddr(dialed, "10.0.0.1:443")
+	}
+	require.True(t, failed, "handshake-failing candidate was never tried")
+
+	for i := 0; i < 20; i++ {
+		dialed = nil
+		_, err := rt.connect(context.Background(), xlogger.Nop())
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.2:443", dialed[0])
+	}
+}

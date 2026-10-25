@@ -6,11 +6,13 @@ import (
 	"time"
 )
 
-// addrFailTTL is how long a candidate that failed to dial stays deprioritized.
-// A var (not a const) so tests can shorten it.
+// addrFailTTL is how long a candidate that failed to dial/handshake stays
+// deprioritized. A var (not a const) so tests can shorten it; production
+// code must not mutate it concurrently with readers.
 var addrFailTTL = 30 * time.Second
 
-// timeNow is replaceable in tests.
+// timeNow is replaceable in tests; production code must not mutate it
+// concurrently with readers.
 var timeNow = time.Now
 
 // failedAddrs maps a "nodeAddr|candidate" key to the time of the last failure.

@@ -242,6 +242,10 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	start := time.Now()
 	var cn net.Conn
 	for _, addr := range orderCandidates(node.Addr, addrs) {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+			return
+		}
 		cc, derr := node.Options().Transport.Dial(ctx, addr)
 		if derr != nil {
 			err = derr
