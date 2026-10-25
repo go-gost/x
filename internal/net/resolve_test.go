@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
+	"github.com/stretchr/testify/require"
 )
 
 type mockResolver struct {
@@ -148,4 +149,63 @@ func TestResolve_HostsNoMatchUsesResolver(t *testing.T) {
 	if addr != "10.0.0.1:8080" {
 		t.Errorf("expected 10.0.0.1:8080, got %s", addr)
 	}
+}
+
+func TestResolveAll_HostMapperMultipleIPs(t *testing.T) {
+	mapper := &mockHostMapper{ips: []net.IP{net.ParseIP("10.0.0.1"), net.ParseIP("10.0.0.2")}}
+	addrs, err := ResolveAll(context.Background(), "tcp", "example.com:8080", nil, mapper, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1:8080", "10.0.0.2:8080"}, addrs)
+}
+
+func TestResolveAll_HostMapperDedup(t *testing.T) {
+	mapper := &mockHostMapper{ips: []net.IP{net.ParseIP("10.0.0.1"), net.ParseIP("10.0.0.1")}}
+	addrs, err := ResolveAll(context.Background(), "tcp", "example.com:8080", nil, mapper, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1:8080"}, addrs)
+}
+
+func TestResolveAll_ResolverMultipleIPs(t *testing.T) {
+	r := &mockResolver{ips: []net.IP{net.ParseIP("192.168.1.1"), net.ParseIP("192.168.1.2")}}
+	addrs, err := ResolveAll(context.Background(), "tcp", "example.com:8080", r, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"192.168.1.1:8080", "192.168.1.2:8080"}, addrs)
+}
+
+func TestResolveAll_NoResolverNoHosts(t *testing.T) {
+	addrs, err := ResolveAll(context.Background(), "tcp", "example.com:8080", nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"example.com:8080"}, addrs)
+}
+
+func TestResolveAll_EmptyAddr(t *testing.T) {
+	addrs, err := ResolveAll(context.Background(), "tcp", "", nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{""}, addrs)
+}
+
+func TestResolveAll_NoHost(t *testing.T) {
+	addrs, err := ResolveAll(context.Background(), "tcp", ":8080", nil, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{":8080"}, addrs)
+}
+
+func TestResolveAll_ResolverErrInvalid(t *testing.T) {
+	r := &mockResolver{err: resolver.ErrInvalid}
+	addrs, err := ResolveAll(context.Background(), "unix", "/tmp/x.sock", r, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/tmp/x.sock"}, addrs)
+}
+
+func TestResolveAll_ResolverEmpty(t *testing.T) {
+	r := &mockResolver{}
+	_, err := ResolveAll(context.Background(), "tcp", "gone.example:80", r, nil, nil)
+	require.ErrorContains(t, err, "does not exist")
+}
+
+func TestResolve_ReturnsFirstCandidate(t *testing.T) {
+	mapper := &mockHostMapper{ips: []net.IP{net.ParseIP("10.0.0.1"), net.ParseIP("10.0.0.2")}}
+	addr, err := Resolve(context.Background(), "tcp", "example.com:8080", nil, mapper, nil)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1:8080", addr)
 }
