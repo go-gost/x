@@ -24,6 +24,19 @@ var (
 	ErrEmptyRoute = errors.New("empty route")
 )
 
+// retryableHandshaker is implemented by errors that signal the enclosing
+// chain hop may retry the handshake once (e.g. TLS ECH retry configs).
+type retryableHandshaker interface {
+	RetryableHandshake() bool
+}
+
+// isRetryableHandshake reports whether err (or any error it wraps) signals a
+// retryable handshake failure.
+func isRetryableHandshake(err error) bool {
+	var e retryableHandshaker
+	return errors.As(err, &e) && e.RetryableHandshake()
+}
+
 var (
 	// DefaultRoute is a fallback route that dials the target directly
 	// without going through any proxy nodes.
@@ -246,22 +259,30 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			err = ctx.Err()
 			return
 		}
-		cc, derr := node.Options().Transport.Dial(ctx, addr)
-		if derr != nil {
-			err = derr
-			markAddrFailed(node.Addr, addr)
-			continue
-		}
-		hn, herr := node.Options().Transport.Handshake(ctx, cc)
-		if herr != nil {
+		for attempt := 0; ; attempt++ {
+			cc, derr := node.Options().Transport.Dial(ctx, addr)
+			if derr != nil {
+				err = derr
+				markAddrFailed(node.Addr, addr)
+				break
+			}
+			hn, herr := node.Options().Transport.Handshake(ctx, cc)
+			if herr == nil {
+				markAddrOK(node.Addr, addr)
+				cn, err = hn, nil
+				break
+			}
 			cc.Close()
 			err = herr
+			if attempt == 0 && isRetryableHandshake(herr) {
+				continue
+			}
 			markAddrFailed(node.Addr, addr)
-			continue
+			break
 		}
-		markAddrOK(node.Addr, addr)
-		cn, err = hn, nil
-		break
+		if err == nil {
+			break
+		}
 	}
 	if err != nil {
 		if marker != nil {
