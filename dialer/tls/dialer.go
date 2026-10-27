@@ -3,6 +3,7 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
+	"github.com/go-gost/x/internal/util/ech"
 	"github.com/go-gost/x/registry"
 )
 
@@ -23,6 +25,8 @@ type tlsDialer struct {
 	md      metadata
 	log     logger.Logger
 	options dialer.Options
+
+	ech *ech.Client
 }
 
 func NewDialer(opts ...dialer.Option) dialer.Dialer {
@@ -38,7 +42,46 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 }
 
 func (d *tlsDialer) Init(md md.Metadata) (err error) {
-	return d.parseMetadata(md)
+	if err = d.parseMetadata(md); err != nil {
+		return err
+	}
+
+	if !d.md.ech {
+		return nil
+	}
+
+	if d.md.echDoH == "" {
+		return errors.New("ech: doh endpoint is required")
+	}
+
+	if cfg := d.options.TLSConfig; cfg != nil {
+		if cfg.MinVersion != 0 && cfg.MinVersion < tls.VersionTLS13 {
+			return errors.New("ech: TLS 1.3 is required")
+		}
+		if cfg.MaxVersion != 0 && cfg.MaxVersion < tls.VersionTLS13 {
+			return errors.New("ech: TLS 1.3 is required")
+		}
+	}
+
+	var tlsCfg *tls.Config
+	if d.md.echDoHInsecure {
+		tlsCfg = &tls.Config{InsecureSkipVerify: true}
+	} else {
+		tlsCfg = &tls.Config{}
+	}
+
+	c, err := ech.NewClient(
+		d.md.echDoH,
+		ech.TTLOption(d.md.echTTL),
+		ech.TimeoutOption(d.md.echTimeout),
+		ech.TLSConfigOption(tlsCfg),
+		ech.LoggerOption(d.log),
+	)
+	if err != nil {
+		return err
+	}
+	d.ech = c
+	return nil
 }
 
 func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
