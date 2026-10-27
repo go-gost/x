@@ -171,7 +171,14 @@ func (d *tlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dia
 		list, err := d.ech.ConfigList(ctx, serverName)
 		if err != nil {
 			if d.md.echFallback {
-				d.log.Warnf("ech: config list lookup failed: %v; falling back to plain TLS", err)
+				if d.log != nil {
+					d.log.Warnf("ech: config list lookup failed: %v; falling back to plain TLS", err)
+				}
+				if cfg == nil {
+					cfg = &tls.Config{}
+				} else {
+					cfg = cfg.Clone()
+				}
 			} else {
 				if conn != nil {
 					conn.Close()
