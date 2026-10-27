@@ -205,7 +205,7 @@ func TestChainRoute_Connect_HandshakeFailureDeprioritizes(t *testing.T) {
 
 type retryableHandshakeError struct{}
 
-func (retryableHandshakeError) Error() string { return "retryable handshake failure" }
+func (retryableHandshakeError) Error() string            { return "retryable handshake failure" }
 func (retryableHandshakeError) RetryableHandshake() bool { return true }
 
 func TestChainRoute_Connect_RetryableHandshakeRetriesSameAddr(t *testing.T) {
@@ -213,12 +213,16 @@ func TestChainRoute_Connect_RetryableHandshakeRetriesSameAddr(t *testing.T) {
 	var dialed []string
 	attempts := 0
 	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
-		mu.Lock(); dialed = append(dialed, addr); mu.Unlock()
+		mu.Lock()
+		dialed = append(dialed, addr)
+		mu.Unlock()
 		return &testConn{}, nil
 	}}
 	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
 		attempts++
-		if attempts == 1 { return nil, retryableHandshakeError{} }
+		if attempts == 1 {
+			return nil, retryableHandshakeError{}
+		}
 		return conn, nil
 	}}
 	node := chain.NewNode("n1", "retry.test:443",
@@ -227,9 +231,11 @@ func TestChainRoute_Connect_RetryableHandshakeRetriesSameAddr(t *testing.T) {
 			"retry.test": {net.ParseIP("10.0.0.1")},
 		}}),
 	)
-	rt := NewRoute(); rt.addNode(node)
+	rt := NewRoute()
+	rt.addNode(node)
 	conn, err := rt.connect(context.Background(), xlogger.Nop())
-	require.NoError(t, err); require.NotNil(t, conn)
+	require.NoError(t, err)
+	require.NotNil(t, conn)
 	require.Equal(t, 2, attempts)
 	require.Equal(t, 0, int(node.Marker().Count()))
 	_, ok := failedAddrs.Load(addrKey("retry.test:443", "10.0.0.1:443"))
@@ -238,14 +244,17 @@ func TestChainRoute_Connect_RetryableHandshakeRetriesSameAddr(t *testing.T) {
 
 func TestChainRoute_Connect_RetryableThenFails(t *testing.T) {
 	attempts := 0
-	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) { return &testConn{}, nil }}
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		return &testConn{}, nil
+	}}
 	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
 		attempts++
 		return nil, retryableHandshakeError{}
 	}}
 	node := chain.NewNode("n1", "retry2.test:443", chain.TransportNodeOption(NewTransport(d, c)),
 		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{"retry2.test": {net.ParseIP("10.0.0.1")}}}))
-	rt := NewRoute(); rt.addNode(node)
+	rt := NewRoute()
+	rt.addNode(node)
 	_, err := rt.connect(context.Background(), xlogger.Nop())
 	require.Error(t, err)
 	require.Equal(t, 2, attempts)
@@ -254,14 +263,17 @@ func TestChainRoute_Connect_RetryableThenFails(t *testing.T) {
 
 func TestChainRoute_Connect_NonRetryableHandshakeNoRetry(t *testing.T) {
 	attempts := 0
-	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) { return &testConn{}, nil }}
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		return &testConn{}, nil
+	}}
 	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
 		attempts++
 		return nil, errors.New("boom")
 	}}
 	node := chain.NewNode("n1", "nr.test:443", chain.TransportNodeOption(NewTransport(d, c)),
 		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{"nr.test": {net.ParseIP("10.0.0.1")}}}))
-	rt := NewRoute(); rt.addNode(node)
+	rt := NewRoute()
+	rt.addNode(node)
 	_, err := rt.connect(context.Background(), xlogger.Nop())
 	require.Error(t, err)
 	require.Equal(t, 1, attempts)
