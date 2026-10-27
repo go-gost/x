@@ -6,18 +6,18 @@ import (
 	"time"
 
 	"github.com/go-gost/core/dialer"
-	"github.com/stretchr/testify/require"
 	xmd "github.com/go-gost/x/metadata"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseMetadata_ECH(t *testing.T) {
 	d := NewDialer().(*tlsDialer)
 	md := xmd.NewMetadata(map[string]any{
-		"ech":            true,
-		"ech.doh":        "https://1.1.1.1/dns-query",
-		"ech.timeout":    "2s",
-		"ech.ttl":        "10m",
-		"ech.fallback":   true,
+		"ech":             true,
+		"ech.doh":         "https://1.1.1.1/dns-query",
+		"ech.timeout":     "2s",
+		"ech.ttl":         "10m",
+		"ech.fallback":    true,
 		"ech.dohInsecure": true,
 	})
 	require.NoError(t, d.parseMetadata(md))
