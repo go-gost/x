@@ -92,7 +92,9 @@ func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 
 	conn, err := options.Dialer.Dial(ctx, "tcp", addr)
 	if err != nil {
-		d.log.Error(err)
+		if d.log != nil {
+			d.log.Error(err)
+		}
 	}
 
 	xnet.ApplyNoDelay(conn)

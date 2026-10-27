@@ -199,3 +199,44 @@ func TestConfigList_TTLOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int32(2), count.Load())
 }
+
+func TestConfigList_DoHFailure_NegativeCacheReturnsOriginal(t *testing.T) {
+	var count atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count.Add(1)
+		w.WriteHeader(500)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := NewClient(srv.URL, TLSConfigOption(&tls.Config{InsecureSkipVerify: true}))
+	require.NoError(t, err)
+	_, err1 := c.ConfigList(context.Background(), "example.com")
+	require.Error(t, err1)
+	_, err2 := c.ConfigList(context.Background(), "example.com")
+	require.Error(t, err2)
+	require.ErrorIs(t, err2, err1)
+	require.Equal(t, int32(1), count.Load())
+}
+
+func TestNewClient_EmptyHost(t *testing.T) {
+	_, err := NewClient("https://", TLSConfigOption(&tls.Config{InsecureSkipVerify: true}))
+	require.Error(t, err)
+	_, err = NewClient("https:///dns-query", TLSConfigOption(&tls.Config{InsecureSkipVerify: true}))
+	require.Error(t, err)
+}
+
+func TestSetConfigList_ClearsDisabledAndEmptyNoOp(t *testing.T) {
+	list := newTestECHConfigList(t)
+	c, err := NewClient("https://example.com", TLSConfigOption(&tls.Config{InsecureSkipVerify: true}))
+	require.NoError(t, err)
+	c.Disable("example.com", time.Minute)
+	c.SetConfigList("example.com", list)
+	got, err := c.ConfigList(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, list, got)
+
+	// empty list is a no-op: previously cached list remains.
+	c.SetConfigList("example.com", nil)
+	got2, err := c.ConfigList(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, list, got2)
+}

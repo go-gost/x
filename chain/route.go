@@ -260,6 +260,10 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			return
 		}
 		for attempt := 0; ; attempt++ {
+			if ctx.Err() != nil {
+				err = ctx.Err()
+				break
+			}
 			cc, derr := node.Options().Transport.Dial(ctx, addr)
 			if derr != nil {
 				err = derr

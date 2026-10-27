@@ -78,6 +78,7 @@ type entry struct {
 	list     []byte
 	expires  time.Time
 	negative bool
+	err      error
 }
 
 // Client fetches and caches ECHConfigList bytes from a DoH endpoint.
@@ -108,6 +109,9 @@ func NewClient(doh string, opts ...Option) (*Client, error) {
 	}
 	if u.Scheme != "https" {
 		return nil, fmt.Errorf("ech: doh url must use https: %s", doh)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("ech: doh url host is empty: %s", doh)
 	}
 
 	if options.Timeout <= 0 {
@@ -156,8 +160,12 @@ func (c *Client) ConfigList(ctx context.Context, name string) ([]byte, error) {
 	if ok && now.Before(e.expires) {
 		list := cloneBytes(e.list)
 		negative := e.negative
+		cachedErr := e.err
 		c.mu.RUnlock()
 		if negative {
+			if cachedErr != nil {
+				return nil, cachedErr
+			}
 			return nil, ErrNoECHConfig
 		}
 		return list, nil
@@ -172,7 +180,7 @@ func (c *Client) ConfigList(ctx context.Context, name string) ([]byte, error) {
 	now = c.now()
 
 	if err != nil {
-		c.entries[name] = &entry{expires: now.Add(negCacheTTL), negative: true}
+		c.entries[name] = &entry{expires: now.Add(negCacheTTL), negative: true, err: err}
 		return nil, err
 	}
 	if len(list) == 0 {
@@ -201,6 +209,10 @@ func (c *Client) ConfigList(ctx context.Context, name string) ([]byte, error) {
 
 // SetConfigList stores list in the cache, overriding the TTL.
 func (c *Client) SetConfigList(name string, list []byte) {
+	if len(list) == 0 {
+		return
+	}
+
 	cacheTTL := c.ttl
 	if cacheTTL <= 0 {
 		cacheTTL = defaultTTL
@@ -216,6 +228,8 @@ func (c *Client) SetConfigList(name string, list []byte) {
 		expires:  c.now().Add(cacheTTL),
 		negative: false,
 	}
+	// Clear any disabled state for name.
+	c.disabled[name] = time.Time{}
 }
 
 // Disable marks name as disabled until now+d.
