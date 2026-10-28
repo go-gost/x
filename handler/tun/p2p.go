@@ -568,6 +568,18 @@ func (h *p2pHub) answerKeepalive(s *peerStream, pkt []byte) error {
 		return ErrRegistrationRefused
 	}
 
+	// A link can lose its name without dying: a stream from the same peer took
+	// the key and later withdrew it (see p2pHandler.Handle), or a replacement
+	// stream ended after installing. The registration keepalives keep the route
+	// table fresh either way, so without this the table resolves the peer while
+	// no stream holds the name — every return packet a "no route" on a link
+	// that is perfectly alive, and the spoke never redials because its
+	// keepalives are still being answered. Claim the key back only when nothing
+	// holds it, so a stream that is installed stays the one packets go to.
+	if h.router.stream(s.key) == nil {
+		h.router.install(s)
+	}
+
 	return s.write(keepAliveReply(s.key))
 }
 
@@ -594,6 +606,43 @@ func (h *p2pHub) peerGone(s *peerStream) {
 
 func (h *p2pHub) warnf(format string, args ...any) {
 	h.warn(fmt.Sprintf(format, args...))
+}
+
+// isTunFrame reports whether pkt is something a peer's tun link carries: a
+// keepalive/registration frame or one whole IP packet. A tun link never opens
+// with anything else, which is what lets the p2p hub refuse a stream that was
+// routed here by peer key but belongs to another tunnel before it can take the
+// key from the live link.
+//
+// The length fields are what make this a verdict rather than a guess: the first
+// nibble alone is worthless, because text does look like an IP version ("GET "
+// starts 0x47: version 4, IHL 7). A tun read carries exactly one packet, so the
+// header's own length must describe this frame — TotalLen for IPv4, 40 +
+// PayloadLen for IPv6. Text that happens to start with a 4 or a 6 carries its
+// third and fourth characters as a size, and fails.
+func isTunFrame(pkt []byte) bool {
+	if isKeepaliveFrame(pkt) {
+		return true
+	}
+	if len(pkt) < ipv4.HeaderLen {
+		return false
+	}
+	if waterutil.IsIPv4(pkt) {
+		h, err := ipv4.ParseHeader(pkt)
+		if err != nil {
+			return false
+		}
+		return h.Len >= ipv4.HeaderLen && h.Len <= len(pkt) &&
+			h.TotalLen >= h.Len && h.TotalLen == len(pkt)
+	}
+	if waterutil.IsIPv6(pkt) {
+		h, err := ipv6.ParseHeader(pkt)
+		if err != nil {
+			return false
+		}
+		return ipv6.HeaderLen+h.PayloadLen == len(pkt)
+	}
+	return false
 }
 
 // isKeepaliveFrame reports whether pkt is the hub's control traffic rather than

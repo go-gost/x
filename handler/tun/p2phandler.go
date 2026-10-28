@@ -132,6 +132,16 @@ func (h *p2pHandler) SetPrefixRoutes(routes map[netip.Prefix]PrefixRoute) {
 // replaces whatever held that key, so a peer that reconnected is immediately the
 // one packets are written to and the old stream, which is on its way out, is not.
 //
+// Installing is deferred until the stream's first frame proves it is tun traffic
+// (a keepalive or an IP packet). That is not a formality: the p2p host routes
+// inbound streams by peer key alone, so a stream meant for another tunnel from
+// the same key — a p2p entrypoint's HTTP connection whose peer is also a spoke,
+// say — arrives here too. An eager install would let it take the key from the
+// live link, and its exit would then drop the live peer's routes while the real
+// stream is still open (bytes, and keepalives, still flowing) — the wedge where
+// the hub has no route to a peer that never redials. A first frame that is
+// neither is closed untouched, leaving the live link in place.
+//
 // Teardown goes through peerGone and nothing else: it reclaims the peer's routes
 // only while this stream still holds its key, so a stale stream ending cannot
 // cut off the live connection its peer already replaced it with. It also closes
@@ -139,10 +149,17 @@ func (h *p2pHandler) SetPrefixRoutes(routes map[netip.Prefix]PrefixRoute) {
 // closed when Handle returns.
 func (h *p2pHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.HandleOption) error {
 	s := newPeerStream(ctx, conn.RemoteAddr().String(), conn)
-	h.router.install(s)
-	h.log.Debugf("peer %s connected", s.key)
 
-	defer h.hub.peerGone(s)
+	// A stream that never installed holds no key, so its exit has no routes to
+	// reclaim; it still owns closing the conn.
+	installed := false
+	defer func() {
+		if installed {
+			h.hub.peerGone(s)
+			return
+		}
+		_ = conn.Close()
+	}()
 
 	// The read error is this peer's story, and it used to leave none: the loop
 	// returned it, service.Serve logged "EOF" at debug, and the only trace of a
@@ -178,6 +195,21 @@ func (h *p2pHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 		}
 		if n == 0 {
 			continue
+		}
+		if !installed {
+			if !isTunFrame(b[:n]) {
+				// Not tun traffic: the shared host handed over a stream that
+				// belongs to another tunnel (it can only route by peer key). The
+				// peer key keeps its live link, and the intruder is closed. Logged
+				// with the peer and the head of the frame, because this is the
+				// only trace of a misroute no other component can see.
+				h.log.Warnf("peer %s: first frame is not tun traffic (%d bytes, head=%s), stream closed",
+					s.key, n, headBytes(b[:n]))
+				return nil
+			}
+			h.router.install(s)
+			installed = true
+			h.log.Debugf("peer %s connected", s.key)
 		}
 		// fromSpoke answers a keepalive on the stream it arrived on and hands
 		// anything else to the device under the hub's write lock; the hub logs

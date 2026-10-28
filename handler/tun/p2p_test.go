@@ -629,6 +629,46 @@ func TestP2PKeepaliveIsAnsweredAndRegisters(t *testing.T) {
 	}
 }
 
+// A live link can lose its key without dying: a stream from the same peer took
+// it and later withdrew it, or a replacement stream ended after installing. The
+// registration keepalives keep the route table fresh either way, so without
+// re-claiming the name the table resolves the peer while no stream holds it and
+// every return packet is a "no route" — the wedge. The re-claim is conditional,
+// so an installed stream is never robbed by another live stream's keepalive.
+func TestP2PKeepaliveReclaimsAWithdrawnKey(t *testing.T) {
+	router := newTestRouter()
+	hub := newP2PHub(nopDevice{}, router, nil, nil)
+	const key = "peer-a"
+	ip := net.ParseIP("10.10.0.3")
+
+	_, aEnd := newDatagramPipe(4)
+	a := newPeerStream(context.Background(), key, aEnd)
+	// The route outlives the stream's key, exactly as it does after a
+	// misdelivered stream's teardown: the keepalives put it back, the stream
+	// behind it does not come back on its own.
+	router.table.set(ip, key)
+
+	frame := keepAliveFrame("secret", ip)
+	if err := hub.fromSpoke(a, frame); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+	if got := router.stream(key); got != a {
+		t.Fatal("a keepalive on an unclaimed key did not reinstall its stream")
+	}
+
+	// An installed stream keeps the name: another live stream's keepalive must
+	// not steal it, or two streams would trade the key on every interval.
+	_, bEnd := newDatagramPipe(4)
+	b := newPeerStream(context.Background(), key, bEnd)
+	router.install(b)
+	if err := hub.fromSpoke(a, keepAliveFrame("secret", ip)); err != nil {
+		t.Fatalf("fromSpoke: %v", err)
+	}
+	if got := router.stream(key); got != b {
+		t.Fatal("a keepalive took the key from the stream that already held it")
+	}
+}
+
 // newP2PAuthorizerHub builds the hub a deployment gets — NewP2PHandler over the
 // tun conn the listener produced — and returns it as the compat suite drives one,
 // so a case writes a registration on a real stream and reads the answer off the
@@ -810,6 +850,40 @@ func TestP2PStaleStreamTeardownKeepsReconnectingPeerRoute(t *testing.T) {
 	}
 	if s := router.stream("peer-a"); s != nil {
 		t.Fatal("the live stream is still installed after its teardown")
+	}
+}
+
+// A byte stream that reaches the tun route without being tun traffic must not
+// take the live link's place. The p2p host routes inbound streams by peer key
+// alone, so another tunnel's stream from the same key — an HTTP connection
+// opened through a p2p entrypoint whose peer is also a spoke, say — is handed
+// to the hub. Installing it would make the intruder the peer's stream; when it
+// ends (an HTTP client closing, a page load finishing) peerGone would drop the
+// live peer's routes through the still-open live link, which is the "no route,
+// keepalives still arriving" wedge: the spoke never redials because bytes are
+// still flowing.
+func TestP2PMisdeliveredStreamDoesNotDisplaceTheLiveLink(t *testing.T) {
+	hub := newP2PAuthorizerHub(t, nil)
+	live := hub.spoke(t)
+	hub.register(live, keepAliveFrame("secret", compatPeerA))
+
+	// A second stream under the same key, carrying something that is neither a
+	// keepalive nor an IP packet: what the shared host hands over when a peer's
+	// stream was meant for another tunnel.
+	intruder := hub.reconnect(live, t)
+	if _, err := intruder.conn.in.Write([]byte("GET / HTTP/1.1\r\n\r\n")); err != nil {
+		t.Fatalf("write the misdelivered frame: %v", err)
+	}
+	hub.gone(intruder)
+
+	if name, ok := hub.resolve(compatPeerA); !ok || name != live.name {
+		t.Fatalf("route after the misdelivered stream ended = %q, %v, want it kept for %q",
+			name, ok, live.name)
+	}
+	pkt := udpPacket(compatHubIP.String(), compatPeerA.String(), 7, 1)
+	hub.deliver(pkt)
+	if got := live.read(); !bytes.Equal(got, pkt) {
+		t.Fatalf("the live link got % x, want % x — a misdelivered stream took its place", got, pkt)
 	}
 }
 
@@ -1047,6 +1121,34 @@ func TestP2PKeepaliveHelpers(t *testing.T) {
 			t.Fatalf("reply % x does not identify the peer", reply)
 		}
 	})
+}
+
+// isTunFrame is the gate that keeps a misdelivered byte stream from taking a
+// live peer's key, so it has to be strict about shapes a first nibble cannot
+// distinguish: "GET " is 0x47 (version 4, IHL 7) and must still be refused.
+func TestP2PIsTunFrame(t *testing.T) {
+	tests := []struct {
+		name string
+		pkt  []byte
+		want bool
+	}{
+		{"ipv4 packet", udpPacket("10.10.0.3", "10.10.0.9", 1, 1), true},
+		{"ipv6 packet", udp6Packet("fd00::3", "fd00::9", 1, 1), true},
+		{"registration", keepAliveFrame("secret", net.ParseIP("10.10.0.3")), true},
+		{"keepalive echo", keepAliveReply("peer-a"), true},
+		{"http request line", []byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"), false},
+		{"http get prefix", []byte("GET "), false},
+		{"plain text", []byte("plain text that is long enough to pass a length check"), false},
+		{"empty", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTunFrame(tt.pkt); got != tt.want {
+				t.Fatalf("isTunFrame(% x) = %v, want %v", tt.pkt, got, tt.want)
+			}
+		})
+	}
 }
 
 // destinationOf must refuse what the socket server's two loops refuse, and get
