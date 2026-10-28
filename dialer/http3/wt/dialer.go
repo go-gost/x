@@ -72,7 +72,7 @@ func (d *wtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 			host:   host,
 			path:   d.md.path,
 			header: d.md.header,
-			dialer: &wt.Dialer{
+			dialer: &wt.Transport{
 				TLSClientConfig: d.options.TLSConfig,
 				DialAddr: func(ctx context.Context, adr string, tlsCfg *tls.Config, cfg *quic.Config) (*quic.Conn, error) {
 					// d.options.Logger.Infof("dial: %s, %s, %s", addr, adr, host)

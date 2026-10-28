@@ -16,7 +16,7 @@ type Client struct {
 	host    string
 	path    string
 	header  http.Header
-	dialer  *wt.Dialer
+	dialer  *wt.Transport
 	session *wt.Session
 	log     logger.Logger
 }

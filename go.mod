@@ -30,14 +30,14 @@ require (
 	github.com/pion/dtls/v3 v3.1.4
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.21.1
-	github.com/quic-go/quic-go v0.60.0
-	github.com/quic-go/webtransport-go v0.11.1
+	github.com/quic-go/quic-go v0.63.0
+	github.com/quic-go/webtransport-go v0.13.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/rs/xid v1.3.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.19.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/vishvananda/netlink v1.1.1-0.20211118161826-650dca95af54
@@ -74,6 +74,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.7.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -86,9 +87,8 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/coreos/go-iptables v0.5.0 // indirect
 	github.com/danieljoos/wincred v1.2.0 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dunglas/httpsfv v1.1.0 // indirect
+	github.com/dunglas/httpsfv v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
@@ -114,7 +114,6 @@ require (
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
