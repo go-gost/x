@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	mdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/internal/util/ech"
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
@@ -11,6 +12,8 @@ type metadata struct {
 	host   string
 	path   string
 	header http.Header
+
+	ech ech.Config
 }
 
 func (d *h2Dialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -29,5 +32,6 @@ func (d *h2Dialer) parseMetadata(md mdata.Metadata) (err error) {
 		}
 		d.md.header = h
 	}
+	d.md.ech = ech.FromMetadata(md)
 	return
 }

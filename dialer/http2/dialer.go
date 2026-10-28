@@ -26,6 +26,7 @@ type http2Dialer struct {
 	clients     map[string]*http.Client
 	clientMutex sync.Mutex
 	logger      logger.Logger
+	md          metadata
 	options     dialer.Options
 }
 
@@ -47,7 +48,7 @@ func (d *http2Dialer) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	return nil
+	return d.md.ech.Init(d.logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -72,6 +73,22 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 			opt(&options)
 		}
 
+		serverName := ""
+		if d.options.TLSConfig != nil {
+			serverName = d.options.TLSConfig.ServerName
+		}
+		if serverName == "" {
+			if h, _, err := net.SplitHostPort(address); err == nil {
+				serverName = h
+			} else {
+				serverName = address
+			}
+		}
+		tlsCfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+		if err != nil {
+			return nil, err
+		}
+
 		{
 			// Check whether the connection is established properly
 			netd := options.Dialer
@@ -87,7 +104,7 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 
 		client = &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: d.options.TLSConfig,
+				TLSClientConfig: tlsCfg,
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					netd := options.Dialer
 					if netd == nil {

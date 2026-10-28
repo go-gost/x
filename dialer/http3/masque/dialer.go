@@ -37,7 +37,10 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 }
 
 func (d *masqueDialer) Init(md md.Metadata) (err error) {
-	return d.parseMetadata(md)
+	if err = d.parseMetadata(md); err != nil {
+		return
+	}
+	return d.md.ech.Init(d.options.Logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -90,7 +93,14 @@ func (d *masqueDialer) Dial(ctx context.Context, addr string, opts ...dialer.Dia
 		if tlsCfg == nil {
 			tlsCfg = &tls.Config{}
 		}
-		tlsCfg = tlsCfg.Clone()
+		serverName := tlsCfg.ServerName
+		if serverName == "" {
+			serverName = host
+		}
+		tlsCfg, err := d.md.ech.Apply(ctx, tlsCfg, serverName)
+		if err != nil {
+			return nil, err
+		}
 		if len(tlsCfg.NextProtos) == 0 {
 			tlsCfg.NextProtos = []string{http3.NextProtoH3}
 		}
@@ -99,9 +109,9 @@ func (d *masqueDialer) Dial(ctx context.Context, addr string, opts ...dialer.Dia
 		}
 
 		client = &Client{
-			log:  d.options.Logger,
-			host: host,
-			addr: addr,
+			log:    d.options.Logger,
+			host:   host,
+			addr:   addr,
 			dialer: dialFn,
 			transport: &http3.Transport{
 				TLSClientConfig: tlsCfg,
@@ -129,6 +139,17 @@ func (d *masqueDialer) Dial(ctx context.Context, addr string, opts ...dialer.Dia
 		d.options.Logger.Error(err)
 		client.Close()
 		delete(d.clients, addr)
+		sn := addr
+		if h, _, err2 := net.SplitHostPort(addr); err2 == nil {
+			sn = h
+		}
+		if d.options.TLSConfig != nil && d.options.TLSConfig.ServerName != "" {
+			sn = d.options.TLSConfig.ServerName
+		}
+		if rerr := d.md.ech.OnDialError(ctx, err, sn); rerr != nil {
+			delete(d.clients, addr)
+			return nil, rerr
+		}
 		return nil, err
 	}
 

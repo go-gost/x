@@ -278,3 +278,65 @@ func TestChainRoute_Connect_NonRetryableHandshakeNoRetry(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 1, attempts)
 }
+
+func TestChainRoute_Connect_RetryableDialRetriesSameAddr(t *testing.T) {
+	attempts := 0
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, retryableHandshakeError{}
+		}
+		return &testConn{}, nil
+	}}
+	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
+		return conn, nil
+	}}
+	node := chain.NewNode("n1", "retryd.test:443", chain.TransportNodeOption(NewTransport(d, c)),
+		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{"retryd.test": {net.ParseIP("10.0.0.1")}}}))
+	rt := NewRoute()
+	rt.addNode(node)
+	conn, err := rt.connect(context.Background(), xlogger.Nop())
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, 2, attempts)
+	require.Equal(t, 0, int(node.Marker().Count()))
+	_, ok := failedAddrs.Load(addrKey("retryd.test:443", "10.0.0.1:443"))
+	require.False(t, ok)
+}
+
+func TestChainRoute_Connect_RetryableDialThenFails(t *testing.T) {
+	attempts := 0
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		attempts++
+		return nil, retryableHandshakeError{}
+	}}
+	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
+		return conn, nil
+	}}
+	node := chain.NewNode("n1", "retryd2.test:443", chain.TransportNodeOption(NewTransport(d, c)),
+		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{"retryd2.test": {net.ParseIP("10.0.0.1")}}}))
+	rt := NewRoute()
+	rt.addNode(node)
+	_, err := rt.connect(context.Background(), xlogger.Nop())
+	require.Error(t, err)
+	require.Equal(t, 2, attempts)
+	require.Equal(t, int64(1), node.Marker().Count())
+}
+
+func TestChainRoute_Connect_NonRetryableDialNoRetry(t *testing.T) {
+	attempts := 0
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		attempts++
+		return nil, errors.New("boom")
+	}}
+	c := &testConnector{handshakeFn: func(ctx context.Context, conn net.Conn) (net.Conn, error) {
+		return conn, nil
+	}}
+	node := chain.NewNode("n1", "nrd.test:443", chain.TransportNodeOption(NewTransport(d, c)),
+		chain.HostMapperNodeOption(&routeHostMapper{m: map[string][]net.IP{"nrd.test": {net.ParseIP("10.0.0.1")}}}))
+	rt := NewRoute()
+	rt.addNode(node)
+	_, err := rt.connect(context.Background(), xlogger.Nop())
+	require.Error(t, err)
+	require.Equal(t, 1, attempts)
+}

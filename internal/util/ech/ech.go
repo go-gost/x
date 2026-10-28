@@ -232,10 +232,19 @@ func (c *Client) SetConfigList(name string, list []byte) {
 	c.disabled[name] = time.Time{}
 }
 
+// Refresh drops the cached entry for name so the next ConfigList performs a
+// fresh lookup. A disabled name stays disabled.
+func (c *Client) Refresh(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, name)
+}
+
 // Disable marks name as disabled until now+d.
 func (c *Client) Disable(name string, d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	delete(c.entries, name)
 	c.disabled[name] = c.now().Add(d)
 }
 

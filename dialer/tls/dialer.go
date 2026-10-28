@@ -3,7 +3,6 @@ package tls
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"net"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	xctx "github.com/go-gost/x/ctx"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/net/proxyproto"
-	"github.com/go-gost/x/internal/util/ech"
 	"github.com/go-gost/x/registry"
 )
 
@@ -25,8 +23,6 @@ type tlsDialer struct {
 	md      metadata
 	log     logger.Logger
 	options dialer.Options
-
-	ech *ech.Client
 }
 
 func NewDialer(opts ...dialer.Option) dialer.Dialer {
@@ -46,42 +42,7 @@ func (d *tlsDialer) Init(md md.Metadata) (err error) {
 		return err
 	}
 
-	if !d.md.ech {
-		return nil
-	}
-
-	if d.md.echDoH == "" {
-		return errors.New("ech: doh endpoint is required")
-	}
-
-	if cfg := d.options.TLSConfig; cfg != nil {
-		if cfg.MinVersion != 0 && cfg.MinVersion < tls.VersionTLS13 {
-			return errors.New("ech: TLS 1.3 is required")
-		}
-		if cfg.MaxVersion != 0 && cfg.MaxVersion < tls.VersionTLS13 {
-			return errors.New("ech: TLS 1.3 is required")
-		}
-	}
-
-	var tlsCfg *tls.Config
-	if d.md.echDoHInsecure {
-		tlsCfg = &tls.Config{InsecureSkipVerify: true}
-	} else {
-		tlsCfg = &tls.Config{}
-	}
-
-	c, err := ech.NewClient(
-		d.md.echDoH,
-		ech.TTLOption(d.md.echTTL),
-		ech.TimeoutOption(d.md.echTimeout),
-		ech.TLSConfigOption(tlsCfg),
-		ech.LoggerOption(d.log),
-	)
-	if err != nil {
-		return err
-	}
-	d.ech = c
-	return nil
+	return d.md.ech.Init(d.log, d.options.TLSConfig)
 }
 
 func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
@@ -117,87 +78,25 @@ func (d *tlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOp
 	return conn, err
 }
 
-// echDisableTTL is how long ECH stays disabled after a rejection without retry
-// configs when fallback is enabled.
-const echDisableTTL = 5 * time.Minute
-
-// retryableError wraps an error to signal that the enclosing chain hop may
-// retry the handshake once.
-type retryableError struct {
-	err error
-}
-
-func (e retryableError) Error() string {
-	if e.err == nil {
-		return ""
-	}
-	return e.err.Error()
-}
-
-func (e retryableError) Unwrap() error {
-	return e.err
-}
-
-func (e retryableError) RetryableHandshake() bool {
-	return true
-}
-
 // Handshake implements dialer.Handshaker
 func (d *tlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dialer.HandshakeOption) (net.Conn, error) {
-	// ECH requires a server name; validate before touching the connection.
-	if d.ech != nil {
-		cfg := d.options.TLSConfig
-		serverName := ""
-		if cfg != nil {
-			serverName = cfg.ServerName
-		}
-		if serverName == "" {
-			if conn != nil {
-				conn.Close()
-			}
-			return nil, errors.New("ech: server name is required")
-		}
-	}
-
 	if d.md.handshakeTimeout > 0 {
 		conn.SetDeadline(time.Now().Add(d.md.handshakeTimeout))
 		defer conn.SetDeadline(time.Time{})
 	}
 
 	cfg := d.options.TLSConfig
-	if d.ech != nil {
-		serverName := ""
-		if cfg != nil {
-			serverName = cfg.ServerName
+	serverName := ""
+	if cfg != nil {
+		serverName = cfg.ServerName
+	}
+
+	cfg, err := d.md.ech.Apply(ctx, cfg, serverName)
+	if err != nil {
+		if conn != nil {
+			conn.Close()
 		}
-		list, err := d.ech.ConfigList(ctx, serverName)
-		if err != nil {
-			if d.md.echFallback {
-				if d.log != nil {
-					d.log.Warnf("ech: config list lookup failed: %v; falling back to plain TLS", err)
-				}
-				if cfg == nil {
-					cfg = &tls.Config{}
-				} else {
-					cfg = cfg.Clone()
-				}
-			} else {
-				if conn != nil {
-					conn.Close()
-				}
-				return nil, err
-			}
-		} else {
-			if cfg == nil {
-				cfg = &tls.Config{}
-			}
-			cloned := cfg.Clone()
-			cloned.EncryptedClientHelloConfigList = list
-			if cloned.InsecureSkipVerify {
-				cloned.EncryptedClientHelloRejectionVerify = func(tls.ConnectionState) error { return nil }
-			}
-			cfg = cloned
-		}
+		return nil, err
 	}
 
 	tlsConn := tls.Client(conn, cfg)
@@ -205,22 +104,8 @@ func (d *tlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...dia
 		if conn != nil {
 			conn.Close()
 		}
-		if d.ech != nil {
-			var rej *tls.ECHRejectionError
-			if errors.As(err, &rej) {
-				serverName := ""
-				if d.options.TLSConfig != nil {
-					serverName = d.options.TLSConfig.ServerName
-				}
-				if len(rej.RetryConfigList) > 0 {
-					d.ech.SetConfigList(serverName, rej.RetryConfigList)
-					return nil, retryableError{err: err}
-				}
-				if d.md.echFallback {
-					d.ech.Disable(serverName, echDisableTTL)
-					return nil, retryableError{err: err}
-				}
-			}
+		if rerr := d.md.ech.OnRejection(err, serverName); rerr != nil {
+			return nil, rerr
 		}
 		return nil, err
 	}

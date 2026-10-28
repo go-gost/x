@@ -5,6 +5,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/internal/util/ech"
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
@@ -23,6 +24,8 @@ type metadata struct {
 	maxIdleTimeout   time.Duration
 	handshakeTimeout time.Duration
 	maxStreams       int
+
+	ech ech.Config
 }
 
 func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -53,6 +56,8 @@ func (d *http3Dialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)
 	d.md.maxIdleTimeout = mdutil.GetDuration(md, maxIdleTimeout)
 	d.md.maxStreams = mdutil.GetInt(md, maxStreams)
+
+	d.md.ech = ech.FromMetadata(md)
 
 	return
 }

@@ -3,6 +3,7 @@ package utls
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"time"
 
@@ -39,7 +40,10 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 }
 
 func (d *utlsDialer) Init(md md.Metadata) (err error) {
-	return d.parseMetadata(md)
+	if err = d.parseMetadata(md); err != nil {
+		return err
+	}
+	return d.md.ech.Init(d.log, d.options.TLSConfig)
 }
 
 func (d *utlsDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
@@ -78,13 +82,26 @@ func (d *utlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...di
 		defer conn.SetDeadline(time.Time{})
 	}
 
+	serverName := ""
+	if d.options.TLSConfig != nil {
+		serverName = d.options.TLSConfig.ServerName
+	}
+	cfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
 	clientHelloID, ok := GetClientHelloID(d.md.fingerprint)
 	if ok {
 		d.log.Debugf("utls handshake with fingerprint: %s", d.md.fingerprint)
-		utlsCfg := toUTLSConfig(d.options.TLSConfig)
+		utlsCfg := toUTLSConfig(cfg)
 		uconn := utls.UClient(conn, utlsCfg, clientHelloID)
 		if err := uconn.HandshakeContext(ctx); err != nil {
 			conn.Close()
+			if rerr := d.md.ech.OnRejection(asTLSRejection(err), serverName); rerr != nil {
+				return nil, rerr
+			}
 			return nil, err
 		}
 		return uconn, nil
@@ -95,13 +112,26 @@ func (d *utlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...di
 	if d.md.fingerprint != "" {
 		d.log.Warnf("unknown utls fingerprint: %s, falling back to standard TLS", d.md.fingerprint)
 	}
-	tlsConn := tls.Client(conn, d.options.TLSConfig)
+	tlsConn := tls.Client(conn, cfg)
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		conn.Close()
+		if rerr := d.md.ech.OnRejection(err, serverName); rerr != nil {
+			return nil, rerr
+		}
 		return nil, err
 	}
 
 	return tlsConn, nil
+}
+
+// asTLSRejection converts utls' ECH rejection error into the crypto/tls type
+// understood by ech.Config.
+func asTLSRejection(err error) error {
+	var rej *utls.ECHRejectionError
+	if errors.As(err, &rej) {
+		return &tls.ECHRejectionError{RetryConfigList: rej.RetryConfigList}
+	}
+	return err
 }
 
 // toUTLSConfig builds an equivalent utls.Config from a standard crypto/tls.Config.
@@ -142,12 +172,23 @@ func toUTLSConfig(c *tls.Config) *utls.Config {
 		MinVersion:                  c.MinVersion,
 		MaxVersion:                  c.MaxVersion,
 		VerifyPeerCertificate:       c.VerifyPeerCertificate,
+
+		EncryptedClientHelloConfigList: c.EncryptedClientHelloConfigList,
 	}
 
 	if c.VerifyConnection != nil {
 		vc := c.VerifyConnection
 		uc.VerifyConnection = func(cs utls.ConnectionState) error {
 			return vc(tls.ConnectionState{
+				PeerCertificates: cs.PeerCertificates,
+			})
+		}
+	}
+
+	if c.EncryptedClientHelloRejectionVerify != nil {
+		v := c.EncryptedClientHelloRejectionVerify
+		uc.EncryptedClientHelloRejectionVerify = func(cs utls.ConnectionState) error {
+			return v(tls.ConnectionState{
 				PeerCertificates: cs.PeerCertificates,
 			})
 		}
@@ -188,7 +229,7 @@ func toUTLSCertificates(certs []tls.Certificate) []utls.Certificate {
 // We keep only the curves utls can actually use and drop the rest; if none
 // survive, return nil so utls falls back to the fingerprint's defaults.
 var utlsCurves = map[tls.CurveID]utls.CurveID{
-	tls.X25519:   utls.X25519,
+	tls.X25519:    utls.X25519,
 	tls.CurveP256: utls.CurveP256,
 	tls.CurveP384: utls.CurveP384,
 	tls.CurveP521: utls.CurveP521,

@@ -43,7 +43,13 @@ func NewDialer(opts ...dialer.Option) dialer.Dialer {
 }
 
 func (d *grpcDialer) Init(md md.Metadata) (err error) {
-	return d.parseMetadata(md)
+	if err = d.parseMetadata(md); err != nil {
+		return
+	}
+	if d.md.insecure {
+		return nil
+	}
+	return d.md.ech.Init(d.options.Logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -103,7 +109,15 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 			}),
 		}
 		if !d.md.insecure {
-			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(d.options.TLSConfig)))
+			serverName := host
+			if h, _, err := net.SplitHostPort(host); err == nil {
+				serverName = h
+			}
+			tlsCfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+			if err != nil {
+				return nil, err
+			}
+			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 		} else {
 			grpcOpts = append(grpcOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		}
@@ -129,6 +143,19 @@ func (d *grpcDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 	cli, err := client.TunnelX(ctx2, d.md.path)
 	if err != nil {
 		cancel()
+		if !d.md.insecure {
+			sn := addr
+			if h, _, err2 := net.SplitHostPort(addr); err2 == nil {
+				sn = h
+			}
+			if d.options.TLSConfig != nil && d.options.TLSConfig.ServerName != "" {
+				sn = d.options.TLSConfig.ServerName
+			}
+			if rerr := d.md.ech.OnDialError(ctx, err, sn); rerr != nil {
+				delete(d.clients, addr)
+				return nil, rerr
+			}
+		}
 		return nil, err
 	}
 

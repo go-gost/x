@@ -36,12 +36,12 @@ func TestParseMetadata_ECH(t *testing.T) {
 		"ech.dohInsecure": true,
 	})
 	require.NoError(t, d.parseMetadata(md))
-	require.True(t, d.md.ech)
-	require.Equal(t, "https://1.1.1.1/dns-query", d.md.echDoH)
-	require.Equal(t, 2*time.Second, d.md.echTimeout)
-	require.Equal(t, 10*time.Minute, d.md.echTTL)
-	require.True(t, d.md.echFallback)
-	require.True(t, d.md.echDoHInsecure)
+	require.True(t, d.md.ech.Enabled)
+	require.Equal(t, "https://1.1.1.1/dns-query", d.md.ech.DoH)
+	require.Equal(t, 2*time.Second, d.md.ech.Timeout)
+	require.Equal(t, 10*time.Minute, d.md.ech.TTL)
+	require.True(t, d.md.ech.Fallback)
+	require.True(t, d.md.ech.DoHInsecure)
 }
 
 func TestInit_ECHRequiresDoH(t *testing.T) {
@@ -61,7 +61,7 @@ func TestInit_ECHRejectsTLS12(t *testing.T) {
 func TestInit_ECHDisabled(t *testing.T) {
 	d := NewDialer().(*tlsDialer)
 	require.NoError(t, d.Init(xmd.NewMetadata(nil)))
-	require.Nil(t, d.ech)
+	require.False(t, d.md.ech.Active())
 }
 
 type netDialer struct{}

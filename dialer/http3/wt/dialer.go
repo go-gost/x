@@ -40,7 +40,7 @@ func (d *wtDialer) Init(md md.Metadata) (err error) {
 	if err = d.parseMetadata(md); err != nil {
 		return
 	}
-	return
+	return d.md.ech.Init(d.options.Logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -67,13 +67,22 @@ func (d *wtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 			host = h
 		}
 
+		serverName := host
+		if d.options.TLSConfig != nil && d.options.TLSConfig.ServerName != "" {
+			serverName = d.options.TLSConfig.ServerName
+		}
+		tlsCfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+		if err != nil {
+			return nil, err
+		}
+
 		client = &Client{
 			log:    d.options.Logger,
 			host:   host,
 			path:   d.md.path,
 			header: d.md.header,
 			dialer: &wt.Transport{
-				TLSClientConfig: d.options.TLSConfig,
+				TLSClientConfig: tlsCfg,
 				DialAddr: func(ctx context.Context, adr string, tlsCfg *tls.Config, cfg *quic.Config) (*quic.Conn, error) {
 					// d.options.Logger.Infof("dial: %s, %s, %s", addr, adr, host)
 					udpAddr, err := net.ResolveUDPAddr("udp", addr)
@@ -105,5 +114,20 @@ func (d *wtDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOpt
 		d.clients[addr] = client
 	}
 
-	return client.Dial(ctx, addr)
+	ret, err := client.Dial(ctx, addr)
+	if err != nil {
+		sn := addr
+		if h, _, err2 := net.SplitHostPort(addr); err2 == nil {
+			sn = h
+		}
+		if d.options.TLSConfig != nil && d.options.TLSConfig.ServerName != "" {
+			sn = d.options.TLSConfig.ServerName
+		}
+		if rerr := d.md.ech.OnDialError(ctx, err, sn); rerr != nil {
+			delete(d.clients, addr)
+			return nil, rerr
+		}
+		return nil, err
+	}
+	return ret, nil
 }

@@ -67,7 +67,10 @@ func (d *h2Dialer) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	return nil
+	if d.h2c {
+		return nil
+	}
+	return d.md.ech.Init(d.logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -111,8 +114,21 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 				},
 			}
 		} else {
+			serverName := d.md.host
+			if serverName == "" {
+				if h, _, err := net.SplitHostPort(address); err == nil {
+					serverName = h
+				} else {
+					serverName = address
+				}
+			}
+			tlsCfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+			if err != nil {
+				d.clientMutex.Unlock()
+				return nil, err
+			}
 			client.Transport = &http.Transport{
-				TLSClientConfig: d.options.TLSConfig,
+				TLSClientConfig: tlsCfg,
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					conn, err := options.Dialer.Dial(ctx, network, addr)
 					if err != nil {
@@ -171,6 +187,22 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 
 	resp, err := client.Do(req.WithContext(context.WithoutCancel(ctx)))
 	if err != nil {
+		if !d.h2c {
+			serverName := d.md.host
+			if serverName == "" {
+				if h, _, err2 := net.SplitHostPort(address); err2 == nil {
+					serverName = h
+				} else {
+					serverName = address
+				}
+			}
+			if rerr := d.md.ech.OnDialError(ctx, err, serverName); rerr != nil {
+				d.clientMutex.Lock()
+				delete(d.clients, address)
+				d.clientMutex.Unlock()
+				return nil, rerr
+			}
+		}
 		return nil, err
 	}
 

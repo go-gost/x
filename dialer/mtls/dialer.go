@@ -47,7 +47,7 @@ func (d *mtlsDialer) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	return nil
+	return d.md.ech.Init(d.logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -157,8 +157,20 @@ func (d *mtlsDialer) Handshake(ctx context.Context, conn net.Conn, options ...di
 }
 
 func (d *mtlsDialer) initSession(ctx context.Context, conn net.Conn) (*muxSession, error) {
-	tlsConn := tls.Client(conn, d.options.TLSConfig)
+	serverName := ""
+	if d.options.TLSConfig != nil {
+		serverName = d.options.TLSConfig.ServerName
+	}
+	cfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConn := tls.Client(conn, cfg)
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		if rerr := d.md.ech.OnRejection(err, serverName); rerr != nil {
+			return nil, rerr
+		}
 		return nil, err
 	}
 	conn = tlsConn

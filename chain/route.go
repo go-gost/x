@@ -267,6 +267,11 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			cc, derr := node.Options().Transport.Dial(ctx, addr)
 			if derr != nil {
 				err = derr
+				// Dialers that complete the TLS handshake inside Dial (quic,
+				// grpc, h3, ...) report ECH retries from Dial, not Handshake.
+				if attempt == 0 && isRetryableHandshake(derr) {
+					continue
+				}
 				markAddrFailed(node.Addr, addr)
 				break
 			}

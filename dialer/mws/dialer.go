@@ -61,7 +61,10 @@ func (d *mwsDialer) Init(md md.Metadata) (err error) {
 		return
 	}
 
-	return nil
+	if !d.tlsEnabled {
+		return nil
+	}
+	return d.md.ech.Init(d.options.Logger, d.options.TLSConfig)
 }
 
 // Multiplex implements dialer.Multiplexer interface.
@@ -189,7 +192,15 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn,
 	url := url.URL{Scheme: "ws", Host: host, Path: d.md.path}
 	if d.tlsEnabled {
 		url.Scheme = "wss"
-		dialer.TLSClientConfig = d.options.TLSConfig
+		serverName := ""
+		if d.options.TLSConfig != nil {
+			serverName = d.options.TLSConfig.ServerName
+		}
+		cfg, err := d.md.ech.Apply(ctx, d.options.TLSConfig, serverName)
+		if err != nil {
+			return nil, err
+		}
+		dialer.TLSClientConfig = cfg
 	}
 
 	if d.md.handshakeTimeout > 0 {
@@ -198,6 +209,15 @@ func (d *mwsDialer) initSession(ctx context.Context, host string, conn net.Conn,
 
 	c, resp, err := dialer.DialContext(ctx, url.String(), d.md.header)
 	if err != nil {
+		if d.tlsEnabled {
+			serverName := ""
+			if d.options.TLSConfig != nil {
+				serverName = d.options.TLSConfig.ServerName
+			}
+			if rerr := d.md.ech.OnRejection(err, serverName); rerr != nil {
+				return nil, rerr
+			}
+		}
 		return nil, err
 	}
 	resp.Body.Close()

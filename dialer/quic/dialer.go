@@ -43,8 +43,7 @@ func (d *quicDialer) Init(md md.Metadata) (err error) {
 	if err = d.parseMetadata(md); err != nil {
 		return
 	}
-
-	return nil
+	return d.md.ech.Init(d.logger, d.options.TLSConfig)
 }
 
 func (d *quicDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialOption) (conn net.Conn, err error) {
@@ -126,6 +125,19 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 	}
 
 	tlsCfg := d.options.TLSConfig
+	serverName := ""
+	if tlsCfg != nil {
+		serverName = tlsCfg.ServerName
+	}
+	if serverName == "" {
+		if h, _, err := net.SplitHostPort(addr.String()); err == nil {
+			serverName = h
+		}
+	}
+	tlsCfg, err := d.md.ech.Apply(ctx, tlsCfg, serverName)
+	if err != nil {
+		return nil, err
+	}
 	tlsCfg = tlsCfg.Clone()
 	if len(tlsCfg.NextProtos) == 0 {
 		tlsCfg.NextProtos = []string{"h3", "quic/v1"}
@@ -133,6 +145,9 @@ func (d *quicDialer) initSession(ctx context.Context, addr net.Addr, conn net.Pa
 
 	session, err := quic.DialEarly(ctx, conn, addr, tlsCfg, quicConfig)
 	if err != nil {
+		if rerr := d.md.ech.OnDialError(ctx, err, serverName); rerr != nil {
+			return nil, rerr
+		}
 		return nil, err
 	}
 	return &quicSession{session: session}, nil

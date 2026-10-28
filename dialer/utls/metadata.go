@@ -4,6 +4,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	"github.com/go-gost/x/internal/util/ech"
 	mdutil "github.com/go-gost/x/metadata/util"
 )
 
@@ -16,6 +17,8 @@ type metadata struct {
 	keepaliveCount    int
 
 	fingerprint string
+
+	ech ech.Config
 }
 
 func (d *utlsDialer) parseMetadata(md mdata.Metadata) (err error) {
@@ -32,6 +35,8 @@ func (d *utlsDialer) parseMetadata(md mdata.Metadata) (err error) {
 	d.md.keepaliveCount = mdutil.GetInt(md, "keepalive.count")
 
 	d.md.fingerprint = mdutil.GetString(md, fingerprint)
+
+	d.md.ech = ech.FromMetadata(md)
 
 	return
 }
