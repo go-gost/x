@@ -6,6 +6,7 @@ import (
 	"time"
 
 	mdata "github.com/go-gost/core/metadata"
+	ssh_util "github.com/go-gost/x/internal/util/ssh"
 	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/mitchellh/go-homedir"
 	"github.com/zalando/go-keyring"
@@ -15,6 +16,7 @@ import (
 type metadata struct {
 	handshakeTimeout  time.Duration
 	signer            ssh.Signer
+	hostKeyCallback   ssh.HostKeyCallback
 	keepalive         bool
 	keepaliveInterval time.Duration
 	keepaliveTimeout  time.Duration
@@ -28,10 +30,13 @@ type metadata struct {
 
 func (d *sshDialer) parseMetadata(md mdata.Metadata) (err error) {
 	const (
-		handshakeTimeout      = "handshakeTimeout"
-		privateKeyFile        = "privateKeyFile"
-		passphrase            = "passphrase"
-		passphraseFromKeyring = "passphraseFromKeyring"
+		handshakeTimeout          = "handshakeTimeout"
+		privateKeyFile            = "privateKeyFile"
+		hostKeyFile               = "hostKeyFile"
+		hostKey                   = "hostKey"
+		insecureSkipHostKeyVerify = "insecureSkipHostKeyVerify"
+		passphrase                = "passphrase"
+		passphraseFromKeyring     = "passphraseFromKeyring"
 	)
 
 	if key := mdutil.GetString(md, privateKeyFile); key != "" {
@@ -61,6 +66,19 @@ func (d *sshDialer) parseMetadata(md mdata.Metadata) (err error) {
 		if err != nil {
 			return err
 		}
+	}
+
+	insecure := mdutil.GetBool(md, insecureSkipHostKeyVerify)
+	d.md.hostKeyCallback, err = ssh_util.NewHostKeyCallback(
+		mdutil.GetString(md, hostKeyFile, "knownHostsFile"),
+		mdutil.GetString(md, hostKey),
+		insecure,
+	)
+	if err != nil {
+		return err
+	}
+	if insecure && d.options.Logger != nil {
+		d.options.Logger.Warnf("ssh: host key verification is disabled, connections are vulnerable to man-in-the-middle attacks")
 	}
 
 	d.md.handshakeTimeout = mdutil.GetDuration(md, handshakeTimeout)

@@ -125,7 +125,7 @@ func (d *sshdDialer) Dial(ctx context.Context, addr string, opts ...dialer.DialO
 func (d *sshdDialer) initSession(ctx context.Context, addr string, conn net.Conn) (*ssh_util.Session, error) {
 	config := ssh.ClientConfig{
 		Timeout:         d.md.handshakeTimeout,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: d.md.hostKeyCallback,
 	}
 	if d.options.Auth != nil {
 		config.User = d.options.Auth.Username()
