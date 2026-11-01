@@ -94,7 +94,18 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 			opt(options)
 		}
 
-		client = &http.Client{}
+		client = &http.Client{
+			// GetBody below makes the request replayable, which would also
+			// let the client follow 307/308. Keep returning those responses,
+			// as it did before GetBody was set.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				switch req.Response.StatusCode {
+				case http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+					return http.ErrUseLastResponse
+				}
+				return nil
+			},
+		}
 		if d.h2c {
 			client.Transport = &http2.Transport{
 				AllowHTTP: true,
@@ -164,13 +175,27 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 	if d.h2c {
 		scheme = "http"
 	}
-	pr, pw := io.Pipe()
+	// The request body is the client-to-server half of the tunnel. Nothing is
+	// written to it before Dial returns, so when the transport retries the
+	// request on another connection (the server sent GOAWAY, or the
+	// connection broke, before this stream was opened), a fresh pipe is an
+	// exact replacement. Without GetBody the retry reuses the body the first
+	// attempt already closed (golang/go#82177). This relies on the transport
+	// sending the body from its last GetBody call, which pw then belongs to.
+	var pw *io.PipeWriter
+	newBody := func() (io.ReadCloser, error) {
+		var pr *io.PipeReader
+		pr, pw = io.Pipe()
+		return pr, nil
+	}
+	body, _ := newBody()
 	req := &http.Request{
-		Method: http.MethodConnect,
-		URL:    &url.URL{Scheme: scheme, Host: host},
-		Header: d.md.header,
-		Body:   pr,
-		Host:   host,
+		Method:  http.MethodConnect,
+		URL:     &url.URL{Scheme: scheme, Host: host},
+		Header:  d.md.header,
+		Body:    body,
+		GetBody: newBody,
+		Host:    host,
 	}
 	if req.Header == nil {
 		req.Header = make(http.Header)
