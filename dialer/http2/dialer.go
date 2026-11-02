@@ -13,6 +13,7 @@ import (
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
 	net_dialer "github.com/go-gost/x/internal/net/dialer"
+	"github.com/go-gost/x/internal/net/httptunnel"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	mdx "github.com/go-gost/x/metadata"
 	"github.com/go-gost/x/registry"
@@ -103,6 +104,11 @@ func (d *http2Dialer) Dial(ctx context.Context, address string, opts ...dialer.D
 		}
 
 		client = &http.Client{
+			// The connector opens the tunnel with a request whose body
+			// carries the data, so a followed redirect would return a
+			// connection with a dead write side. Report the redirect as a
+			// failed attempt instead.
+			CheckRedirect: httptunnel.NoRedirect,
 			Transport: &http.Transport{
 				TLSClientConfig: tlsCfg,
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

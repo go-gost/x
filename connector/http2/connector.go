@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -16,6 +15,7 @@ import (
 	md "github.com/go-gost/core/metadata"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
+	"github.com/go-gost/x/internal/net/httptunnel"
 	"github.com/go-gost/x/registry"
 )
 
@@ -65,7 +65,12 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		return nil, err
 	}
 
-	pr, pw := io.Pipe()
+	// The request body is the client-to-server half of the tunnel. Nothing is
+	// written to it before Connect returns, so when the transport retries the
+	// request on another connection a fresh pipe is an exact replacement.
+	// Without GetBody the retry reuses the body the first attempt already
+	// closed (golang/go#82177).
+	body := httptunnel.NewBody()
 	req := &http.Request{
 		Method:     http.MethodConnect,
 		URL:        &url.URL{Scheme: "https", Host: conn.RemoteAddr().String()},
@@ -73,7 +78,8 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 		ProtoMajor: 2,
 		ProtoMinor: 0,
 		Header:     c.md.header,
-		Body:       pr,
+		Body:       body.Reader(),
+		GetBody:    body.GetBody,
 	}
 	if req.Header == nil {
 		req.Header = make(http.Header)
@@ -111,8 +117,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 	}
 	if err != nil {
 		cancel()
-		pr.CloseWithError(err)
-		pw.CloseWithError(err)
+		body.CloseWithError(err)
 		if resp != nil && resp.Body != nil {
 			resp.Body.Close()
 		}
@@ -128,8 +133,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("%s", resp.Status)
 		cancel()
-		pr.CloseWithError(err)
-		pw.CloseWithError(err)
+		body.CloseWithError(err)
 		resp.Body.Close()
 		log.Error(err)
 		return nil, err
@@ -138,7 +142,7 @@ func (c *http2Connector) Connect(ctx context.Context, conn net.Conn, network, ad
 	hc := &http2Conn{
 		cancel:    cancel,
 		r:         resp.Body,
-		w:         pw,
+		w:         body.Writer(),
 		localAddr: conn.RemoteAddr(),
 	}
 
