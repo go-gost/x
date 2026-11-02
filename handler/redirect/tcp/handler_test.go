@@ -471,6 +471,139 @@ func TestHandler_SniffTimeoutFallsThroughToRawForwarding(t *testing.T) {
 	}
 }
 
+// sniffing.dropUnhandled: a listener whose bypass rules name hosts can only
+// enforce them on traffic that carries a hostname. With the option on, a
+// protocol the sniffer does not classify, or a client that stays silent past
+// sniffing.timeout, is dropped instead of forwarded raw to the original
+// dstAddr; HTTP and TLS keep their usual path.
+func TestHandler_DropUnhandledClosesWithoutDialing(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload []byte // nil: the client stays silent until sniffing.timeout
+	}{
+		{"ssh", []byte("SSH-2.0-gost\r\n")},
+		{"redis", []byte("*1\r\n$4\r\nPING\r\n")},
+		{"sniff timeout", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := &recordingRouter{}
+			h := NewHandler(
+				handler.RouterOption(router),
+				handler.LoggerOption(xlogger.NewLogger()),
+			)
+			if err := h.Init(mdata.NewMetadata(map[string]any{
+				"tproxy":                 true,
+				"sniffing":               true,
+				"sniffing.timeout":       "100ms",
+				"sniffing.dropUnhandled": true,
+			})); err != nil {
+				t.Fatal(err)
+			}
+
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer l.Close()
+
+			server := make(chan net.Conn, 1)
+			go func() {
+				if c, err := l.Accept(); err == nil {
+					server <- c
+				}
+			}()
+
+			client, err := net.Dial("tcp", l.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+
+			conn := <-server
+			defer conn.Close()
+
+			if tt.payload != nil {
+				if _, err := client.Write(tt.payload); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err = h.Handle(context.Background(), conn)
+
+			if len(router.hosts) != 0 {
+				t.Fatalf("unhandled protocol was forwarded to %v", router.hosts)
+			}
+			if !errors.Is(err, xbypass.ErrBypass) {
+				t.Fatalf("Handle error = %v, want one wrapping ErrBypass", err)
+			}
+		})
+	}
+
+	// HTTP and TLS are handled by the sniffer, so the option leaves them alone:
+	// each still reaches a dial for its sniffed host.
+	handledTests := []struct {
+		name    string
+		payload func(t *testing.T) []byte
+	}{
+		{"http", func(*testing.T) []byte {
+			return []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+		}},
+		{"tls", func(t *testing.T) []byte { return tlsClientHello(t, "example.com") }},
+	}
+
+	for _, tt := range handledTests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := &recordingRouter{}
+			h := NewHandler(
+				handler.RouterOption(router),
+				handler.LoggerOption(xlogger.NewLogger()),
+			)
+			if err := h.Init(mdata.NewMetadata(map[string]any{
+				"tproxy":                 true,
+				"sniffing":               true,
+				"sniffing.timeout":       "100ms",
+				"sniffing.dropUnhandled": true,
+			})); err != nil {
+				t.Fatal(err)
+			}
+
+			l, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer l.Close()
+
+			server := make(chan net.Conn, 1)
+			go func() {
+				if c, err := l.Accept(); err == nil {
+					server <- c
+				}
+			}()
+
+			client, err := net.Dial("tcp", l.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+
+			conn := <-server
+			defer conn.Close()
+
+			if _, err := client.Write(tt.payload(t)); err != nil {
+				t.Fatal(err)
+			}
+
+			h.Handle(context.Background(), conn)
+
+			if !slices.Contains(router.hosts, "example.com") {
+				t.Fatalf("%s was not dialed to its sniffed host, dials: %v", tt.name, router.hosts)
+			}
+		})
+	}
+}
+
 // gost#899 (security): a non-whitelisted host must still be rejected, so the
 // pre-sniffing skip does not let arbitrary traffic through in whitelist mode.
 func TestHandler_WhitelistRejectsNonWhitelistedHost(t *testing.T) {
