@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"sync"
 	"time"
 
 	"github.com/go-gost/core/limiter"
@@ -24,7 +25,6 @@ import (
 	stats "github.com/go-gost/x/observer/stats/wrapper"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 func init() {
@@ -35,8 +35,11 @@ func init() {
 type h2Listener struct {
 	server  *http.Server
 	addr    net.Addr
+	ln      net.Listener // the wrapped listener passed to server.Serve
 	cqueue  chan net.Conn
 	errChan chan error
+	closed  chan struct{}
+	mu      sync.Mutex // makes handleFunc's closed check and cqueue send atomic with Close
 	log     logger.Logger
 	md      metadata
 	h2c     bool
@@ -112,8 +115,15 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 	ln = climiter.WrapListener(l.options.ConnLimiter, ln)
 
 	if l.h2c {
-		l.server.Handler = h2c.NewHandler(
-			http.HandlerFunc(l.handleFunc), &http2.Server{})
+		// Serve h2c with net/http itself rather than the h2c package, which
+		// hijacks connections: hijacked connections are invisible to the
+		// server, so Close could not tell their clients to stop opening
+		// streams on a listener that is no longer accepting them.
+		var protocols http.Protocols
+		protocols.SetHTTP1(true)
+		protocols.SetUnencryptedHTTP2(true)
+		l.server.Protocols = &protocols
+		l.server.Handler = http.HandlerFunc(l.handleFunc)
 	} else {
 		l.server.Handler = http.HandlerFunc(l.handleFunc)
 		l.server.TLSConfig = l.options.TLSConfig
@@ -124,12 +134,18 @@ func (l *h2Listener) Init(md md.Metadata) (err error) {
 		ln = tls.NewListener(ln, l.options.TLSConfig)
 	}
 
+	l.ln = ln
 	l.cqueue = make(chan net.Conn, l.md.backlog)
 	l.errChan = make(chan error, 1)
+	l.closed = make(chan struct{})
 
 	go func() {
 		if err := l.server.Serve(ln); err != nil {
-			l.log.Error(err)
+			select {
+			case <-l.closed:
+			default:
+				l.log.Error(err)
+			}
 		}
 	}()
 
@@ -165,9 +181,31 @@ func (l *h2Listener) Close() (err error) {
 	select {
 	case <-l.errChan:
 	default:
-		err = l.server.Close()
+		// Under mu, so that handleFunc cannot queue a connection after the
+		// queue is drained below.
+		l.mu.Lock()
+		close(l.closed)
+		l.mu.Unlock()
+		if l.h2c {
+			// Release the address now so a replacement listener can bind it,
+			// then send GOAWAY to existing connections in the background:
+			// clients move new streams to a new connection while streams
+			// already in flight run to completion.
+			err = l.ln.Close()
+			go l.server.Shutdown(context.Background())
+		} else {
+			err = l.server.Close()
+		}
 		l.errChan <- http.ErrServerClosed
 		close(l.errChan)
+		for drained := false; !drained; {
+			select {
+			case conn := <-l.cqueue:
+				conn.Close()
+			default:
+				drained = true
+			}
+		}
 	}
 	return
 }
@@ -187,10 +225,25 @@ func (l *h2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		dump, _ := httputil.DumpRequest(r, false)
 		log.Trace(string(dump))
 	}
+	select {
+	case <-l.closed:
+		l.reject(w)
+		return
+	default:
+	}
+
 	conn, err := l.upgrade(w, r)
 	if err != nil {
 		l.log.Error(err)
 		return
+	}
+	l.mu.Lock()
+	select {
+	case <-l.closed:
+		l.mu.Unlock()
+		conn.Close()
+		return
+	default:
 	}
 	select {
 	case l.cqueue <- conn:
@@ -198,8 +251,16 @@ func (l *h2Listener) handleFunc(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		l.log.Warnf("connection queue is full, client %s discarded", r.RemoteAddr)
 	}
+	l.mu.Unlock()
 
 	<-conn.closed // NOTE: we need to wait for streaming end, or the connection will be closed
+}
+
+// reject refuses a stream that arrived after Close. "Connection: close" makes
+// the HTTP/2 server send GOAWAY, so the client stops reusing this connection.
+func (l *h2Listener) reject(w http.ResponseWriter) {
+	w.Header().Set("Connection", "close")
+	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 func (l *h2Listener) upgrade(w http.ResponseWriter, r *http.Request) (*conn, error) {
