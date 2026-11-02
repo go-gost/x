@@ -3,6 +3,7 @@ package h2
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -114,7 +115,6 @@ func TestDialRetriesOnNewConnection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("round %d: dial: %v", round, err)
 		}
-		t.Cleanup(func() { held.Close() })
 		if err := roundTrip(held, "x", 3*time.Second); err != nil {
 			t.Fatalf("round %d: held stream: %v", round, err)
 		}
@@ -148,6 +148,9 @@ func TestDialRetriesOnNewConnection(t *testing.T) {
 			}()
 		}
 		wg.Wait()
+
+		// Release the old stream so the old server's Shutdown can return.
+		held.Close()
 	}
 
 	if len(bad) > 0 {
@@ -175,20 +178,62 @@ func failureKind(s string) string {
 	return s
 }
 
-// TestDialDoesNotFollowRedirect: a tunnel must not be redirected. Giving the
-// request a GetBody would otherwise let http.Client follow 307/308.
+// TestDialDoesNotFollowRedirect: a tunnel must not be redirected. A followed
+// redirect has no body, so the dial would return a connection whose write side
+// is dead; a redirect loop would never return at all.
 func TestDialDoesNotFollowRedirect(t *testing.T) {
 	target, _ := startH2C(t, "127.0.0.1:0", echoTunnel)
-	redirect, _ := startH2C(t, "127.0.0.1:0", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://"+target.Addr().String()+"/", http.StatusTemporaryRedirect)
-	})
 
-	c, err := dialH2C(newH2CDialer(t), redirect.Addr().String())
-	if err == nil {
-		c.Close()
-		t.Fatal("dial followed the redirect, want an error")
+	for _, code := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			ln, _ := startH2C(t, "127.0.0.1:0", func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "http://"+target.Addr().String()+"/", code)
+			})
+
+			err := dialError(t, newH2CDialer(t), ln.Addr().String())
+			if err == nil {
+				t.Fatal("dial followed the redirect, want an error")
+			}
+			if !strings.Contains(err.Error(), fmt.Sprint(code)) {
+				t.Fatalf("dial: %v, want a %d error", err, code)
+			}
+		})
 	}
-	if !strings.Contains(err.Error(), "307") {
-		t.Fatalf("dial: %v, want a 307 error", err)
+
+	t.Run("loop", func(t *testing.T) {
+		ln, _ := startH2C(t, "127.0.0.1:0", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "http://"+r.Host+"/next", http.StatusFound)
+		})
+		if err := dialError(t, newH2CDialer(t), ln.Addr().String()); err == nil {
+			t.Fatal("dial followed a redirect loop, want an error")
+		}
+	})
+}
+
+// dialError dials and requires the call to return: a followed redirect would
+// leave the dial waiting forever, as the tunnel context is not cancelled.
+func dialError(t *testing.T, d *h2Dialer, addr string) error {
+	t.Helper()
+
+	ch := make(chan error, 1)
+	go func() {
+		c, err := dialH2C(d, addr)
+		if c != nil {
+			c.Close()
+		}
+		ch <- err
+	}()
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(5 * time.Second):
+		t.Fatal("dial did not return")
+		return nil
 	}
 }

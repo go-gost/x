@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -16,6 +15,7 @@ import (
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
 	xctx "github.com/go-gost/x/ctx"
+	"github.com/go-gost/x/internal/net/httptunnel"
 	"github.com/go-gost/x/internal/net/proxyproto"
 	"github.com/go-gost/x/registry"
 	"golang.org/x/net/http2"
@@ -95,16 +95,10 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 		}
 
 		client = &http.Client{
-			// GetBody below makes the request replayable, which would also
-			// let the client follow 307/308. Keep returning those responses,
-			// as it did before GetBody was set.
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				switch req.Response.StatusCode {
-				case http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
+			// A tunnel request carries its data in its body, so a followed
+			// redirect would return a connection with a dead write side.
+			// Report the redirect as a failed attempt instead.
+			CheckRedirect: httptunnel.NoRedirect,
 		}
 		if d.h2c {
 			client.Transport = &http2.Transport{
@@ -180,21 +174,14 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 	// request on another connection (the server sent GOAWAY, or the
 	// connection broke, before this stream was opened), a fresh pipe is an
 	// exact replacement. Without GetBody the retry reuses the body the first
-	// attempt already closed (golang/go#82177). This relies on the transport
-	// sending the body from its last GetBody call, which pw then belongs to.
-	var pw *io.PipeWriter
-	newBody := func() (io.ReadCloser, error) {
-		var pr *io.PipeReader
-		pr, pw = io.Pipe()
-		return pr, nil
-	}
-	body, _ := newBody()
+	// attempt already closed (golang/go#82177).
+	body := httptunnel.NewBody()
 	req := &http.Request{
 		Method:  http.MethodConnect,
 		URL:     &url.URL{Scheme: scheme, Host: host},
 		Header:  d.md.header,
-		Body:    body,
-		GetBody: newBody,
+		Body:    body.Reader(),
+		GetBody: body.GetBody,
 		Host:    host,
 	}
 	if req.Header == nil {
@@ -212,6 +199,7 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 
 	resp, err := client.Do(req.WithContext(context.WithoutCancel(ctx)))
 	if err != nil {
+		body.CloseWithError(err)
 		if !d.h2c {
 			serverName := d.md.host
 			if serverName == "" {
@@ -238,12 +226,14 @@ func (d *h2Dialer) Dial(ctx context.Context, address string, opts ...dialer.Dial
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, errors.New(resp.Status)
+		err := errors.New(resp.Status)
+		body.CloseWithError(err)
+		return nil, err
 	}
 
 	conn := &http2Conn{
 		r:          resp.Body,
-		w:          pw,
+		w:          body.Writer(),
 		remoteAddr: raddr,
 		localAddr:  &net.TCPAddr{IP: net.IPv4zero, Port: 0},
 	}
