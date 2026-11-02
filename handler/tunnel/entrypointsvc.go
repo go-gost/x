@@ -120,7 +120,9 @@ func (h *tunnelHandler) createEntrypointService(addr string, ing ingress.Ingress
 		network = "tcp4"
 	}
 
-	ln, err := net.Listen(network, addr)
+	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
+	ln, err := lc.Listen(context.Background(), network, addr)
 	if err != nil {
 		h.log.Error(err)
 		return nil, err

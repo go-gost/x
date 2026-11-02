@@ -72,11 +72,9 @@ func (*defaultRoute) Bind(ctx context.Context, network, address string, opts ...
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		addr, err := net.ResolveTCPAddr(network, address)
-		if err != nil {
-			return nil, err
-		}
-		return net.ListenTCP(network, addr)
+		lc := net.ListenConfig{}
+		lc.SetMultipathTCP(false)
+		return lc.Listen(context.Background(), network, address)
 	case "udp", "udp4", "udp6":
 		addr, err := net.ResolveUDPAddr(network, address)
 		if err != nil {

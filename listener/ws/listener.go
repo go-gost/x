@@ -104,6 +104,7 @@ func (l *wsListener) Init(md md.Metadata) (err error) {
 	}
 
 	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
 	if l.md.mptcp {
 		lc.SetMultipathTCP(true)
 		l.log.Debugf("mptcp enabled: %v", lc.MultipathTCP())

@@ -144,6 +144,7 @@ func (h *relayHandler) bindTCP(ctx context.Context, conn net.Conn, network, addr
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
+	lc.ListenConfig.SetMultipathTCP(false)
 	ln, err := lc.Listen(ctx, network, address) // strict: port-in-use returns error
 	if err != nil {
 		log.Error(err)
@@ -248,6 +249,7 @@ func (h *relayHandler) bindUDP(ctx context.Context, conn net.Conn, network, addr
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
+	lc.ListenConfig.SetMultipathTCP(false)
 	pc, err := lc.ListenPacket(ctx, network, address)
 	if err != nil {
 		log.Error(err)

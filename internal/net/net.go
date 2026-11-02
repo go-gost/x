@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"runtime"
 	"strings"
 	"syscall"
@@ -12,6 +13,18 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 	"github.com/vishvananda/netns"
 )
+
+func init() {
+	// Disable Multipath TCP by default to mitigate CVE-2026-98432.
+	// Listeners opt in explicitly via their "mptcp" metadata.
+	if v := os.Getenv("GODEBUG"); !strings.Contains(v, "multipathtcp") {
+		if v == "" {
+			os.Setenv("GODEBUG", "multipathtcp=0")
+		} else {
+			os.Setenv("GODEBUG", v+",multipathtcp=0")
+		}
+	}
+}
 
 // SetBuffer is a connection that supports setting send and receive buffer sizes.
 type SetBuffer interface {

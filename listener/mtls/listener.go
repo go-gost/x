@@ -56,6 +56,7 @@ func (l *mtlsListener) Init(md md.Metadata) (err error) {
 	}
 
 	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
 	if l.md.mptcp {
 		lc.SetMultipathTCP(true)
 		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())

@@ -258,7 +258,9 @@ func (h *forwardHandler) handleRemoteForward(ctx context.Context, c *sshd_util.R
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	// tie to the client connection
-	ln, err := net.Listen(network, addr)
+	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
+	ln, err := lc.Listen(context.Background(), network, addr)
 	if err != nil {
 		log.Error(err)
 		req.Reply(false, nil)

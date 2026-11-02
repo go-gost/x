@@ -64,6 +64,7 @@ func (h *socks5Handler) bindLocal(ctx context.Context, conn net.Conn, network, a
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
+	lc.ListenConfig.SetMultipathTCP(false)
 	ln, err := lc.Listen(ctx, network, address) // strict mode: if the port already in use, it will return error
 	if err != nil {
 		log.Error(err)

@@ -100,6 +100,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 		lc := xnet.ListenConfig{
 			Netns: h.options.Netns,
 		}
+		lc.ListenConfig.SetMultipathTCP(false)
 		var err error
 		pc, err = lc.ListenPacket(ctx, network, bindAddr.String())
 		if err != nil {

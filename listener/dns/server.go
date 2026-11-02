@@ -46,7 +46,9 @@ func (s *dohServer) Serve() error {
 		if xnet.IsIPv4(s.addr) {
 			network = "tcp4"
 		}
-		ln, err = net.Listen(network, s.addr)
+		lc := net.ListenConfig{}
+		lc.SetMultipathTCP(false)
+		ln, err = lc.Listen(context.Background(), network, s.addr)
 		if err != nil {
 			return err
 		}

@@ -56,6 +56,7 @@ func (l *redirectListener) Init(md md.Metadata) (err error) {
 	if l.md.tproxy || l.md.reuseport {
 		lc.Control = l.control
 	}
+	lc.SetMultipathTCP(false)
 	if l.md.mptcp {
 		lc.SetMultipathTCP(true)
 		l.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())

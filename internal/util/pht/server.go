@@ -197,6 +197,7 @@ func (s *Server) ListenAndServe() error {
 	}
 
 	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
 	if s.options.mptcp {
 		lc.SetMultipathTCP(true)
 		s.options.logger.Debugf("mptcp enabled: %v", lc.MultipathTCP())

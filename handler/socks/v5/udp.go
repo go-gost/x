@@ -53,6 +53,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	lc := xnet.ListenConfig{
 		Netns: h.options.Netns,
 	}
+	lc.ListenConfig.SetMultipathTCP(false)
 
 	cc, err := listenPacketInRange(ctx, &lc, network, host, h.md.udpBindMin, h.md.udpBindMax)
 	if err != nil {

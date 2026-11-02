@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"sync"
@@ -41,9 +42,9 @@ func AutherOption(auther auth.Authenticator) Option {
 }
 
 type metricService struct {
-	s        *http.Server
-	ln       net.Listener
-	cclose   chan struct{}
+	s         *http.Server
+	ln        net.Listener
+	cclose    chan struct{}
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -55,7 +56,9 @@ func NewService(network, addr string, opts ...Option) (service.Service, error) {
 	if network == "" {
 		network = "tcp"
 	}
-	ln, err := net.Listen(network, addr)
+	lc := net.ListenConfig{}
+	lc.SetMultipathTCP(false)
+	ln, err := lc.Listen(context.Background(), network, addr)
 	if err != nil {
 		return nil, err
 	}
