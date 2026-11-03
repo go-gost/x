@@ -95,6 +95,16 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		upstreamHost string
 	)
 
+	// Close the current upstream connection when the handler returns. The
+	// keep-alive loop may dial several upstream connections when the request
+	// host changes; each previous one is closed in place and set to nil, so
+	// this deferred close only owns the last live connection.
+	defer func() {
+		if cc != nil {
+			cc.Close()
+		}
+	}()
+
 	for {
 		// Authorize this request against the bypass in effect now. The check
 		// inside dial only runs when a new upstream connection is needed, so
@@ -105,6 +115,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 				bypass.WithPathOption(req.RequestURI)); err != nil {
 				if cc != nil {
 					cc.Close()
+					cc = nil
 				}
 				return err
 			}
@@ -199,7 +210,9 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 		// Re-dial on host change (DNS override reuses same conn for same host).
 		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" && reqHost != upstreamHost {
-			cc.Close()
+			if cc != nil {
+				cc.Close()
+			}
 			cc = nil
 			ro.Host = reqHost
 
@@ -381,6 +394,48 @@ func (h *Sniffer) dial(ctx context.Context, req *http.Request, ho *HandleOptions
 
 	cc = tlsWrapConn(cc, node.Options().TLS)
 	return node, cc, nil, nil
+}
+
+// closeOnErrorWriter closes the upstream connection when writing the response
+// to the client fails. http.Response.Write defers Body.Close, and for a
+// server-side response that drain waits for the upstream body to end; with an
+// endless stream the handler would never return after a client disconnect,
+// leaking both the goroutine and the upstream socket.
+type closeOnErrorWriter struct {
+	w    io.Writer
+	conn io.Closer
+}
+
+func (w closeOnErrorWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	if err != nil && w.conn != nil {
+		w.conn.Close()
+	}
+	return n, err
+}
+
+// upstreamBodyIdleTimeout bounds how long the handler waits for the next
+// upstream body chunk. Without it, a client that disconnects while the
+// upstream stream is silent leaves the handler blocked in Read forever.
+var upstreamBodyIdleTimeout = 60 * time.Second
+
+type deadlineSetter interface {
+	SetReadDeadline(time.Time) error
+}
+
+// idleBody refreshes the upstream read deadline on every Read so a stalled
+// stream cannot pin the handler indefinitely.
+type idleBody struct {
+	io.ReadCloser
+	conn deadlineSetter
+	idle time.Duration
+}
+
+func (b *idleBody) Read(p []byte) (int, error) {
+	if b.conn != nil && b.idle > 0 {
+		b.conn.SetReadDeadline(time.Now().Add(b.idle))
+	}
+	return b.ReadCloser.Read(p)
 }
 
 // httpRoundTrip forwards a single HTTP request/response pair and records
@@ -599,6 +654,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 	defer resp.Body.Close()
 	xio.SetReadDeadline(cc, time.Time{})
+	if ds, ok := cc.(deadlineSetter); ok && upstreamBodyIdleTimeout > 0 {
+		resp.Body = &idleBody{ReadCloser: resp.Body, conn: ds, idle: upstreamBodyIdleTimeout}
+	}
 
 	if hasRespRewrite {
 		ro.HTTP.OriginalResponse = &xrecorder.HTTPResponseRecorderObject{
@@ -686,10 +744,10 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 
 	// Response cache: tee the final (post-rewrite) response so a copy is
 	// captured while it streams to the client, then store it on success.
-	var writeTarget io.Writer = rw
+	var writeTarget io.Writer = closeOnErrorWriter{w: rw, conn: cc}
 	var tee *httpcache.TeeWriter
 	if h.Cache != nil && h.Cache.Cacheable(req, resp) {
-		tee = h.Cache.TeeWriter(rw)
+		tee = h.Cache.TeeWriter(writeTarget)
 		writeTarget = tee
 	}
 
