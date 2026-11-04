@@ -43,6 +43,9 @@ type options struct {
 	httpLoader   loader.Loader
 	period       time.Duration
 	logger       logger.Logger
+	// nodeDefaults are hop-level settings (resolver, hosts, interface, etc.)
+	// inherited by nodes loaded at runtime from file, Redis, or HTTP sources.
+	nodeDefaults node_parser.HopDefaults
 }
 
 // Option configures a hop.
@@ -111,6 +114,16 @@ func RedisLoaderOption(redisLoader loader.Loader) Option {
 func HTTPLoaderOption(httpLoader loader.Loader) Option {
 	return func(opts *options) {
 		opts.httpLoader = httpLoader
+	}
+}
+
+// NodeDefaultsOption sets the hop-level values (resolver, hosts, interface,
+// so_mark, proxy protocol, netns) inherited by nodes loaded at runtime from
+// file, Redis, or HTTP sources. Inline nodes receive these at parse time;
+// this option makes the same values available to runtime-loaded nodes.
+func NodeDefaultsOption(defaults node_parser.HopDefaults) Option {
+	return func(opts *options) {
+		opts.nodeDefaults = defaults
 	}
 }
 
@@ -494,6 +507,9 @@ func (p *chainHop) parseNode(r io.Reader) ([]*chain.Node, error) {
 			errs = append(errs, err)
 			continue
 		}
+
+		// Loaded nodes inherit the same hop-level defaults as inline nodes.
+		nc = p.options.nodeDefaults.Apply(nc)
 
 		node, err := node_parser.ParseNode(p.options.name, nc, logger.Default())
 		if err != nil {

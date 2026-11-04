@@ -191,6 +191,106 @@ func cloneStringMap(m map[string]string) map[string]string {
 	return c
 }
 
+// HopDefaults carries hop-level settings that nodes inherit when they do not
+// set their own values. The same defaults apply to nodes declared inline in a
+// hop and to nodes loaded at runtime from file, Redis, or HTTP sources.
+type HopDefaults struct {
+	Resolver      string
+	Hosts         string
+	Interface     string
+	SoMark        int
+	ProxyProtocol int
+	Netns         string
+}
+
+// HopDefaultsFromConfig extracts the node defaults declared on a hop config.
+// Values in hop metadata override the deprecated top-level fields, matching
+// the precedence used for inline nodes.
+func HopDefaultsFromConfig(cfg *config.HopConfig) HopDefaults {
+	var d HopDefaults
+	if cfg == nil {
+		return d
+	}
+
+	d.Resolver = cfg.Resolver
+	d.Hosts = cfg.Hosts
+	d.Interface = cfg.Interface
+	if cfg.SockOpts != nil {
+		d.SoMark = cfg.SockOpts.Mark
+	}
+
+	if cfg.Metadata != nil {
+		md := mdx.NewMetadata(cfg.Metadata)
+		if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "" {
+			d.Interface = v
+		}
+		if v := mdutil.GetInt(md, parsing.MDKeySoMark); v > 0 {
+			d.SoMark = v
+		}
+		d.ProxyProtocol = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
+		d.Netns = mdutil.GetString(md, parsing.MDKeyNetns)
+	}
+
+	return d
+}
+
+// Apply returns a copy of cfg with the hop defaults filled in. Node-level
+// values always win, including metadata keys that are present but empty. The
+// input config is never modified, so shared global node definitions are safe
+// to use as the source.
+func (d HopDefaults) Apply(cfg *config.NodeConfig) *config.NodeConfig {
+	if cfg == nil {
+		return nil
+	}
+
+	c := *cfg
+	if c.Resolver == "" {
+		c.Resolver = d.Resolver
+	}
+	if c.Hosts == "" {
+		c.Hosts = d.Hosts
+	}
+
+	md := make(map[string]any, len(c.Metadata)+4)
+	for k, v := range c.Metadata {
+		md[k] = v
+	}
+	merged := mdx.NewMetadata(md)
+
+	if !mdutil.IsExists(merged, parsing.MDKeyInterface) {
+		if d.Interface != "" {
+			md[parsing.MDKeyInterface] = d.Interface
+		}
+		if c.Interface != "" {
+			md[parsing.MDKeyInterface] = c.Interface
+		}
+	}
+	if !mdutil.IsExists(merged, parsing.MDKeySoMark) {
+		if d.SoMark != 0 {
+			md[parsing.MDKeySoMark] = d.SoMark
+		}
+		if c.SockOpts != nil && c.SockOpts.Mark != 0 {
+			md[parsing.MDKeySoMark] = c.SockOpts.Mark
+		}
+	}
+	if !mdutil.IsExists(merged, parsing.MDKeyProxyProtocol) && d.ProxyProtocol > 0 {
+		md[parsing.MDKeyProxyProtocol] = d.ProxyProtocol
+	}
+	if !mdutil.IsExists(merged, parsing.MDKeyNetns) {
+		if d.Netns != "" {
+			md[parsing.MDKeyNetns] = d.Netns
+		}
+		if c.Netns != "" {
+			md[parsing.MDKeyNetns] = c.Netns
+		}
+	}
+	if len(md) > 0 {
+		c.Metadata = md
+	}
+
+	return &c
+}
+
 // filterToMatcherRule converts a deprecated NodeFilterConfig (host/protocol/
 // path) into an equivalent matcher DSL rule. Empty fields are omitted; an
 // empty result means the node is unconditional. Path maps to PathPrefix

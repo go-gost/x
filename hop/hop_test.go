@@ -18,8 +18,11 @@ import (
 	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/routing"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/config/parsing"
+	node_parser "github.com/go-gost/x/config/parsing/node"
 	xlogger "github.com/go-gost/x/logger"
 	xmd "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 	xrouting "github.com/go-gost/x/routing"
 	xselector "github.com/go-gost/x/selector"
@@ -1328,4 +1331,54 @@ func TestNewHop_StartsPeriodReload(t *testing.T) {
 		t.Error("expected non-nil cancelFunc")
 	}
 	h.(*chainHop).Close()
+}
+
+// TestParseNode_InheritsHopDefaults verifies that nodes loaded at runtime from
+// file/Redis/HTTP sources inherit the hop-level resolver, hosts mapper, and
+// connection metadata, matching the behavior of inline hop nodes.
+func TestParseNode_InheritsHopDefaults(t *testing.T) {
+	ch := &chainHop{
+		logger: xlogger.Nop(),
+		options: options{
+			name: "test-hop",
+			nodeDefaults: node_parser.HopDefaults{
+				Resolver:      "hop-resolver",
+				Hosts:         "hop-hosts",
+				Interface:     "eth9",
+				SoMark:        4321,
+				ProxyProtocol: 2,
+				Netns:         "testns",
+			},
+		},
+	}
+
+	nodes, err := ch.parseNode(strings.NewReader(`[{"name":"loaded","addr":"node.example:8080"}]`))
+	if err != nil {
+		t.Fatalf("parseNode: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+
+	opts := nodes[0].Options()
+	if opts.HostMapper == nil {
+		t.Error("loaded node did not inherit the hop hosts mapper")
+	}
+	if opts.Resolver == nil {
+		t.Error("loaded node did not inherit the hop resolver")
+	}
+
+	md := nodes[0].Metadata()
+	if got := mdutil.GetString(md, parsing.MDKeyInterface); got != "eth9" {
+		t.Errorf("interface = %q, want eth9", got)
+	}
+	if got := mdutil.GetInt(md, parsing.MDKeySoMark); got != 4321 {
+		t.Errorf("so_mark = %d, want 4321", got)
+	}
+	if got := mdutil.GetInt(md, parsing.MDKeyProxyProtocol); got != 2 {
+		t.Errorf("proxyProtocol = %d, want 2", got)
+	}
+	if got := mdutil.GetString(md, parsing.MDKeyNetns); got != "testns" {
+		t.Errorf("netns = %q, want testns", got)
+	}
 }

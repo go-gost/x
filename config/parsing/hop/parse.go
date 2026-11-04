@@ -9,7 +9,6 @@ import (
 	"github.com/go-gost/core/logger"
 	xbypass "github.com/go-gost/x/bypass"
 	"github.com/go-gost/x/config"
-	"github.com/go-gost/x/config/parsing"
 	bypass_parser "github.com/go-gost/x/config/parsing/bypass"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
@@ -17,8 +16,6 @@ import (
 	hop_plugin "github.com/go-gost/x/hop/plugin"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/plugin"
-	"github.com/go-gost/x/metadata"
-	mdutil "github.com/go-gost/x/metadata/util"
 	xplugin "github.com/go-gost/x/plugin"
 	xs "github.com/go-gost/x/selector"
 )
@@ -60,27 +57,9 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		}
 	}
 
-	var ppv int
-	var soMark int
-	ifce := cfg.Interface
-	var netns string
-
-	if cfg.SockOpts != nil {
-		soMark = cfg.SockOpts.Mark
-	}
-
-	if cfg.Metadata != nil {
-		md := metadata.NewMetadata(cfg.Metadata)
-		if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "" {
-			ifce = v
-		}
-
-		if v := mdutil.GetInt(md, parsing.MDKeySoMark); v > 0 {
-			soMark = v
-		}
-		ppv = mdutil.GetInt(md, parsing.MDKeyProxyProtocol)
-		netns = mdutil.GetString(md, parsing.MDKeyNetns)
-	}
+	// Hop-level defaults are shared by inline nodes and nodes loaded at runtime
+	// from file, Redis, or HTTP sources. Node-level values always win.
+	defaults := node_parser.HopDefaultsFromConfig(cfg)
 
 	var nodes []*chain.Node
 	for _, v := range cfg.Nodes {
@@ -98,48 +77,9 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			return nil, err
 		}
 
-		// Build a merged metadata map for inheritance without mutating
-		// the original node config.
-		merged := make(map[string]any)
-		for k, val := range v.Metadata {
-			merged[k] = val
-		}
-		md := metadata.NewMetadata(merged)
-
-		if v.Resolver == "" {
-			v.Resolver = cfg.Resolver
-		}
-		if v.Hosts == "" {
-			v.Hosts = cfg.Hosts
-		}
-
-		if !md.IsExists(parsing.MDKeyInterface) {
-			if ifce != "" {
-				merged[parsing.MDKeyInterface] = ifce
-			}
-			if v.Interface != "" {
-				merged[parsing.MDKeyInterface] = v.Interface
-			}
-		}
-		if !md.IsExists(parsing.MDKeySoMark) {
-			if soMark != 0 {
-				merged[parsing.MDKeySoMark] = soMark
-			}
-			if v.SockOpts != nil && v.SockOpts.Mark != 0 {
-				merged[parsing.MDKeySoMark] = v.SockOpts.Mark
-			}
-		}
-		if !md.IsExists(parsing.MDKeyProxyProtocol) && ppv > 0 {
-			merged[parsing.MDKeyProxyProtocol] = ppv
-		}
-		if !md.IsExists(parsing.MDKeyNetns) {
-			if netns != "" {
-				merged[parsing.MDKeyNetns] = netns
-			}
-			if v.Netns != "" {
-				merged[parsing.MDKeyNetns] = v.Netns
-			}
-		}
+		// Apply hop-level defaults (resolver, hosts, interface, so_mark,
+		// proxy protocol, netns). Node-level values take precedence.
+		v = defaults.Apply(v)
 
 		if v.Connector == nil {
 			v.Connector = &config.ConnectorConfig{}
@@ -155,11 +95,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 			v.Dialer.Type = "tcp"
 		}
 
-		// Temporarily swap merged metadata so ParseNode sees inherited values.
-		origMeta := v.Metadata
-		v.Metadata = merged
 		node, err := node_parser.ParseNode(cfg.Name, v, log)
-		v.Metadata = origMeta
 		if err != nil {
 			return nil, err
 		}
@@ -188,6 +124,7 @@ func ParseHop(cfg *config.HopConfig, log logger.Logger) (hop.Hop, error) {
 		xhop.NodeOption(nodes...),
 		xhop.SelectorOption(sel),
 		xhop.FailFilterSettingsOption(maxFails, timeout),
+		xhop.NodeDefaultsOption(defaults),
 		xhop.BypassOption(xbypass.BypassGroup(bypass_parser.List(cfg.Bypass, cfg.Bypasses...)...)),
 		xhop.ReloadPeriodOption(cfg.Reload),
 		xhop.LoggerOption(log.WithFields(map[string]any{

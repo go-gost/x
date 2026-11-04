@@ -8,6 +8,8 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
 	xlogger "github.com/go-gost/x/logger"
+	mdx "github.com/go-gost/x/metadata"
+	mdutil "github.com/go-gost/x/metadata/util"
 	"github.com/go-gost/x/registry"
 
 	// Register connector and dialer implementations needed for node parsing.
@@ -671,5 +673,118 @@ func TestResolveConfig_DeepCopyIsolation(t *testing.T) {
 		global.TLS.Options.MinVersion != "1.2" ||
 		global.Probe.HTTPHeaders["H"] != "v" {
 		t.Fatalf("global definition was mutated via the resolved copy: %+v", global)
+	}
+}
+
+func TestHopDefaultsFromConfig(t *testing.T) {
+	d := HopDefaultsFromConfig(&config.HopConfig{
+		Resolver:  "hop-resolver",
+		Hosts:     "hop-hosts",
+		Interface: "eth0",
+		SockOpts:  &config.SockOptsConfig{Mark: 100},
+		Metadata: map[string]any{
+			parsing.MDKeyInterface:     "eth1",
+			parsing.MDKeySoMark:        200,
+			parsing.MDKeyProxyProtocol: 2,
+			parsing.MDKeyNetns:         "hopns",
+		},
+	})
+
+	if d.Resolver != "hop-resolver" || d.Hosts != "hop-hosts" {
+		t.Fatalf("resolver/hosts = %q/%q", d.Resolver, d.Hosts)
+	}
+	// Hop metadata overrides the deprecated top-level fields.
+	if d.Interface != "eth1" || d.SoMark != 200 {
+		t.Fatalf("interface/so_mark = %q/%d, want eth1/200", d.Interface, d.SoMark)
+	}
+	if d.ProxyProtocol != 2 || d.Netns != "hopns" {
+		t.Fatalf("proxyProtocol/netns = %d/%q, want 2/hopns", d.ProxyProtocol, d.Netns)
+	}
+}
+
+func TestHopDefaultsFromConfig_Nil(t *testing.T) {
+	if d := HopDefaultsFromConfig(nil); d != (HopDefaults{}) {
+		t.Fatalf("defaults = %+v, want zero value", d)
+	}
+}
+
+func TestHopDefaultsApply(t *testing.T) {
+	defaults := HopDefaults{
+		Resolver:      "hop-resolver",
+		Hosts:         "hop-hosts",
+		Interface:     "eth0",
+		SoMark:        100,
+		ProxyProtocol: 2,
+		Netns:         "hopns",
+	}
+	orig := &config.NodeConfig{Name: "n1", Addr: "example.com:8080"}
+
+	got := defaults.Apply(orig)
+	if got == orig {
+		t.Fatal("Apply must return a copy")
+	}
+	if got.Resolver != "hop-resolver" || got.Hosts != "hop-hosts" {
+		t.Fatalf("resolver/hosts = %q/%q", got.Resolver, got.Hosts)
+	}
+	md := mdx.NewMetadata(got.Metadata)
+	if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "eth0" {
+		t.Fatalf("interface = %q, want eth0", v)
+	}
+	if v := mdutil.GetInt(md, parsing.MDKeySoMark); v != 100 {
+		t.Fatalf("so_mark = %d, want 100", v)
+	}
+	if v := mdutil.GetInt(md, parsing.MDKeyProxyProtocol); v != 2 {
+		t.Fatalf("proxyProtocol = %d, want 2", v)
+	}
+	if v := mdutil.GetString(md, parsing.MDKeyNetns); v != "hopns" {
+		t.Fatalf("netns = %q, want hopns", v)
+	}
+
+	// The input config must not be mutated: it may be a shared global
+	// node definition referenced by multiple hops.
+	if orig.Resolver != "" || orig.Hosts != "" || orig.Metadata != nil {
+		t.Fatalf("Apply mutated its input: %+v", orig)
+	}
+}
+
+func TestHopDefaultsApply_NodeValuesWin(t *testing.T) {
+	defaults := HopDefaults{
+		Resolver:      "hop-resolver",
+		Hosts:         "hop-hosts",
+		Interface:     "eth0",
+		SoMark:        100,
+		ProxyProtocol: 2,
+		Netns:         "hopns",
+	}
+	orig := &config.NodeConfig{
+		Name:      "n1",
+		Addr:      "example.com:8080",
+		Resolver:  "node-resolver",
+		Hosts:     "node-hosts",
+		Interface: "ndeth",
+		Netns:     "nodenetns",
+		SockOpts:  &config.SockOptsConfig{Mark: 111},
+		Metadata: map[string]any{
+			parsing.MDKeyInterface: "node-eth",
+		},
+	}
+
+	got := defaults.Apply(orig)
+	if got.Resolver != "node-resolver" || got.Hosts != "node-hosts" {
+		t.Fatalf("resolver/hosts = %q/%q, want node values", got.Resolver, got.Hosts)
+	}
+	md := mdx.NewMetadata(got.Metadata)
+	if v := mdutil.GetString(md, parsing.MDKeyInterface); v != "node-eth" {
+		t.Fatalf("interface = %q, want node-eth", v)
+	}
+	if v := mdutil.GetInt(md, parsing.MDKeySoMark); v != 111 {
+		t.Fatalf("so_mark = %d, want 111", v)
+	}
+	// proxyProtocol is not set on the node, so the hop default applies.
+	if v := mdutil.GetInt(md, parsing.MDKeyProxyProtocol); v != 2 {
+		t.Fatalf("proxyProtocol = %d, want 2", v)
+	}
+	if v := mdutil.GetString(md, parsing.MDKeyNetns); v != "nodenetns" {
+		t.Fatalf("netns = %q, want nodenetns", v)
 	}
 }

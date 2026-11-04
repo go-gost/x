@@ -1,11 +1,17 @@
 package hop
 
 import (
+	"context"
 	"io"
+	"net"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
+	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/parsing"
@@ -143,8 +149,8 @@ func TestParseHop_NoNodesNoPlugin(t *testing.T) {
 
 func TestParseHop_WithBypass(t *testing.T) {
 	h, err := ParseHop(&config.HopConfig{
-		Name:   "bypass-hop",
-		Bypass: "bypass1",
+		Name:     "bypass-hop",
+		Bypass:   "bypass1",
 		Bypasses: []string{"bypass2", "bypass3"},
 	}, testLogger())
 	if err != nil {
@@ -501,5 +507,71 @@ func TestParseHop_NodeResolverHostsInheritance(t *testing.T) {
 	nodes := h.(hop.NodeList).Nodes()
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+}
+
+// staticHostMapper is a hosts.HostMapper with a fixed answer. Unlike
+// xhosts.NewHostMapper it has no background reload goroutine, so lookups are
+// deterministic in tests.
+type staticHostMapper struct {
+	ips []net.IP
+}
+
+func (m *staticHostMapper) Lookup(ctx context.Context, network, host string, opts ...hosts.Option) ([]net.IP, bool) {
+	return m.ips, true
+}
+
+// waitHopNodes polls until the hop reports at least n nodes. Nodes from file,
+// Redis, and HTTP sources are loaded asynchronously by the hop's reload
+// goroutine, so tests must wait for the first reload to complete.
+func waitHopNodes(t *testing.T, h hop.Hop, n int) []*chain.Node {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		nodes := h.(hop.NodeList).Nodes()
+		if len(nodes) >= n {
+			return nodes
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d loaded nodes, got %d", n, len(nodes))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestParseHop_FileNodeInheritsHosts is a regression test for
+// https://github.com/go-gost/gost/issues/924: nodes loaded from a hop file
+// source must inherit the hop-level hosts mapper, just like inline nodes do.
+func TestParseHop_FileNodeInheritsHosts(t *testing.T) {
+	const hostsName = "hop-file-hosts"
+	mapper := &staticHostMapper{ips: []net.IP{net.ParseIP("10.9.8.7")}}
+	if err := registry.HostsRegistry().Register(hostsName, mapper); err != nil {
+		t.Fatalf("register hosts mapper: %v", err)
+	}
+	t.Cleanup(func() { registry.HostsRegistry().Unregister(hostsName) })
+
+	path := filepath.Join(t.TempDir(), "nodes.json")
+	if err := os.WriteFile(path, []byte(`[{"name":"file-node","addr":"node.example:8080"}]`), 0o644); err != nil {
+		t.Fatalf("write nodes file: %v", err)
+	}
+
+	h, err := ParseHop(&config.HopConfig{
+		Name:  "file-hosts-hop",
+		Hosts: hostsName,
+		File:  &config.FileLoader{Path: path},
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("ParseHop: %v", err)
+	}
+	defer h.(io.Closer).Close()
+
+	nodes := waitHopNodes(t, h, 1)
+	hm := nodes[0].Options().HostMapper
+	if hm == nil {
+		t.Fatal("file-loaded node did not inherit the hop hosts mapper")
+	}
+	ips, ok := hm.Lookup(context.Background(), "ip", "node.example")
+	if !ok || len(ips) != 1 || !ips[0].Equal(net.ParseIP("10.9.8.7")) {
+		t.Fatalf("Lookup() = %v, %v; want 10.9.8.7", ips, ok)
 	}
 }
