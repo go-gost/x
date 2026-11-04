@@ -14,7 +14,9 @@ import (
 
 // ParseChain converts a ChainConfig into a chain.Chainer. Each hop reference
 // is either looked up from the registry (by name) or parsed inline via
-// ParseHop. Returns nil with no error when cfg is nil.
+// ParseHop. A hop is inline when it declares nodes, a plugin, or a runtime
+// loader (file, Redis, or HTTP); a name-only entry is a registry reference.
+// Returns nil with no error when cfg is nil.
 func ParseChain(cfg *config.ChainConfig, log logger.Logger) (chain.Chainer, error) {
 	if cfg == nil {
 		return nil, nil
@@ -43,7 +45,7 @@ func ParseChain(cfg *config.ChainConfig, log logger.Logger) (chain.Chainer, erro
 		var hop hop.Hop
 		var err error
 
-		if ch.Nodes != nil || ch.Plugin != nil {
+		if ch.Nodes != nil || ch.Plugin != nil || ch.File != nil || ch.Redis != nil || ch.HTTP != nil {
 			if hop, err = hop_parser.ParseHop(ch, log); err != nil {
 				return nil, err
 			}
