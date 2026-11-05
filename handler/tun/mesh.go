@@ -3,8 +3,11 @@ package tun
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -175,7 +178,7 @@ var errDeviceBusy = errors.New("tun: mesh device already active")
 
 // RunDevice owns one tun device and blocks until it closes. Links and
 // membership survive the call; the next call takes the replacement device.
-func (h *meshHandler) RunDevice(conn net.Conn) error {
+func (h *meshHandler) RunDevice(conn net.Conn) (err error) {
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
@@ -194,6 +197,15 @@ func (h *meshHandler) RunDevice(conn net.Conn) error {
 			h.device = nil
 		}
 		h.mu.Unlock()
+	}()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("tun mesh device panic",
+				"panic", r,
+				"stack", string(debug.Stack()),
+			)
+			err = fmt.Errorf("tun mesh device panic: %v", r)
+		}
 	}()
 
 	buf := make([]byte, MaxMessageSize)
@@ -416,10 +428,20 @@ func (h *meshHandler) removeLink(l *meshLink, reason MeshCloseReason, hub bool) 
 // Handle runs one inbound direct stream for as long as it lives. The stream is
 // accepted only for a direct-capable member, and only after its first frame
 // proves it is tun traffic.
-func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.HandleOption) error {
+func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.HandleOption) (err error) {
 	if conn == nil {
 		return nil
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("tun mesh handle panic",
+				"panic", r,
+				"stack", string(debug.Stack()),
+			)
+			_ = conn.Close()
+			err = fmt.Errorf("tun mesh handle panic: %v", r)
+		}
+	}()
 
 	peer := conn.RemoteAddr().String()
 	h.mu.RLock()

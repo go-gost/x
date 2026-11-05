@@ -1,7 +1,9 @@
 package tun
 
 import (
+	"log/slog"
 	"net"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -121,6 +123,7 @@ func (l *meshLink) start(first []byte, registration []byte, onFrame func([]byte)
 }
 
 func (l *meshLink) writeLoop() {
+	defer l.recoverPanic("write")
 	for {
 		select {
 		case <-l.done:
@@ -131,6 +134,20 @@ func (l *meshLink) writeLoop() {
 				return
 			}
 		}
+	}
+}
+
+// recoverPanic keeps a c-shared process alive: the tun code runs inside an
+// Android app, where an unrecovered goroutine panic aborts the whole process.
+func (l *meshLink) recoverPanic(where string) {
+	if r := recover(); r != nil {
+		slog.Error("tun mesh link panic",
+			"where", where,
+			"peer", l.key,
+			"panic", r,
+			"stack", string(debug.Stack()),
+		)
+		l.close(MeshCloseUnhealthy)
 	}
 }
 
@@ -150,6 +167,7 @@ func (l *meshLink) writeFrame(pkt []byte) error {
 }
 
 func (l *meshLink) readLoop(first []byte, onFrame func([]byte) error) {
+	defer l.recoverPanic("read")
 	if len(first) > 0 {
 		if err := l.handleFrame(first, onFrame); err != nil {
 			l.close(MeshCloseRemote)
@@ -186,6 +204,7 @@ func (l *meshLink) handleFrame(pkt []byte, onFrame func([]byte) error) error {
 }
 
 func (l *meshLink) keepaliveLoop(registration []byte) {
+	defer l.recoverPanic("keepalive")
 	ticker := time.NewTicker(meshRegisterInterval)
 	defer ticker.Stop()
 
@@ -203,6 +222,7 @@ func (l *meshLink) keepaliveLoop(registration []byte) {
 }
 
 func (l *meshLink) watchdog() {
+	defer l.recoverPanic("watchdog")
 	ticker := time.NewTicker(meshWatchdogInterval)
 	defer ticker.Stop()
 

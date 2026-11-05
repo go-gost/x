@@ -240,3 +240,23 @@ func TestMeshLinkCloseIsOnce(t *testing.T) {
 		t.Fatal("enqueue after close returned true")
 	}
 }
+
+func TestMeshLinkPanicBecomesClose(t *testing.T) {
+	linkEnd, peer := newMeshPipe()
+	reasons := make(chan MeshCloseReason, 1)
+	l := newMeshLink("b", linkEnd, true, false, func(_ *meshLink, r MeshCloseReason) {
+		select {
+		case reasons <- r:
+		default:
+		}
+	})
+	l.start(nil, nil, func([]byte) error { panic("boom") })
+	t.Cleanup(func() { l.close(MeshCloseShutdown) })
+
+	if _, err := peer.Write([]byte{0x45, 0, 0, 20}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := waitReason(t, reasons); got != MeshCloseUnhealthy {
+		t.Fatalf("close reason = %q, want unhealthy", got)
+	}
+}

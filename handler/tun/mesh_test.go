@@ -3,7 +3,9 @@ package tun
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -774,4 +776,125 @@ func TestMeshShutdownDoesNotRedial(t *testing.T) {
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("shutdown reported %d link closes, want 0", got)
 	}
+}
+
+func waitForMeshDevice(t *testing.T, h *meshHandler) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		h.mu.RLock()
+		ready := h.device != nil
+		h.mu.RUnlock()
+		if ready {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("RunDevice did not attach the device")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestMeshDeviceReplacement(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, peer := meshTestLink(t, "b", false)
+	link.ready.Store(true)
+	h.links["b"] = link
+
+	dev1, send1, _ := newDevice()
+	d1 := compatTunDevice{compatDevice: dev1, ctx: context.Background()}
+	done1 := make(chan error, 1)
+	go func() { done1 <- h.RunDevice(d1) }()
+	waitForMeshDevice(t, h)
+
+	if _, err := send1.Write(udpPacket("10.0.0.1", "10.0.0.2", 1, 1)); err != nil {
+		t.Fatalf("write dev1: %v", err)
+	}
+	if got := readMeshPacketWithin(peer, time.Second); len(got) == 0 {
+		t.Fatal("dev1 packet did not reach the direct link")
+	}
+	_ = dev1.Close()
+	<-done1
+
+	dev2, send2, _ := newDevice()
+	d2 := compatTunDevice{compatDevice: dev2, ctx: context.Background()}
+	done2 := make(chan error, 1)
+	go func() { done2 <- h.RunDevice(d2) }()
+	waitForMeshDevice(t, h)
+	t.Cleanup(func() { _ = dev2.Close(); <-done2 })
+
+	if _, err := send2.Write(udpPacket("10.0.0.1", "10.0.0.2", 1, 2)); err != nil {
+		t.Fatalf("write dev2: %v", err)
+	}
+	if got := readMeshPacketWithin(peer, time.Second); len(got) == 0 {
+		t.Fatal("dev2 packet did not reach the direct link")
+	}
+	h.mu.RLock()
+	still := h.links["b"] == link
+	h.mu.RUnlock()
+	if !still {
+		t.Fatal("the direct link did not survive device replacement")
+	}
+}
+
+func TestMeshLateDeviceWriteAfterClose(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	attachMeshDevice(t, h)
+	h.Close()
+	if err := h.writeDevice([]byte{0x45, 0, 0, 20}); !errors.Is(err, ErrTun) {
+		t.Fatalf("writeDevice after Close = %v, want ErrTun", err)
+	}
+}
+
+type meshRecorderDevice struct {
+	*writeRecorder
+}
+
+func (d meshRecorderDevice) LocalAddr() net.Addr         { return peerAddr{"recorder", ""} }
+func (d meshRecorderDevice) RemoteAddr() net.Addr        { return peerAddr{"recorder", ""} }
+func (d meshRecorderDevice) SetDeadline(time.Time) error { return nil }
+func (d meshRecorderDevice) SetReadDeadline(time.Time) error {
+	return nil
+}
+func (d meshRecorderDevice) SetWriteDeadline(time.Time) error { return nil }
+func (d meshRecorderDevice) Close() error                     { return nil }
+
+func TestMeshConcurrentDeviceWrites(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	rec := newWriteRecorder(MaxMessageSize)
+	h.mu.Lock()
+	h.device = meshRecorderDevice{writeRecorder: rec}
+	h.mu.Unlock()
+
+	pkt := udpPacket("10.0.0.2", "10.0.0.1", 1, 1)
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = h.writeDevice(pkt)
+		}()
+	}
+	wg.Wait()
+	if got := rec.overlapping(); got != 0 {
+		t.Fatalf("device writes overlapped %d times", got)
+	}
+	if got := len(rec.received()); got != 32 {
+		t.Fatalf("device received %d writes, want 32", got)
+	}
+}
+
+type panicReadConn struct{ *meshConn }
+
+func (c panicReadConn) Read([]byte) (int, error) { panic("device read boom") }
+
+func TestMeshRunDevicePanic(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	linkEnd, peer := newMeshPipe()
+	err := h.RunDevice(panicReadConn{meshConn: linkEnd})
+	if err == nil {
+		t.Fatal("RunDevice returned nil after a panicking device read")
+	}
+	_ = peer.Close()
 }
