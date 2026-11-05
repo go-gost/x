@@ -339,7 +339,7 @@ func (h *meshHandler) AddDialedLink(peer string, conn net.Conn) {
 	l := newMeshLink(peer, conn, true, false, func(l *meshLink, reason MeshCloseReason) {
 		h.removeLink(l, reason, false)
 	})
-	h.installDirectLink(l)
+	h.installLink(l)
 	l.start(nil, meshRegistrationFrame(h.cfg.LocalIPs), func(pkt []byte) error {
 		return h.handleDirectFrame(l, pkt)
 	})
@@ -355,34 +355,60 @@ func (h *meshHandler) DropLink(peer string) {
 	}
 }
 
-// installDirectLink makes l the current direct link for its peer. Replacement
-// policy refinement lives in the dedupe task; here a later link simply wins and
-// the old one is retired without a redial signal.
-func (h *meshHandler) installDirectLink(l *meshLink) {
+// installLink makes l the current direct link for its peer, subject to the
+// dedupe preference. It returns whether l won; a loser is closed with dedup.
+func (h *meshHandler) installLink(l *meshLink) bool {
 	h.mu.Lock()
 	old := h.links[l.key]
+	if old != nil && old != l && !meshLinkPreferred(l, old, h.cfg.LocalKey) {
+		h.mu.Unlock()
+		l.close(MeshCloseDedup)
+		return false
+	}
 	h.links[l.key] = l
 	h.mu.Unlock()
 	if old != nil && old != l {
 		old.close(MeshCloseDedup)
 	}
+	return true
 }
 
-// removeLink retires l only if it is still the current link for its key. The
-// shutdown close is deliberately silent.
+// meshLinkPreferred keeps the link whose dialer key is lexicographically
+// smaller. Both ends compute the same winner, so a simultaneous dial converges
+// on one physical stream. An equal dialer keeps the existing link.
+func meshLinkPreferred(incoming, existing *meshLink, localKey string) bool {
+	return meshDialer(incoming, localKey) < meshDialer(existing, localKey)
+}
+
+func meshDialer(l *meshLink, localKey string) string {
+	if l.dialedLocally {
+		return localKey
+	}
+	return l.key
+}
+
+// removeLink retires l only if it is still the current link for its key. A
+// dedupe loser was never current, but its callback is still reported: the
+// manager needs to know that the attempt it started lost, and ignores dedup.
 func (h *meshHandler) removeLink(l *meshLink, reason MeshCloseReason, hub bool) {
 	h.mu.Lock()
+	current := false
 	if hub {
 		if h.hub == l {
 			h.hub = nil
+			current = true
 		}
 	} else if h.links[l.key] == l {
 		delete(h.links, l.key)
+		current = true
 	}
 	cb := h.linkClosed
 	h.mu.Unlock()
 
-	if reason != MeshCloseShutdown && cb != nil {
+	if reason == MeshCloseShutdown || cb == nil {
+		return
+	}
+	if current || reason == MeshCloseDedup {
 		cb(l.key, reason)
 	}
 }
@@ -422,7 +448,9 @@ func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.Ha
 	l := newMeshLink(peer, conn, false, false, func(l *meshLink, reason MeshCloseReason) {
 		h.removeLink(l, reason, false)
 	})
-	h.installDirectLink(l)
+	if !h.installLink(l) {
+		return nil
+	}
 	l.start(first, meshRegistrationFrame(h.cfg.LocalIPs), func(pkt []byte) error {
 		return h.handleDirectFrame(l, pkt)
 	})
@@ -549,11 +577,10 @@ func meshValidRegistration(ips []net.IP, frame []byte) bool {
 }
 
 // SetMembers replaces the member snapshot. It rebuilds the exact-IP routing
-// index; links are reconciled by the task that owns them.
+// index and retires links no longer allowed by the new policy. The hub link is
+// untouched: it is the fallback, not a member link.
 func (h *meshHandler) SetMembers(members []MeshMember) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	h.members = make(map[string]MeshMember, len(members))
 	h.memberIPs = make(map[string][]net.IP, len(members))
 	h.memberByIP = make(map[netip.Addr]string, len(members))
@@ -570,6 +597,25 @@ func (h *meshHandler) SetMembers(members []MeshMember) {
 			h.memberByIP[addr] = m.Key
 		}
 	}
+
+	var membership, blocked []*meshLink
+	for key, l := range h.links {
+		m, ok := h.members[key]
+		switch {
+		case !ok || !m.Direct || m.Disabled:
+			membership = append(membership, l)
+		case m.Blocked:
+			blocked = append(blocked, l)
+		}
+	}
+	h.mu.Unlock()
+
+	for _, l := range membership {
+		l.close(MeshCloseMembership)
+	}
+	for _, l := range blocked {
+		l.close(MeshCloseBlocked)
+	}
 }
 
 // MeshStatus reports the hub row first, then members sorted by key. Without
@@ -577,19 +623,41 @@ func (h *meshHandler) SetMembers(members []MeshMember) {
 // members keep their own states.
 func (h *meshHandler) MeshStatus() []MeshPeerStatus {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	members := make(map[string]MeshMember, len(h.members))
+	for key, m := range h.members {
+		members[key] = m
+	}
+	memberIPs := make(map[string][]net.IP, len(h.memberIPs))
+	for key, ips := range h.memberIPs {
+		memberIPs[key] = append([]net.IP(nil), ips...)
+	}
+	hub := h.hub
+	links := make(map[string]*meshLink, len(h.links))
+	for key, l := range h.links {
+		links[key] = l
+	}
+	hubKey := h.cfg.HubKey
+	h.mu.RUnlock()
 
-	out := make([]MeshPeerStatus, 0, len(h.members)+1)
-	out = append(out, MeshPeerStatus{Key: h.cfg.HubKey, State: "hub"})
+	out := make([]MeshPeerStatus, 0, len(members)+1)
+	hubRow := MeshPeerStatus{Key: hubKey, State: "hub"}
+	if hub != nil {
+		hubRow.DialedLocally = hub.dialedLocally
+		hubRow.Since = hub.since
+		hubRow.LastInbound = meshLastInbound(hub)
+		hubRow.BytesIn = hub.bytesIn.Load()
+		hubRow.BytesOut = hub.bytesOut.Load()
+	}
+	out = append(out, hubRow)
 
-	keys := make([]string, 0, len(h.members))
-	for key := range h.members {
+	keys := make([]string, 0, len(members))
+	for key := range members {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		m := h.members[key]
+		m := members[key]
 		state := "hub"
 		switch {
 		case m.Blocked:
@@ -600,21 +668,48 @@ func (h *meshHandler) MeshStatus() []MeshPeerStatus {
 			state = "direct-off"
 		}
 
-		ips := make([]string, 0, len(h.memberIPs[key]))
-		for _, ip := range h.memberIPs[key] {
+		ips := make([]string, 0, len(memberIPs[key]))
+		for _, ip := range memberIPs[key] {
 			if ip != nil {
 				ips = append(ips, ip.String())
 			}
 		}
 		sort.Strings(ips)
-		out = append(out, MeshPeerStatus{
+
+		row := MeshPeerStatus{
 			Key:   key,
 			Name:  m.Name,
 			IPs:   ips,
 			State: state,
-		})
+		}
+		if l := links[key]; l != nil {
+			row.DialedLocally = l.dialedLocally
+			row.Since = l.since
+			row.LastInbound = meshLastInbound(l)
+			row.BytesIn = l.bytesIn.Load()
+			row.BytesOut = l.bytesOut.Load()
+			switch state {
+			case "hub":
+				row.State = "connecting"
+				if l.ready.Load() {
+					row.State = "direct"
+				}
+			case "direct-off":
+				// A link for a member that no longer advertises direct is stale;
+				// keep the policy state visible until SetMembers retires it.
+			}
+		}
+		out = append(out, row)
 	}
 	return out
+}
+
+func meshLastInbound(l *meshLink) time.Time {
+	ns := l.lastInbound.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
 }
 
 // Close stops the handler. It is idempotent; links and the device are closed

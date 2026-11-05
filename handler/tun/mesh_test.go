@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -577,5 +578,200 @@ func expectNoDevicePacket(t *testing.T, recv *datagramPipe) {
 	t.Helper()
 	if got := readDevicePacketWithin(recv, 100*time.Millisecond); got != nil {
 		t.Fatalf("unexpected device packet: %x", got)
+	}
+}
+
+func meshLinkFor(t *testing.T, h *meshHandler, key string, dialed bool) (*meshLink, *meshConn) {
+	t.Helper()
+	linkEnd, peer := newMeshPipe()
+	l := newMeshLink(key, linkEnd, dialed, false, func(l *meshLink, reason MeshCloseReason) {
+		h.removeLink(l, reason, false)
+	})
+	t.Cleanup(func() { l.close(MeshCloseShutdown) })
+	return l, peer
+}
+
+func TestMeshDedupePrefersSmallerDialer(t *testing.T) {
+	h := NewMeshHandler(MeshConfig{LocalKey: "a", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	closed := make(chan MeshCloseReason, 2)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "b" {
+			closed <- reason
+		}
+	})
+
+	out, _ := meshLinkFor(t, h, "b", true)
+	in, _ := meshLinkFor(t, h, "b", false)
+	if !h.installLink(out) {
+		t.Fatal("outbound link (dialer a) lost")
+	}
+	if h.installLink(in) {
+		t.Fatal("inbound link (dialer b) won; want the smaller dialer")
+	}
+	h.mu.RLock()
+	got := h.links["b"]
+	h.mu.RUnlock()
+	if got != out {
+		t.Fatal("the outbound link is not the current link")
+	}
+	select {
+	case reason := <-closed:
+		if reason != MeshCloseDedup {
+			t.Fatalf("close reason = %q, want dedup", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dedup close was not reported")
+	}
+}
+
+func TestMeshDedupeEqualKeepsExisting(t *testing.T) {
+	h := NewMeshHandler(MeshConfig{LocalKey: "b", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	first, _ := meshLinkFor(t, h, "b", true)
+	second, _ := meshLinkFor(t, h, "b", false)
+	if !h.installLink(first) {
+		t.Fatal("first link lost")
+	}
+	if h.installLink(second) {
+		t.Fatal("equal-dialer incoming link won; want the existing link")
+	}
+	h.mu.RLock()
+	got := h.links["b"]
+	h.mu.RUnlock()
+	if got != first {
+		t.Fatal("the existing link was not kept")
+	}
+}
+
+func TestMeshDedupeLargerDialerOnly(t *testing.T) {
+	h := NewMeshHandler(MeshConfig{LocalKey: "z", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	in, _ := meshLinkFor(t, h, "b", false)
+	out, _ := meshLinkFor(t, h, "b", true)
+	if !h.installLink(in) {
+		t.Fatal("inbound link (dialer b) lost")
+	}
+	if h.installLink(out) {
+		t.Fatal("outbound link (dialer z) won; want the smaller dialer")
+	}
+	h.mu.RLock()
+	got := h.links["b"]
+	h.mu.RUnlock()
+	if got != in {
+		t.Fatal("the inbound link is not the current link")
+	}
+}
+
+func TestMeshMembershipRemovalClosesLink(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	h.installLink(link)
+	closed := make(chan MeshCloseReason, 1)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "b" {
+			closed <- reason
+		}
+	})
+
+	h.SetMembers(nil)
+	select {
+	case reason := <-closed:
+		if reason != MeshCloseMembership {
+			t.Fatalf("close reason = %q, want membership", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("link did not close after membership removal")
+	}
+}
+
+func TestMeshBlockedMemberClosesLink(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	h.installLink(link)
+	closed := make(chan MeshCloseReason, 1)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "b" {
+			closed <- reason
+		}
+	})
+
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true, Blocked: true}})
+	select {
+	case reason := <-closed:
+		if reason != MeshCloseBlocked {
+			t.Fatalf("close reason = %q, want blocked", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("link did not close after block")
+	}
+}
+
+func TestMeshStatusAfterLinks(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Name: "B", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	link.ready.Store(true)
+	link.bytesIn.Store(11)
+	link.bytesOut.Store(22)
+	h.installLink(link)
+	hubLink, _ := meshTestLink(t, "hub", true)
+	h.hub = hubLink
+
+	st := h.MeshStatus()
+	var b MeshPeerStatus
+	for _, row := range st {
+		if row.Key == "b" {
+			b = row
+		}
+	}
+	if b.State != "direct" || !b.DialedLocally || b.Name != "B" {
+		t.Fatalf("b row = %+v, want direct/dialed/B", b)
+	}
+	if b.BytesIn != 11 || b.BytesOut != 22 {
+		t.Fatalf("b bytes = %d/%d, want 11/22", b.BytesIn, b.BytesOut)
+	}
+	if st[0].Key != "hub" {
+		t.Fatalf("first row = %+v, want hub", st[0])
+	}
+}
+
+func TestMeshHubLinkCloseCallback(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	closed := make(chan MeshCloseReason, 1)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "hub" {
+			closed <- reason
+		}
+	})
+	linkEnd, peer := newMeshPipe()
+	h.SetHubLink(linkEnd)
+	_ = readMeshPacket(t, peer)
+	_ = peer.Close()
+	select {
+	case reason := <-closed:
+		if reason == MeshCloseShutdown {
+			t.Fatal("hub close reported shutdown")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("hub close was not reported")
+	}
+	h.mu.RLock()
+	got := h.hub
+	h.mu.RUnlock()
+	if got != nil {
+		t.Fatal("closed hub link is still installed")
+	}
+}
+
+func TestMeshShutdownDoesNotRedial(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	var calls atomic.Int32
+	h.SetLinkClosed(func(string, MeshCloseReason) { calls.Add(1) })
+	linkEnd, peer := newMeshPipe()
+	h.SetHubLink(linkEnd)
+	_ = readMeshPacket(t, peer)
+	h.Close()
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("shutdown reported %d link closes, want 0", got)
 	}
 }
