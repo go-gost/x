@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/netip"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
+	tun_util "github.com/go-gost/x/internal/util/tun"
 	listenertun "github.com/go-gost/x/listener/tun"
 	xlogger "github.com/go-gost/x/logger"
 )
@@ -77,7 +79,12 @@ type MeshConfig struct {
 // owner. Later tasks extend it with the handler.Handler contract and the link
 // installation/status methods.
 type MeshHandler interface {
+	handler.Handler
+	RunDevice(conn net.Conn) error
 	SetMembers(members []MeshMember)
+	SetHubLink(conn net.Conn)
+	AddDialedLink(peer string, conn net.Conn)
+	DropLink(peer string)
 	SetDirectNeeded(func(peer string))
 	SetLinkClosed(func(peer string, reason MeshCloseReason))
 	MeshStatus() []MeshPeerStatus
@@ -90,6 +97,7 @@ type meshHandler struct {
 
 	mu         sync.RWMutex
 	members    map[string]MeshMember
+	memberIPs  map[string][]net.IP
 	memberByIP map[netip.Addr]string
 	links      map[string]*meshLink
 	hub        *meshLink
@@ -133,6 +141,7 @@ func NewMeshHandler(cfg MeshConfig, opts ...handler.Option) MeshHandler {
 		cfg:        cfg,
 		log:        log,
 		members:    make(map[string]MeshMember),
+		memberIPs:  make(map[string][]net.IP),
 		memberByIP: make(map[netip.Addr]string),
 		links:      make(map[string]*meshLink),
 	}
@@ -291,6 +300,254 @@ func (h *meshHandler) isLocalIP(ip net.IP) bool {
 	return false
 }
 
+// SetHubLink installs the permanent fallback link. The hub link never joins the
+// direct-link dedupe set, and its close is reported so the manager can redial.
+func (h *meshHandler) SetHubLink(conn net.Conn) {
+	if conn == nil {
+		return
+	}
+	l := newMeshLink(h.cfg.HubKey, conn, true, true, func(l *meshLink, reason MeshCloseReason) {
+		h.removeLink(l, reason, true)
+	})
+
+	h.mu.Lock()
+	old := h.hub
+	h.hub = l
+	h.mu.Unlock()
+	if old != nil {
+		old.close(MeshCloseShutdown)
+	}
+
+	l.start(nil, meshRegistrationFrame(h.cfg.LocalIPs), h.handleHubFrame)
+}
+
+// AddDialedLink installs a direct link the manager opened on demand.
+func (h *meshHandler) AddDialedLink(peer string, conn net.Conn) {
+	if conn == nil {
+		return
+	}
+
+	h.mu.RLock()
+	m, ok := h.members[peer]
+	localKey, hubKey := h.cfg.LocalKey, h.cfg.HubKey
+	h.mu.RUnlock()
+	if !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
+		_ = conn.Close()
+		return
+	}
+
+	l := newMeshLink(peer, conn, true, false, func(l *meshLink, reason MeshCloseReason) {
+		h.removeLink(l, reason, false)
+	})
+	h.installDirectLink(l)
+	l.start(nil, meshRegistrationFrame(h.cfg.LocalIPs), func(pkt []byte) error {
+		return h.handleDirectFrame(l, pkt)
+	})
+}
+
+// DropLink closes the current direct link for peer, if any.
+func (h *meshHandler) DropLink(peer string) {
+	h.mu.RLock()
+	l := h.links[peer]
+	h.mu.RUnlock()
+	if l != nil {
+		l.close(MeshCloseMembership)
+	}
+}
+
+// installDirectLink makes l the current direct link for its peer. Replacement
+// policy refinement lives in the dedupe task; here a later link simply wins and
+// the old one is retired without a redial signal.
+func (h *meshHandler) installDirectLink(l *meshLink) {
+	h.mu.Lock()
+	old := h.links[l.key]
+	h.links[l.key] = l
+	h.mu.Unlock()
+	if old != nil && old != l {
+		old.close(MeshCloseDedup)
+	}
+}
+
+// removeLink retires l only if it is still the current link for its key. The
+// shutdown close is deliberately silent.
+func (h *meshHandler) removeLink(l *meshLink, reason MeshCloseReason, hub bool) {
+	h.mu.Lock()
+	if hub {
+		if h.hub == l {
+			h.hub = nil
+		}
+	} else if h.links[l.key] == l {
+		delete(h.links, l.key)
+	}
+	cb := h.linkClosed
+	h.mu.Unlock()
+
+	if reason != MeshCloseShutdown && cb != nil {
+		cb(l.key, reason)
+	}
+}
+
+// Handle runs one inbound direct stream for as long as it lives. The stream is
+// accepted only for a direct-capable member, and only after its first frame
+// proves it is tun traffic.
+func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.HandleOption) error {
+	if conn == nil {
+		return nil
+	}
+
+	peer := conn.RemoteAddr().String()
+	h.mu.RLock()
+	m, ok := h.members[peer]
+	localKey, hubKey := h.cfg.LocalKey, h.cfg.HubKey
+	h.mu.RUnlock()
+	if !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
+		_ = conn.Close()
+		return nil
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(meshFirstInboundTimeout))
+	buf := make([]byte, MaxMessageSize)
+	n, err := conn.Read(buf)
+	_ = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	if n == 0 || !isTunFrame(buf[:n]) {
+		_ = conn.Close()
+		return nil
+	}
+	first := append([]byte(nil), buf[:n]...)
+
+	l := newMeshLink(peer, conn, false, false, func(l *meshLink, reason MeshCloseReason) {
+		h.removeLink(l, reason, false)
+	})
+	h.installDirectLink(l)
+	l.start(first, meshRegistrationFrame(h.cfg.LocalIPs), func(pkt []byte) error {
+		return h.handleDirectFrame(l, pkt)
+	})
+
+	select {
+	case <-l.done:
+		return nil
+	case <-ctx.Done():
+		l.close(MeshCloseShutdown)
+		return ctx.Err()
+	}
+}
+
+func (h *meshHandler) handleHubFrame(pkt []byte) error {
+	if isKeepaliveFrame(pkt) {
+		return nil
+	}
+	if !tun_util.IPv4Packet(pkt) && !tun_util.IPv6Packet(pkt) {
+		h.countNonIP.Add(1)
+		return nil
+	}
+	return h.writeDevice(pkt)
+}
+
+func (h *meshHandler) handleDirectFrame(link *meshLink, pkt []byte) error {
+	if isKeepaliveFrame(pkt) {
+		if len(pkt) == keepAliveHeaderLength {
+			return nil // an echo; the link's reader already marked it inbound
+		}
+		if isRegistrationFrame(pkt) {
+			if !meshValidRegistration(h.memberIPsFor(link.key), pkt) {
+				h.countRegistrationRefused.Add(1)
+				link.close(MeshCloseMembership)
+				return nil
+			}
+			if err := link.writeFrame(keepAliveReply(link.key)); err != nil {
+				link.close(MeshCloseWrite)
+			}
+			return nil
+		}
+		return nil
+	}
+
+	if !tun_util.IPv4Packet(pkt) && !tun_util.IPv6Packet(pkt) {
+		h.countNonIP.Add(1)
+		return nil
+	}
+	src, ok := sourceOf(pkt)
+	if !ok {
+		h.countNonIP.Add(1)
+		return nil
+	}
+	if !ipIn(src, h.memberIPsFor(link.key)) {
+		h.countForeignSrc.Add(1)
+		return nil
+	}
+	dst, ok := destinationOf(pkt)
+	if !ok {
+		h.countNonIP.Add(1)
+		return nil
+	}
+	if !h.isLocalIP(dst) {
+		h.countForeignDst.Add(1)
+		return nil
+	}
+	return h.writeDevice(pkt)
+}
+
+func (h *meshHandler) memberIPsFor(peer string) []net.IP {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append([]net.IP(nil), h.memberIPs[peer]...)
+}
+
+func ipIn(ip net.IP, ips []net.IP) bool {
+	for _, candidate := range ips {
+		if ip.Equal(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+// meshRegistrationFrame builds the registration/keepalive frame a mesh link
+// sends: the GOST magic, an empty passphrase, then this device's addresses.
+func meshRegistrationFrame(localIPs []net.IP) []byte {
+	b := make([]byte, keepAliveHeaderLength+len(localIPs)*net.IPv6len)
+	copy(b[:4], magicHeader)
+	pos := keepAliveHeaderLength
+	for _, ip := range localIPs {
+		copy(b[pos:pos+net.IPv6len], ip.To16())
+		pos += net.IPv6len
+	}
+	return b
+}
+
+// meshValidRegistration reports whether frame claims exactly the addresses
+// assigned to the peer — the same set-equality rule the hub applies.
+func meshValidRegistration(ips []net.IP, frame []byte) bool {
+	if !isRegistrationFrame(frame) {
+		return false
+	}
+	claimed := frame[keepAliveHeaderLength:]
+	if len(claimed) != len(ips)*net.IPv6len {
+		return false
+	}
+	matched := make([]bool, len(ips))
+	for len(claimed) > 0 {
+		ip := net.IP(claimed[:net.IPv6len])
+		found := false
+		for i, candidate := range ips {
+			if !matched[i] && ip.Equal(candidate) {
+				matched[i] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+		claimed = claimed[net.IPv6len:]
+	}
+	return true
+}
+
 // SetMembers replaces the member snapshot. It rebuilds the exact-IP routing
 // index; links are reconciled by the task that owns them.
 func (h *meshHandler) SetMembers(members []MeshMember) {
@@ -298,12 +555,17 @@ func (h *meshHandler) SetMembers(members []MeshMember) {
 	defer h.mu.Unlock()
 
 	h.members = make(map[string]MeshMember, len(members))
+	h.memberIPs = make(map[string][]net.IP, len(members))
 	h.memberByIP = make(map[netip.Addr]string, len(members))
 	for _, m := range members {
 		if m.Key == "" {
 			continue
 		}
 		h.members[m.Key] = m
+		if m.IP == nil {
+			continue
+		}
+		h.memberIPs[m.Key] = append(h.memberIPs[m.Key], m.IP)
 		if addr, ok := ipToAddr(m.IP); ok {
 			h.memberByIP[addr] = m.Key
 		}
@@ -338,10 +600,13 @@ func (h *meshHandler) MeshStatus() []MeshPeerStatus {
 			state = "direct-off"
 		}
 
-		ips := make([]string, 0, 1)
-		if m.IP != nil {
-			ips = append(ips, m.IP.String())
+		ips := make([]string, 0, len(h.memberIPs[key]))
+		for _, ip := range h.memberIPs[key] {
+			if ip != nil {
+				ips = append(ips, ip.String())
+			}
 		}
+		sort.Strings(ips)
 		out = append(out, MeshPeerStatus{
 			Key:   key,
 			Name:  m.Name,
@@ -386,3 +651,4 @@ func (h *meshHandler) Close() error {
 
 // compile-time check: the handler keeps the membership/status surface.
 var _ MeshHandler = (*meshHandler)(nil)
+var _ handler.Handler = (*meshHandler)(nil)

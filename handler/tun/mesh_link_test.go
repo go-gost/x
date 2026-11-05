@@ -14,37 +14,44 @@ import (
 // the test owns the other. Close unblocks Read but does not close the datagram
 // queues underneath (a blocked Write on a closed queue would panic); a blocked
 // writer falls back to the datagramPipe timeout.
-type meshConn struct {
-	send, recv *datagramPipe
-	done       chan struct{}
-	once       sync.Once
+type meshPipeState struct {
+	done chan struct{}
+	once sync.Once
 }
 
-func newMeshConn(send, recv *datagramPipe) *meshConn {
-	return &meshConn{send: send, recv: recv, done: make(chan struct{})}
+func (s *meshPipeState) close() { s.once.Do(func() { close(s.done) }) }
+
+type meshConn struct {
+	send, recv *datagramPipe
+	state      *meshPipeState
+	remote     string
+}
+
+func newMeshConn(send, recv *datagramPipe, state *meshPipeState) *meshConn {
+	return &meshConn{send: send, recv: recv, state: state, remote: "peer"}
 }
 func (c *meshConn) Read(b []byte) (int, error) {
 	select {
 	case pkt := <-c.recv.queue:
 		return copy(b, pkt), nil
-	case <-c.done:
+	case <-c.state.done:
 		return 0, io.EOF
 	}
 }
 func (c *meshConn) Write(b []byte) (int, error) {
 	select {
-	case <-c.done:
+	case <-c.state.done:
 		return 0, net.ErrClosed
 	default:
 	}
 	return c.send.Write(b)
 }
 func (c *meshConn) Close() error {
-	c.once.Do(func() { close(c.done) })
+	c.state.close()
 	return nil
 }
 func (c *meshConn) LocalAddr() net.Addr         { return peerAddr{"mesh", ""} }
-func (c *meshConn) RemoteAddr() net.Addr        { return peerAddr{"mesh", "peer"} }
+func (c *meshConn) RemoteAddr() net.Addr        { return peerAddr{"mesh", c.remote} }
 func (c *meshConn) SetDeadline(time.Time) error { return nil }
 func (c *meshConn) SetReadDeadline(time.Time) error {
 	return nil
@@ -56,8 +63,9 @@ func (c *meshConn) SetWriteDeadline(time.Time) error { return nil }
 func newMeshPipe() (link, peer *meshConn) {
 	toPeer, fromLink := newDatagramPipe(16)
 	toLink, fromPeer := newDatagramPipe(16)
-	link = newMeshConn(toPeer, fromPeer)
-	peer = newMeshConn(toLink, fromLink)
+	state := &meshPipeState{done: make(chan struct{})}
+	link = newMeshConn(toPeer, fromPeer, state)
+	peer = newMeshConn(toLink, fromLink, state)
 	return
 }
 

@@ -1,6 +1,7 @@
 package tun
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"testing"
@@ -321,5 +322,260 @@ func TestMeshRunDeviceDispatches(t *testing.T) {
 	}
 	if got := readMeshPacketWithin(peer, time.Second); len(got) == 0 {
 		t.Fatal("device packet did not reach the direct link")
+	}
+}
+
+func attachMeshDevice(t *testing.T, h *meshHandler) *datagramPipe {
+	t.Helper()
+	dev, _, recv := newDevice()
+	d := compatTunDevice{compatDevice: dev, ctx: context.Background()}
+	h.mu.Lock()
+	h.device = d
+	h.mu.Unlock()
+	t.Cleanup(func() {
+		h.mu.Lock()
+		if h.device == d {
+			h.device = nil
+		}
+		h.mu.Unlock()
+		_ = dev.Close()
+	})
+	return recv
+}
+
+func readDevicePacketWithin(recv *datagramPipe, d time.Duration) []byte {
+	done := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, MaxMessageSize)
+		n, err := recv.Read(buf)
+		if err != nil {
+			done <- nil
+			return
+		}
+		done <- append([]byte(nil), buf[:n]...)
+	}()
+	select {
+	case pkt := <-done:
+		return pkt
+	case <-time.After(d):
+		return nil
+	}
+}
+
+func TestMeshAddDialedLinkWrites(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	h.AddDialedLink("b", linkEnd)
+
+	reg := readMeshPacket(t, peer)
+	if !isRegistrationFrame(reg) {
+		t.Fatalf("first write = %x, want a registration frame", reg)
+	}
+	if _, err := peer.Write(bytes.Repeat([]byte{0x47}, keepAliveHeaderLength)); err != nil {
+		t.Fatalf("write echo: %v", err)
+	}
+	if _, err := peer.Write(udpPacket("10.0.0.2", "10.0.0.1", 1, 1)); err != nil {
+		t.Fatalf("write packet: %v", err)
+	}
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("direct packet did not reach the device")
+	}
+	h.Close()
+}
+
+func TestMeshAddDialedLinkRejects(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{
+		{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true, Blocked: true},
+		{IP: net.ParseIP("10.0.0.3"), Key: "c", Direct: true, Disabled: true},
+		{IP: net.ParseIP("10.0.0.4"), Key: "d", Direct: false},
+	})
+	cases := []string{"unknown", "hub", "local", "b", "c", "d"}
+	for _, key := range cases {
+		t.Run(key, func(t *testing.T) {
+			linkEnd, peer := newMeshPipe()
+			h.AddDialedLink(key, linkEnd)
+			h.mu.RLock()
+			link := h.links[key]
+			h.mu.RUnlock()
+			if link != nil {
+				t.Fatalf("link for rejected peer %q was installed", key)
+			}
+			_ = peer.Close()
+		})
+	}
+}
+
+func TestMeshHandleInbound(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Handle(context.Background(), linkEnd) }()
+
+	if _, err := peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2"))); err != nil {
+		t.Fatalf("write registration: %v", err)
+	}
+	if got := readMeshPacketWithin(peer, time.Second); len(got) == 0 {
+		t.Fatal("registration was not echoed")
+	}
+	if _, err := peer.Write(udpPacket("10.0.0.2", "10.0.0.1", 1, 1)); err != nil {
+		t.Fatalf("write packet: %v", err)
+	}
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("inbound direct packet did not reach the device")
+	}
+
+	_ = peer.Close()
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Handle did not return after the stream closed")
+	}
+}
+
+func TestMeshHandleRejectsNonTunFirstFrame(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Handle(context.Background(), linkEnd) }()
+	if _, err := peer.Write([]byte("GET / HTTP/1.1\r\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Handle did not return for a non-tun first frame")
+	}
+	h.mu.RLock()
+	_, installed := h.links["b"]
+	h.mu.RUnlock()
+	if installed {
+		t.Fatal("non-tun stream was installed")
+	}
+}
+
+func TestMeshHandleRejectsWrongSource(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	go h.Handle(context.Background(), linkEnd)
+	_, _ = peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2")))
+	_ = readMeshPacketWithin(peer, time.Second)
+	_, _ = peer.Write(udpPacket("10.0.0.3", "10.0.0.1", 1, 1))
+	expectNoDevicePacket(t, recv)
+	if h.countForeignSrc.Load() == 0 {
+		t.Fatal("foreign-source counter did not move")
+	}
+	_ = peer.Close()
+}
+
+func TestMeshHandleRejectsForeignDestination(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{
+		{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true},
+		{IP: net.ParseIP("10.0.0.3"), Key: "c", Direct: true},
+	})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	go h.Handle(context.Background(), linkEnd)
+	_, _ = peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2")))
+	_ = readMeshPacketWithin(peer, time.Second)
+	_, _ = peer.Write(udpPacket("10.0.0.2", "10.0.0.3", 1, 1))
+	expectNoDevicePacket(t, recv)
+	if h.countForeignDst.Load() == 0 {
+		t.Fatal("foreign-destination counter did not move")
+	}
+	_ = peer.Close()
+}
+
+func TestMeshHandleNeverForwardsToPeer(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{
+		{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true},
+		{IP: net.ParseIP("10.0.0.3"), Key: "c", Direct: true},
+	})
+	recv := attachMeshDevice(t, h)
+	cLink, cPeer := meshTestLink(t, "c", false)
+	cLink.ready.Store(true)
+	h.links["c"] = cLink
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	go h.Handle(context.Background(), linkEnd)
+	_, _ = peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2")))
+	_ = readMeshPacketWithin(peer, time.Second)
+	_, _ = peer.Write(udpPacket("10.0.0.2", "10.0.0.3", 1, 1))
+	expectNoDevicePacket(t, recv)
+	expectNoMeshPacket(t, cPeer)
+	_ = peer.Close()
+}
+
+func TestMeshHubFrameWritesDevice(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	h.SetHubLink(linkEnd)
+	_ = readMeshPacket(t, peer) // registration
+	if _, err := peer.Write(udpPacket("10.0.0.9", "10.0.0.1", 1, 1)); err != nil {
+		t.Fatalf("write hub packet: %v", err)
+	}
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("hub packet did not reach the device")
+	}
+	h.Close()
+}
+
+func TestMeshInvalidRegistrationCloses(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{
+		{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true},
+		{IP: net.ParseIP("10.0.0.3"), Key: "c", Direct: true},
+	})
+	closed := make(chan MeshCloseReason, 1)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "b" {
+			select {
+			case closed <- reason:
+			default:
+			}
+		}
+	})
+
+	linkEnd, peer := newMeshPipe()
+	h.AddDialedLink("b", linkEnd)
+	_ = readMeshPacket(t, peer) // our registration
+	if _, err := peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.3"))); err != nil {
+		t.Fatalf("write bad registration: %v", err)
+	}
+	select {
+	case reason := <-closed:
+		if reason != MeshCloseMembership {
+			t.Fatalf("close reason = %q, want membership", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("link did not close after an invalid registration")
+	}
+}
+
+func expectNoDevicePacket(t *testing.T, recv *datagramPipe) {
+	t.Helper()
+	if got := readDevicePacketWithin(recv, 100*time.Millisecond); got != nil {
+		t.Fatalf("unexpected device packet: %x", got)
 	}
 }
