@@ -13,6 +13,16 @@ import (
 	"github.com/go-gost/core/handler"
 )
 
+func silenceMeshPanicLogs(t *testing.T) {
+	t.Helper()
+	oldLink, oldDevice := meshLinkPanicLog, meshDevicePanicLog
+	meshLinkPanicLog = func(string, string, any) {}
+	meshDevicePanicLog = func(string, any) {}
+	t.Cleanup(func() {
+		meshLinkPanicLog, meshDevicePanicLog = oldLink, oldDevice
+	})
+}
+
 func meshTestLink(t *testing.T, key string, hub bool) (*meshLink, *meshConn) {
 	t.Helper()
 	linkEnd, peerEnd := newMeshPipe()
@@ -595,6 +605,7 @@ func meshLinkFor(t *testing.T, h *meshHandler, key string, dialed bool) (*meshLi
 
 func TestMeshDedupePrefersSmallerDialer(t *testing.T) {
 	h := NewMeshHandler(MeshConfig{LocalKey: "a", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
 	closed := make(chan MeshCloseReason, 2)
 	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
 		if peer == "b" {
@@ -628,6 +639,7 @@ func TestMeshDedupePrefersSmallerDialer(t *testing.T) {
 
 func TestMeshDedupeEqualKeepsExisting(t *testing.T) {
 	h := NewMeshHandler(MeshConfig{LocalKey: "b", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
 	first, _ := meshLinkFor(t, h, "b", true)
 	second, _ := meshLinkFor(t, h, "b", false)
 	if !h.installLink(first) {
@@ -646,6 +658,7 @@ func TestMeshDedupeEqualKeepsExisting(t *testing.T) {
 
 func TestMeshDedupeLargerDialerOnly(t *testing.T) {
 	h := NewMeshHandler(MeshConfig{LocalKey: "z", HubKey: "hub"}, handler.LoggerOption(compatLogger())).(*meshHandler)
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
 	in, _ := meshLinkFor(t, h, "b", false)
 	out, _ := meshLinkFor(t, h, "b", true)
 	if !h.installLink(in) {
@@ -751,8 +764,8 @@ func TestMeshHubLinkCloseCallback(t *testing.T) {
 	_ = peer.Close()
 	select {
 	case reason := <-closed:
-		if reason == MeshCloseShutdown {
-			t.Fatal("hub close reported shutdown")
+		if reason != MeshCloseRemote {
+			t.Fatalf("hub close reason = %q, want remote", reason)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("hub close was not reported")
@@ -890,6 +903,7 @@ type panicReadConn struct{ *meshConn }
 func (c panicReadConn) Read([]byte) (int, error) { panic("device read boom") }
 
 func TestMeshRunDevicePanic(t *testing.T) {
+	silenceMeshPanicLogs(t)
 	h := newMeshTestHandler("10.0.0.1")
 	linkEnd, peer := newMeshPipe()
 	err := h.RunDevice(panicReadConn{meshConn: linkEnd})
@@ -897,4 +911,282 @@ func TestMeshRunDevicePanic(t *testing.T) {
 		t.Fatal("RunDevice returned nil after a panicking device read")
 	}
 	_ = peer.Close()
+}
+
+func TestMeshDirectSurvivesDeviceGap(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+
+	linkEnd, peer := newMeshPipe()
+	h.AddDialedLink("b", linkEnd)
+	_ = readMeshPacket(t, peer)
+	_, _ = peer.Write(bytes.Repeat([]byte{0x47}, keepAliveHeaderLength))
+	deadline := time.Now().Add(time.Second)
+	for {
+		h.mu.RLock()
+		link := h.links["b"]
+		h.mu.RUnlock()
+		if link != nil && link.ready.Load() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("direct link did not become ready")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	_, _ = peer.Write(udpPacket("10.0.0.2", "10.0.0.1", 1, 1))
+	time.Sleep(20 * time.Millisecond)
+	h.mu.RLock()
+	still := h.links["b"] != nil
+	h.mu.RUnlock()
+	if !still {
+		t.Fatal("direct link was torn down by a device gap")
+	}
+	if h.countDeviceDrop.Load() == 0 {
+		t.Fatal("device-drop counter did not move")
+	}
+
+	recv := attachMeshDevice(t, h)
+	_, _ = peer.Write(udpPacket("10.0.0.2", "10.0.0.1", 1, 2))
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("direct link did not resume after the device returned")
+	}
+}
+
+func TestMeshHubSurvivesDeviceGap(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	linkEnd, peer := newMeshPipe()
+	h.SetHubLink(linkEnd)
+	_ = readMeshPacket(t, peer)
+
+	_, _ = peer.Write(udpPacket("10.0.0.9", "10.0.0.1", 1, 1))
+	time.Sleep(20 * time.Millisecond)
+	h.mu.RLock()
+	still := h.hub != nil
+	h.mu.RUnlock()
+	if !still {
+		t.Fatal("hub link was torn down by a device gap")
+	}
+
+	recv := attachMeshDevice(t, h)
+	_, _ = peer.Write(udpPacket("10.0.0.9", "10.0.0.1", 1, 2))
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("hub link did not resume after the device returned")
+	}
+}
+
+func TestMeshHandleFirstFrameMarksReady(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	linkEnd.remote = "b"
+	go h.Handle(context.Background(), linkEnd)
+	reg := keepAliveFrame("", net.ParseIP("10.0.0.2"))
+	_, _ = peer.Write(reg)
+	_ = readMeshPacketWithin(peer, time.Second)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		h.mu.RLock()
+		link := h.links["b"]
+		h.mu.RUnlock()
+		if link != nil && link.ready.Load() {
+			if link.bytesIn.Load() < uint64(len(reg)) {
+				t.Fatalf("bytesIn = %d, want at least the first frame %d", link.bytesIn.Load(), len(reg))
+			}
+			if link.lastInbound.Load() == 0 {
+				t.Fatal("first frame did not mark lastInbound")
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first frame did not mark the link ready")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestMeshAddressChangeClosesLink(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	h.installLink(link)
+	closed := make(chan MeshCloseReason, 1)
+	h.SetLinkClosed(func(peer string, reason MeshCloseReason) {
+		if peer == "b" {
+			closed <- reason
+		}
+	})
+
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.3"), Key: "b", Direct: true}})
+	select {
+	case reason := <-closed:
+		if reason != MeshCloseMembership {
+			t.Fatalf("close reason = %q, want membership", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("address change did not close the link")
+	}
+}
+
+func TestMeshInstallAfterClose(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	h.Close()
+
+	hubEnd, hubPeer := newMeshPipe()
+	h.SetHubLink(hubEnd)
+	if got := readMeshPacketWithin(hubPeer, 100*time.Millisecond); got != nil {
+		t.Fatalf("SetHubLink after Close wrote %x", got)
+	}
+	h.mu.RLock()
+	hub := h.hub
+	h.mu.RUnlock()
+	if hub != nil {
+		t.Fatal("SetHubLink after Close installed a link")
+	}
+
+	directEnd, directPeer := newMeshPipe()
+	h.AddDialedLink("b", directEnd)
+	if got := readMeshPacketWithin(directPeer, 100*time.Millisecond); got != nil {
+		t.Fatalf("AddDialedLink after Close wrote %x", got)
+	}
+	h.mu.RLock()
+	_, installed := h.links["b"]
+	h.mu.RUnlock()
+	if installed {
+		t.Fatal("AddDialedLink after Close installed a link")
+	}
+
+	handleEnd, handlePeer := newMeshPipe()
+	handleEnd.remote = "b"
+	_, _ = handlePeer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2")))
+	if err := h.Handle(context.Background(), handleEnd); err != nil {
+		t.Fatalf("Handle after Close: %v", err)
+	}
+	h.mu.RLock()
+	_, installed = h.links["b"]
+	h.mu.RUnlock()
+	if installed {
+		t.Fatal("Handle after Close installed a link")
+	}
+
+	devEnd, devPeer := newMeshPipe()
+	if err := h.RunDevice(devEnd); !errors.Is(err, ErrTun) {
+		t.Fatalf("RunDevice after Close = %v, want ErrTun", err)
+	}
+	if got := readMeshPacketWithin(devPeer, 100*time.Millisecond); got != nil {
+		t.Fatalf("RunDevice after Close wrote %x", got)
+	}
+}
+
+func TestMeshCounters(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true, Blocked: true}})
+	h.dispatch(udpPacket("10.0.0.1", "10.0.0.2", 1, 1))
+	c := h.MeshCounters()
+	if c.Blocked == 0 {
+		t.Fatalf("MeshCounters = %+v, want Blocked > 0", c)
+	}
+}
+
+func TestMeshMultiAddressRegistration(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{
+		{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true},
+		{IP: net.ParseIP("10.0.0.3"), Key: "b", Direct: true},
+	})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	h.AddDialedLink("b", linkEnd)
+	_ = readMeshPacket(t, peer) // our registration
+	if _, err := peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2"), net.ParseIP("10.0.0.3"))); err != nil {
+		t.Fatalf("write registration: %v", err)
+	}
+	if got := readMeshPacketWithin(peer, time.Second); len(got) == 0 {
+		t.Fatal("multi-address registration was not echoed")
+	}
+	if _, err := peer.Write(udpPacket("10.0.0.3", "10.0.0.1", 1, 1)); err != nil {
+		t.Fatalf("write packet: %v", err)
+	}
+	if got := readDevicePacketWithin(recv, time.Second); len(got) == 0 {
+		t.Fatal("packet from the second member address did not reach the device")
+	}
+}
+
+func TestMeshDisabledMemberIsDropped(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true, Disabled: true}})
+	hubLink, hubPeer := meshTestLink(t, "hub", true)
+	h.hub = hubLink
+
+	h.dispatch(udpPacket("10.0.0.1", "10.0.0.2", 1, 1))
+	expectNoMeshPacket(t, hubPeer)
+	if h.countDisabled.Load() == 0 {
+		t.Fatal("disabled counter did not move")
+	}
+}
+
+func TestMeshDropLink(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	h.installLink(link)
+	h.DropLink("b")
+	h.mu.RLock()
+	_, installed := h.links["b"]
+	h.mu.RUnlock()
+	if installed {
+		t.Fatal("DropLink left the link installed")
+	}
+}
+
+func TestMeshIPv6Dispatch(t *testing.T) {
+	h := newMeshTestHandler("fd00::1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("fd00::2"), Key: "b", Direct: true}})
+	link, peer := meshTestLink(t, "b", false)
+	link.ready.Store(true)
+	h.links["b"] = link
+
+	h.dispatch(udp6Packet("fd00::1", "fd00::2", 1, 1))
+	if got := readMeshPacket(t, peer); len(got) == 0 {
+		t.Fatal("IPv6 packet did not reach the direct link")
+	}
+}
+
+func TestMeshConnectingStatus(t *testing.T) {
+	h := newMeshTestHandler("10.0.0.1")
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	link, _ := meshLinkFor(t, h, "b", true)
+	h.installLink(link)
+	for _, row := range h.MeshStatus() {
+		if row.Key == "b" {
+			if row.State != "connecting" {
+				t.Fatalf("b state = %q, want connecting", row.State)
+			}
+			return
+		}
+	}
+	t.Fatal("b row missing")
+}
+
+func TestMeshEmptyLocalIPsDropsInbound(t *testing.T) {
+	h := newMeshTestHandler()
+	h.SetMembers([]MeshMember{{IP: net.ParseIP("10.0.0.2"), Key: "b", Direct: true}})
+	recv := attachMeshDevice(t, h)
+
+	linkEnd, peer := newMeshPipe()
+	h.AddDialedLink("b", linkEnd)
+	_ = readMeshPacket(t, peer)
+	_, _ = peer.Write(keepAliveFrame("", net.ParseIP("10.0.0.2")))
+	_ = readMeshPacketWithin(peer, time.Second)
+	_, _ = peer.Write(udpPacket("10.0.0.2", "10.0.0.1", 1, 1))
+	expectNoDevicePacket(t, recv)
+	if h.countForeignDst.Load() == 0 {
+		t.Fatal("empty local IPs did not drop the inbound packet as foreign")
+	}
 }

@@ -18,7 +18,7 @@ var (
 	meshRegisterInterval    = 10 * time.Second
 	meshIdleTimeout         = 5 * time.Minute
 	meshWriteTimeout        = 30 * time.Second
-	meshWatchdogInterval    = 100 * time.Millisecond
+	meshWatchdogInterval    = time.Second
 )
 
 // meshLink is one p2p datagram stream: a hub link or an on-demand direct link.
@@ -139,14 +139,26 @@ func (l *meshLink) writeLoop() {
 
 // recoverPanic keeps a c-shared process alive: the tun code runs inside an
 // Android app, where an unrecovered goroutine panic aborts the whole process.
-func (l *meshLink) recoverPanic(where string) {
-	if r := recover(); r != nil {
+var (
+	meshLinkPanicLog = func(where, peer string, r any) {
 		slog.Error("tun mesh link panic",
 			"where", where,
-			"peer", l.key,
+			"peer", peer,
 			"panic", r,
 			"stack", string(debug.Stack()),
 		)
+	}
+	meshDevicePanicLog = func(where string, r any) {
+		slog.Error("tun mesh "+where+" panic",
+			"panic", r,
+			"stack", string(debug.Stack()),
+		)
+	}
+)
+
+func (l *meshLink) recoverPanic(where string) {
+	if r := recover(); r != nil {
+		meshLinkPanicLog(where, l.key, r)
 		l.close(MeshCloseUnhealthy)
 	}
 }
@@ -169,6 +181,8 @@ func (l *meshLink) writeFrame(pkt []byte) error {
 func (l *meshLink) readLoop(first []byte, onFrame func([]byte) error) {
 	defer l.recoverPanic("read")
 	if len(first) > 0 {
+		l.bytesIn.Add(uint64(len(first)))
+		l.markInbound()
 		if err := l.handleFrame(first, onFrame); err != nil {
 			l.close(MeshCloseRemote)
 			return

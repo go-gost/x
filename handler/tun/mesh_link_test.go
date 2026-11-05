@@ -192,7 +192,7 @@ func TestMeshLinkFirstInboundTimeout(t *testing.T) {
 func TestMeshLinkIdleDirectLink(t *testing.T) {
 	oldFirst, oldInbound, oldIdle := meshFirstInboundTimeout, meshInboundTimeout, meshIdleTimeout
 	meshFirstInboundTimeout = time.Second
-	meshInboundTimeout = time.Second
+	meshInboundTimeout = 10 * time.Second
 	meshIdleTimeout = 50 * time.Millisecond
 	t.Cleanup(func() {
 		meshFirstInboundTimeout, meshInboundTimeout, meshIdleTimeout = oldFirst, oldInbound, oldIdle
@@ -242,6 +242,7 @@ func TestMeshLinkCloseIsOnce(t *testing.T) {
 }
 
 func TestMeshLinkPanicBecomesClose(t *testing.T) {
+	silenceMeshPanicLogs(t)
 	linkEnd, peer := newMeshPipe()
 	reasons := make(chan MeshCloseReason, 1)
 	l := newMeshLink("b", linkEnd, true, false, func(_ *meshLink, r MeshCloseReason) {

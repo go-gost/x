@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/netip"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -16,7 +14,6 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/logger"
 	md "github.com/go-gost/core/metadata"
-	tun_util "github.com/go-gost/x/internal/util/tun"
 	listenertun "github.com/go-gost/x/listener/tun"
 	xlogger "github.com/go-gost/x/logger"
 )
@@ -78,9 +75,27 @@ type MeshConfig struct {
 	LocalIPs []net.IP
 }
 
+// MeshCounters is the handler's drop/routing tally. Plan 2's doctor reads it;
+// the handler itself only logs at debug so a blocked stream cannot flood the
+// log.
+type MeshCounters struct {
+	NonIP               uint64
+	Loop                uint64
+	NoRoute             uint64
+	DirectFallback      uint64
+	QueueFull           uint64
+	Oversize            uint64
+	Blocked             uint64
+	Disabled            uint64
+	ForeignSrc          uint64
+	ForeignDst          uint64
+	RegistrationRefused uint64
+	DeviceDrop          uint64
+}
+
 // MeshHandler is the subset of the mesh handler's surface needed by its
-// owner. Later tasks extend it with the handler.Handler contract and the link
-// installation/status methods.
+// owner. It embeds handler.Handler: the service calls Handle for inbound
+// direct streams, while RunDevice owns the device reader.
 type MeshHandler interface {
 	handler.Handler
 	RunDevice(conn net.Conn) error
@@ -91,6 +106,7 @@ type MeshHandler interface {
 	SetDirectNeeded(func(peer string))
 	SetLinkClosed(func(peer string, reason MeshCloseReason))
 	MeshStatus() []MeshPeerStatus
+	MeshCounters() MeshCounters
 	Close() error
 }
 
@@ -123,6 +139,7 @@ type meshHandler struct {
 	countForeignSrc          atomic.Int64
 	countForeignDst          atomic.Int64
 	countRegistrationRefused atomic.Int64
+	countDeviceDrop          atomic.Int64
 }
 
 // NewMeshHandler builds an inert mesh handler: it owns no device and no links
@@ -139,6 +156,11 @@ func NewMeshHandler(cfg MeshConfig, opts ...handler.Option) MeshHandler {
 	if log == nil {
 		log = xlogger.Nop()
 	}
+	localIPs := make([]net.IP, 0, len(cfg.LocalIPs))
+	for _, ip := range cfg.LocalIPs {
+		localIPs = append(localIPs, append(net.IP(nil), ip...))
+	}
+	cfg.LocalIPs = localIPs
 
 	return &meshHandler{
 		cfg:        cfg,
@@ -182,6 +204,7 @@ func (h *meshHandler) RunDevice(conn net.Conn) (err error) {
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
+		_ = conn.Close()
 		return ErrTun
 	}
 	if h.device != nil && h.device != conn {
@@ -200,10 +223,7 @@ func (h *meshHandler) RunDevice(conn net.Conn) (err error) {
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("tun mesh device panic",
-				"panic", r,
-				"stack", string(debug.Stack()),
-			)
+			meshDevicePanicLog("device", r)
 			err = fmt.Errorf("tun mesh device panic: %v", r)
 		}
 	}()
@@ -323,6 +343,11 @@ func (h *meshHandler) SetHubLink(conn net.Conn) {
 	})
 
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
 	old := h.hub
 	h.hub = l
 	h.mu.Unlock()
@@ -342,8 +367,9 @@ func (h *meshHandler) AddDialedLink(peer string, conn net.Conn) {
 	h.mu.RLock()
 	m, ok := h.members[peer]
 	localKey, hubKey := h.cfg.LocalKey, h.cfg.HubKey
+	closed := h.closed
 	h.mu.RUnlock()
-	if !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
+	if closed || !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
 		_ = conn.Close()
 		return
 	}
@@ -351,7 +377,9 @@ func (h *meshHandler) AddDialedLink(peer string, conn net.Conn) {
 	l := newMeshLink(peer, conn, true, false, func(l *meshLink, reason MeshCloseReason) {
 		h.removeLink(l, reason, false)
 	})
-	h.installLink(l)
+	if !h.installLink(l) {
+		return
+	}
 	l.start(nil, meshRegistrationFrame(h.cfg.LocalIPs), func(pkt []byte) error {
 		return h.handleDirectFrame(l, pkt)
 	})
@@ -371,6 +399,21 @@ func (h *meshHandler) DropLink(peer string) {
 // dedupe preference. It returns whether l won; a loser is closed with dedup.
 func (h *meshHandler) installLink(l *meshLink) bool {
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		l.close(MeshCloseShutdown)
+		return false
+	}
+	m, ok := h.members[l.key]
+	if !ok || !m.Direct || m.Disabled || m.Blocked {
+		reason := MeshCloseMembership
+		if ok && m.Blocked {
+			reason = MeshCloseBlocked
+		}
+		h.mu.Unlock()
+		l.close(reason)
+		return false
+	}
 	old := h.links[l.key]
 	if old != nil && old != l && !meshLinkPreferred(l, old, h.cfg.LocalKey) {
 		h.mu.Unlock()
@@ -434,10 +477,7 @@ func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.Ha
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("tun mesh handle panic",
-				"panic", r,
-				"stack", string(debug.Stack()),
-			)
+			meshDevicePanicLog("handle", r)
 			_ = conn.Close()
 			err = fmt.Errorf("tun mesh handle panic: %v", r)
 		}
@@ -447,8 +487,9 @@ func (h *meshHandler) Handle(ctx context.Context, conn net.Conn, _ ...handler.Ha
 	h.mu.RLock()
 	m, ok := h.members[peer]
 	localKey, hubKey := h.cfg.LocalKey, h.cfg.HubKey
+	closed := h.closed
 	h.mu.RUnlock()
-	if !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
+	if closed || !ok || peer == localKey || peer == hubKey || !m.Direct || m.Blocked || m.Disabled {
 		_ = conn.Close()
 		return nil
 	}
@@ -490,11 +531,12 @@ func (h *meshHandler) handleHubFrame(pkt []byte) error {
 	if isKeepaliveFrame(pkt) {
 		return nil
 	}
-	if !tun_util.IPv4Packet(pkt) && !tun_util.IPv6Packet(pkt) {
+	if !isTunFrame(pkt) {
 		h.countNonIP.Add(1)
 		return nil
 	}
-	return h.writeDevice(pkt)
+	h.deliverToDevice(pkt)
+	return nil
 }
 
 func (h *meshHandler) handleDirectFrame(link *meshLink, pkt []byte) error {
@@ -516,7 +558,7 @@ func (h *meshHandler) handleDirectFrame(link *meshLink, pkt []byte) error {
 		return nil
 	}
 
-	if !tun_util.IPv4Packet(pkt) && !tun_util.IPv6Packet(pkt) {
+	if !isTunFrame(pkt) {
 		h.countNonIP.Add(1)
 		return nil
 	}
@@ -538,13 +580,28 @@ func (h *meshHandler) handleDirectFrame(link *meshLink, pkt []byte) error {
 		h.countForeignDst.Add(1)
 		return nil
 	}
-	return h.writeDevice(pkt)
+	h.deliverToDevice(pkt)
+	return nil
+}
+
+// deliverToDevice writes one inbound packet. A device gap (a VPN rebuild, or a
+// close racing a link reader) is a dropped packet, never a peer failure: the
+// link must survive until the supervisor attaches the replacement device.
+func (h *meshHandler) deliverToDevice(pkt []byte) {
+	if err := h.writeDevice(pkt); err != nil {
+		h.countDeviceDrop.Add(1)
+		h.log.Debugf("tun mesh: device write dropped: %v", err)
+	}
 }
 
 func (h *meshHandler) memberIPsFor(peer string) []net.IP {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return append([]net.IP(nil), h.memberIPs[peer]...)
+	out := make([]net.IP, 0, len(h.memberIPs[peer]))
+	for _, ip := range h.memberIPs[peer] {
+		out = append(out, append(net.IP(nil), ip...))
+	}
+	return out
 }
 
 func ipIn(ip net.IP, ips []net.IP) bool {
@@ -603,12 +660,16 @@ func meshValidRegistration(ips []net.IP, frame []byte) bool {
 // untouched: it is the fallback, not a member link.
 func (h *meshHandler) SetMembers(members []MeshMember) {
 	h.mu.Lock()
+	oldIPs := h.memberIPs
 	h.members = make(map[string]MeshMember, len(members))
 	h.memberIPs = make(map[string][]net.IP, len(members))
 	h.memberByIP = make(map[netip.Addr]string, len(members))
 	for _, m := range members {
 		if m.Key == "" {
 			continue
+		}
+		if m.IP != nil {
+			m.IP = append(net.IP(nil), m.IP...)
 		}
 		h.members[m.Key] = m
 		if m.IP == nil {
@@ -628,6 +689,8 @@ func (h *meshHandler) SetMembers(members []MeshMember) {
 			membership = append(membership, l)
 		case m.Blocked:
 			blocked = append(blocked, l)
+		case !equalIPSets(oldIPs[key], h.memberIPs[key]):
+			membership = append(membership, l)
 		}
 	}
 	h.mu.Unlock()
@@ -638,6 +701,27 @@ func (h *meshHandler) SetMembers(members []MeshMember) {
 	for _, l := range blocked {
 		l.close(MeshCloseBlocked)
 	}
+}
+
+func equalIPSets(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	used := make([]bool, len(b))
+	for _, ip := range a {
+		found := false
+		for i, candidate := range b {
+			if !used[i] && ip.Equal(candidate) {
+				used[i] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // MeshStatus reports the hub row first, then members sorted by key. Without
@@ -651,7 +735,11 @@ func (h *meshHandler) MeshStatus() []MeshPeerStatus {
 	}
 	memberIPs := make(map[string][]net.IP, len(h.memberIPs))
 	for key, ips := range h.memberIPs {
-		memberIPs[key] = append([]net.IP(nil), ips...)
+		cp := make([]net.IP, 0, len(ips))
+		for _, ip := range ips {
+			cp = append(cp, append(net.IP(nil), ip...))
+		}
+		memberIPs[key] = cp
 	}
 	hub := h.hub
 	links := make(map[string]*meshLink, len(h.links))
@@ -732,6 +820,24 @@ func meshLastInbound(l *meshLink) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(0, ns)
+}
+
+// MeshCounters snapshots the drop/routing tally.
+func (h *meshHandler) MeshCounters() MeshCounters {
+	return MeshCounters{
+		NonIP:               uint64(h.countNonIP.Load()),
+		Loop:                uint64(h.countLoop.Load()),
+		NoRoute:             uint64(h.countNoRoute.Load()),
+		DirectFallback:      uint64(h.countDirectFallback.Load()),
+		QueueFull:           uint64(h.countQueueFull.Load()),
+		Oversize:            uint64(h.countOversize.Load()),
+		Blocked:             uint64(h.countBlocked.Load()),
+		Disabled:            uint64(h.countDisabled.Load()),
+		ForeignSrc:          uint64(h.countForeignSrc.Load()),
+		ForeignDst:          uint64(h.countForeignDst.Load()),
+		RegistrationRefused: uint64(h.countRegistrationRefused.Load()),
+		DeviceDrop:          uint64(h.countDeviceDrop.Load()),
+	}
 }
 
 // Close stops the handler. It is idempotent; links and the device are closed
