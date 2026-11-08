@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"net/http"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -17,7 +18,7 @@ type metadata struct {
 	// (used by SnifferBuilder.ReadTimeout). After sniffing completes and
 	// raw forwarding begins, this timeout no longer applies.
 	// Default: 15s.
-	readTimeout   time.Duration
+	readTimeout time.Duration
 	// idleTimeout is the idle read timeout applied to each direction of
 	// the bidirectional pipe (xnet.Pipe). A value of 0 or negative disables
 	// the timeout entirely, relying on TCP keepalives and context
@@ -39,6 +40,10 @@ type metadata struct {
 
 	stateless  bool
 	bufferSize int
+
+	// clientID derives the selector client identity from the parsed HTTP
+	// request. It is supplied by the host application through metadata.
+	clientID func(*http.Request) string
 }
 
 func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
@@ -59,6 +64,9 @@ func (h *forwardHandler) parseMetadata(md mdata.Metadata) (err error) {
 	h.md.sniffingTimeout = mdutil.GetDuration(md, "sniffing.timeout")
 	h.md.sniffingWebsocket = mdutil.GetBool(md, "sniffing.websocket")
 	h.md.sniffingWebsocketSampleRate = mdutil.GetFloat(md, "sniffing.websocket.sampleRate")
+	if fn, ok := md.Get("clientID").(func(*http.Request) string); ok {
+		h.md.clientID = fn
+	}
 
 	certFile := mdutil.GetString(md, "mitm.certFile", "mitm.caCertFile")
 	keyFile := mdutil.GetString(md, "mitm.keyFile", "mitm.caKeyFile")

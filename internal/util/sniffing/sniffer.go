@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -45,6 +46,11 @@ type HandleOptions struct {
 
 	HTTPKeepalive bool
 	ReadTimeout   time.Duration
+
+	// ClientID derives a stable client identity from the parsed request.
+	// The HTTP sniffer stores it in the selection context so hash and sticky
+	// selectors can keep a client on the same node.
+	ClientID func(*http.Request) string
 
 	Node *chain.Node
 	Hop  hop.Hop
@@ -138,6 +144,14 @@ func WithRecorderObject(ro *xrecorder.HandlerRecorderObject) HandleOption {
 func WithLog(log logger.Logger) HandleOption {
 	return func(opts *HandleOptions) {
 		opts.Log = log
+	}
+}
+
+// WithClientID sets the function that derives a stable client identity from
+// the parsed HTTP request. The identity is stored in the selection context.
+func WithClientID(fn func(*http.Request) string) HandleOption {
+	return func(opts *HandleOptions) {
+		opts.ClientID = fn
 	}
 }
 

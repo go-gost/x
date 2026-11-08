@@ -22,6 +22,7 @@ import (
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/recorder"
 	"github.com/go-gost/core/rewriter"
+	xctx "github.com/go-gost/x/ctx"
 	xlogger "github.com/go-gost/x/logger"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/klauspost/compress/zstd"
@@ -626,6 +627,52 @@ func TestHandleHTTP_BasicProxy(t *testing.T) {
 	}
 }
 
+func TestHandleHTTP_ClientIDReachesHop(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	hop := &clientIDHop{node: &chain.Node{Name: "backend", Addr: upstream.Listener.Addr().String()}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+	ro := &xrecorder.HandlerRecorderObject{}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- h.HandleHTTP(context.Background(), serverConn,
+			sniffing.WithHop(hop),
+			sniffing.WithClientID(func(*http.Request) string { return "sess-1" }),
+			sniffing.WithRecorderObject(ro),
+			sniffing.WithLog(xlogger.Nop()),
+		)
+	}()
+
+	req, _ := http.NewRequest("GET", "http://example.com/", nil)
+	if err := req.Write(clientConn); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(clientConn), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	clientConn.Close()
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	if hop.clientID != "sess-1" {
+		t.Fatalf("hop client ID = %q, want %q", hop.clientID, "sess-1")
+	}
+}
+
 func TestHandleHTTP_HTTP2Detection(t *testing.T) {
 	// HTTP/2 connection preface should be detected and handled separately.
 	h := &Sniffer{
@@ -802,6 +849,19 @@ func (m *mockHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.N
 
 // Ensure mockHop implements hop.Hop.
 var _ hop.Hop = (*mockHop)(nil)
+
+// clientIDHop records the client ID carried by the selection context.
+type clientIDHop struct {
+	node     *chain.Node
+	clientID string
+}
+
+func (h *clientIDHop) Select(ctx context.Context, opts ...hop.SelectOption) *chain.Node {
+	h.clientID = string(xctx.ClientIDFromContext(ctx))
+	return h.node
+}
+
+var _ hop.Hop = (*clientIDHop)(nil)
 
 // =============================================================================
 // HandleHTTP Edge Case Tests

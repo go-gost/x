@@ -36,7 +36,7 @@ type SnifferBuilder struct {
 	// ReadTimeout is the timeout for reading upstream HTTP response headers
 	// and TLS ServerHello during sniffing. Passed through to forwarder.Sniffer.
 	// See forwarder.Sniffer.ReadTimeout for details.
-	ReadTimeout         time.Duration
+	ReadTimeout time.Duration
 	// Cache is the HTTP response cache (nil when caching is disabled).
 	Cache *httpcache.Cache
 }
@@ -82,6 +82,7 @@ func (h *forwardHandler) handleSniffedProtocol(ctx context.Context, conn net.Con
 		sniffing.WithService(h.options.Service),
 		sniffing.WithDial(dial),
 		sniffing.WithHop(h.getHop()),
+		sniffing.WithClientID(h.md.clientID),
 		sniffing.WithBypass(h.options.Bypass),
 		sniffing.WithHTTPKeepalive(h.md.httpKeepalive),
 		sniffing.WithRecorderObject(ro),

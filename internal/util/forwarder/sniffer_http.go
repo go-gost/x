@@ -62,6 +62,12 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		return err
 	}
 
+	if ho.ClientID != nil {
+		if id := strings.TrimSpace(ho.ClientID(req)); id != "" {
+			ctx = xctx.ContextWithClientID(ctx, xctx.ClientID(id))
+		}
+	}
+
 	log := ho.Log
 	if log.IsLevelEnabled(logger.TraceLevel) {
 		dump, _ := httputil.DumpRequest(req, false)
