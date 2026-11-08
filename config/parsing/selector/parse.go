@@ -53,6 +53,10 @@ func ParseNodeSelector(cfg *config.SelectorConfig) selector.Selector[*chain.Node
 		strategy = xs.FIFOStrategy[*chain.Node]()
 	case "hash":
 		strategy = xs.HashStrategy[*chain.Node]()
+	case "sticky", "stickyhash":
+		strategy = xs.StickyHashStrategy[*chain.Node](func(n *chain.Node) string {
+			return n.Name
+		})
 	case "parallel":
 		strategy = xs.ParallelStrategy[*chain.Node](
 			xs.ParallelLimit(cfg.MaxParallel),

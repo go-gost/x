@@ -7,13 +7,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	
 
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/metadata"
 	"github.com/go-gost/core/selector"
 	xctx "github.com/go-gost/x/ctx"
-	mdutil "github.com/go-gost/x/metadata/util"
 )
 
 type roundRobinStrategy[T any] struct {
@@ -58,14 +55,7 @@ func (s *randomStrategy[T]) Apply(ctx context.Context, vs ...T) (v T) {
 
 	s.rw.Reset()
 	for i := range vs {
-		weight := 0
-		if md, _ := any(vs[i]).(metadata.Metadatable); md != nil {
-			weight = mdutil.GetInt(md.Metadata(), labelWeight)
-		}
-		if weight <= 0 {
-			weight = 1
-		}
-		s.rw.Add(vs[i], weight)
+		s.rw.Add(vs[i], nodeWeight(vs[i]))
 	}
 
 	return s.rw.Next()
