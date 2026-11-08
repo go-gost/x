@@ -808,11 +808,12 @@ var _ hop.Hop = (*mockHop)(nil)
 // =============================================================================
 
 func TestHandleHTTP_DialError(t *testing.T) {
+	rec := &captureRecorder{}
 	h := &Sniffer{
 		ReadTimeout: 5 * time.Second,
-		Recorder:    &noopRecorder{},
+		Recorder:    rec,
 	}
-	ro := &xrecorder.HandlerRecorderObject{}
+	ro := &xrecorder.HandlerRecorderObject{SID: "dial-error", Service: "test-svc"}
 
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
@@ -824,6 +825,7 @@ func TestHandleHTTP_DialError(t *testing.T) {
 			sniffing.WithDial(func(ctx context.Context, network, address string) (net.Conn, error) {
 				return nil, io.ErrUnexpectedEOF
 			}),
+			sniffing.WithHop(&mockHop{nodes: []*chain.Node{{Name: "backend", Addr: "example.com:80"}}}),
 			sniffing.WithRecorderObject(ro),
 			sniffing.WithLog(xlogger.Nop()),
 		)
@@ -848,6 +850,38 @@ func TestHandleHTTP_DialError(t *testing.T) {
 	err := <-errCh
 	if err == nil {
 		t.Error("expected error from failed dial, got nil")
+	}
+
+	// A dial failure must leave a stats row. Before the fix the sniffer
+	// returned before httpRoundTrip and the forward handler's defer skipped
+	// the zero-time recorder object, so the failure was invisible.
+	if len(rec.data) != 1 {
+		t.Fatalf("expected 1 recorder event for a dial failure, got %d", len(rec.data))
+	}
+	var recorded xrecorder.HandlerRecorderObject
+	if err := json.Unmarshal(rec.data[0], &recorded); err != nil {
+		t.Fatalf("unmarshal recorder event: %v", err)
+	}
+	if recorded.Node != "backend" {
+		t.Errorf("recorded node = %q, want %q", recorded.Node, "backend")
+	}
+	if recorded.Time.IsZero() {
+		t.Error("recorded time should be populated")
+	}
+	if recorded.Err == "" {
+		t.Error("recorded error should be populated")
+	}
+	if recorded.HTTP == nil {
+		t.Fatal("recorded HTTP object should be populated")
+	}
+	if recorded.HTTP.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("recorded status = %d, want %d", recorded.HTTP.StatusCode, http.StatusServiceUnavailable)
+	}
+	if recorded.HTTP.Method != http.MethodGet {
+		t.Errorf("recorded method = %q, want %q", recorded.HTTP.Method, http.MethodGet)
+	}
+	if recorded.HTTP.URI != "/" {
+		t.Errorf("recorded URI = %q, want %q", recorded.HTTP.URI, "/")
 	}
 }
 

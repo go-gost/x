@@ -169,6 +169,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 					if staleResp != nil && staleResp.Body != nil {
 						staleResp.Body.Close()
 					}
+					h.recordDialFailure(ctx, req, ro, dialRes, err, log)
 					if dialRes != nil {
 						dialRes.Write(conn)
 					}
@@ -781,6 +782,47 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	}
 
 	return
+}
+
+// recordDialFailure records a request that failed before an upstream
+// connection was established. The HTTP path normally records inside
+// httpRoundTrip, which a dial failure never reaches; without this row the
+// failure is invisible to the outer handler's recorder, which sees a zero
+// Time and skips the object.
+func (h *Sniffer) recordDialFailure(ctx context.Context, req *http.Request, ro *xrecorder.HandlerRecorderObject, res *http.Response, err error, log logger.Logger) {
+	if h.Recorder == nil || ro == nil {
+		return
+	}
+	start := ro.Time
+	if start.IsZero() {
+		start = time.Now()
+	}
+	ro.Time = start
+	ro.Duration = time.Since(start)
+	ro.Err = err.Error()
+	// Rebuild the request object: a keep-alive connection can carry several
+	// requests, and a stale HTTP object would name the previous one.
+	ro.HTTP = &xrecorder.HTTPRecorderObject{
+		Host:   req.Host,
+		Proto:  req.Proto,
+		Scheme: req.URL.Scheme,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		Request: xrecorder.HTTPRequestRecorderObject{
+			ContentLength: req.ContentLength,
+			Header:        req.Header.Clone(),
+		},
+	}
+	ro.HTTP.StatusCode = http.StatusServiceUnavailable
+	if res != nil && res.StatusCode != 0 {
+		ro.HTTP.StatusCode = res.StatusCode
+	}
+	if rerr := ro.Record(ctx, h.Recorder); rerr != nil && log != nil {
+		log.Errorf("record: %v", rerr)
+	}
+	// The caller records this object too unless Time is zero; clear it so the
+	// dial failure is recorded exactly once.
+	ro.Time = time.Time{}
 }
 
 // serveStale writes a stale (expired) cached response to the client when the
