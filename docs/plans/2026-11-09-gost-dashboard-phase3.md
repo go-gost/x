@@ -165,12 +165,12 @@ git commit -m "feat(dashboard): filter chains by current config"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `6bbdbfd`.
+- Files changed: `x/dashboard/collector.go`, `x/dashboard/apply.go`, `x/dashboard/collector_test.go`, `x/dashboard/apply_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run TestObserveChainsFiltersByAllowedNames -v` RED (compile error: `SetChainFilter` undefined) → GREEN; `go test ./dashboard/ -run TestApplySetsChainFilterFromConfig -v` RED (`chain-old should be filtered out`) → GREEN; `go test ./dashboard/ -count=1` PASS.
+- Review findings and fixes: none yet (final whole-branch review pending).
+- Deferred items/limitations: plugin chains are not in the filter; `Apply(nil)` clears filtering.
 
 ---
 
