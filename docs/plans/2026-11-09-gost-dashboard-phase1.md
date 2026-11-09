@@ -314,12 +314,12 @@ git -C x commit -m "feat(dashboard): wrap bypass, admission, hosts and resolver"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending/
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `e5c9753` (code); record follows in a docs-only commit.
+- Files changed: `x/dashboard/wrap.go`, `x/dashboard/wrap_test.go`, `x/dashboard/collector.go`, `x/dashboard/collector_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run 'TestWrap|TestCollector|TestSeries|TestFlush|TestReset' -count=1` → PASS; `go test ./dashboard/ -count=1` → PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet` and `gofmt -l` → clean.
+- Review findings and fixes: while wiring the resolver error test, found that a batch carrying both `ModuleStatsEvent{Errors: N}` and `ModuleErrorEvent{Seq: N}` double-counted to `2N` in the collector. Fixed by reconciling `Seq` against the stored cumulative value (`max`) instead of incrementing; `TestCollectorErrorEventDoesNotDoubleCountCumulativeStats` RED→GREEN.
+- Deferred items/limitations: no resolver cache hit/miss (needs an internal hook); latency is measured with `time.Now` on every call, which is acceptable but not free.
 
 ---
 
