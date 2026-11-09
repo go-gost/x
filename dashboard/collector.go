@@ -93,6 +93,7 @@ type Collector struct {
 	handlerCount map[string]int
 	modules      map[Key]*ModuleSnapshot
 	chains       map[string]*ChainSnapshot
+	chainFilter  map[string]struct{}
 	lastErrorSeq map[Key]uint64
 	events       eventRing
 	history      historyRing
@@ -456,10 +457,23 @@ func (c *Collector) ObserveChains(chains map[string]*ChainSnapshot) {
 
 	out := make(map[string]*ChainSnapshot, len(chains))
 	for name, ch := range chains {
+		if c.chainFilter != nil {
+			if _, ok := c.chainFilter[name]; !ok {
+				continue
+			}
+		}
 		cp := copyChain(ch)
 		out[name] = &cp
 	}
 	c.chains = out
+}
+
+// SetChainFilter replaces the set of chain names kept by ObserveChains. A
+// nil set disables filtering; an empty non-nil set filters out every chain.
+func (c *Collector) SetChainFilter(names map[string]struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chainFilter = names
 }
 
 // Reset clears all series and history while preserving the process start time
@@ -475,6 +489,7 @@ func (c *Collector) Reset() {
 	c.handlerCount = make(map[string]int)
 	c.modules = make(map[Key]*ModuleSnapshot)
 	c.chains = make(map[string]*ChainSnapshot)
+	c.chainFilter = nil
 	c.lastErrorSeq = make(map[Key]uint64)
 	c.events = newEventRing(len(c.events.buf))
 	c.history = newHistoryRing(len(c.history.buf))

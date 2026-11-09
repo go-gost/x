@@ -26,10 +26,26 @@ func Apply(cfg *config.Config) {
 	stopReporter()
 	Enable(on)
 	ResetState()
+	Default().SetChainFilter(chainNames(cfg))
 
 	if on {
 		startReporter()
 	}
+}
+
+// chainNames returns the set of chain names defined in cfg. A nil cfg means
+// no filtering; a non-nil cfg with no chains filters out every chain.
+func chainNames(cfg *config.Config) map[string]struct{} {
+	if cfg == nil {
+		return nil
+	}
+	names := make(map[string]struct{}, len(cfg.Chains))
+	for _, c := range cfg.Chains {
+		if c.Name != "" {
+			names[c.Name] = struct{}{}
+		}
+	}
+	return names
 }
 
 func startReporter() {

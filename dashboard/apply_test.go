@@ -77,3 +77,29 @@ func TestApplyStartsAndStopsReporter(t *testing.T) {
 		t.Fatal("reporter not stopped")
 	}
 }
+
+func TestApplySetsChainFilterFromConfig(t *testing.T) {
+	Apply(&config.Config{Chains: []*config.ChainConfig{{Name: "chain-0"}}})
+	t.Cleanup(func() { Apply(nil) })
+
+	Default().ObserveChains(map[string]*ChainSnapshot{
+		"chain-0":   {Name: "chain-0"},
+		"chain-old": {Name: "chain-old"},
+	})
+	snap := Default().Snapshot()
+	if _, ok := snap.Chains["chain-0"]; !ok {
+		t.Fatal("chain-0 should be present")
+	}
+	if _, ok := snap.Chains["chain-old"]; ok {
+		t.Fatal("chain-old should be filtered out")
+	}
+
+	Apply(&config.Config{})
+	Default().ObserveChains(map[string]*ChainSnapshot{
+		"chain-old": {Name: "chain-old"},
+	})
+	snap = Default().Snapshot()
+	if _, ok := snap.Chains["chain-old"]; ok {
+		t.Fatal("chain-old should disappear after reload with empty config")
+	}
+}
