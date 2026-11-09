@@ -357,6 +357,7 @@ git commit -m "feat(resolver): count cache hits, misses, and stores"
 - Modify: `x/dashboard/event.go`
 - Modify: `x/dashboard/snapshot.go`
 - Modify: `x/dashboard/wrap.go`
+- Modify: `x/dashboard/collector.go`
 - Modify: `x/dashboard/module_test.go`
 
 **Interfaces:**
@@ -468,16 +469,16 @@ Expected: PASS
 - [ ] **Step 8: Commit**
 
 ```bash
-git add dashboard/module.go dashboard/event.go dashboard/snapshot.go dashboard/wrap.go dashboard/module_test.go
+git add dashboard/module.go dashboard/event.go dashboard/snapshot.go dashboard/wrap.go dashboard/collector.go dashboard/module_test.go
 git commit -m "feat(dashboard): expose resolver cache stats"
 ```
 
 **Implementation record:**
-- Date/status: 2026-11-09 — complete.
-- Repo + commit: `go-gost/x` @ `1aff096`.
-- Files changed: `x/dashboard/module.go`, `x/dashboard/event.go`, `x/dashboard/snapshot.go`, `x/dashboard/wrap.go`, `x/dashboard/module_test.go`.
-- Tests/commands and results: `go test ./dashboard/ -run TestFlushEmitsResolverCacheStats -v` RED (compile error: `CacheHits`/`cacheStats` undefined) → GREEN; `go test ./dashboard/ -run TestWrapResolverCapturesStatsOnce -v` RED (returned `next` because the dashboard was disabled) → GREEN after `ResetState()`/`Enable(true)`; `go test ./dashboard/ -count=1` PASS.
-- Review findings and fixes: the capture-once test now enables the dashboard; `WrapResolver` correctly returns `next` unchanged when disabled.
+- Date/status: 2026-11-09 — complete after the post-review fix pass.
+- Repo + commit: `go-gost/x` @ `1aff096` (initial) + `04d769d` (carry cache stats through `Observe`) + `b176575` (test coverage).
+- Files changed: `x/dashboard/module.go`, `x/dashboard/event.go`, `x/dashboard/snapshot.go`, `x/dashboard/wrap.go`, `x/dashboard/collector.go`, `x/dashboard/module_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run TestFlushEmitsResolverCacheStats -v` RED (compile error: `CacheHits`/`cacheStats` undefined) → GREEN; `go test ./dashboard/ -run TestWrapResolverCapturesStatsOnce -v` RED (returned `next` because the dashboard was disabled) → GREEN after `ResetState()`/`Enable(true)`; `go test ./dashboard/ -count=1` PASS. The final review found the `Observe` copy had been left out of the original `1aff096` commit; it was RED at that commit and is GREEN at `04d769d`.
+- Review findings and fixes: Critical #1 (missing `Observe` copy) fixed at `04d769d`; Important #4 (race test and cache-count assertions) fixed at `b176575`; the capture-once test now enables the dashboard.
 - Deferred items/limitations: cache stats are cumulative and reset with the series epoch on reload.
 
 ---
@@ -528,9 +529,22 @@ git commit -m "docs(plans): record dashboard phase 3 implementation"
 ```
 
 **Implementation record:**
-- Date/status: 2026-11-09 — complete.
-- Repo + commit: `go-gost/x` @ `1aff096` (code); docs commit follows; memory repo @ `5323f91`.
+- Date/status: 2026-11-09 — complete after the post-review fix pass.
+- Repo + commit: code `6bbdbfd`, `496b761`, `1aff096`, `04d769d`, `3ccf0fe`, `b176575`; docs commit follows; memory repo @ `5323f91` (updated after the fix pass).
 - Files changed: `x/docs/plans/2026-11-09-gost-dashboard-phase3.md`, `.memory/notes/gost-dashboard-port-eval.md`.
-- Tests/commands and results: `go test ./dashboard/ ./resolver/ ./internal/util/resolver/ ./config/loader/ ./api/ ./chain/ -count=1` PASS; `go test -race ./dashboard/ ./resolver/ -count=1` PASS; `go vet ./dashboard/ ./resolver/ ./internal/util/resolver/` clean; `cd gost && go build ./cmd/gost` OK.
-- Review findings and fixes: final whole-branch review pending.
-- Deferred items/limitations: limiter aggregates remain deferred; plugin chains are not in the filter; cache counters are process-cumulative.
+- Tests/commands and results: `go test ./dashboard/ ./resolver/ ./internal/util/resolver/ ./config/loader/ ./api/ ./chain/ -count=1` PASS at `b176575`; `go test -race ./dashboard/ ./resolver/ ./internal/util/resolver/ -count=1` PASS; `go vet ./dashboard/ ./resolver/ ./internal/util/resolver/ ./api/` clean; `cd gost && go build ./cmd/gost` OK.
+- Review findings and fixes: final whole-branch review verdict "With fixes". Critical #1 fixed at `04d769d`; Important #2 fixed at `3ccf0fe`; Important #3 (plan defect) corrected in this record; Important #4 fixed at `b176575`.
+- Deferred items/limitations: limiter aggregates remain deferred; plugin chains are not in the filter; cache counters are process-cumulative; final-review minors #5-#8 deferred.
+
+---
+
+## Post-Review Fix Pass
+
+The final whole-branch review (`5e3470e..6bb4069`) found one Critical and three Important issues:
+
+1. **Critical — `Observe` copy omitted from the Task 3 commit.** The `CacheHits`/`CacheMisses`/`CacheStores` copy in `dashboard/collector.go` was left uncommitted, so `TestFlushEmitsResolverCacheStats` was RED at `1aff096`/`6bb4069`. Fixed at `04d769d`; RED at the committed tree, GREEN with the hunk.
+2. **Important — API chain mutations left the filter stale.** `createChain`/`updateChain`/`deleteChain` now call `dashboard.RefreshChainFilter(config.Global())` after `config.OnUpdate`. Test `TestChainMutationsRefreshDashboardFilter` (create then delete) is RED without the hook and GREEN with it; fixed at `3ccf0fe`.
+3. **Important — plan defect.** This plan's Task 3 Files list and commit command now include `x/dashboard/collector.go`.
+4. **Important — missing coverage.** Added `TestCollectorConcurrentObserveChainsAndFilter` (run under `-race`) and asserted the final `hits+misses == 800` / `stores == 800` counts in `TestCacheStatsConcurrent`; fixed at `b176575`.
+
+Minor findings deferred: `CacheStats` doc line for expired-hit/double-load semantics; `AllocsPerRun` assertion on `Resolve`; positive `Apply(nil)` filter test; locking comment for the test's direct `c.entries` write.
