@@ -177,7 +177,14 @@ func (c *Collector) Observe(_ context.Context, events []observer.Event, _ ...obs
 				c.lastErrorSeq[k] = e.Seq
 			}
 			m := c.moduleLocked(k)
-			m.Stats.Errors++
+			// Seq is the cumulative error count. The same batch usually also
+			// carries a ModuleStatsEvent with that count, so reconcile instead
+			// of adding twice. Seq 0 keeps the legacy increment.
+			if e.Seq == 0 {
+				m.Stats.Errors++
+			} else if e.Seq > m.Stats.Errors {
+				m.Stats.Errors = e.Seq
+			}
 			c.events.add(EventRecord{
 				Time:    now,
 				Level:   "warn",

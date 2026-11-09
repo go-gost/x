@@ -128,6 +128,19 @@ func TestCollectorModuleErrorSeqIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCollectorErrorEventDoesNotDoubleCountCumulativeStats(t *testing.T) {
+	c := NewCollector(ClockOption(func() time.Time { return time.Unix(100, 0) }))
+	_ = c.Observe(context.Background(), []observer.Event{
+		ModuleStatsEvent{Kind: "resolver", Name: "local", Errors: 1},
+		ModuleErrorEvent{Kind: "resolver", Name: "local", Message: "resolver error", Seq: 1},
+	})
+
+	snap := c.Snapshot()
+	if len(snap.Modules) != 1 || snap.Modules[0].Stats.Errors != 1 {
+		t.Fatalf("module errors = %+v, want 1", snap.Modules)
+	}
+}
+
 func TestCollectorResetClearsServiceSeenLatch(t *testing.T) {
 	c := NewCollector(ClockOption(func() time.Time { return time.Unix(100, 0) }))
 	_ = c.Observe(context.Background(), []observer.Event{
