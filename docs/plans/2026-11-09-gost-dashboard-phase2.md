@@ -382,12 +382,13 @@ git -C x commit -m "feat(dashboard): expose chain and node metrics"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `24f1fd4` (code); record follows in a docs-only commit.
+- Files changed: `x/dashboard/chains.go`, `x/dashboard/chains_test.go`, `x/dashboard/snapshot.go`, `x/dashboard/collector.go`, `x/dashboard/module.go`.
+- Tests/commands and results: `go test ./dashboard/ ./api/ ./config/loader/ ./hosts/ -count=1` → PASS; `go test -race ./dashboard/ ./config/loader/ -count=1` → PASS; `go vet` → clean; `cd gost && go build ./cmd/gost` → exit 0.
+- End-to-end smoke: ran the binary with `dashboard.enabled=true`, `metrics.addr=127.0.0.1:19090`, an HTTP service chained through `chain-0` to a local HTTP server; one forced proxy request returned 200, and the snapshot contained `chains.chain-0.nodes[0].stats = {connects:1, connectCount:1, connectDurationSumMicros:227, errors:0}` plus the matching chain aggregate. Process and backend stopped afterwards.
+- Review findings and fixes: none specific to this task; the real-registry test (`TestCollectChainStatsReadsPrometheusRegistry`) pins the Prometheus integration instead of only synthetic families.
+- Deferred items/limitations: chain metrics are process-cumulative and persist across reloads; `Gather()` runs every reporter tick and includes all metric families, so a very large deployment may want a family filter; removed chains remain in Prometheus until process restart.
 
 ---
 
