@@ -53,6 +53,10 @@ func Register(r *gin.Engine, opts *Options) {
 
 	router.StaticFS("/docs", http.FS(swaggerDoc))
 
+	dash := router.Group("/dashboard")
+	dash.Use(mwBasicAuth(opts.Auther))
+	dash.GET("/snapshot", getDashboardSnapshot)
+
 	config := router.Group("/config")
 	config.Use(mwBasicAuth(opts.Auther))
 

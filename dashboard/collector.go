@@ -273,17 +273,61 @@ func (c *Collector) Snapshot() Snapshot {
 		chains[name] = copyChain(ch)
 	}
 
+	services := c.servicesLocked()
+	rates := c.ratesLocked()
+	for name, s := range services {
+		if r, ok := rates[name]; ok {
+			s.Rate = r
+			services[name] = s
+		}
+	}
+
 	return Snapshot{
 		Version:               1,
 		GeneratedAt:           c.clock(),
 		StartedAt:             c.start,
 		SampleIntervalSeconds: int(c.historyInterval / time.Second),
-		Services:              c.servicesLocked(),
+		Services:              services,
 		Modules:               modules,
 		Chains:                chains,
 		Events:                c.events.list(),
 		History:               c.historyLocked(),
 	}
+}
+
+// ratesLocked derives per-second byte rates from the newest two history
+// samples. A service missing from the older sample has no rate yet.
+func (c *Collector) ratesLocked() map[string]ServiceRate {
+	points := c.history.list()
+	if len(points) < 2 {
+		return nil
+	}
+
+	last, prev := points[len(points)-1], points[len(points)-2]
+	dt := last.Time.Sub(prev.Time).Seconds()
+	if dt <= 0 {
+		return nil
+	}
+
+	out := make(map[string]ServiceRate, len(last.Services))
+	for name, cur := range last.Services {
+		old, ok := prev.Services[name]
+		if !ok {
+			continue
+		}
+		out[name] = ServiceRate{
+			InputBytesPerSecond:  byteRate(cur.InputBytes, old.InputBytes, dt),
+			OutputBytesPerSecond: byteRate(cur.OutputBytes, old.OutputBytes, dt),
+		}
+	}
+	return out
+}
+
+func byteRate(cur, prev uint64, seconds float64) float64 {
+	if cur < prev {
+		return 0
+	}
+	return float64(cur-prev) / seconds
 }
 
 // servicesLocked deep-copies services and folds per-client handler rows into
