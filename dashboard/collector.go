@@ -84,15 +84,17 @@ type handlerEntry struct {
 // safe for concurrent use. It deliberately does not implement io.Closer:
 // services close the observer they are given, and one collector is shared.
 type Collector struct {
-	mu          sync.RWMutex
-	start       time.Time
-	services    map[string]*ServiceSnapshot
-	serviceSeen map[string]bool
-	handlers    map[handlerKey]handlerEntry
-	modules     map[Key]*ModuleSnapshot
-	chains      map[string]*ChainSnapshot
-	events      eventRing
-	history     historyRing
+	mu           sync.RWMutex
+	start        time.Time
+	services     map[string]*ServiceSnapshot
+	serviceSeen  map[string]bool
+	handlers     map[handlerKey]handlerEntry
+	handlerCount map[string]int
+	modules      map[Key]*ModuleSnapshot
+	chains       map[string]*ChainSnapshot
+	lastErrorSeq map[Key]uint64
+	events       eventRing
+	history      historyRing
 
 	historyInterval time.Duration
 	clientLimit     int
@@ -119,8 +121,10 @@ func NewCollector(opts ...Option) *Collector {
 		services:        make(map[string]*ServiceSnapshot),
 		serviceSeen:     make(map[string]bool),
 		handlers:        make(map[handlerKey]handlerEntry),
+		handlerCount:    make(map[string]int),
 		modules:         make(map[Key]*ModuleSnapshot),
 		chains:          make(map[string]*ChainSnapshot),
+		lastErrorSeq:    make(map[Key]uint64),
 		events:          newEventRing(o.eventLimit),
 		history:         newHistoryRing(o.historySize),
 		historyInterval: o.historyInterval,
@@ -139,10 +143,14 @@ func (c *Collector) Observe(_ context.Context, events []observer.Event, _ ...obs
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	touched := make(map[string]struct{})
 	for _, ev := range events {
 		switch e := ev.(type) {
 		case xstats.StatsEvent:
 			c.observeStatsLocked(e, now)
+			if e.Kind == "handler" {
+				touched[e.Service] = struct{}{}
+			}
 		case service.ServiceEvent:
 			c.serviceLocked(e.Service).State = string(e.State)
 		case ModuleStatsEvent:
@@ -160,7 +168,15 @@ func (c *Collector) Observe(_ context.Context, events []observer.Event, _ ...obs
 		case ModuleStateEvent:
 			c.moduleLocked(Key{Kind: e.Kind, Name: e.Name, Service: e.Service}).State = e.State
 		case ModuleErrorEvent:
-			m := c.moduleLocked(Key{Kind: e.Kind, Name: e.Name, Service: e.Service})
+			k := Key{Kind: e.Kind, Name: e.Name, Service: e.Service}
+			// Retried batches replay the same error; Seq makes it idempotent.
+			if e.Seq != 0 && e.Seq <= c.lastErrorSeq[k] {
+				continue
+			}
+			if e.Seq != 0 {
+				c.lastErrorSeq[k] = e.Seq
+			}
+			m := c.moduleLocked(k)
 			m.Stats.Errors++
 			c.events.add(EventRecord{
 				Time:    now,
@@ -171,6 +187,12 @@ func (c *Collector) Observe(_ context.Context, events []observer.Event, _ ...obs
 				Message: e.Message,
 			})
 		}
+	}
+
+	// Trim once per batch, not per event: scanning the handler map for every
+	// event made eviction quadratic under the write lock.
+	for name := range touched {
+		c.trimHandlersLocked(name)
 	}
 
 	if len(events) > 0 && now.Sub(c.lastSample) >= c.historyInterval {
@@ -194,7 +216,11 @@ func (c *Collector) observeStatsLocked(e xstats.StatsEvent, now time.Time) {
 		}
 		c.serviceSeen[e.Service] = true
 	case "handler":
-		c.handlers[handlerKey{Service: e.Service, Client: e.Client}] = handlerEntry{
+		key := handlerKey{Service: e.Service, Client: e.Client}
+		if _, ok := c.handlers[key]; !ok {
+			c.handlerCount[e.Service]++
+		}
+		c.handlers[key] = handlerEntry{
 			stats: ServiceStats{
 				TotalConns:   e.TotalConns,
 				CurrentConns: e.CurrentConns,
@@ -204,7 +230,6 @@ func (c *Collector) observeStatsLocked(e xstats.StatsEvent, now time.Time) {
 			},
 			seen: now,
 		}
-		c.evictHandlersLocked(e.Service)
 	}
 }
 
@@ -227,26 +252,34 @@ func (c *Collector) moduleLocked(k Key) *ModuleSnapshot {
 	return m
 }
 
-// evictHandlersLocked drops the least recently seen handler row for a service
-// when it exceeds the per-service client limit.
-func (c *Collector) evictHandlersLocked(service string) {
-	count := 0
-	var (
-		oldestKey handlerKey
-		oldest    time.Time
-	)
-	for k, v := range c.handlers {
-		if k.Service != service {
-			continue
-		}
-		count++
-		if count == 1 || v.seen.Before(oldest) {
-			oldestKey, oldest = k, v.seen
+// trimHandlersLocked drops the least recently seen handler rows for a service
+// when it exceeds the per-service client limit. It runs once per Observe batch,
+// so a burst of new clients costs one sort rather than one full scan per event.
+func (c *Collector) trimHandlersLocked(service string) {
+	count := c.handlerCount[service]
+	if count <= c.clientLimit {
+		return
+	}
+
+	keys := make([]handlerKey, 0, count)
+	for k := range c.handlers {
+		if k.Service == service {
+			keys = append(keys, k)
 		}
 	}
-	if count > c.clientLimit {
-		delete(c.handlers, oldestKey)
+	sort.Slice(keys, func(i, j int) bool {
+		return c.handlers[keys[i]].seen.Before(c.handlers[keys[j]].seen)
+	})
+
+	remove := count - c.clientLimit
+	for _, k := range keys {
+		if remove == 0 {
+			break
+		}
+		delete(c.handlers, k)
+		remove--
 	}
+	c.handlerCount[service] = c.clientLimit
 }
 
 // Snapshot returns an immutable copy of the current read model.
@@ -399,6 +432,25 @@ func copyChain(ch *ChainSnapshot) ChainSnapshot {
 		}
 	}
 	return out
+}
+
+// Reset clears all series and history while preserving the process start time
+// and configured limits. Config reloads call it so services removed or
+// reconfigured by the new config do not leave stale state behind.
+func (c *Collector) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.services = make(map[string]*ServiceSnapshot)
+	c.serviceSeen = make(map[string]bool)
+	c.handlers = make(map[handlerKey]handlerEntry)
+	c.handlerCount = make(map[string]int)
+	c.modules = make(map[Key]*ModuleSnapshot)
+	c.chains = make(map[string]*ChainSnapshot)
+	c.lastErrorSeq = make(map[Key]uint64)
+	c.events = newEventRing(len(c.events.buf))
+	c.history = newHistoryRing(len(c.history.buf))
+	c.lastSample = c.clock()
 }
 
 var enabled atomic.Bool

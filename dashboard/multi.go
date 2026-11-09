@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"github.com/go-gost/core/observer"
@@ -10,8 +9,8 @@ import (
 
 // Wrap returns the observer to attach to a service or handler. When the
 // dashboard is disabled it returns next unchanged, so no extra goroutines or
-// stats are created. When it is enabled, events fan out to the collector and
-// to the configured observer, if any.
+// stats are created. When it is enabled, events go to the collector and to the
+// configured observer, if any.
 func Wrap(next observer.Observer) observer.Observer {
 	if !Enabled() {
 		return next
@@ -21,35 +20,30 @@ func Wrap(next observer.Observer) observer.Observer {
 	if next == nil {
 		return collector
 	}
-	return &multi{observers: []observer.Observer{collector, next}}
+	return &multi{collector: collector, next: next}
 }
 
-// multi fans events out to several observers. Dashboard failures never fail
-// the batch, because callers retry failed batches and would duplicate work.
+// multi fans events out to the collector and the configured observer. The
+// collector's result is ignored (it never fails); the configured observer's
+// error is propagated so its existing retry loop keeps working.
 type multi struct {
-	observers []observer.Observer
+	collector *Collector
+	next      observer.Observer
 }
 
 func (m *multi) Observe(ctx context.Context, events []observer.Event, opts ...observer.Option) error {
-	for _, o := range m.observers {
-		if o == nil {
-			continue
-		}
-		_ = o.Observe(ctx, events, opts...)
+	_ = m.collector.Observe(ctx, events, opts...)
+	if m.next == nil {
+		return nil
 	}
-	return nil
+	return m.next.Observe(ctx, events, opts...)
 }
 
-// Close closes the configured observers. The collector does not implement
-// io.Closer, so a shared collector is never closed by one service.
+// Close closes the configured observer only. The collector does not implement
+// io.Closer, so a collector shared by every service is never closed.
 func (m *multi) Close() error {
-	var errs []error
-	for _, o := range m.observers {
-		if c, ok := o.(io.Closer); ok {
-			if err := c.Close(); err != nil {
-				errs = append(errs, err)
-			}
-		}
+	if c, ok := m.next.(io.Closer); ok {
+		return c.Close()
 	}
-	return errors.Join(errs...)
+	return nil
 }

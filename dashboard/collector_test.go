@@ -90,6 +90,60 @@ func TestCollectorHandlerStatsRetryIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCollectorHandlerClientLimitEvictsOldest(t *testing.T) {
+	now := time.Unix(100, 0)
+	c := NewCollector(
+		ClientLimitOption(2),
+		ClockOption(func() time.Time { return now }),
+	)
+	observe := func(client string, input uint64) {
+		_ = c.Observe(context.Background(), []observer.Event{
+			xstats.StatsEvent{Kind: "handler", Service: "svc", Client: client, InputBytes: input},
+		})
+	}
+
+	observe("a", 1)
+	now = now.Add(time.Second)
+	observe("b", 2)
+	now = now.Add(time.Second)
+	observe("c", 4)
+
+	if got := c.Snapshot().Services["svc"].Stats.InputBytes; got != 6 {
+		t.Fatalf("input bytes = %d, want 6 (oldest client evicted)", got)
+	}
+}
+
+func TestCollectorModuleErrorSeqIsIdempotent(t *testing.T) {
+	c := NewCollector(ClockOption(func() time.Time { return time.Unix(100, 0) }))
+	ev := ModuleErrorEvent{Kind: "admission", Name: "lan", Service: "svc", Message: "denied", Seq: 1}
+	_ = c.Observe(context.Background(), []observer.Event{ev})
+	_ = c.Observe(context.Background(), []observer.Event{ev})
+
+	snap := c.Snapshot()
+	if len(snap.Events) != 1 {
+		t.Fatalf("events = %d, want 1 after retry", len(snap.Events))
+	}
+	if len(snap.Modules) != 1 || snap.Modules[0].Stats.Errors != 1 {
+		t.Fatalf("module errors = %+v, want 1", snap.Modules)
+	}
+}
+
+func TestCollectorResetClearsServiceSeenLatch(t *testing.T) {
+	c := NewCollector(ClockOption(func() time.Time { return time.Unix(100, 0) }))
+	_ = c.Observe(context.Background(), []observer.Event{
+		xstats.StatsEvent{Kind: "service", Service: "svc", InputBytes: 1000},
+	})
+
+	c.Reset()
+
+	_ = c.Observe(context.Background(), []observer.Event{
+		xstats.StatsEvent{Kind: "handler", Service: "svc", Client: "10.0.0.1", InputBytes: 7},
+	})
+	if got := c.Snapshot().Services["svc"].Stats.InputBytes; got != 7 {
+		t.Fatalf("input bytes = %d, want 7 after reset", got)
+	}
+}
+
 func TestCollectorConcurrentObserveAndSnapshot(t *testing.T) {
 	c := NewCollector()
 	var wg sync.WaitGroup

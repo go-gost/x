@@ -56,11 +56,16 @@ func (ModuleStateEvent) Type() observer.EventType { return EventModuleState }
 
 // ModuleErrorEvent is a bounded diagnostic event. It also increments the
 // module's error counter until the next cumulative stats snapshot.
+//
+// Seq is a per-module monotonically increasing sequence number. Producers
+// must set it so retried observer batches are idempotent; a zero Seq keeps
+// the legacy always-append behavior.
 type ModuleErrorEvent struct {
 	Kind    string
 	Name    string
 	Service string
 	Message string
+	Seq     uint64
 }
 
 // Type returns EventModuleError.

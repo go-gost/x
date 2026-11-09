@@ -7,6 +7,7 @@ import (
 	"github.com/go-gost/x/config"
 	"github.com/go-gost/x/config/loader"
 	"github.com/go-gost/x/config/parsing/parser"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -37,6 +38,7 @@ func reloadConfig(ctx *gin.Context) {
 	}
 
 	config.Set(cfg)
+	dashboard.Apply(cfg)
 
 	if err := loader.Load(cfg); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, err.Error()))
