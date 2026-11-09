@@ -68,5 +68,11 @@ func TestCacheStatsConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	_ = c.Stats()
+	st := c.Stats()
+	if st.Hits+st.Misses != 800 {
+		t.Fatalf("loads = %d, want 800", st.Hits+st.Misses)
+	}
+	if st.Stores != 800 {
+		t.Fatalf("stores = %d, want 800", st.Stores)
+	}
 }

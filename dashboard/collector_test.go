@@ -191,3 +191,27 @@ func TestObserveChainsFiltersByAllowedNames(t *testing.T) {
 		t.Fatal("chain-old should be filtered out")
 	}
 }
+
+func TestCollectorConcurrentObserveChainsAndFilter(t *testing.T) {
+	c := NewCollector()
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				c.ObserveChains(map[string]*ChainSnapshot{
+					"chain-0": {Name: "chain-0"},
+				})
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				c.SetChainFilter(map[string]struct{}{"chain-0": {}})
+				_ = c.Snapshot()
+			}
+		}()
+	}
+	wg.Wait()
+}
