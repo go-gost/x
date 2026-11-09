@@ -1,6 +1,13 @@
 package dashboard
 
-import "testing"
+import (
+	"context"
+	"net"
+	"testing"
+
+	"github.com/go-gost/core/resolver"
+	resolver_util "github.com/go-gost/x/internal/util/resolver"
+)
 
 func moduleStats(t *testing.T, snap Snapshot, kind, name, service string) ModuleStats {
 	t.Helper()
@@ -109,5 +116,50 @@ func TestResetStateClearsSeries(t *testing.T) {
 	Flush()
 	if got := len(Default().Snapshot().Modules); got != 0 {
 		t.Fatalf("modules after reset = %d, want 0", got)
+	}
+}
+
+type fakeResolverWithStats struct {
+	resolver.Resolver
+	stats resolver_util.CacheStats
+}
+
+func (f *fakeResolverWithStats) Resolve(context.Context, string, string, ...resolver.Option) ([]net.IP, error) {
+	return []net.IP{net.ParseIP("127.0.0.1")}, nil
+}
+
+func (f *fakeResolverWithStats) Stats() resolver_util.CacheStats { return f.stats }
+
+func TestFlushEmitsResolverCacheStats(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	r := &fakeResolverWithStats{stats: resolver_util.CacheStats{Hits: 3, Misses: 1, Stores: 2}}
+	w := WrapResolver("dns", r)
+	if _, err := w.Resolve(context.Background(), "ip", "example.com"); err != nil {
+		t.Fatal(err)
+	}
+	Flush()
+
+	m := moduleStats(t, Default().Snapshot(), "resolver", "dns", "")
+	if m.CacheHits != 3 || m.CacheMisses != 1 || m.CacheStores != 2 {
+		t.Fatalf("cache stats = %+v", m)
+	}
+}
+
+func TestWrapResolverCapturesStatsOnce(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	r := &fakeResolverWithStats{}
+	w := WrapResolver("dns", r)
+	rw, ok := w.(*resolverWrapper)
+	if !ok {
+		t.Fatal("WrapResolver did not return *resolverWrapper")
+	}
+	if rw.cacheStats == nil {
+		t.Fatal("cacheStats was not captured")
 	}
 }

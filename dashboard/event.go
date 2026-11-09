@@ -37,6 +37,9 @@ type ModuleStatsEvent struct {
 	OutputBytes      uint64
 	LatencySumMicros uint64
 	LatencyCount     uint64
+	CacheHits        uint64
+	CacheMisses      uint64
+	CacheStores      uint64
 }
 
 // Type returns EventModuleStats.

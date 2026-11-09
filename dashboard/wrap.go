@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
+	resolver_util "github.com/go-gost/x/internal/util/resolver"
 )
 
 // observe records one call and its latency. The nil check keeps callers from
@@ -178,17 +179,25 @@ func (w *hostsWrapper) Lookup(ctx context.Context, network, host string, opts ..
 }
 
 type resolverWrapper struct {
-	next resolver.Resolver
-	set  *seriesSet
+	next       resolver.Resolver
+	set        *seriesSet
+	cacheStats func() resolver_util.CacheStats
 }
 
 // WrapResolver instruments a resolver. A returned error counts as an error;
-// an empty result counts as a miss.
+// an empty result counts as a miss. Resolvers that expose cache counters have
+// them copied into the module series on each call.
 func WrapResolver(name string, next resolver.Resolver) resolver.Resolver {
 	if !Enabled() || next == nil {
 		return next
 	}
-	return &resolverWrapper{next: next, set: newSeriesSet("resolver", name)}
+	w := &resolverWrapper{next: next, set: newSeriesSet("resolver", name)}
+	if p, ok := next.(interface {
+		Stats() resolver_util.CacheStats
+	}); ok {
+		w.cacheStats = p.Stats
+	}
+	return w
 }
 
 func (w *resolverWrapper) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) ([]net.IP, error) {
@@ -196,6 +205,12 @@ func (w *resolverWrapper) Resolve(ctx context.Context, network, host string, opt
 	ips, err := w.next.Resolve(ctx, network, host, opts...)
 	c := w.set.get("")
 	c.observe(start)
+	if w.cacheStats != nil {
+		st := w.cacheStats()
+		c.cacheHits.Store(st.Hits)
+		c.cacheMisses.Store(st.Misses)
+		c.cacheStores.Store(st.Stores)
+	}
 	switch {
 	case err != nil:
 		c.fail()

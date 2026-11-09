@@ -58,6 +58,9 @@ type ModuleStats struct {
 	OutputBytes      uint64 `json:"outputBytes"`
 	LatencySumMicros uint64 `json:"latencySumMicros"`
 	LatencyCount     uint64 `json:"latencyCount"`
+	CacheHits        uint64 `json:"cacheHits"`
+	CacheMisses      uint64 `json:"cacheMisses"`
+	CacheStores      uint64 `json:"cacheStores"`
 }
 
 // ChainSnapshot is the runtime state of one proxy chain.

@@ -18,6 +18,10 @@ type moduleCounters struct {
 	latencySum   atomic.Uint64
 	latencyCount atomic.Uint64
 
+	cacheHits   atomic.Uint64
+	cacheMisses atomic.Uint64
+	cacheStores atomic.Uint64
+
 	lastErrReported atomic.Uint64
 }
 
@@ -32,6 +36,9 @@ func (c *moduleCounters) snapshot() ModuleStats {
 		Errors:           c.errors.Load(),
 		LatencySumMicros: c.latencySum.Load(),
 		LatencyCount:     c.latencyCount.Load(),
+		CacheHits:        c.cacheHits.Load(),
+		CacheMisses:      c.cacheMisses.Load(),
+		CacheStores:      c.cacheStores.Load(),
 	}
 }
 
@@ -123,6 +130,9 @@ func Flush() {
 			OutputBytes:      stats.OutputBytes,
 			LatencySumMicros: stats.LatencySumMicros,
 			LatencyCount:     stats.LatencyCount,
+			CacheHits:        stats.CacheHits,
+			CacheMisses:      stats.CacheMisses,
+			CacheStores:      stats.CacheStores,
 		})
 
 		if stats.Errors > 0 {
