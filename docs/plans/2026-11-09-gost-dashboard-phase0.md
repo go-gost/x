@@ -83,10 +83,14 @@ type ModuleStateEvent struct {
     Message             string
 }
 
-// ModuleErrorEvent is a bounded diagnostic event.
+// ModuleErrorEvent is a bounded diagnostic event. Seq is a per-module
+// monotonically increasing sequence number: retried batches must not
+// double-count, so the collector drops Seq <= last seen. Seq 0 keeps the
+// legacy always-append behavior.
 type ModuleErrorEvent struct {
     Kind, Name, Service string
     Message             string
+    Seq                 uint64
 }
 ```
 
@@ -710,6 +714,24 @@ git -C gost commit -m "feat: enable dashboard collector from config"
 - End-to-end smoke: built `/tmp/opencode/gost-dashboard`, ran with `api.addr=127.0.0.1:18080`, `dashboard.enabled=true`, one HTTP service with `enableStats=true`; `GET /dashboard/snapshot` returned `{"version":1,...,"services":{"smoke-http":{"state":"ready",...}}}`, proving `applyDashboard` + default attach work. Process stopped afterwards.
 - Review findings and fixes: empty `events` serialized as `null`; fixed `eventRing.list` to return a non-nil slice and extended the JSON test to pin `"events":[]`, `"modules":[]`, `"history":[]` RED→GREEN.
 - Deferred items/limitations: no parse-level test can observe the unexported handler options, so the two call sites are verified by build plus the end-to-end smoke; enabling the dashboard still starts handler stats goroutines and the pre-existing unbounded per-client map remains.
+
+---
+
+### Phase 0 final review fixes
+
+A fresh-context review found two Critical and three Important issues; all were fixed in one TDD pass (`go-gost/x` @ `eb9ff7e`, `go-gost/gost` @ `f4247b9`):
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Critical | `POST /config/reload` never called `dashboard.Enable`, so the UI reload path could not toggle the dashboard | new `dashboard.Apply(cfg)`; called from `api/config_reload.go`, `program.Start`, and `program.reloadConfig` |
+| Critical | handler-client eviction scanned all rows for every event under the write lock (quadratic at the 4096 cap) | per-service counts + one trim/sort per `Observe` batch |
+| Important | `multi` swallowed the configured observer's error, silently disabling its retry loop | collector error ignored, `next` error propagated |
+| Important | `ModuleErrorEvent` double-counted on retried batches | added `Seq` and a per-module last-sequence check |
+| Important | collector state and `serviceSeen` latch never cleared on reload | `Collector.Reset()` called by `Apply` |
+
+Verification: the listed unit tests pass, `-race` and `go vet` are clean, and an end-to-end reload smoke test returned `200` (enabled) → `POST /config/reload` with `enabled: false` → `404` → re-enable → `200`.
+
+Deferred minors (not fixed in Phase 0): history advances only when events arrive; `ChainSnapshot.Hops`/`NodeSnapshot` slices serialize as `null` when empty; `Snapshot` copies history twice per poll; `SampleIntervalSeconds` truncates sub-second intervals; the clock is read before the lock (approximate LRU); `gost` is not independently buildable until `x` is tagged and `gost/go.mod` is bumped; the pre-existing unbounded per-client handler map is only documented; with an auther configured, the disabled endpoint returns `401` before the handler can return `404`.
 
 ---
 
