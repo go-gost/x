@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
@@ -379,6 +380,28 @@ func TestRegister_ModulesReportToDashboard(t *testing.T) {
 		rs.Resolve(context.Background(), "ip", "example.com")
 		dashboard.Flush()
 		assertDashboardModule(t, "resolver", name, "", 1)
+	})
+
+	t.Run("auther", func(t *testing.T) {
+		dashboard.ResetState()
+		name := "test-auther-metrics"
+		r := registry.AutherRegistry()
+		t.Cleanup(func() { r.Unregister(name) })
+
+		if err := register(&config.Config{Authers: []*config.AutherConfig{{
+			Name:  name,
+			Auths: []*config.AuthConfig{{Username: "u", Password: "p"}},
+		}}}); err != nil {
+			t.Fatalf("register: %v", err)
+		}
+
+		au := r.Get(name)
+		if au == nil {
+			t.Fatal("auther not registered")
+		}
+		au.Authenticate(context.Background(), "u", "p", auth.WithService("svc"))
+		dashboard.Flush()
+		assertDashboardModule(t, "auther", name, "svc", 1)
 	})
 }
 

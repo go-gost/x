@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
@@ -62,6 +63,66 @@ func TestWrapBypassRecordsPerService(t *testing.T) {
 	}
 	if b.Calls != 1 || b.Hits != 1 {
 		t.Fatalf("svc-b = %+v", b)
+	}
+}
+
+type fakeAuther struct {
+	ok     bool
+	closed bool
+}
+
+func (f *fakeAuther) Authenticate(context.Context, string, string, ...auth.Option) (string, bool) {
+	return "", f.ok
+}
+
+func (f *fakeAuther) Close() error {
+	f.closed = true
+	return nil
+}
+
+func TestWrapAutherRecordsPerService(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	au := WrapAuther("users", &fakeAuther{ok: true})
+	au.Authenticate(context.Background(), "u", "p", auth.WithService("svc-a"))
+	au.Authenticate(context.Background(), "u", "p", auth.WithService("svc-b"))
+	Flush()
+
+	snap := Default().Snapshot()
+	a := moduleStats(t, snap, "auther", "users", "svc-a")
+	b := moduleStats(t, snap, "auther", "users", "svc-b")
+	if a.Calls != 1 || a.Hits != 1 {
+		t.Fatalf("svc-a = %+v", a)
+	}
+	if b.Calls != 1 || b.Hits != 1 {
+		t.Fatalf("svc-b = %+v", b)
+	}
+}
+
+func TestWrapAutherFailureIsMissAndCloseReachesInner(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	inner := &fakeAuther{ok: false}
+	au := WrapAuther("users", inner)
+	if _, ok := au.Authenticate(context.Background(), "u", "bad"); ok {
+		t.Fatal("expected authentication failure")
+	}
+	Flush()
+
+	got := moduleStats(t, Default().Snapshot(), "auther", "users", "")
+	if got.Calls != 1 || got.Misses != 1 {
+		t.Fatalf("got %+v", got)
+	}
+
+	if err := au.(io.Closer).Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !inner.closed {
+		t.Fatal("Close did not reach the wrapped auther")
 	}
 }
 

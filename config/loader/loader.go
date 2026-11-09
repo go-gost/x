@@ -157,7 +157,7 @@ func register(cfg *config.Config) error {
 			if err != nil {
 				return err
 			}
-			entries = append(entries, named[auth.Authenticator]{c.Name, a})
+			entries = append(entries, named[auth.Authenticator]{c.Name, dashboard.WrapAuther(c.Name, a)})
 		}
 		if err := registerGroup(entries, registry.AutherRegistry()); err != nil {
 			return err

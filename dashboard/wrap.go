@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/admission"
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
@@ -78,6 +79,42 @@ func (w *bypassWrapper) Contains(ctx context.Context, network, addr string, opts
 	}
 	return hit
 }
+
+type autherWrapper struct {
+	next auth.Authenticator
+	set  *seriesSet
+}
+
+// WrapAuther instruments an authenticator. Success counts as a hit, failure
+// as a miss. Credentials are never recorded.
+func WrapAuther(name string, next auth.Authenticator) auth.Authenticator {
+	if !Enabled() || next == nil {
+		return next
+	}
+	return &autherWrapper{next: next, set: newSeriesSet("auther", name)}
+}
+
+func (w *autherWrapper) Authenticate(ctx context.Context, user, pass string, opts ...auth.Option) (string, bool) {
+	var o auth.Options
+	if len(opts) > 0 {
+		for _, opt := range opts {
+			opt(&o)
+		}
+	}
+
+	start := time.Now()
+	id, ok := w.next.Authenticate(ctx, user, pass, opts...)
+	c := w.set.get(o.Service)
+	c.observe(start)
+	if ok {
+		c.hit()
+	} else {
+		c.miss()
+	}
+	return id, ok
+}
+
+func (w *autherWrapper) Close() error { return closeModule(w.next) }
 
 type admissionWrapper struct {
 	next admission.Admission
@@ -190,6 +227,8 @@ var (
 	_ io.Closer           = (*bypassWrapper)(nil)
 	_ admission.Admission = (*admissionWrapper)(nil)
 	_ io.Closer           = (*admissionWrapper)(nil)
+	_ auth.Authenticator  = (*autherWrapper)(nil)
+	_ io.Closer           = (*autherWrapper)(nil)
 	_ hosts.HostMapper    = (*hostsWrapper)(nil)
 	_ io.Closer           = (*hostsWrapper)(nil)
 	_ resolver.Resolver   = (*resolverWrapper)(nil)

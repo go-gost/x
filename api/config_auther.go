@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/auth"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -137,7 +138,7 @@ func createAuther(ctx *gin.Context) {
 	}
 
 	v := parser.ParseAuther(&req.Data)
-	if err := registry.AutherRegistry().Register(name, v); err != nil {
+	if err := registry.AutherRegistry().Register(name, dashboard.WrapAuther(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
 	}
@@ -194,7 +195,7 @@ func updateAuther(ctx *gin.Context) {
 	v := parser.ParseAuther(&req.Data)
 	registry.AutherRegistry().Unregister(name)
 
-	if err := registry.AutherRegistry().Register(name, v); err != nil {
+	if err := registry.AutherRegistry().Register(name, dashboard.WrapAuther(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
 	}
