@@ -22,13 +22,14 @@ func (r *eventRing) add(e EventRecord) {
 	}
 }
 
-// list returns the events oldest first.
+// list returns the events oldest first. It never returns nil so the JSON
+// snapshot always carries an array.
 func (r *eventRing) list() []EventRecord {
 	if len(r.buf) == 0 {
-		return nil
+		return []EventRecord{}
 	}
 	if !r.full {
-		return append([]EventRecord(nil), r.buf[:r.next]...)
+		return append([]EventRecord{}, r.buf[:r.next]...)
 	}
 	out := make([]EventRecord, 0, len(r.buf))
 	out = append(out, r.buf[r.next:]...)

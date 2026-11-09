@@ -12,11 +12,11 @@ import (
 	"github.com/go-gost/core/handler"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/listener"
-	"github.com/go-gost/core/rewriter"
-	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
+	"github.com/go-gost/core/rewriter"
+	"github.com/go-gost/core/routing"
 	"github.com/go-gost/core/selector"
 	"github.com/go-gost/core/service"
 	xadmission "github.com/go-gost/x/admission"
@@ -32,10 +32,9 @@ import (
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
 	node_parser "github.com/go-gost/x/config/parsing/node"
 	selector_parser "github.com/go-gost/x/config/parsing/selector"
+	"github.com/go-gost/x/dashboard"
 	xhop "github.com/go-gost/x/hop"
 	tls_util "github.com/go-gost/x/internal/util/tls"
-	xrouting "github.com/go-gost/x/routing"
-	xs "github.com/go-gost/x/selector"
 	quota_wrapper "github.com/go-gost/x/limiter/quota/wrapper"
 	cache_limiter "github.com/go-gost/x/limiter/traffic/cache"
 	"github.com/go-gost/x/metadata"
@@ -43,6 +42,8 @@ import (
 	xstats "github.com/go-gost/x/observer/stats"
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
+	xrouting "github.com/go-gost/x/routing"
+	xs "github.com/go-gost/x/selector"
 	xservice "github.com/go-gost/x/service"
 	"github.com/vishvananda/netns"
 )
@@ -415,7 +416,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 			handler.TLSConfigOption(tlsConfig),
 			handler.RateLimiterOption(registry.RateLimiterRegistry().Get(cfg.RLimiter)),
 			handler.TrafficLimiterOption(registry.TrafficLimiterRegistry().Get(cfg.Handler.Limiter)),
-			handler.ObserverOption(registry.ObserverRegistry().Get(cfg.Handler.Observer)),
+			handler.ObserverOption(dashboard.Wrap(registry.ObserverRegistry().Get(cfg.Handler.Observer))),
 			handler.RecordersOption(recorders...),
 			handler.CacheOption(registry.CacheRegistry().Get(cfg.Cache)),
 			handler.RewriterOption(rew),
@@ -439,6 +440,10 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 	if cfg.Handler.Metadata == nil {
 		cfg.Handler.Metadata = make(map[string]any)
 	}
+	if dashboard.Enabled() &&
+		(observerResetTraffic(cfg.Metadata) || observerResetTraffic(cfg.Handler.Metadata)) {
+		handlerLogger.Warn("dashboard: observer.resetTraffic is enabled; byte counters are interval values, not cumulative")
+	}
 	handlerLogger.Debugf("metadata: %v", cfg.Handler.Metadata)
 	if err := h.Init(metadata.NewMetadata(cfg.Handler.Metadata)); err != nil {
 		handlerLogger.Error("init: ", err)
@@ -457,7 +462,7 @@ func ParseService(cfg *config.ServiceConfig) (service.Service, error) {
 		xservice.PostDownOption(postDown),
 		xservice.RecordersOption(recorders...),
 		xservice.StatsOption(pStats),
-		xservice.ObserverOption(registry.ObserverRegistry().Get(cfg.Observer)),
+		xservice.ObserverOption(dashboard.Wrap(registry.ObserverRegistry().Get(cfg.Observer))),
 		xservice.ObserverPeriodOption(observerPeriod),
 		xservice.LoggerOption(serviceLogger),
 		xservice.LabelsOption(labels),
@@ -663,4 +668,13 @@ func chainGroup(name string, group *config.ChainGroupConfig, log logger.Logger) 
 		WithGroupEntries(entries...).
 		WithSelector(sel).
 		WithGroupLogger(log)
+}
+
+// observerResetTraffic reports whether the service or handler metadata turns
+// cumulative byte counters into per-interval values.
+func observerResetTraffic(md map[string]any) bool {
+	if md == nil {
+		return false
+	}
+	return mdutil.GetBool(metadata.NewMetadata(md), parsing.MDKeyObserverResetTraffic)
 }

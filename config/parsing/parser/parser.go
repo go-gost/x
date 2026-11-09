@@ -408,6 +408,7 @@ func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 		API:        cfg1.API,
 		Metrics:    cfg1.Metrics,
 		Profiling:  cfg1.Profiling,
+		Dashboard:  cfg1.Dashboard,
 	}
 	if cfg2.TLS != nil {
 		cfg.TLS = cfg2.TLS
@@ -420,6 +421,9 @@ func mergeConfig(cfg1, cfg2 *config.Config) *config.Config {
 	}
 	if cfg2.Metrics != nil {
 		cfg.Metrics = cfg2.Metrics
+	}
+	if cfg2.Dashboard != nil {
+		cfg.Dashboard = cfg2.Dashboard
 	}
 	if cfg2.Profiling != nil {
 		cfg.Profiling = cfg2.Profiling

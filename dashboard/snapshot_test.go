@@ -37,6 +37,11 @@ func TestSnapshotJSONHasStableKeys(t *testing.T) {
 			t.Fatalf("missing %s in %s", key, b)
 		}
 	}
+	for _, empty := range []string{`"modules":[]`, `"events":[]`, `"history":[]`} {
+		if !strings.Contains(string(b), empty) {
+			t.Fatalf("missing stable empty array %s in %s", empty, b)
+		}
+	}
 }
 
 func TestSnapshotRatesFromHistory(t *testing.T) {

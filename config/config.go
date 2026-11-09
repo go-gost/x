@@ -121,6 +121,12 @@ type MetricsConfig struct {
 	Auther string      `yaml:",omitempty" json:"auther,omitempty"`
 }
 
+// DashboardConfig enables the in-process monitoring dashboard read model,
+// exposed by the API service at GET /dashboard/snapshot.
+type DashboardConfig struct {
+	Enabled bool `yaml:",omitempty" json:"enabled,omitempty"`
+}
+
 type TLSConfig struct {
 	CertFile   string      `yaml:"certFile,omitempty" json:"certFile,omitempty"`
 	KeyFile    string      `yaml:"keyFile,omitempty" json:"keyFile,omitempty"`
@@ -808,6 +814,7 @@ type Config struct {
 	Profiling  *ProfilingConfig   `yaml:",omitempty" json:"profiling,omitempty"`
 	API        *APIConfig         `yaml:",omitempty" json:"api,omitempty"`
 	Metrics    *MetricsConfig     `yaml:",omitempty" json:"metrics,omitempty"`
+	Dashboard  *DashboardConfig   `yaml:",omitempty" json:"dashboard,omitempty"`
 }
 
 func (c *Config) Load() error {
