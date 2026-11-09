@@ -49,6 +49,7 @@ import (
 	router_parser "github.com/go-gost/x/config/parsing/router"
 	sd_parser "github.com/go-gost/x/config/parsing/sd"
 	service_parser "github.com/go-gost/x/config/parsing/service"
+	"github.com/go-gost/x/dashboard"
 	quota "github.com/go-gost/x/limiter/quota"
 	xp2p "github.com/go-gost/x/p2p"
 	"github.com/go-gost/x/registry"
@@ -166,7 +167,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[admission.Admission]
 		for _, c := range cfg.Admissions {
-			entries = append(entries, named[admission.Admission]{c.Name, admission_parser.ParseAdmission(c)})
+			entries = append(entries, named[admission.Admission]{c.Name, dashboard.WrapAdmission(c.Name, admission_parser.ParseAdmission(c))})
 		}
 		if err := registerGroup(entries, registry.AdmissionRegistry()); err != nil {
 			return err
@@ -176,7 +177,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[bypass.Bypass]
 		for _, c := range cfg.Bypasses {
-			entries = append(entries, named[bypass.Bypass]{c.Name, bypass_parser.ParseBypass(c)})
+			entries = append(entries, named[bypass.Bypass]{c.Name, dashboard.WrapBypass(c.Name, bypass_parser.ParseBypass(c))})
 		}
 		if err := registerGroup(entries, registry.BypassRegistry()); err != nil {
 			return err
@@ -190,7 +191,7 @@ func register(cfg *config.Config) error {
 			if err != nil {
 				return err
 			}
-			entries = append(entries, named[resolver.Resolver]{c.Name, r})
+			entries = append(entries, named[resolver.Resolver]{c.Name, dashboard.WrapResolver(c.Name, r)})
 		}
 		if err := registerGroup(entries, registry.ResolverRegistry()); err != nil {
 			return err
@@ -200,7 +201,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[hosts.HostMapper]
 		for _, c := range cfg.Hosts {
-			entries = append(entries, named[hosts.HostMapper]{c.Name, hosts_parser.ParseHostMapper(c)})
+			entries = append(entries, named[hosts.HostMapper]{c.Name, dashboard.WrapHosts(c.Name, hosts_parser.ParseHostMapper(c))})
 		}
 		if err := registerGroup(entries, registry.HostsRegistry()); err != nil {
 			return err
