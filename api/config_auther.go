@@ -137,7 +137,15 @@ func createAuther(ctx *gin.Context) {
 		return
 	}
 
-	v := parser.ParseAuther(&req.Data)
+	v, err := parser.ParseAutherWithError(&req.Data)
+	if err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, err.Error()))
+		return
+	}
+	if v == nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "auther is empty"))
+		return
+	}
 	if err := registry.AutherRegistry().Register(name, dashboard.WrapAuther(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("auther %s already exists", name)))
 		return
@@ -192,7 +200,15 @@ func updateAuther(ctx *gin.Context) {
 
 	req.Data.Name = name
 
-	v := parser.ParseAuther(&req.Data)
+	v, err := parser.ParseAutherWithError(&req.Data)
+	if err != nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, err.Error()))
+		return
+	}
+	if v == nil {
+		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeInvalid, "auther is empty"))
+		return
+	}
 	registry.AutherRegistry().Unregister(name)
 
 	if err := registry.AutherRegistry().Register(name, dashboard.WrapAuther(name, v)); err != nil {

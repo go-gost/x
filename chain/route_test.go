@@ -12,6 +12,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/hosts"
 	xlogger "github.com/go-gost/x/logger"
+	xmetrics "github.com/go-gost/x/metrics"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -339,4 +341,110 @@ func TestChainRoute_Connect_NonRetryableDialNoRetry(t *testing.T) {
 	_, err := rt.connect(context.Background(), xlogger.Nop())
 	require.Error(t, err)
 	require.Equal(t, 1, attempts)
+}
+
+func findChainMetric(t *testing.T, family, chainName, nodeName string) *dto.Metric {
+	t.Helper()
+	mfs, err := xmetrics.Registry().Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() != family {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := make(map[string]string)
+			for _, l := range m.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if labels["chain"] == chainName && labels["node"] == nodeName {
+				return m
+			}
+		}
+	}
+	return nil
+}
+
+func TestChainRoute_Connect_ErrorAttributedToFailingHop(t *testing.T) {
+	orig := xmetrics.IsEnabled()
+	xmetrics.Enable(true)
+	defer xmetrics.Enable(orig)
+
+	chainName := "test-route-error-hop"
+	c := NewChain(chainName)
+	node1 := chain.NewNode("hop-1", "127.0.0.1:8080",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &testConnector{})))
+	node2 := chain.NewNode("hop-2", "127.0.0.1:9090",
+		chain.TransportNodeOption(NewTransport(&testDialer{
+			handshakeFn: func(ctx context.Context, conn net.Conn, opts ...dialer.HandshakeOption) (net.Conn, error) {
+				return nil, errors.New("handshake failed")
+			},
+		}, &testConnector{})))
+	rt := NewRoute(ChainRouteOption(c))
+	rt.addNode(node1, node2)
+
+	_, err := rt.Dial(context.Background(), "tcp", "127.0.0.1:80")
+	require.Error(t, err)
+
+	m := findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-2")
+	require.NotNil(t, m, "expected error metric for hop-2")
+	require.Equal(t, float64(1), m.GetCounter().GetValue())
+	require.Nil(t, findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-1"))
+
+	d := findChainMetric(t, string(xmetrics.MetricNodeConnectDurationObserver), chainName, "hop-1")
+	require.NotNil(t, d, "expected duration metric for successful hop-1")
+	require.Equal(t, uint64(1), d.GetHistogram().GetSampleCount())
+	require.Nil(t, findChainMetric(t, string(xmetrics.MetricNodeConnectDurationObserver), chainName, "hop-2"))
+}
+
+func TestChainRoute_Connect_FirstNodeErrorAttributedToFirstHop(t *testing.T) {
+	orig := xmetrics.IsEnabled()
+	xmetrics.Enable(true)
+	defer xmetrics.Enable(orig)
+
+	chainName := "test-route-error-first"
+	c := NewChain(chainName)
+	node := chain.NewNode("hop-1", "127.0.0.1:8080",
+		chain.TransportNodeOption(NewTransport(&testDialer{
+			handshakeFn: func(ctx context.Context, conn net.Conn, opts ...dialer.HandshakeOption) (net.Conn, error) {
+				return nil, errors.New("handshake failed")
+			},
+		}, &testConnector{})))
+	rt := NewRoute(ChainRouteOption(c))
+	rt.addNode(node)
+
+	_, err := rt.Dial(context.Background(), "tcp", "127.0.0.1:80")
+	require.Error(t, err)
+
+	m := findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-1")
+	require.NotNil(t, m, "expected error metric for hop-1")
+	require.Equal(t, float64(1), m.GetCounter().GetValue())
+	require.Nil(t, findChainMetric(t, string(xmetrics.MetricNodeConnectDurationObserver), chainName, "hop-1"))
+}
+
+func TestChainRoute_Connect_PerHopDurationObserved(t *testing.T) {
+	orig := xmetrics.IsEnabled()
+	xmetrics.Enable(true)
+	defer xmetrics.Enable(orig)
+
+	chainName := "test-route-duration-hops"
+	c := NewChain(chainName)
+	node1 := chain.NewNode("hop-1", "127.0.0.1:8080",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &testConnector{})))
+	node2 := chain.NewNode("hop-2", "127.0.0.1:9090",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &testConnector{})))
+	rt := NewRoute(ChainRouteOption(c))
+	rt.addNode(node1, node2)
+
+	conn, err := rt.Dial(context.Background(), "tcp", "127.0.0.1:80")
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	conn.Close()
+
+	for _, name := range []string{"hop-1", "hop-2"} {
+		m := findChainMetric(t, string(xmetrics.MetricNodeConnectDurationObserver), chainName, name)
+		require.NotNil(t, m, "expected duration metric for %s", name)
+		require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
+	}
+	require.Nil(t, findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-1"))
+	require.Nil(t, findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-2"))
 }

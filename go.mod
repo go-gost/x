@@ -30,6 +30,7 @@ require (
 	github.com/pion/dtls/v3 v3.1.4
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/quic-go/quic-go v0.63.0
 	github.com/quic-go/webtransport-go v0.13.0
 	github.com/refraction-networking/utls v1.8.2
@@ -114,7 +115,6 @@ require (
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect

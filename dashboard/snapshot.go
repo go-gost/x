@@ -8,6 +8,7 @@ type Snapshot struct {
 	GeneratedAt           time.Time                  `json:"generatedAt"`
 	StartedAt             time.Time                  `json:"startedAt"`
 	SampleIntervalSeconds int                        `json:"sampleIntervalSeconds"`
+	MetricsEnabled        bool                       `json:"metricsEnabled"`
 	Services              map[string]ServiceSnapshot `json:"services"`
 	Modules               []ModuleSnapshot           `json:"modules"`
 	Chains                map[string]ChainSnapshot   `json:"chains"`
@@ -77,7 +78,7 @@ type HopSnapshot struct {
 type NodeSnapshot struct {
 	Name  string     `json:"name"`
 	State string     `json:"state,omitempty"`
-	Stats ChainStats `json:"stats,omitempty"`
+	Stats ChainStats `json:"stats"`
 }
 
 // ChainStats contains cumulative chain connection counters.

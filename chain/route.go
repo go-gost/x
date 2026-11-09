@@ -212,6 +212,7 @@ func (r *chainRoute) Bind(ctx context.Context, network, address string, opts ...
 func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn net.Conn, err error) {
 	network := "ip"
 	node := r.nodes[0]
+	failedNode := node
 
 	defer func() {
 		if r.options.Chain != nil {
@@ -219,19 +220,12 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			if m, ok := r.options.Chain.(selector.Markable); ok && m != nil {
 				marker = m.Marker()
 			}
-			var name string
-			if cn, _ := r.options.Chain.(chainNamer); cn != nil {
-				name = cn.Name()
-			}
 			// chain error
 			if err != nil {
 				if marker != nil {
 					marker.Mark()
 				}
-				if v := xmetrics.GetCounter(xmetrics.MetricChainErrorsCounter,
-					metrics.Labels{"chain": name, "node": node.Name}); v != nil {
-					v.Inc()
-				}
+				r.recordChainError(failedNode)
 				return
 			}
 
@@ -301,16 +295,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		marker.Reset()
 	}
 
-	if r.options.Chain != nil {
-		var name string
-		if cn, _ := r.options.Chain.(chainNamer); cn != nil {
-			name = cn.Name()
-		}
-		if v := xmetrics.GetObserver(xmetrics.MetricNodeConnectDurationObserver,
-			metrics.Labels{"chain": name, "node": node.Name}); v != nil {
-			v.Observe(time.Since(start).Seconds())
-		}
-	}
+	r.observeNodeConnectDuration(node, time.Since(start))
 
 	preNode := node
 	var (
@@ -318,6 +303,9 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		cc   net.Conn
 	)
 	for _, node := range r.nodes[1:] {
+		failedNode = node
+		start := time.Now()
+
 		marker := node.Marker()
 		addr, err = xnet.Resolve(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
 		if err != nil {
@@ -356,12 +344,42 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			marker.Reset()
 		}
 
+		r.observeNodeConnectDuration(node, time.Since(start))
+
 		cn = cc
 		preNode = node
 	}
 
 	conn = cn
 	return
+}
+
+func (r *chainRoute) recordChainError(node *chain.Node) {
+	if r.options.Chain == nil || node == nil {
+		return
+	}
+	var name string
+	if cn, _ := r.options.Chain.(chainNamer); cn != nil {
+		name = cn.Name()
+	}
+	if v := xmetrics.GetCounter(xmetrics.MetricChainErrorsCounter,
+		metrics.Labels{"chain": name, "node": node.Name}); v != nil {
+		v.Inc()
+	}
+}
+
+func (r *chainRoute) observeNodeConnectDuration(node *chain.Node, d time.Duration) {
+	if r.options.Chain == nil || node == nil {
+		return
+	}
+	var name string
+	if cn, _ := r.options.Chain.(chainNamer); cn != nil {
+		name = cn.Name()
+	}
+	if v := xmetrics.GetObserver(xmetrics.MetricNodeConnectDurationObserver,
+		metrics.Labels{"chain": name, "node": node.Name}); v != nil {
+		v.Observe(d.Seconds())
+	}
 }
 
 func (r *chainRoute) getNode(index int) *chain.Node {

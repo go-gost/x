@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/observer"
+	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/service"
 )
@@ -327,6 +328,7 @@ func (c *Collector) Snapshot() Snapshot {
 		GeneratedAt:           c.clock(),
 		StartedAt:             c.start,
 		SampleIntervalSeconds: int(c.historyInterval / time.Second),
+		MetricsEnabled:        xmetrics.IsEnabled(),
 		Services:              services,
 		Modules:               modules,
 		Chains:                chains,
@@ -446,12 +448,9 @@ func copyChain(ch *ChainSnapshot) ChainSnapshot {
 
 // ObserveChains replaces the chain read model with the latest Prometheus
 // counters. Metrics are process-cumulative, so a whole-map replacement keeps
-// the snapshot consistent with what Grafana would show.
+// the snapshot consistent with what Grafana would show. An empty map clears
+// the previous rows so disabled or failed gathers do not leave stale data.
 func (c *Collector) ObserveChains(chains map[string]*ChainSnapshot) {
-	if len(chains) == 0 {
-		return
-	}
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
