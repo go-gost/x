@@ -453,12 +453,13 @@ git -C x commit -m "feat(dashboard): instrument module registries and run report
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `7e5e0cc` (code); record follows in a docs-only commit.
+- Files changed: `x/dashboard/apply.go`, `x/dashboard/apply_test.go`, `x/config/loader/loader.go`, `x/config/loader/loader_test.go`.
+- Tests/commands and results: `go test ./dashboard/ ./config/loader/ ./config/... ./api/ -count=1` → PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet ./dashboard/ ./config/loader/ ./api/` → clean; `cd gost && go build ./cmd/gost` → exit 0.
+- End-to-end smoke: ran the binary with `dashboard.enabled=true`, a service-level `bypass: direct-local`, and a matching bypass rule; one forced proxy request returned `403` and the snapshot contained `{"kind":"bypass","name":"direct-local","service":"smoke-http","stats":{"calls":1,"hits":1,...}}`, proving loader wrapping, Service attribution, reporter tick, and collector ingestion. Process stopped afterwards.
+- Review findings and fixes: none specific to this task; the `ModuleStatsEvent`/`ModuleErrorEvent` double-count found during Task 2 was fixed there.
+- Deferred items/limitations: bypass/admission series are created lazily on first call, so an unused rule has no module row; resolver cache hit/miss still needs an internal hook; the reporter interval is fixed at 5s.
 
 ---
 
