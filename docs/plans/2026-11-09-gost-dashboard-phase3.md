@@ -473,12 +473,12 @@ git commit -m "feat(dashboard): expose resolver cache stats"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `1aff096`.
+- Files changed: `x/dashboard/module.go`, `x/dashboard/event.go`, `x/dashboard/snapshot.go`, `x/dashboard/wrap.go`, `x/dashboard/module_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run TestFlushEmitsResolverCacheStats -v` RED (compile error: `CacheHits`/`cacheStats` undefined) → GREEN; `go test ./dashboard/ -run TestWrapResolverCapturesStatsOnce -v` RED (returned `next` because the dashboard was disabled) → GREEN after `ResetState()`/`Enable(true)`; `go test ./dashboard/ -count=1` PASS.
+- Review findings and fixes: the capture-once test now enables the dashboard; `WrapResolver` correctly returns `next` unchanged when disabled.
+- Deferred items/limitations: cache stats are cumulative and reset with the series epoch on reload.
 
 ---
 
