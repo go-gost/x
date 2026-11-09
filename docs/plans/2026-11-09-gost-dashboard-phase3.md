@@ -528,9 +528,9 @@ git commit -m "docs(plans): record dashboard phase 3 implementation"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `1aff096` (code); docs commit follows; memory repo @ `5323f91`.
+- Files changed: `x/docs/plans/2026-11-09-gost-dashboard-phase3.md`, `.memory/notes/gost-dashboard-port-eval.md`.
+- Tests/commands and results: `go test ./dashboard/ ./resolver/ ./internal/util/resolver/ ./config/loader/ ./api/ ./chain/ -count=1` PASS; `go test -race ./dashboard/ ./resolver/ -count=1` PASS; `go vet ./dashboard/ ./resolver/ ./internal/util/resolver/` clean; `cd gost && go build ./cmd/gost` OK.
+- Review findings and fixes: final whole-branch review pending.
+- Deferred items/limitations: limiter aggregates remain deferred; plugin chains are not in the filter; cache counters are process-cumulative.
