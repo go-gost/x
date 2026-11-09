@@ -48,6 +48,13 @@ func chainNames(cfg *config.Config) map[string]struct{} {
 	return names
 }
 
+// RefreshChainFilter rebuilds the chain filter from cfg without resetting
+// series or restarting the reporter. API chain mutations call it after
+// changing the config.
+func RefreshChainFilter(cfg *config.Config) {
+	Default().SetChainFilter(chainNames(cfg))
+}
+
 func startReporter() {
 	reporterMu.Lock()
 	defer reporterMu.Unlock()

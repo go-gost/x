@@ -9,6 +9,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/chain"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -24,7 +25,7 @@ type getChainListResponse struct {
 }
 
 type chainList struct {
-	Count int                       `json:"count"`
+	Count int                   `json:"count"`
 	List  []*config.ChainConfig `json:"list"`
 }
 
@@ -152,6 +153,7 @@ func createChain(ctx *gin.Context) {
 		c.Chains = append(c.Chains, &req.Data)
 		return nil
 	})
+	dashboard.RefreshChainFilter(config.Global())
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -220,6 +222,7 @@ func updateChain(ctx *gin.Context) {
 		}
 		return nil
 	})
+	dashboard.RefreshChainFilter(config.Global())
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",
@@ -272,6 +275,7 @@ func deleteChain(ctx *gin.Context) {
 		}
 		return nil
 	})
+	dashboard.RefreshChainFilter(config.Global())
 
 	ctx.JSON(http.StatusOK, Response{
 		Msg: "OK",

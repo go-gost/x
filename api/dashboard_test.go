@@ -119,3 +119,49 @@ func TestDashboardSnapshotRequiresAuth(t *testing.T) {
 		t.Fatalf("status = %d, want 401", w.Code)
 	}
 }
+
+func TestChainMutationsRefreshDashboardFilter(t *testing.T) {
+	logger.SetDefault(xlogger.NewLogger(xlogger.OutputOption(io.Discard)))
+
+	oldCfg := config.Global()
+	config.Set(&config.Config{})
+	dashboard.Enable(true)
+	dashboard.Apply(&config.Config{})
+	t.Cleanup(func() {
+		registry.ChainRegistry().Unregister("api-chain")
+		dashboard.Apply(nil)
+		config.Set(oldCfg)
+		dashboard.ResetState()
+	})
+
+	r := newDashboardRouter(t, nil)
+	body := `{"name":"api-chain","hops":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/config/chains", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	dashboard.Default().ObserveChains(map[string]*dashboard.ChainSnapshot{
+		"api-chain": {Name: "api-chain"},
+	})
+	if _, ok := dashboard.Default().Snapshot().Chains["api-chain"]; !ok {
+		t.Fatal("API-created chain was filtered out")
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/config/chains/api-chain", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	dashboard.Default().ObserveChains(map[string]*dashboard.ChainSnapshot{
+		"api-chain": {Name: "api-chain"},
+	})
+	if _, ok := dashboard.Default().Snapshot().Chains["api-chain"]; ok {
+		t.Fatal("API-deleted chain still visible")
+	}
+}
