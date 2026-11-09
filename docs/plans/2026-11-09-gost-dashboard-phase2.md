@@ -4,7 +4,7 @@
 
 **Goal:** Add auther instrumentation and expose existing chain/node Prometheus counters as dashboard modules, so the overview can show chain activity without new hot-path instrumentation.
 
-**Architecture:** Auther uses the Phase 1 wrapper machinery (atomic counters + reporter). Chain/node stats are read from `xmetrics.Registry()` on the reporter tick and merged into the collector's reserved `chains` map; no chain code changes. Limiter and resolver-cache instrumentation are deferred (see Non-Goals).
+**Architecture:** Auther uses the Phase 1 wrapper machinery (atomic counters + reporter). Chain/node stats are read from `xmetrics.Registry()` on the reporter tick and merged into the collector's reserved `chains` map; `route.go` attributes errors to the failing hop and observes each successful hop's connect duration. Limiter and resolver-cache instrumentation are deferred (see Non-Goals).
 
 **Tech Stack:** Go (x module), `github.com/go-gost/core/auth`, `github.com/prometheus/client_golang`, `dto "github.com/prometheus/client_model/go"`, standard `testing`.
 
@@ -14,7 +14,7 @@
 
 - Do **not** modify `core/`.
 - Auther is wrapped once, at the loader and at the REST registration sites; never edit call sites.
-- Chain stats come from the existing `gost_chain_errors_total` and `gost_chain_node_connect_duration_seconds` metrics. Do not add per-hop byte counters (nested connections double-count).
+- Chain stats come from the existing `gost_chain_errors_total` and `gost_chain_node_connect_duration_seconds` metrics. Do not add per-hop byte counters (nested connections double-count). `route.go` may label errors and durations per hop, but must not add new metric families.
 - Chain metrics are process-cumulative Prometheus counters: they survive config reloads. Document this; do not try to reset them.
 - Keys stay low-cardinality: `chain` and `node` names only.
 - Auther `Authenticate` has no error return; success counts as a hit, failure as a miss. Credentials and usernames must never enter counters or events.
@@ -49,7 +49,7 @@ Chain stats fill the reserved `ChainSnapshot` fields. `Hops` stays empty (the da
 }
 ```
 
-`NodeSnapshot` gains `Stats ChainStats`. `connects` equals `connectCount` because the duration histogram is observed only on successful connects.
+`NodeSnapshot` gains `Stats ChainStats`. `connects` equals `connectCount` because the duration histogram is observed only on successful connects. Per-node error rows are attributed to the failing hop; per-node duration rows are observed for each successful hop. `Snapshot` gains `metricsEnabled`: chain stats are empty when metrics are disabled, and the UI can surface that dependency.
 
 ---
 
@@ -59,13 +59,15 @@ Chain stats fill the reserved `ChainSnapshot` fields. `Hops` stays empty (the da
 x/dashboard/
   wrap.go          WrapAuther added
   chains.go        CollectChainStats + chainGatherer seam
-  snapshot.go      ChainSnapshot.Nodes, NodeSnapshot.Stats
-  collector.go     ObserveChains
+  snapshot.go      ChainSnapshot.Nodes, NodeSnapshot.Stats, Snapshot.MetricsEnabled
+  collector.go     ObserveChains (clears on empty)
   module.go        Flush merges chain stats
   wrap_test.go     auther wrapper tests
-  chains_test.go   synthetic and real-registry tests
+  chains_test.go   synthetic, real-registry, malformed-label, and multi-node tests
+x/chain/route.go        per-hop error/duration attribution
+x/chain/route_test.go   per-hop metric tests
 x/config/loader/loader.go   wrap auther
-x/api/config_auther.go      wrap auther at Register
+x/api/config_auther.go      wrap auther at Register; reject nil parsers
 ```
 
 ---
@@ -394,14 +396,42 @@ git -C x commit -m "feat(dashboard): expose chain and node metrics"
 
 ### Phase 2 final review
 
-Fresh-context review could not run: the subagent dispatch was aborted twice by the harness. A self-review of the code and tests found no Critical or Important issues. Confirmed by reading the implementation:
+A fresh-context review of `0898532..3a24917` found no Critical issues; verdict **fix-then-ship**. Important findings:
 
-- auther wrapper forwards `Close`, guards the no-option path, never records credentials, and keeps `Service` attribution;
-- chain parsing ignores the `host` label, skips unknown families, rounds duration to micros, and returns `nil` when empty;
-- `ObserveChains` replaces the map under the write lock and never calls `Gather()` while holding it;
-- `Flush` gathers from the reporter goroutine only and returns quickly when metrics are disabled.
+1. Multi-hop chains were only instrumented for the first node: `route.go` labeled every error with `nodes[0]` and observed connect duration only for `nodes[0]`, so a failing second hop was attributed to the first hop and per-node stats were misleading. Fixed in Task 3: `route.go` tracks the failing hop and observes each successful hop's connect duration.
+2. `Flush` gathers the entire Prometheus registry every 5 s. Documented as a scaling limitation; a family-filtered gather is deferred (see Handoff Notes).
+3. Chain stats were silently empty when metrics were disabled. Fixed in Task 3: `Snapshot.metricsEnabled` exposes the dependency and the Data Contract documents it.
+4. Removed chains reappear after reload because chain metrics are process-cumulative. Documented as a limitation; filtering by current config is deferred.
 
-Known limitations already documented: chain metrics are process-cumulative and survive reloads; `Gather()` runs every reporter tick.
+Minors addressed in Task 3: `ObserveChains` now clears stale rows on empty input; `go.mod` marks `prometheus/client_model` as a direct dependency; the dead `omitempty` tag on `NodeSnapshot.Stats` was removed; tests cover malformed/missing labels, multiple nodes, empty observe, metrics-disabled snapshots, and repeated real-registry runs; the REST auther endpoints reject nil parsers. `Gather` errors still clear the chain map rather than logging; no logger is available in the dashboard package.
+
+---
+
+### Task 3: Phase 2 review fixes
+
+**Files:**
+- Modify: `x/chain/route.go`, `x/chain/route_test.go`
+- Modify: `x/dashboard/collector.go`, `x/dashboard/snapshot.go`, `x/dashboard/chains_test.go`
+- Modify: `x/api/config_auther.go`
+- Modify: `x/go.mod`
+
+**Interfaces:**
+- Produces: per-hop `gost_chain_errors_total` and `gost_chain_node_connect_duration_seconds`; `Snapshot.MetricsEnabled`.
+
+- [x] **Step 1: Write failing tests for per-hop attribution and empty-observe clearing.**
+- [x] **Step 2: Run tests to verify they fail.**
+- [x] **Step 3: Implement per-hop error attribution and duration observation in `route.go`.**
+- [x] **Step 4: Add `Snapshot.MetricsEnabled`, clear chains on empty observe, and reject nil authers at the REST boundary.**
+- [x] **Step 5: Run package tests, race, vet, `go mod tidy -diff`, and the gost build.**
+- [x] **Step 6: Commit.**
+
+**Implementation record:**
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `ecd42ac` (code); this record follows in a docs-only commit.
+- Files changed: `x/chain/route.go`, `x/chain/route_test.go`, `x/dashboard/collector.go`, `x/dashboard/snapshot.go`, `x/dashboard/chains_test.go`, `x/api/config_auther.go`, `x/go.mod`.
+- Tests/commands and results: `go test ./dashboard/ ./api/ ./config/loader/ ./hosts/ ./chain/ -count=1` → PASS; `go test -race ./dashboard/ ./config/loader/ ./chain/ -count=1` → PASS; `go test ./dashboard/ -count=2` → PASS; `go vet ./dashboard/ ./api/ ./config/loader/ ./chain/` → clean; `go mod tidy -diff` → empty; `cd gost && go build ./cmd/gost` → exit 0.
+- Review findings and fixes: #1 per-hop error/duration attribution fixed in `route.go`; #3 metrics-disabled dependency fixed with `Snapshot.MetricsEnabled`; #5 `ObserveChains` clears on empty; #6 `prometheus/client_model` moved to direct dependencies; #7 dead `omitempty` removed; #8 added malformed-label, multi-node, empty-observe, metrics-disabled, and repeat-run tests; #10 REST auther endpoints reject nil parsers. #2 and #4 remain documented limitations.
+- Deferred items/limitations: `Gather()` runs every reporter tick over all families; chain metrics are process-cumulative and survive reloads; `Gather` errors clear the chain map without logging.
 
 ---
 
@@ -416,5 +446,8 @@ Known limitations already documented: chain metrics are process-cumulative and s
 ## Handoff Notes
 
 - Chain stats are read from the same Prometheus registry Grafana uses; they are process-cumulative and persist across reloads. If a future phase needs reload-scoped chain stats, filter by the current config's chain names in `Apply`.
+- Chain stats require metrics to be enabled (`metrics.addr`); `Snapshot.metricsEnabled` reports the dependency so the UI can explain empty `chains`.
+- `route.go` attributes errors to the failing hop and observes each successful hop's connect duration; per-node dashboard rows are accurate for multi-hop chains.
+- `Flush` gathers the full Prometheus registry every 5 s. A family-filtered gather in `x/metrics` would reduce the cost for very large deployments; it is deferred.
 - The auther wrapper counts only success/failure; it never records the username or credentials.
 - Phase 3 can add limiter aggregates (counters only, no per-key series) and the resolver cache hook using the same reporter.
