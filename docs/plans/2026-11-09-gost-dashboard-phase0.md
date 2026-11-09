@@ -703,12 +703,13 @@ git -C gost commit -m "feat: enable dashboard collector from config"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending
-- Review findings and fixes: _pending
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `6a93894`, `go-gost/gost` @ `ff92722`.
+- Files changed: `x/dashboard/multi.go`, `x/dashboard/multi_test.go`, `x/dashboard/history.go` (empty event list now serializes as `[]`), `x/config/config.go`, `x/config/parsing/parser/parser.go`, `x/config/parsing/service/parse.go`, `gost/cmd/gost/program.go`.
+- Tests/commands and results: `go test ./dashboard/ ./config/... -count=1` → PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet` on dashboard/config packages → clean; `cd gost && go build ./cmd/gost` → exit 0.
+- End-to-end smoke: built `/tmp/opencode/gost-dashboard`, ran with `api.addr=127.0.0.1:18080`, `dashboard.enabled=true`, one HTTP service with `enableStats=true`; `GET /dashboard/snapshot` returned `{"version":1,...,"services":{"smoke-http":{"state":"ready",...}}}`, proving `applyDashboard` + default attach work. Process stopped afterwards.
+- Review findings and fixes: empty `events` serialized as `null`; fixed `eventRing.list` to return a non-nil slice and extended the JSON test to pin `"events":[]`, `"modules":[]`, `"history":[]` RED→GREEN.
+- Deferred items/limitations: no parse-level test can observe the unexported handler options, so the two call sites are verified by build plus the end-to-end smoke; enabling the dashboard still starts handler stats goroutines and the pre-existing unbounded per-client map remains.
 
 ---
 
