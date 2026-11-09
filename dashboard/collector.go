@@ -166,6 +166,9 @@ func (c *Collector) Observe(_ context.Context, events []observer.Event, _ ...obs
 				OutputBytes:      e.OutputBytes,
 				LatencySumMicros: e.LatencySumMicros,
 				LatencyCount:     e.LatencyCount,
+				CacheHits:        e.CacheHits,
+				CacheMisses:      e.CacheMisses,
+				CacheStores:      e.CacheStores,
 			}
 		case ModuleStateEvent:
 			c.moduleLocked(Key{Kind: e.Kind, Name: e.Name, Service: e.Service}).State = e.State
