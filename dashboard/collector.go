@@ -438,7 +438,29 @@ func copyChain(ch *ChainSnapshot) ChainSnapshot {
 			}
 		}
 	}
+	if len(ch.Nodes) > 0 {
+		out.Nodes = append([]NodeSnapshot(nil), ch.Nodes...)
+	}
 	return out
+}
+
+// ObserveChains replaces the chain read model with the latest Prometheus
+// counters. Metrics are process-cumulative, so a whole-map replacement keeps
+// the snapshot consistent with what Grafana would show.
+func (c *Collector) ObserveChains(chains map[string]*ChainSnapshot) {
+	if len(chains) == 0 {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	out := make(map[string]*ChainSnapshot, len(chains))
+	for name, ch := range chains {
+		cp := copyChain(ch)
+		out[name] = &cp
+	}
+	c.chains = out
 }
 
 // Reset clears all series and history while preserving the process start time

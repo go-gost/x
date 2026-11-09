@@ -139,10 +139,10 @@ func Flush() {
 		return true
 	})
 
-	if len(events) == 0 {
-		return
+	if len(events) > 0 {
+		_ = Default().Observe(context.Background(), events)
 	}
-	_ = Default().Observe(context.Background(), events)
+	Default().ObserveChains(CollectChainStats())
 }
 
 // errorMessage is deliberately generic: hostnames and addresses must not leak

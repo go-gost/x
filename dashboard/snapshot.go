@@ -61,9 +61,10 @@ type ModuleStats struct {
 
 // ChainSnapshot is the runtime state of one proxy chain.
 type ChainSnapshot struct {
-	Name  string        `json:"name"`
-	Hops  []HopSnapshot `json:"hops"`
-	Stats ChainStats    `json:"stats"`
+	Name  string         `json:"name"`
+	Hops  []HopSnapshot  `json:"hops,omitempty"`
+	Nodes []NodeSnapshot `json:"nodes,omitempty"`
+	Stats ChainStats     `json:"stats"`
 }
 
 // HopSnapshot is one hop inside a chain.
@@ -74,8 +75,9 @@ type HopSnapshot struct {
 
 // NodeSnapshot is one node inside a hop.
 type NodeSnapshot struct {
-	Name  string `json:"name"`
-	State string `json:"state,omitempty"`
+	Name  string     `json:"name"`
+	State string     `json:"state,omitempty"`
+	Stats ChainStats `json:"stats,omitempty"`
 }
 
 // ChainStats contains cumulative chain connection counters.
