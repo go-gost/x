@@ -14,7 +14,7 @@
 
 - Do **not** modify `core/`; wrappers implement the existing interfaces in `x/dashboard`.
 - Do **not** edit the ~48 `.Contains(` / 11 `.Admit(` / 10 `.Lookup(` / 10 `.Resolve(` call sites. One wrap point per module in `x/config/loader`.
-- Observe must stay cheap: at most one `sync.Map` load and two `time.Now` calls per instrumented invocation; no allocation in the hot path beyond the varargs slice the caller already passes.
+- Observe must stay cheap: at most one `sync.Map` load and two `time.Now` calls per instrumented invocation. Calls that pass no options must not allocate (explicit `len(opts)` guard). Calls that pass options do allocate one small `Options` struct because `core`'s functional-option signature takes `*Options`; this is accepted and documented rather than hidden.
 - Counters are **cumulative**; the reporter never sends deltas. Retried/repeated reports must be idempotent.
 - Attribution: bypass/admission read `Options.Service` from call options; hosts/resolver are shared and use `Service=""`.
 - Exposed keys stay low-cardinality. Never expose client IP, hostname, domain, or URL.
@@ -463,9 +463,30 @@ git -C x commit -m "feat(dashboard): instrument module registries and run report
 
 ---
 
+### Phase 1 final review fixes
+
+A fresh-context review found one Critical, six Important, and several Minor issues. Fixed in one TDD pass (`go-gost/x` @ `9be8b7a`):
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Critical | wrappers hid `io.Closer`, so registry reloads leaked reload goroutines, Redis clients and gRPC conns | all four wrappers implement `Close` delegating to the inner module; `TestWrappersCloseInnerModule` |
+| Important | series epoch check was TOCTOU; a stale wrapper could insert into the new map | atomic epoch pointer swap (old map becomes garbage); `TestResetStartsFreshCountersForSameKey` |
+| Important | `stopReporter` did not wait for an in-flight `Flush`, so an old batch could land after reset | reporter `done` channel; `stopReporter` cancels and waits; `TestStopReporterWaitsForExit` |
+| Important | hot path allocated even with no options | `len(opts) > 0` guard; constraint amended for the unavoidable option-carrying case |
+| Important | new loader test exposed a pre-existing hosts data race (`len(mappings)` outside the lock) | `hosts.lookup` takes `RLock` before reading the map; `go test -race ./config/loader/` clean |
+| Important | REST-created/updated modules were never wrapped | wrap at all eight `Register` sites in `api/config_{bypass,admission,hosts,resolver}.go`; `TestCreateBypassIsWrapped` |
+| Important | admission via conn wrappers (UDP/QUIC/ICMP/redirect) has no service parameter | recorded as a Phase 2 limitation (below) |
+
+Also applied while in the pass: `Apply` now resets state on every call (including disable), `reportInterval <= 0` is clamped, compile-time interface/`io.Closer` assertions were added, and tests cover double-`Apply`, reload clearing old series, and fresh counters after reset.
+
+Deferred minors: loader tests still call the full `register()` (heavy but correct); `reporterActive` is test-only scaffolding in a production file; `/dashboard/snapshot` can lag the reporter by up to 5s; `Flush` still calls `Swap` when errors did not increase.
+
+---
+
 ## Phase 1 Non-Goals
 
 - No auther, limiter, router, recorder, ingress, sd, chain/hop/node instrumentation (Phase 2+).
+- Admission calls made through the connection wrappers used by UDP/QUIC/ICMP/redirect listeners carry no `Service`, so they appear under `Service=""` and count per read/packet rather than per connection. Plumbing the service name through those wrappers is a Phase 2 item.
 - No per-hop traffic counters (still double-counts nested connections).
 - No resolver cache hit/miss (needs a hook inside `localResolver`).
 - No config for the report interval; fixed 5s.
