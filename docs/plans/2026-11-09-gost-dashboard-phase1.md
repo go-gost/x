@@ -187,12 +187,12 @@ git -C x commit -m "feat(dashboard): add module counter registry and flush"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `8507161` (code); record follows in a docs-only commit.
+- Files changed: `x/dashboard/module.go`, `x/dashboard/module_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run 'TestSeries|TestFlush|TestResetState|TestStale' -v` → 4/4 PASS; `go test ./dashboard/ -count=1` → PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet` and `gofmt -l` → clean.
+- Review findings and fixes: added a `seriesGen` epoch beyond the plan so a stale wrapper left over from a previous config cannot re-register counters after `ResetState`; pinned by `TestStaleSeriesSetDoesNotReRegister` (RED→GREEN).
+- Deferred items/limitations: report interval is still fixed at 5s and the ticker arrives in Task 3; `ResetState` drops module history by design.
 
 ---
 
