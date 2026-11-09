@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/dashboard"
 	parser "github.com/go-gost/x/config/parsing/admission"
 	"github.com/go-gost/x/registry"
 )
@@ -138,7 +139,7 @@ func createAdmission(ctx *gin.Context) {
 
 	v := parser.ParseAdmission(&req.Data)
 
-	if err := registry.AdmissionRegistry().Register(name, v); err != nil {
+	if err := registry.AdmissionRegistry().Register(name, dashboard.WrapAdmission(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("admission %s already exists", name)))
 		return
 	}
@@ -196,7 +197,7 @@ func updateAdmission(ctx *gin.Context) {
 
 	registry.AdmissionRegistry().Unregister(name)
 
-	if err := registry.AdmissionRegistry().Register(name, v); err != nil {
+	if err := registry.AdmissionRegistry().Register(name, dashboard.WrapAdmission(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("admission %s already exists", name)))
 		return
 	}

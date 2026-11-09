@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"testing"
 
@@ -114,6 +115,33 @@ func TestWrapResolverErrorCountsAndEmitsEvent(t *testing.T) {
 	}
 	if len(snap.Events) != 1 {
 		t.Fatalf("events = %d, want 1", len(snap.Events))
+	}
+}
+
+type closableBypass struct {
+	fakeBypass
+	closed bool
+}
+
+func (c *closableBypass) Close() error {
+	c.closed = true
+	return nil
+}
+
+func TestWrappersCloseInnerModule(t *testing.T) {
+	Enable(true)
+	defer Enable(false)
+
+	bp := &closableBypass{}
+	wrapped, ok := WrapBypass("direct", bp).(io.Closer)
+	if !ok {
+		t.Fatal("bypass wrapper must implement io.Closer so registry Unregister closes it")
+	}
+	if err := wrapped.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !bp.closed {
+		t.Fatal("Close did not reach the wrapped bypass")
 	}
 }
 

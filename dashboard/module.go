@@ -35,39 +35,43 @@ func (c *moduleCounters) snapshot() ModuleStats {
 	}
 }
 
-// series is the global registry the reporter iterates. It is keyed by Key so
-// two wrappers for the same rule share one series.
-var series sync.Map // Key -> *moduleCounters
+// seriesEpoch is one generation of the series registry. ResetState swaps the
+// whole epoch atomically, so a wrapper from a previous config can never insert
+// counters into the new one (no check-then-insert window).
+type seriesEpoch struct {
+	m sync.Map // Key -> *moduleCounters
+}
 
-// seriesGen invalidates wrappers left over from a previous config. ResetState
-// increments it, so a stale wrapper cannot re-register counters while the new
-// config is loading.
-var seriesGen atomic.Uint64
+var seriesEpochs atomic.Pointer[seriesEpoch]
+
+func init() {
+	seriesEpochs.Store(&seriesEpoch{})
+}
 
 // seriesSet lazily creates one counter per service for a named module.
 type seriesSet struct {
 	kind      string
 	name      string
-	gen       uint64
+	epoch     *seriesEpoch
 	byService sync.Map // string -> *moduleCounters
 	stale     moduleCounters
 }
 
 func newSeriesSet(kind, name string) *seriesSet {
 	return &seriesSet{
-		kind: kind,
-		name: name,
-		gen:  seriesGen.Load(),
+		kind:  kind,
+		name:  name,
+		epoch: seriesEpochs.Load(),
 	}
 }
 
 // get returns the counters for a service. sync.Map keeps the hot path
 // read-mostly: once a service is seen, Load is allocation-free.
 func (s *seriesSet) get(service string) *moduleCounters {
-	if s == nil {
+	if s == nil || s.epoch == nil {
 		return nil
 	}
-	if s.gen != seriesGen.Load() {
+	if s.epoch != seriesEpochs.Load() {
 		return &s.stale
 	}
 	if v, ok := s.byService.Load(service); ok {
@@ -76,7 +80,7 @@ func (s *seriesSet) get(service string) *moduleCounters {
 
 	key := Key{Kind: s.kind, Name: s.name, Service: service}
 	c := &moduleCounters{}
-	actual, _ := series.LoadOrStore(key, c)
+	actual, _ := s.epoch.m.LoadOrStore(key, c)
 	c = actual.(*moduleCounters)
 	s.byService.Store(service, c)
 	return c
@@ -90,8 +94,13 @@ func Flush() {
 		return
 	}
 
+	epoch := seriesEpochs.Load()
+	if epoch == nil {
+		return
+	}
+
 	var events []observer.Event
-	series.Range(func(k, v any) bool {
+	epoch.m.Range(func(k, v any) bool {
 		key, ok := k.(Key)
 		if !ok {
 			return true
@@ -145,13 +154,9 @@ func errorMessage(kind string) string {
 	return kind + " error"
 }
 
-// ResetState clears the collector and invalidates all wrapper series. Config
+// ResetState clears the collector and swaps in an empty series epoch. Config
 // reloads call it before the new module instances are constructed.
 func ResetState() {
 	Default().Reset()
-	seriesGen.Add(1)
-	series.Range(func(k, _ any) bool {
-		series.Delete(k)
-		return true
-	})
+	seriesEpochs.Store(&seriesEpoch{})
 }

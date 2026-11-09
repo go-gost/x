@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/dashboard"
 	parser "github.com/go-gost/x/config/parsing/resolver"
 	"github.com/go-gost/x/registry"
 )
@@ -142,7 +143,7 @@ func createResolver(ctx *gin.Context) {
 		return
 	}
 
-	if err := registry.ResolverRegistry().Register(name, v); err != nil {
+	if err := registry.ResolverRegistry().Register(name, dashboard.WrapResolver(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))
 		return
 	}
@@ -204,7 +205,7 @@ func updateResolver(ctx *gin.Context) {
 
 	registry.ResolverRegistry().Unregister(name)
 
-	if err := registry.ResolverRegistry().Register(name, v); err != nil {
+	if err := registry.ResolverRegistry().Register(name, dashboard.WrapResolver(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("resolver %s already exists", name)))
 		return
 	}

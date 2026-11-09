@@ -73,6 +73,26 @@ func TestStaleSeriesSetDoesNotReRegister(t *testing.T) {
 	}
 }
 
+func TestResetStartsFreshCountersForSameKey(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	old := newSeriesSet("bypass", "same")
+	old.get("svc").calls.Add(5)
+
+	ResetState()
+
+	fresh := newSeriesSet("bypass", "same")
+	fresh.get("svc").calls.Add(1)
+	old.get("svc").calls.Add(100) // a stale wrapper must not pollute the new epoch
+
+	Flush()
+	if got := moduleStats(t, Default().Snapshot(), "bypass", "same", "svc").Calls; got != 1 {
+		t.Fatalf("calls = %d, want 1", got)
+	}
+}
+
 func TestResetStateClearsSeries(t *testing.T) {
 	ResetState()
 	Enable(true)

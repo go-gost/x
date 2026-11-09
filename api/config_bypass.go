@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/dashboard"
 	parser "github.com/go-gost/x/config/parsing/bypass"
 	"github.com/go-gost/x/registry"
 )
@@ -138,7 +139,7 @@ func createBypass(ctx *gin.Context) {
 
 	v := parser.ParseBypass(&req.Data)
 
-	if err := registry.BypassRegistry().Register(name, v); err != nil {
+	if err := registry.BypassRegistry().Register(name, dashboard.WrapBypass(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))
 		return
 	}
@@ -196,7 +197,7 @@ func updateBypass(ctx *gin.Context) {
 
 	registry.BypassRegistry().Unregister(name)
 
-	if err := registry.BypassRegistry().Register(name, v); err != nil {
+	if err := registry.BypassRegistry().Register(name, dashboard.WrapBypass(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("bypass %s already exists", name)))
 		return
 	}

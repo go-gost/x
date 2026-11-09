@@ -172,13 +172,12 @@ func (h *hostMapper) Lookup(ctx context.Context, network, host string, opts ...h
 }
 
 func (h *hostMapper) lookup(host string) []net.IP {
-	if len(h.mappings) == 0 {
-		return nil
-	}
-
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	if len(h.mappings) == 0 {
+		return nil
+	}
 	return h.mappings[host]
 }
 

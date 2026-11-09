@@ -13,22 +13,23 @@ var (
 
 	reporterMu     sync.Mutex
 	reporterCancel context.CancelFunc
+	reporterDone   chan struct{}
 )
 
-// Apply synchronizes the dashboard with cfg. It stops any previous reporter,
-// enables or disables the collector, clears stale series, and starts one
-// reporter when enabled. It is safe to call on startup and on every reload.
+// Apply synchronizes the dashboard with cfg. It stops and waits for any
+// previous reporter, enables or disables the collector, clears stale series,
+// and starts one reporter when enabled. It is safe to call on startup and on
+// every reload.
 func Apply(cfg *config.Config) {
 	on := cfg != nil && cfg.Dashboard != nil && cfg.Dashboard.Enabled
 
 	stopReporter()
 	Enable(on)
-	if !on {
-		return
-	}
-
 	ResetState()
-	startReporter()
+
+	if on {
+		startReporter()
+	}
 }
 
 func startReporter() {
@@ -38,11 +39,21 @@ func startReporter() {
 	if reporterCancel != nil {
 		return
 	}
+
+	interval := reportInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	reporterCancel = cancel
+	reporterDone = done
 
 	go func() {
-		ticker := time.NewTicker(reportInterval)
+		defer close(done)
+
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
@@ -56,13 +67,21 @@ func startReporter() {
 	}()
 }
 
+// stopReporter cancels the reporter and waits for the goroutine to exit, so an
+// in-flight Flush cannot write into the next config's collector after reset.
 func stopReporter() {
 	reporterMu.Lock()
-	defer reporterMu.Unlock()
+	cancel := reporterCancel
+	done := reporterDone
+	reporterCancel = nil
+	reporterDone = nil
+	reporterMu.Unlock()
 
-	if reporterCancel != nil {
-		reporterCancel()
-		reporterCancel = nil
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
 	}
 }
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,9 +10,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/core/auth"
+	"github.com/go-gost/core/bypass"
+	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/observer"
+	"github.com/go-gost/x/config"
 	dashboard "github.com/go-gost/x/dashboard"
+	xlogger "github.com/go-gost/x/logger"
 	xstats "github.com/go-gost/x/observer/stats"
+	"github.com/go-gost/x/registry"
 )
 
 type stubAuther struct{}
@@ -58,6 +64,47 @@ func TestDashboardSnapshotEnabled(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"svc"`) {
 		t.Fatalf("body does not contain service: %s", w.Body.String())
 	}
+}
+
+func TestCreateBypassIsWrapped(t *testing.T) {
+	logger.SetDefault(xlogger.NewLogger(xlogger.OutputOption(io.Discard)))
+
+	oldCfg := config.Global()
+	config.Set(&config.Config{})
+	t.Cleanup(func() {
+		registry.BypassRegistry().Unregister("api-bp")
+		config.Set(oldCfg)
+		dashboard.Enable(false)
+		dashboard.ResetState()
+	})
+
+	dashboard.ResetState()
+	dashboard.Enable(true)
+
+	r := newDashboardRouter(t, nil)
+	body := `{"name":"api-bp","matchers":["127.0.0.1"]}`
+	req := httptest.NewRequest(http.MethodPost, "/config/bypasses", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	bp := registry.BypassRegistry().Get("api-bp")
+	if bp == nil {
+		t.Fatal("bypass not registered")
+	}
+	bp.Contains(context.Background(), "tcp", "127.0.0.1", bypass.WithService("svc"))
+	dashboard.Flush()
+
+	for _, m := range dashboard.Default().Snapshot().Modules {
+		if m.Kind == "bypass" && m.Name == "api-bp" && m.Service == "svc" && m.Stats.Calls == 1 {
+			return
+		}
+	}
+	t.Fatal("API-created bypass is not instrumented")
 }
 
 func TestDashboardSnapshotRequiresAuth(t *testing.T) {

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"io"
 	"net"
 	"time"
 
@@ -60,8 +61,10 @@ func (w *bypassWrapper) IsWhitelist() bool { return w.next.IsWhitelist() }
 
 func (w *bypassWrapper) Contains(ctx context.Context, network, addr string, opts ...bypass.Option) bool {
 	var o bypass.Options
-	for _, opt := range opts {
-		opt(&o)
+	if len(opts) > 0 {
+		for _, opt := range opts {
+			opt(&o)
+		}
 	}
 
 	start := time.Now()
@@ -92,8 +95,10 @@ func WrapAdmission(name string, next admission.Admission) admission.Admission {
 
 func (w *admissionWrapper) Admit(ctx context.Context, network, addr string, opts ...admission.Option) bool {
 	var o admission.Options
-	for _, opt := range opts {
-		opt(&o)
+	if len(opts) > 0 {
+		for _, opt := range opts {
+			opt(&o)
+		}
 	}
 
 	start := time.Now()
@@ -164,3 +169,29 @@ func (w *resolverWrapper) Resolve(ctx context.Context, network, host string, opt
 	}
 	return ips, err
 }
+
+// Close delegates to the wrapped module. The registry closes values on
+// unregister/reload, so a wrapper that hides io.Closer would leak reload
+// goroutines and Redis/gRPC clients.
+func (w *bypassWrapper) Close() error    { return closeModule(w.next) }
+func (w *admissionWrapper) Close() error { return closeModule(w.next) }
+func (w *hostsWrapper) Close() error     { return closeModule(w.next) }
+func (w *resolverWrapper) Close() error  { return closeModule(w.next) }
+
+func closeModule(v any) error {
+	if c, ok := v.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
+
+var (
+	_ bypass.Bypass       = (*bypassWrapper)(nil)
+	_ io.Closer           = (*bypassWrapper)(nil)
+	_ admission.Admission = (*admissionWrapper)(nil)
+	_ io.Closer           = (*admissionWrapper)(nil)
+	_ hosts.HostMapper    = (*hostsWrapper)(nil)
+	_ io.Closer           = (*hostsWrapper)(nil)
+	_ resolver.Resolver   = (*resolverWrapper)(nil)
+	_ io.Closer           = (*resolverWrapper)(nil)
+)

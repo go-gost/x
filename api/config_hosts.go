@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
+	"github.com/go-gost/x/dashboard"
 	parser "github.com/go-gost/x/config/parsing/hosts"
 	"github.com/go-gost/x/registry"
 )
@@ -138,7 +139,7 @@ func createHosts(ctx *gin.Context) {
 
 	v := parser.ParseHostMapper(&req.Data)
 
-	if err := registry.HostsRegistry().Register(name, v); err != nil {
+	if err := registry.HostsRegistry().Register(name, dashboard.WrapHosts(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))
 		return
 	}
@@ -196,7 +197,7 @@ func updateHosts(ctx *gin.Context) {
 
 	registry.HostsRegistry().Unregister(name)
 
-	if err := registry.HostsRegistry().Register(name, v); err != nil {
+	if err := registry.HostsRegistry().Register(name, dashboard.WrapHosts(name, v)); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("hosts %s already exists", name)))
 		return
 	}
