@@ -341,12 +341,12 @@ git commit -m "feat(resolver): count cache hits, misses, and stores"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `496b761`.
+- Files changed: `x/internal/util/resolver/cache.go`, `x/internal/util/resolver/cache_test.go`, `x/resolver/resolver.go`, `x/resolver/resolver_test.go`.
+- Tests/commands and results: `go test ./internal/util/resolver/ -run TestCacheStatsCountsHitsMissesStores -v` RED (compile error: `Stats` undefined) → GREEN; `go test -race ./internal/util/resolver/ -run TestCacheStatsConcurrent -v` PASS; `go test ./resolver/ -run TestLocalResolverStatsExposesCache -v` RED (compile error: `Stats` undefined) → GREEN; `go test ./internal/util/resolver/ ./resolver/ -count=1` PASS.
+- Review findings and fixes: the plan's cache test used `logger.Default()`, which is nil in a fresh test process and panics in `Cache.Store`; the test uses `xlogger.Nop()` instead. Production always sets a logger via `WithLogger`.
+- Deferred items/limitations: counters are process-cumulative; they reset only when a new resolver (and cache) is constructed.
 
 ---
 
