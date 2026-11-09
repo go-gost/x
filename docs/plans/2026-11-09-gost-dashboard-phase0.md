@@ -542,12 +542,12 @@ git -C x commit -m "feat(dashboard): expose GET /dashboard/snapshot"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `fad7348` (code); record follows in a docs-only commit.
+- Files changed: `x/dashboard/collector.go` (rates), `x/dashboard/snapshot.go`, `x/dashboard/snapshot_test.go`, `x/api/dashboard.go`, `x/api/dashboard_test.go`, `x/api/api.go`.
+- Tests/commands and results: `go test ./dashboard/ ./api/ -run 'TestSnapshot|TestDashboard' -v` → 6/6 PASS; `go test ./dashboard/ ./api/ -count=1` → PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet ./dashboard/ ./api/` → clean.
+- Review findings and fixes: the plan's deep-copy test used an unaddressable map-index assignment; rewritten as copy-mutate-reinsert (ruling in ledger). History sampling already lived in Task 1's `Observe`; Task 2 adds only rate derivation.
+- Deferred items/limitations: `Rate` is zero until two history samples exist (up to 10s after start); `Chains` remains empty.
 
 ---
 
