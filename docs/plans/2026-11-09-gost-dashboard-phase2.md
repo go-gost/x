@@ -392,6 +392,19 @@ git -C x commit -m "feat(dashboard): expose chain and node metrics"
 
 ---
 
+### Phase 2 final review
+
+Fresh-context review could not run: the subagent dispatch was aborted twice by the harness. A self-review of the code and tests found no Critical or Important issues. Confirmed by reading the implementation:
+
+- auther wrapper forwards `Close`, guards the no-option path, never records credentials, and keeps `Service` attribution;
+- chain parsing ignores the `host` label, skips unknown families, rounds duration to micros, and returns `nil` when empty;
+- `ObserveChains` replaces the map under the write lock and never calls `Gather()` while holding it;
+- `Flush` gathers from the reporter goroutine only and returns quickly when metrics are disabled.
+
+Known limitations already documented: chain metrics are process-cumulative and survive reloads; `Gather()` runs every reporter tick.
+
+---
+
 ## Phase 2 Non-Goals
 
 - No limiter instrumentation: conn/rate limiters key by client IP or service (high cardinality), and the traffic limiter is called per byte. Wrapping would either explode the series map or add hot-path allocation; defer until a design exists for aggregate-only limiter stats.
