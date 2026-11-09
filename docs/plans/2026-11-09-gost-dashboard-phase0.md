@@ -436,12 +436,12 @@ git -C x commit -m "feat(dashboard): add observer event contract and collector"
 ```
 
 **Implementation record:**
-- Date/status: _pending_
-- Repo + commit: _pending_
-- Files changed: _pending_
-- Tests/commands and results: _pending_
-- Review findings and fixes: _pending_
-- Deferred items/limitations: _pending_
+- Date/status: 2026-11-09 — complete.
+- Repo + commit: `go-gost/x` @ `13398fd` (code); this record follows in a docs-only commit because a commit cannot contain its own SHA.
+- Files changed: `x/dashboard/event.go`, `x/dashboard/history.go`, `x/dashboard/snapshot.go`, `x/dashboard/collector.go`, `x/dashboard/collector_test.go`.
+- Tests/commands and results: `go test ./dashboard/ -run TestCollector -v` → 8/8 PASS; `go test -race ./dashboard/ -count=1` → PASS; `go vet ./dashboard/` → clean; `gofmt -l dashboard/` → empty.
+- Review findings and fixes: none in this task; interface shapes match the brief.
+- Deferred items/limitations: `Rate` stays zero until Task 2; `Chains` is reserved and always empty in Phase 0; module events have no producer until Phase 1.
 
 ---
 
