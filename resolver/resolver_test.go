@@ -573,3 +573,11 @@ func (m *rcodeMockExchanger) Exchange(_ context.Context, _ []byte) ([]byte, erro
 }
 
 func (m *rcodeMockExchanger) String() string { return "mock://rcode" }
+
+func TestLocalResolverStatsExposesCache(t *testing.T) {
+	r := &localResolver{cache: resolver_util.NewCache()}
+	st := r.Stats()
+	if st.Hits != 0 || st.Misses != 0 || st.Stores != 0 {
+		t.Fatalf("zero stats = %+v", st)
+	}
+}

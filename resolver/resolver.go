@@ -68,7 +68,7 @@ type localResolver struct {
 	servers    []NameServer
 	cache      *resolver_util.Cache
 	options    options
-	refreshSem chan struct{}   // bounds concurrent async refresh goroutines
+	refreshSem chan struct{} // bounds concurrent async refresh goroutines
 	sfGroup    singleflight.Group
 }
 
@@ -141,6 +141,11 @@ func callerNetworkPref(network string) string {
 	default:
 		return ""
 	}
+}
+
+// Stats returns the resolver cache counters.
+func (r *localResolver) Stats() resolver_util.CacheStats {
+	return r.cache.Stats()
 }
 
 func (r *localResolver) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) (ips []net.IP, err error) {

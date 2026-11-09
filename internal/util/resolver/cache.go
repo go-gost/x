@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-gost/core/logger"
@@ -34,6 +35,13 @@ type cacheItem struct {
 	ttl time.Duration
 }
 
+// CacheStats contains cumulative cache counters.
+type CacheStats struct {
+	Hits   uint64
+	Misses uint64
+	Stores uint64
+}
+
 // Cache stores DNS responses with TTL-based expiration and optional size bounding.
 // A zero maxSize means unbounded (backward compatible).
 //
@@ -46,6 +54,19 @@ type Cache struct {
 	entries map[CacheKey]*cacheItem
 	maxSize int // 0 = unlimited
 	logger  logger.Logger
+
+	hits   atomic.Uint64
+	misses atomic.Uint64
+	stores atomic.Uint64
+}
+
+// Stats returns the cumulative hit, miss, and store counts.
+func (c *Cache) Stats() CacheStats {
+	return CacheStats{
+		Hits:   c.hits.Load(),
+		Misses: c.misses.Load(),
+		Stores: c.stores.Load(),
+	}
 }
 
 // NewCache creates an unbounded DNS cache.
@@ -79,8 +100,10 @@ func (c *Cache) Load(ctx context.Context, key CacheKey) (msg *dns.Msg, ttl time.
 	}
 	c.mu.RUnlock()
 	if !ok {
+		c.misses.Add(1)
 		return
 	}
+	c.hits.Add(1)
 
 	for i := range msg.Answer {
 		d := uint32(elapsed.Seconds())
@@ -153,6 +176,7 @@ func (c *Cache) Store(ctx context.Context, key CacheKey, mr *dns.Msg, ttl time.D
 		ttl: ttl,
 	}
 	c.mu.Unlock()
+	c.stores.Add(1)
 
 	if log := c.logger; log.IsLevelEnabled(logger.DebugLevel) {
 		if sid := ctxvalue.SidFromContext(ctx); sid != "" {
