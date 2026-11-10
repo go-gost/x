@@ -440,12 +440,12 @@ git commit -m "feat(dashboard): expose limiter stats"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-10 — complete.
+- Repo + commit: `go-gost/x` @ `1c9d51f`.
+- Files changed: `x/dashboard/{limiter.go,limiter_test.go,module.go,event.go,snapshot.go,collector.go,apply.go}`; `x/config/loader/loader.go`; `x/api/{config_limiter.go,config_conn_limiter.go,config_rate_limiter.go}`.
+- Tests/commands and results: `go test ./dashboard/ -run 'TestWrap.*LimiterExposesStats' -v` RED (undefined wrappers / `Limiter` field) → GREEN; `TestWrapLimiterCloseForwarding` PASS; `go test ./dashboard/ ./limiter/... ./metrics/ ./config/loader/ -count=1` PASS; `go test -race ./dashboard/ ./limiter/... ./metrics/ -count=1` PASS; `go vet ./dashboard/ ./limiter/... ./metrics/ ./config/loader/` PASS; `cd gost && go build ./cmd/gost` exit 0.
+- Review findings and fixes: `moduleCounters.snapshot` now copies the sampled value to a local before taking its address; dashboard tests poll for the limiter's async initial reload via `waitForLimiter` so the real `New*Limiter` constructors are exercised without a timing race.
+- Deferred items/limitations: none.
 
 ---
 
