@@ -368,7 +368,9 @@ func (b *rewriteBody) Close() error {
 
 // baseMetadata returns rewriter metadata with all available fields.
 func (b *rewriteBody) baseMetadata() map[string]any {
-	return rewriteMeta(b.sid, b.direction, b.uri, KindBody, nil)
+	return rewriteMeta(b.sid, b.direction, b.uri, KindBody, map[string]any{
+		MetaKeyAttempt: attemptFromContext(b.ctx),
+	})
 }
 
 // baseMetadataOpt returns a RewriteOption wrapping baseMetadata.

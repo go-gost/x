@@ -9,6 +9,10 @@ const (
 	MetaKeyDirection = "direction"
 	MetaKeyURI       = "uri"
 	MetaKeyKind      = "kind"
+	// MetaKeyAttempt carries the zero-based upstream attempt index of the
+	// request being rewritten. A retried request tags its first attempt 0 and
+	// each retry one higher, so consumers can keep only the final attempt.
+	MetaKeyAttempt = "attempt"
 )
 
 // Kind values: what the plugin is receiving (byte payload vs header block).

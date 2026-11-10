@@ -101,6 +101,15 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		upstreamHost string
 	)
 
+	// Retry state belongs to one client request: attempt is the zero-based
+	// upstream attempt index, rs carries the remaining budget plus the
+	// replayable request. Both are reset when the keep-alive loop reads the
+	// next request.
+	var (
+		attempt int
+		rs      *retryState
+	)
+
 	// Close the current upstream connection when the handler returns. The
 	// keep-alive loop may dial several upstream connections when the request
 	// host changes; each previous one is closed in place and set to nil, so
@@ -145,7 +154,7 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			staleResp *http.Response
 			freshHit  bool
 		)
-		if h.Cache != nil && h.Cache.CacheableRequest(req) {
+		if h.Cache != nil && h.Cache.CacheableRequest(req) && (rs == nil || rs.retries == 0) {
 			if cachedResp, stale, ok := h.Cache.Lookup(ctx, req); ok {
 				if !stale {
 					if h.serveCachedResponse(ctx, conn, req, cachedResp, ro, log) {
@@ -175,6 +184,30 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 					if staleResp != nil && staleResp.Body != nil {
 						staleResp.Body.Close()
 					}
+					// Nothing was written to the upstream yet, so a failed
+					// connect is retryable: dial already marked the node, spend
+					// one unit of budget and let the loop select again. The
+					// budget is only spent once the replay is known good, so a
+					// failed replay cannot record a retry that never happened.
+					if rs == nil {
+						rs = newRetryState(req, node)
+					}
+					if rs != nil && rs.budget > 0 {
+						if replay, rerr := replayRetryRequest(rs.replay); rerr == nil {
+							rs.budget--
+							rs.retries++
+							ho.RecorderObject.Retries = rs.retries
+							attempt++
+							req = replay
+							cc = nil
+							continue
+						}
+					}
+					if rs != nil {
+						// One row covers every attempt, so its duration starts
+						// with the first one.
+						ro.Time = rs.start
+					}
 					h.recordDialFailure(ctx, req, ro, dialRes, err, log)
 					if dialRes != nil {
 						dialRes.Write(conn)
@@ -189,12 +222,39 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 
 				ro.SrcAddr = cc.LocalAddr().String()
 				ro.DstAddr = cc.RemoteAddr().String()
+
+				if rs == nil {
+					// The selected node opts in to retries: buffer the pristine
+					// client request so a later attempt can be replayed against
+					// another node.
+					rs = newRetryState(req, node)
+				}
 			}
 
 			// --- Forward request and cache response ---
-			shouldClose, err := h.httpRoundTrip(ctx, xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho, staleResp)
+			shouldClose, retry, err := h.httpRoundTrip(withAttempt(ctx, attempt), xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho, staleResp, rs)
 			if staleResp != nil && staleResp.Body != nil {
 				staleResp.Body.Close()
+			}
+			if retry {
+				// The attempt was discarded and its node is marked:
+				// httpRoundTrip already skipped recording, so spend one unit of
+				// budget, drop the upstream connection and replay the pristine
+				// request. The next loop iteration re-selects a node.
+				rs.budget--
+				rs.retries++
+				ho.RecorderObject.Retries = rs.retries
+				if cc != nil {
+					cc.Close()
+					cc = nil
+				}
+				attempt++
+				replay, rerr := replayRetryRequest(rs.replay)
+				if rerr != nil {
+					return rerr
+				}
+				req = replay
+				continue
 			}
 			if err != nil || shouldClose {
 				return err
@@ -214,6 +274,11 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 			dump, _ := httputil.DumpRequest(req, false)
 			log.Trace(string(dump))
 		}
+
+		// The retry budget, attempt index and recorded retry count belong to
+		// the request that just completed; the next one starts from zero.
+		attempt, rs = 0, nil
+		ho.RecorderObject.Retries = 0
 
 		// Re-dial on host change (DNS override reuses same conn for same host).
 		if reqHost := normalizeHost(req.Host, "80"); reqHost != "" && reqHost != upstreamHost {
@@ -345,7 +410,8 @@ func resolveHTTPNode(ctx context.Context, host string, req *http.Request, ho *Ha
 // dial selects a node and establishes a connection. It does NOT write the
 // error response to conn; instead it returns res (nil on a plain dial failure)
 // so the caller can choose between serving a stale cached response and writing
-// the error response.
+// the error response. On a connect failure the selected node is returned with
+// the error, and it is already marked.
 func (h *Sniffer) dial(ctx context.Context, req *http.Request, ho *HandleOptions) (node *chain.Node, cc net.Conn, res *http.Response, err error) {
 	dial := ho.Dial
 	if dial == nil {
@@ -393,7 +459,9 @@ func (h *Sniffer) dial(ctx context.Context, req *http.Request, ho *HandleOptions
 			marker.Mark()
 		}
 		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
-		return nil, nil, res, err
+		// Return the selected node alongside the error so the caller can read
+		// its retry metadata while the failed attempt is still current.
+		return node, nil, res, err
 	}
 	// A successful connect is not a healthy node: the node is only known to
 	// be serving once it returns a non-failCodes response (see
@@ -449,10 +517,13 @@ func (b *idleBody) Read(p []byte) (int, error) {
 }
 
 // httpRoundTrip forwards a single HTTP request/response pair and records
-// traffic metadata. Returns whether the connection should be closed.
+// traffic metadata. Returns whether the connection should be closed, and
+// whether this attempt was discarded in favour of a retry (in which case
+// nothing was written to the client and no row was recorded).
 // staleResp, when non-nil, is written to the client on upstream read failure
-// when the cache policy enables serve-stale.
-func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions, staleResp *http.Response) (shouldClose bool, err error) {
+// when the cache policy enables serve-stale. rs carries the retry budget for
+// the request and is nil when the request is not retryable.
+func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, node *chain.Node, req *http.Request, pStats stats.Stats, ho *HandleOptions, staleResp *http.Response, rs *retryState) (shouldClose, retry bool, err error) {
 	shouldClose = true
 
 	// Cache key identity is derived from the client's request (method + Host +
@@ -465,9 +536,20 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	ro := &xrecorder.HandlerRecorderObject{}
 	*ro = *ho.RecorderObject
 
-	ro.Time = time.Now()
+	if rs != nil {
+		// One row covers every attempt of the request, so it starts with the
+		// first one rather than with this attempt.
+		ro.Time = rs.start
+	} else {
+		ro.Time = time.Now()
+	}
 	log.Infof("%s <-> %s", ro.RemoteAddr, req.Host)
 	defer func() {
+		if retry {
+			// The attempt is discarded: only the attempt whose response
+			// reaches the client records a row.
+			return
+		}
 		if err != nil {
 			ro.Err = err.Error()
 		}
@@ -663,6 +745,21 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		break
 	}
 	defer resp.Body.Close()
+
+	// A response whose status opts into retries is discarded here, before any
+	// failCodes handling, rewrite, caching or client write: the node is marked
+	// so the selector skips it and HandleHTTP replays the request against the
+	// next one. A 101 has already switched protocols, so it is never retried.
+	if rs != nil && rs.budget > 0 &&
+		resp.StatusCode != http.StatusSwitchingProtocols &&
+		rs.codes.Match(resp.StatusCode) {
+		if marker := node.Marker(); marker != nil {
+			marker.Mark()
+		}
+		log.Warnf("retryable status %d for node %s", resp.StatusCode, node.Name)
+		return false, true, nil
+	}
+
 	xio.SetReadDeadline(cc, time.Time{})
 	if ds, ok := cc.(deadlineSetter); ok && upstreamBodyIdleTimeout > 0 {
 		resp.Body = &idleBody{ReadCloser: resp.Body, conn: ds, idle: upstreamBodyIdleTimeout}

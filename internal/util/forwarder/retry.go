@@ -3,6 +3,7 @@ package forwarder
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"strconv"
@@ -184,4 +185,22 @@ func bufferedRetryBody(body []byte) io.ReadCloser {
 // written again.
 func replayRetryRequest(b []byte) (*http.Request, error) {
 	return http.ReadRequest(bufio.NewReader(bytes.NewReader(b)))
+}
+
+// attemptCtxKey is the context key carrying the zero-based HTTP attempt index
+// of the request currently being forwarded.
+type attemptCtxKey struct{}
+
+// withAttempt returns ctx tagged with the zero-based attempt index.
+func withAttempt(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, attemptCtxKey{}, n)
+}
+
+// attemptFromContext returns the attempt index carried by ctx. A context
+// without one reports 0, the index of the first attempt.
+func attemptFromContext(ctx context.Context) int {
+	if n, ok := ctx.Value(attemptCtxKey{}).(int); ok {
+		return n
+	}
+	return 0
 }

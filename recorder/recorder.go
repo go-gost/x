@@ -146,11 +146,15 @@ type HandlerRecorderObject struct {
 	InputBytes  uint64                   `json:"inputBytes"`
 	OutputBytes uint64                   `json:"outputBytes"`
 	Redirect    string                   `json:"redirect,omitempty"`
-	Err         string                   `json:"err,omitempty"`
-	SID         string                   `json:"sid"`
-	Duration    time.Duration            `json:"duration"`
-	Time        time.Time                `json:"time"`
-	RecordMode  string                   `json:"-"` // "" = full, "headers" = metadata only, "off" = no recording
+	// Retries counts the extra upstream attempts made for this recorded
+	// request before the one that produced this row. Zero means the request
+	// was forwarded once.
+	Retries    int           `json:"retries,omitempty"`
+	Err        string        `json:"err,omitempty"`
+	SID        string        `json:"sid"`
+	Duration   time.Duration `json:"duration"`
+	Time       time.Time     `json:"time"`
+	RecordMode string        `json:"-"` // "" = full, "headers" = metadata only, "off" = no recording
 }
 
 // Record serializes the HandlerRecorderObject as JSON and writes it to r.
