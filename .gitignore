@@ -16,6 +16,7 @@ package-lock.json
 .claude/
 .remember/
 .memory/
+.superpowers/
 .build/
 __pycache__/
 
