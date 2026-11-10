@@ -10,7 +10,10 @@ var chainGatherer = func() ([]*dto.MetricFamily, error) {
 	if !xmetrics.IsEnabled() {
 		return nil, nil
 	}
-	return xmetrics.Registry().Gather()
+	return xmetrics.GatherFamilies(
+		xmetrics.MetricChainErrorsCounter,
+		xmetrics.MetricNodeConnectDurationObserver,
+	)
 }
 
 // CollectChainStats reads the chain/node counters already exported to
