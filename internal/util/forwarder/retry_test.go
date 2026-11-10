@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,5 +102,80 @@ func TestBufferRetryRequestReplaysBody(t *testing.T) {
 	body, _ := io.ReadAll(again.Body)
 	if string(body) != "hello" || again.ContentLength != 5 {
 		t.Fatalf("replayed body = %q len %d", body, again.ContentLength)
+	}
+}
+
+func TestBufferRetryRequestEmptyBodyKeepsNoBodyFraming(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://up.example/", strings.NewReader(""))
+	if req.ContentLength != 0 {
+		t.Fatalf("setup: ContentLength = %d", req.ContentLength)
+	}
+
+	replay, ok := bufferRetryRequest(req)
+	if !ok {
+		t.Fatal("did not buffer an empty body")
+	}
+	// Attempt 1 must keep the original no-body framing, not a chunked empty
+	// body.
+	if req.Body != http.NoBody || req.ContentLength != 0 {
+		t.Fatalf("attempt 1 body = %v len %d", req.Body, req.ContentLength)
+	}
+	if bytes.Contains(replay, []byte("Transfer-Encoding")) {
+		t.Fatalf("serialized a transfer encoding:\n%s", replay)
+	}
+	if !bytes.Contains(replay, []byte("Content-Length: 0\r\n")) {
+		t.Fatalf("missing Content-Length: 0:\n%s", replay)
+	}
+
+	again, err := replayRetryRequest(replay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Body != http.NoBody || again.ContentLength != 0 || len(again.TransferEncoding) != 0 {
+		t.Fatalf("replayed body = %v len %d te %v",
+			again.Body, again.ContentLength, again.TransferEncoding)
+	}
+
+	// The replay must re-serialize to the same head.
+	var buf bytes.Buffer
+	if err := again.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != string(replay) {
+		t.Fatalf("re-serialized replay =\n%s\nwant\n%s", got, replay)
+	}
+}
+
+func TestBufferRetryRequestNonEmptyBodyUnaffected(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://up.example/", strings.NewReader("hello"))
+
+	replay, ok := bufferRetryRequest(req)
+	if !ok {
+		t.Fatal("did not buffer")
+	}
+	if req.Body == http.NoBody || req.ContentLength != 5 {
+		t.Fatalf("attempt 1 body = %v len %d", req.Body, req.ContentLength)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil || string(body) != "hello" {
+		t.Fatalf("attempt 1 body = %q, %v", body, err)
+	}
+	if bytes.Contains(replay, []byte("Transfer-Encoding")) {
+		t.Fatalf("serialized a transfer encoding:\n%s", replay)
+	}
+	if !bytes.Contains(replay, []byte("Content-Length: 5\r\n")) {
+		t.Fatalf("missing Content-Length: 5:\n%s", replay)
+	}
+
+	again, err := replayRetryRequest(replay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ContentLength != 5 || len(again.TransferEncoding) != 0 {
+		t.Fatalf("replayed len %d te %v", again.ContentLength, again.TransferEncoding)
+	}
+	body, _ = io.ReadAll(again.Body)
+	if string(body) != "hello" {
+		t.Fatalf("replayed body = %q", body)
 	}
 }

@@ -104,10 +104,17 @@ func parseRetryCodeWildcard(tok string) (int, bool) {
 }
 
 // bufferRetryRequest serializes the request so a later attempt can replay it,
-// and leaves req with a fresh body reader for the first attempt. It returns
-// (nil, false) with req unchanged when the request cannot be replayed safely:
-// it carries Expect: 100-continue, its body is over retryBodyLimit, or it
-// cannot be read or written.
+// and leaves req with a fresh body reader (http.NoBody for an empty body) for
+// the first attempt. It returns (nil, false) with req unchanged when the
+// request cannot be replayed safely: it carries Expect: 100-continue, its body
+// is over retryBodyLimit, or it cannot be read or written.
+//
+// Call this on the pristine client request, before httpRoundTrip applies the
+// selected node's host/URL/header/body rewrites or wraps the body for
+// recording. The snapshot is replayed against a different node, so every
+// retry re-applies that node's rewrites on top of these bytes; replaying the
+// already-rewritten request would send the failed node's target to the new
+// one. The body is replaced with a fresh reader for attempt 1.
 func bufferRetryRequest(req *http.Request) ([]byte, bool) {
 	if req == nil {
 		return nil, false
@@ -123,7 +130,8 @@ func bufferRetryRequest(req *http.Request) ([]byte, bool) {
 	}
 
 	var body []byte
-	if req.Body != nil {
+	hasBody := req.Body != nil
+	if hasBody {
 		// Read one byte past the limit so an oversized body is detected
 		// without ever buffering more than the limit.
 		read, err := io.ReadAll(io.LimitReader(req.Body, int64(retryBodyLimit)+1))
@@ -132,7 +140,6 @@ func bufferRetryRequest(req *http.Request) ([]byte, bool) {
 			return nil, false
 		}
 		body = read
-		req.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	// Normalize the head so the serialized request carries an explicit length
@@ -140,22 +147,36 @@ func bufferRetryRequest(req *http.Request) ([]byte, bool) {
 	req.ContentLength = int64(len(body))
 	req.TransferEncoding = nil
 	req.Header.Del("Transfer-Encoding")
+	if hasBody {
+		req.Body = bufferedRetryBody(body)
+	}
 
 	var buf bytes.Buffer
 	if err := req.Write(&buf); err != nil {
-		if body != nil {
-			req.Body = io.NopCloser(bytes.NewReader(body))
+		if hasBody {
+			req.Body = bufferedRetryBody(body)
 		}
 		return nil, false
 	}
 
-	if body != nil {
+	if hasBody {
 		// req.Write consumes (and closes) the body reader; hand attempt 1 a
 		// fresh one.
-		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.Body = bufferedRetryBody(body)
 	}
 
 	return buf.Bytes(), true
+}
+
+// bufferedRetryBody returns a body over the buffered bytes. An empty body
+// becomes http.NoBody: a non-nil empty reader would make the request's
+// outgoing length -1, so the serialized head would carry
+// Transfer-Encoding: chunked instead of the original no-body framing.
+func bufferedRetryBody(body []byte) io.ReadCloser {
+	if len(body) == 0 {
+		return http.NoBody
+	}
+	return io.NopCloser(bytes.NewReader(body))
 }
 
 // replayRetryRequest rebuilds a request from bytes produced by
