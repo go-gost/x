@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	"github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/patrickmn/go-cache"
 	"github.com/yl2chen/cidranger"
@@ -107,6 +108,7 @@ type trafficLimiter struct {
 	inLimits   *cache.Cache
 	outLimits  *cache.Cache
 	options    options
+	stats      *stats.Stats
 	logger     logger.Logger
 	mu         sync.RWMutex
 	cancelFunc context.CancelFunc
@@ -129,6 +131,7 @@ func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
 		inLimits:       cache.New(defaultExpiration, cleanupInterval),
 		outLimits:      cache.New(defaultExpiration, cleanupInterval),
 		options:        options,
+		stats:          &stats.Stats{},
 		cancelFunc:     cancel,
 		logger:         options.logger,
 	}
@@ -139,6 +142,11 @@ func NewTrafficLimiter(opts ...Option) traffic.TrafficLimiter {
 	go lim.periodReload(ctx)
 
 	return lim
+}
+
+// Stats returns the aggregate traffic limiter counters.
+func (l *trafficLimiter) Stats() stats.Snapshot {
+	return l.stats.Snapshot()
 }
 
 // In obtains a traffic input limiter based on key.
@@ -360,7 +368,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			}
 		} else {
 			if value.in > 0 {
-				l.inLimits.Set(ServiceLimitKey, NewLimiterWithBurst(value.in, value.burst), cache.NoExpiration)
+				l.inLimits.Set(ServiceLimitKey, newLimiterWithBurst(value.in, value.burst, l.stats), cache.NoExpiration)
 			}
 		}
 
@@ -373,7 +381,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			}
 		} else {
 			if value.out > 0 {
-				l.outLimits.Set(ServiceLimitKey, NewLimiterWithBurst(value.out, value.burst), cache.NoExpiration)
+				l.outLimits.Set(ServiceLimitKey, newLimiterWithBurst(value.out, value.burst, l.stats), cache.NoExpiration)
 			}
 		}
 		delete(values, ServiceLimitKey)
@@ -387,7 +395,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 		if v, _ := l.generators.Load(ConnLimitKey); v != nil {
 			in, out = v.(*limitGenerator).in, v.(*limitGenerator).out
 		}
-		l.generators.Store(ConnLimitKey, newLimitGenerator(value.in, value.out, value.burst))
+		l.generators.Store(ConnLimitKey, newLimitGenerator(value.in, value.out, value.burst, l.stats))
 
 		if value.in <= 0 {
 			l.connInLimits.Flush()
@@ -429,7 +437,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
 				cidrGenerators.Insert(&cidrLimitEntry{
 					ipNet:     *ipNet,
-					generator: newLimitGenerator(value.in, value.out, value.burst),
+					generator: newLimitGenerator(value.in, value.out, value.burst, l.stats),
 				})
 				continue
 			}
@@ -444,7 +452,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 				delete(inLimits, key)
 			} else {
 				if value.in > 0 {
-					l.inLimits.Set(key, NewLimiterWithBurst(value.in, value.burst), defaultExpiration)
+					l.inLimits.Set(key, newLimiterWithBurst(value.in, value.burst, l.stats), defaultExpiration)
 				}
 			}
 
@@ -458,7 +466,7 @@ func (l *trafficLimiter) reload(ctx context.Context) error {
 				delete(outLimits, key)
 			} else {
 				if value.out > 0 {
-					l.outLimits.Set(key, NewLimiterWithBurst(value.out, value.burst), defaultExpiration)
+					l.outLimits.Set(key, newLimiterWithBurst(value.out, value.burst, l.stats), defaultExpiration)
 				}
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/limiter"
 	traffic "github.com/go-gost/core/limiter/traffic"
 	"github.com/go-gost/x/internal/loader"
+	stats "github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/patrickmn/go-cache"
 	"github.com/yl2chen/cidranger"
@@ -27,6 +28,7 @@ func newTestTrafficLimiter(limits ...string) *trafficLimiter {
 		inLimits:       cache.New(defaultExpiration, cleanupInterval),
 		outLimits:      cache.New(defaultExpiration, cleanupInterval),
 		options:        options{limits: limits},
+		stats:          &stats.Stats{},
 		cancelFunc:     cancel,
 		logger:         xlogger.Nop(),
 	}
@@ -575,7 +577,26 @@ func TestIn_ConcurrentAccess(t *testing.T) {
 
 var (
 	_ traffic.TrafficLimiter = (*trafficLimiter)(nil)
-	_ io.Closer             = (*trafficLimiter)(nil)
-	_ loader.Loader         = (*fakeLoader)(nil)
-	_ loader.Lister         = (*fakeLoader)(nil)
+	_ io.Closer              = (*trafficLimiter)(nil)
+	_ loader.Loader          = (*fakeLoader)(nil)
+	_ loader.Lister          = (*fakeLoader)(nil)
 )
+
+func TestTrafficLimiterStats(t *testing.T) {
+	stats.Enable(true)
+	defer stats.Enable(false)
+
+	l := newTestTrafficLimiter("$$ 100B")
+	entry := l.In(context.Background(), "1.2.3.4:1234")
+	if entry == nil {
+		t.Fatal("expected conn-level In limiter")
+	}
+	if got := entry.Wait(context.Background(), 100); got != 100 {
+		t.Fatalf("Wait = %d, want 100", got)
+	}
+
+	got := l.Stats()
+	if got.WaitCalls != 1 || got.Requested != 100 || got.Granted != 100 {
+		t.Fatalf("stats = %+v", got)
+	}
+}

@@ -7,39 +7,58 @@ import (
 	"strconv"
 
 	limiter "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/x/limiter/stats"
 	"golang.org/x/time/rate"
 )
 
 type llimiter struct {
 	limiter *rate.Limiter
+	stats   *stats.Stats
 }
 
 // NewLimiter creates a rate-based traffic Limiter with the given rate
 // (bytes per second). The burst size is set equal to the rate.
 func NewLimiter(r int) limiter.Limiter {
+	return newLimiter(r, nil)
+}
+
+func newLimiter(r int, st *stats.Stats) limiter.Limiter {
 	return &llimiter{
 		limiter: rate.NewLimiter(rate.Limit(r), r),
+		stats:   st,
 	}
 }
 
 // NewLimiterWithBurst creates a rate-based traffic Limiter with the given rate
 // (bytes per second) and burst size. If burst <= 0, it defaults to r.
 func NewLimiterWithBurst(r, burst int) limiter.Limiter {
+	return newLimiterWithBurst(r, burst, nil)
+}
+
+func newLimiterWithBurst(r, burst int, st *stats.Stats) limiter.Limiter {
 	if burst <= 0 {
 		burst = r
 	}
 	return &llimiter{
 		limiter: rate.NewLimiter(rate.Limit(r), burst),
+		stats:   st,
 	}
 }
 
 func (l *llimiter) Wait(ctx context.Context, n int) int {
-	if l.limiter.Burst() < n {
-		n = l.limiter.Burst()
-	}
-	if err := l.limiter.WaitN(ctx, n); err != nil {
+	if n <= 0 {
 		return 0
 	}
+	l.stats.Wait(n)
+	burst := l.limiter.Burst()
+	if n > burst {
+		n = burst
+	}
+	if err := l.limiter.WaitN(ctx, n); err != nil {
+		l.stats.Deny()
+		return 0
+	}
+	l.stats.Grant(n)
 	return n
 }
 

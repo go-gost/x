@@ -15,6 +15,7 @@ import (
 	limiter "github.com/go-gost/core/limiter/rate"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	"github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/yl2chen/cidranger"
 )
@@ -89,6 +90,7 @@ type rateLimiter struct {
 	ipLimits   map[string]RateLimitGenerator
 	cidrLimits cidranger.Ranger
 	limits     map[string]limiter.Limiter
+	stats      *stats.Stats
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
@@ -109,6 +111,7 @@ func NewRateLimiter(opts ...Option) limiter.RateLimiter {
 		ipLimits:   make(map[string]RateLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
 		limits:     make(map[string]limiter.Limiter),
+		stats:      &stats.Stats{},
 		options:    options,
 		cancelFunc: cancel,
 		logger:     options.logger,
@@ -120,6 +123,11 @@ func NewRateLimiter(opts ...Option) limiter.RateLimiter {
 	go lim.periodReload(ctx)
 
 	return lim
+}
+
+// Stats returns the aggregate rate limiter counters.
+func (l *rateLimiter) Stats() stats.Snapshot {
+	return l.stats.Snapshot()
 }
 
 func (l *rateLimiter) Limiter(key string) limiter.Limiter {
@@ -225,18 +233,18 @@ func (l *rateLimiter) reload(ctx context.Context) error {
 		}
 		switch key {
 		case GlobalLimitKey:
-			ipLimits[key] = NewRateLimitSingleGenerator(limit)
+			ipLimits[key] = newRateLimitSingleGenerator(limit, l.stats)
 		case IPLimitKey:
-			ipLimits[key] = NewRateLimitGenerator(limit)
+			ipLimits[key] = newRateLimitGenerator(limit, l.stats)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewRateLimitSingleGenerator(limit)
+				ipLimits[key] = newRateLimitSingleGenerator(limit, l.stats)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
 				cidrLimits.Insert(&cidrLimitEntry{
 					ipNet: *ipNet,
-					limit: NewRateLimitGenerator(limit),
+					limit: newRateLimitGenerator(limit, l.stats),
 				})
 			}
 		}

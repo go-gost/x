@@ -10,6 +10,7 @@ import (
 
 	limiter "github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/logger"
+	stats "github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/yl2chen/cidranger"
 )
@@ -227,6 +228,7 @@ func newTestConnLimiter(limits ...string) *connLimiter {
 		ipLimits:   make(map[string]ConnLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
 		limits:     make(map[string]limiter.Limiter),
+		stats:      &stats.Stats{},
 		logger:     nopLogger(),
 		cancelFunc: cancel,
 	}
@@ -454,5 +456,25 @@ func TestPeriodReload_ContextCancel(t *testing.T) {
 	err := cl.periodReload(ctx)
 	if err != context.Canceled {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestConnLimiterStats(t *testing.T) {
+	stats.Enable(true)
+	defer stats.Enable(false)
+
+	l := newTestConnLimiter("$$ 1")
+	entry := l.Limiter("1.2.3.4")
+	if !entry.Allow(1) {
+		t.Fatal("first allow should succeed")
+	}
+	if entry.Allow(1) {
+		t.Fatal("second allow should be denied")
+	}
+	entry.Allow(-1)
+
+	got := l.Stats()
+	if got.Calls != 2 || got.Allowed != 1 || got.Denied != 1 {
+		t.Fatalf("stats = %+v", got)
 	}
 }

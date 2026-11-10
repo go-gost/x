@@ -6,6 +6,7 @@ import (
 	"time"
 
 	limiter "github.com/go-gost/core/limiter/rate"
+	"github.com/go-gost/x/limiter/stats"
 	"golang.org/x/time/rate"
 )
 
@@ -14,18 +15,35 @@ var ErrRateLimit = errors.New("rate limit")
 
 type rlimiter struct {
 	limiter *rate.Limiter
+	stats   *stats.Stats
 }
 
 // NewLimiter creates a [limiter.Limiter] with the specified rate r (events per second)
 // and burst b.
 func NewLimiter(r float64, b int) limiter.Limiter {
+	return newLimiter(r, b, nil)
+}
+
+func newLimiter(r float64, b int, st *stats.Stats) limiter.Limiter {
 	return &rlimiter{
 		limiter: rate.NewLimiter(rate.Limit(r), b),
+		stats:   st,
 	}
 }
 
 func (l *rlimiter) Allow(n int) bool {
-	return l.limiter.AllowN(time.Now(), n)
+	if n > 0 {
+		l.stats.Call()
+	}
+	ok := l.limiter.AllowN(time.Now(), n)
+	if n > 0 {
+		if ok {
+			l.stats.Allow()
+		} else {
+			l.stats.Deny()
+		}
+	}
+	return ok
 }
 
 func (l *rlimiter) Limit() float64 {

@@ -5,16 +5,22 @@ import (
 	"sync/atomic"
 
 	limiter "github.com/go-gost/core/limiter/conn"
+	"github.com/go-gost/x/limiter/stats"
 )
 
 type llimiter struct {
 	limit   int
 	current int64
+	stats   *stats.Stats
 }
 
 // NewLimiter creates a Limiter that allows up to n concurrent connections.
 func NewLimiter(n int) limiter.Limiter {
-	return &llimiter{limit: n}
+	return newLimiter(n, nil)
+}
+
+func newLimiter(n int, st *stats.Stats) limiter.Limiter {
+	return &llimiter{limit: n, stats: st}
 }
 
 func (l *llimiter) Limit() int {
@@ -26,9 +32,18 @@ func (l *llimiter) Allow(n int) bool {
 		atomic.AddInt64(&l.current, int64(n))
 		return true
 	}
+	if n > 0 {
+		l.stats.Call()
+	}
 	if atomic.AddInt64(&l.current, int64(n)) > int64(l.limit) {
 		atomic.AddInt64(&l.current, -int64(n))
+		if n > 0 {
+			l.stats.Deny()
+		}
 		return false
+	}
+	if n > 0 {
+		l.stats.Allow()
 	}
 	return true
 }

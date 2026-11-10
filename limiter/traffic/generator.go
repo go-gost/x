@@ -2,19 +2,22 @@ package traffic
 
 import (
 	limiter "github.com/go-gost/core/limiter/traffic"
+	"github.com/go-gost/x/limiter/stats"
 )
 
 type limitGenerator struct {
 	in    int
 	out   int
 	burst int
+	stats *stats.Stats
 }
 
-func newLimitGenerator(in, out, burst int) *limitGenerator {
+func newLimitGenerator(in, out, burst int, st *stats.Stats) *limitGenerator {
 	return &limitGenerator{
 		in:    in,
 		out:   out,
 		burst: burst,
+		stats: st,
 	}
 }
 
@@ -23,9 +26,9 @@ func (p *limitGenerator) In() limiter.Limiter {
 		return nil
 	}
 	if p.burst > 0 {
-		return NewLimiterWithBurst(p.in, p.burst)
+		return newLimiterWithBurst(p.in, p.burst, p.stats)
 	}
-	return NewLimiter(p.in)
+	return newLimiter(p.in, p.stats)
 }
 
 func (p *limitGenerator) Out() limiter.Limiter {
@@ -33,7 +36,7 @@ func (p *limitGenerator) Out() limiter.Limiter {
 		return nil
 	}
 	if p.burst > 0 {
-		return NewLimiterWithBurst(p.out, p.burst)
+		return newLimiterWithBurst(p.out, p.burst, p.stats)
 	}
-	return NewLimiter(p.out)
+	return newLimiter(p.out, p.stats)
 }

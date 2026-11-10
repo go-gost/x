@@ -6,7 +6,7 @@ import (
 )
 
 func TestLimitGenerator_In(t *testing.T) {
-	g := newLimitGenerator(100, 0, 0)
+	g := newLimitGenerator(100, 0, 0, nil)
 	lim := g.In()
 	if lim == nil {
 		t.Fatal("In() should not be nil for positive in")
@@ -23,14 +23,14 @@ func TestLimitGenerator_In(t *testing.T) {
 }
 
 func TestLimitGenerator_In_Zero(t *testing.T) {
-	g := newLimitGenerator(0, 200, 0)
+	g := newLimitGenerator(0, 200, 0, nil)
 	if lim := g.In(); lim != nil {
 		t.Fatal("In() should be nil for zero in")
 	}
 }
 
 func TestLimitGenerator_Out(t *testing.T) {
-	g := newLimitGenerator(0, 200, 0)
+	g := newLimitGenerator(0, 200, 0, nil)
 	lim := g.Out()
 	if lim == nil {
 		t.Fatal("Out() should not be nil for positive out")
@@ -47,7 +47,7 @@ func TestLimitGenerator_Out(t *testing.T) {
 }
 
 func TestLimitGenerator_Out_Zero(t *testing.T) {
-	g := newLimitGenerator(100, 0, 0)
+	g := newLimitGenerator(100, 0, 0, nil)
 	if lim := g.Out(); lim != nil {
 		t.Fatal("Out() should be nil for zero out")
 	}
@@ -65,7 +65,7 @@ func TestLimitGenerator_NilReceiver(t *testing.T) {
 
 func TestLimitGenerator_Burst(t *testing.T) {
 	// Burst specified: should use NewLimiterWithBurst.
-	g := newLimitGenerator(100, 200, 500)
+	g := newLimitGenerator(100, 200, 500, nil)
 	limIn := g.In()
 	if limIn == nil {
 		t.Fatal("In() should not be nil")

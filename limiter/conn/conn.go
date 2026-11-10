@@ -17,6 +17,7 @@ import (
 	limiter "github.com/go-gost/core/limiter/conn"
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/x/internal/loader"
+	"github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/yl2chen/cidranger"
 )
@@ -89,6 +90,7 @@ type connLimiter struct {
 	ipLimits   map[string]ConnLimitGenerator
 	cidrLimits cidranger.Ranger
 	limits     map[string]limiter.Limiter
+	stats      *stats.Stats
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 	options    options
@@ -108,6 +110,7 @@ func NewConnLimiter(opts ...Option) limiter.ConnLimiter {
 		ipLimits:   make(map[string]ConnLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
 		limits:     make(map[string]limiter.Limiter),
+		stats:      &stats.Stats{},
 		options:    options,
 		cancelFunc: cancel,
 		logger:     options.logger,
@@ -119,6 +122,11 @@ func NewConnLimiter(opts ...Option) limiter.ConnLimiter {
 	go lim.periodReload(ctx)
 
 	return lim
+}
+
+// Stats returns the aggregate connection limiter counters.
+func (l *connLimiter) Stats() stats.Snapshot {
+	return l.stats.Snapshot()
 }
 
 func (l *connLimiter) Limiter(key string) limiter.Limiter {
@@ -225,18 +233,18 @@ func (l *connLimiter) reload(ctx context.Context) error {
 		}
 		switch key {
 		case GlobalLimitKey:
-			ipLimits[key] = NewConnLimitSingleGenerator(limit)
+			ipLimits[key] = newConnLimitSingleGenerator(limit, l.stats)
 		case IPLimitKey:
-			ipLimits[key] = NewConnLimitGenerator(limit)
+			ipLimits[key] = newConnLimitGenerator(limit, l.stats)
 		default:
 			if ip := net.ParseIP(key); ip != nil {
-				ipLimits[key] = NewConnLimitSingleGenerator(limit)
+				ipLimits[key] = newConnLimitSingleGenerator(limit, l.stats)
 				break
 			}
 			if _, ipNet, _ := net.ParseCIDR(key); ipNet != nil {
 				cidrLimits.Insert(&cidrLimitEntry{
 					ipNet: *ipNet,
-					limit: NewConnLimitGenerator(limit),
+					limit: newConnLimitGenerator(limit, l.stats),
 				})
 			}
 		}

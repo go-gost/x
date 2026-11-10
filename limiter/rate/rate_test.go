@@ -10,6 +10,7 @@ import (
 	"time"
 
 	limiter "github.com/go-gost/core/limiter/rate"
+	stats "github.com/go-gost/x/limiter/stats"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/yl2chen/cidranger"
 )
@@ -22,6 +23,7 @@ func newTestRateLimiter(limits ...string) *rateLimiter {
 		ipLimits:   make(map[string]RateLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
 		limits:     make(map[string]limiter.Limiter),
+		stats:      &stats.Stats{},
 		logger:     xlogger.Nop(),
 		cancelFunc: cancel,
 	}
@@ -41,6 +43,7 @@ func newTestRateLimiterWithLoaders(opts ...Option) *rateLimiter {
 		ipLimits:   make(map[string]RateLimitGenerator),
 		cidrLimits: cidranger.NewPCTrieRanger(),
 		limits:     make(map[string]limiter.Limiter),
+		stats:      &stats.Stats{},
 		logger:     o.logger,
 		cancelFunc: cancel,
 	}
@@ -860,5 +863,24 @@ func TestRateLimiter_ExactIPPrecedesCIDRInReload(t *testing.T) {
 	l2 := rl.Limiter("192.168.2.1")
 	if l2 == nil || l2.Limit() != 30 {
 		t.Errorf("Limit() = %v, want 30 (CIDR for non-exact match)", l2.Limit())
+	}
+}
+
+func TestRateLimiterStats(t *testing.T) {
+	stats.Enable(true)
+	defer stats.Enable(false)
+
+	l := newTestRateLimiter("$$ 0.1")
+	entry := l.Limiter("1.2.3.4")
+	if !entry.Allow(1) {
+		t.Fatal("first allow should succeed")
+	}
+	if entry.Allow(1) {
+		t.Fatal("second allow should be denied")
+	}
+
+	got := l.Stats()
+	if got.Calls != 2 || got.Allowed != 1 || got.Denied != 1 {
+		t.Fatalf("stats = %+v", got)
 	}
 }
