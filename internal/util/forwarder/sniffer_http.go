@@ -790,8 +790,22 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 	// failCodes: a matching upstream status marks the node failed so the
 	// selector's FailFilter skips it. The response still relays to the client;
 	// closing the connection makes the next client request re-select a node.
-	if hts := node.Options().HTTP; hts != nil && hts.FailCodes.Match(resp.StatusCode) {
-		log.Warnf("failCodes matched status %d for node %s", resp.StatusCode, node.Name)
+	//
+	// A retry code is a failure even once the retry budget is exhausted and
+	// even when it is absent from failCodes: the retry branch above only marks
+	// while budget remains, so without this the final attempt of such a status
+	// would clear the marker and leave a node selectable that just refused to
+	// serve the request.
+	hts := node.Options().HTTP
+	failCodeHit := hts != nil && hts.FailCodes.Match(resp.StatusCode)
+	retryable := rs != nil && resp.StatusCode != http.StatusSwitchingProtocols &&
+		rs.codes.Match(resp.StatusCode)
+	if failCodeHit || retryable {
+		if failCodeHit {
+			log.Warnf("failCodes matched status %d for node %s", resp.StatusCode, node.Name)
+		} else {
+			log.Warnf("retry code matched status %d for node %s with no retry budget left", resp.StatusCode, node.Name)
+		}
 		if marker := node.Marker(); marker != nil {
 			marker.Mark()
 		}

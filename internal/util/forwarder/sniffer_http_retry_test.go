@@ -75,6 +75,9 @@ type retryUpstream struct {
 	hits atomic.Int32
 	mu   sync.Mutex
 	body []byte
+	// auth keeps the Authorization header of every request, in arrival order,
+	// so a test can assert which credential each attempt carried upstream.
+	auth []string
 }
 
 func newRetryUpstream(t *testing.T, reply upstreamReply) *retryUpstream {
@@ -82,6 +85,9 @@ func newRetryUpstream(t *testing.T, reply upstreamReply) *retryUpstream {
 	u := &retryUpstream{}
 	u.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u.hits.Add(1)
+		u.mu.Lock()
+		u.auth = append(u.auth, r.Header.Get("Authorization"))
+		u.mu.Unlock()
 		if reply.read {
 			body, _ := io.ReadAll(r.Body)
 			u.mu.Lock()
@@ -106,6 +112,13 @@ func (u *retryUpstream) received() string {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return string(u.body)
+}
+
+// receivedAuth returns the Authorization header values seen, in order.
+func (u *retryUpstream) receivedAuth() []string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]string(nil), u.auth...)
 }
 
 // retryRequest runs one client request through HandleHTTP and returns the
@@ -288,6 +301,96 @@ func TestHandleHTTP_RetryMarksNodeWithoutFailCodes(t *testing.T) {
 	}
 	if ro.Retries != 1 {
 		t.Fatalf("recorded retries = %d, want 1", ro.Retries)
+	}
+}
+
+// TestHandleHTTP_ExhaustedBudgetKeepsRetryCodeMarker covers the final attempt
+// of a retry whose status is not a failCode. The retry branch only marks while
+// budget remains, so the last attempt must mark the node itself instead of
+// falling into the "not a failCode, so reset" path. Otherwise a node that kept
+// refusing the request would be reported healthy right after the budget ran
+// out.
+func TestHandleHTTP_ExhaustedBudgetKeepsRetryCodeMarker(t *testing.T) {
+	a := newRetryUpstream(t, upstreamReply{status: http.StatusTooManyRequests, body: "slow down", read: true})
+
+	// No HTTPNodeSettings: the node has no failCodes, so 429 is only a retry
+	// code here.
+	aNode := chain.NewNode("a", a.addr(),
+		chain.MetadataNodeOption(metadata.NewMetadata(map[string]any{"retry.max": 1})))
+	hh := &sequenceHop{nodes: []*chain.Node{aNode}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+
+	status, _, ro := retryRequest(t, h, hh, `{"m":1}`, nil)
+
+	if status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", status)
+	}
+	if got := a.hits.Load(); got != 2 {
+		t.Fatalf("upstream hits = %d, want 2", got)
+	}
+	// One mark per failed attempt: the retried one and the exhausted final one.
+	if got := aNode.Marker().Count(); got != 2 {
+		t.Fatalf("failed node fail count = %d, want 2", got)
+	}
+	if ro.Retries != 1 {
+		t.Fatalf("recorded retries = %d, want 1", ro.Retries)
+	}
+}
+
+// retryAuthNode builds a node that opts into retries and stamps one request
+// header, standing in for the provider credential cuttle puts on each node.
+func retryAuthNode(name, addr, authorization string) *chain.Node {
+	return chain.NewNode(name, addr,
+		chain.HTTPNodeOption(&chain.HTTPNodeSettings{
+			FailCodes:     chain.FailCodes{429, 5},
+			RequestHeader: map[string]string{"Authorization": authorization},
+		}),
+		chain.MetadataNodeOption(metadata.NewMetadata(map[string]any{"retry.max": 1})),
+	)
+}
+
+// TestHandleHTTP_RetryReappliesProviderCredentials pins the credential boundary
+// of a retry. The replay snapshot is the pristine client request, so every
+// attempt has to re-apply the selected node's request headers: the first
+// provider must see its own key, the second provider its own, and neither may
+// receive the client's inbound credential (which would bill the wrong account).
+func TestHandleHTTP_RetryReappliesProviderCredentials(t *testing.T) {
+	a := newRetryUpstream(t, upstreamReply{status: http.StatusTooManyRequests, body: "slow down", read: true})
+	b := newRetryUpstream(t, upstreamReply{status: http.StatusOK, body: "ok", read: true})
+
+	hh := &sequenceHop{nodes: []*chain.Node{
+		retryAuthNode("a", a.addr(), "Bearer sk-a"),
+		retryAuthNode("b", b.addr(), "Bearer sk-b"),
+	}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+
+	status, body, ro := retryRequest(t, h, hh, `{"m":1}`,
+		map[string]string{"Authorization": "Bearer client-key"})
+
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if body != "ok" {
+		t.Fatalf("body = %q, want ok", body)
+	}
+	if got := a.receivedAuth(); len(got) != 1 || got[0] != "Bearer sk-a" {
+		t.Fatalf("first upstream authorization = %q, want [\"Bearer sk-a\"]", got)
+	}
+	if got := b.receivedAuth(); len(got) != 1 || got[0] != "Bearer sk-b" {
+		t.Fatalf("second upstream authorization = %q, want [\"Bearer sk-b\"]", got)
+	}
+	for _, u := range []*retryUpstream{a, b} {
+		for _, got := range u.receivedAuth() {
+			if strings.Contains(got, "client-key") {
+				t.Fatalf("upstream received the client credential %q", got)
+			}
+		}
+	}
+	if ro.Retries != 1 {
+		t.Fatalf("recorded retries = %d, want 1", ro.Retries)
+	}
+	if ro.Node != "b" {
+		t.Fatalf("recorded node = %q, want b", ro.Node)
 	}
 }
 
