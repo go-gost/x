@@ -157,12 +157,12 @@ git commit -m "perf(metrics): gather only the requested families"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-10 — complete.
+- Repo + commit: `go-gost/x` @ `04e3782`.
+- Files changed: `x/metrics/gather.go`, `x/metrics/gather_test.go`, `x/dashboard/chains.go`.
+- Tests/commands and results: `go test ./metrics/ -run 'TestGatherFamilies' -v` RED (compile error: `GatherFamilies` undefined) → GREEN; `go test ./dashboard/ -run TestCollectChainStats -v` PASS; `go test ./metrics/ ./dashboard/ -count=1` PASS.
+- Review findings and fixes: none yet (final whole-branch review pending).
+- Deferred items/limitations: none.
 
 ---
 
