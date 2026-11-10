@@ -395,9 +395,12 @@ func (h *Sniffer) dial(ctx context.Context, req *http.Request, ho *HandleOptions
 		ho.Log.Warnf("connect to node %s(%s) failed: %v", node.Name, node.Addr, err)
 		return nil, nil, res, err
 	}
-	if marker := node.Marker(); marker != nil {
-		marker.Reset()
-	}
+	// A successful connect is not a healthy node: the node is only known to
+	// be serving once it returns a non-failCodes response (see
+	// httpRoundTrip). Resetting the marker here would run before every
+	// request whenever the upstream connection is not kept alive, erasing the
+	// failCodes count each time, so a maxFails > 1 threshold could never be
+	// reached.
 
 	cc = tlsWrapConn(cc, node.Options().TLS)
 	return node, cc, nil, nil
@@ -688,6 +691,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			marker.Mark()
 		}
 		shouldClose = true
+	} else if marker := node.Marker(); marker != nil {
+		// Any other response proves the node is reachable and serving, so it
+		// clears the failure count. This is the success signal that keeps
+		// maxFails meaningful: a successful dial no longer resets the marker.
+		marker.Reset()
 	}
 
 	if log.IsLevelEnabled(logger.TraceLevel) {
