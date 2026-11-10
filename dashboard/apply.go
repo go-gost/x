@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-gost/x/config"
+	limiterstats "github.com/go-gost/x/limiter/stats"
 )
 
 var (
@@ -25,6 +26,7 @@ func Apply(cfg *config.Config) {
 
 	stopReporter()
 	Enable(on)
+	limiterstats.Enable(on)
 	ResetState()
 	Default().SetChainFilter(chainNames(cfg))
 

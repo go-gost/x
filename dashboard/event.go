@@ -40,6 +40,7 @@ type ModuleStatsEvent struct {
 	CacheHits        uint64
 	CacheMisses      uint64
 	CacheStores      uint64
+	Limiter          *LimiterStats
 }
 
 // Type returns EventModuleStats.

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/limiter"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -23,7 +24,7 @@ type getConnLimiterListResponse struct {
 }
 
 type connLimiterList struct {
-	Count int                       `json:"count"`
+	Count int                     `json:"count"`
 	List  []*config.LimiterConfig `json:"list"`
 }
 
@@ -84,7 +85,7 @@ func getConnLimiter(ctx *gin.Context) {
 
 	var resp getConnLimiterResponse
 
-	for _, limiter := range config.Global().CLimiters{
+	for _, limiter := range config.Global().CLimiters {
 		if limiter == nil {
 			continue
 		}
@@ -136,7 +137,7 @@ func createConnLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parser.ParseConnLimiter(&req.Data)
+	v := dashboard.WrapConnLimiter(name, parser.ParseConnLimiter(&req.Data))
 	if err := registry.ConnLimiterRegistry().Register(name, v); err != nil {
 		writeError(ctx, NewError(http.StatusInternalServerError, ErrCodeFailed, fmt.Sprintf("create limmiter %s failed: %s", name, err.Error())))
 		return
@@ -191,7 +192,7 @@ func updateConnLimiter(ctx *gin.Context) {
 
 	req.Data.Name = name
 
-	v := parser.ParseConnLimiter(&req.Data)
+	v := dashboard.WrapConnLimiter(name, parser.ParseConnLimiter(&req.Data))
 
 	registry.ConnLimiterRegistry().Unregister(name)
 

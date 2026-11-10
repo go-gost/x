@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/limiter"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -23,7 +24,7 @@ type getLimiterListResponse struct {
 }
 
 type limiterList struct {
-	Count int                       `json:"count"`
+	Count int                     `json:"count"`
 	List  []*config.LimiterConfig `json:"list"`
 }
 
@@ -136,7 +137,7 @@ func createLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parser.ParseTrafficLimiter(&req.Data)
+	v := dashboard.WrapTrafficLimiter(name, parser.ParseTrafficLimiter(&req.Data))
 
 	if err := registry.TrafficLimiterRegistry().Register(name, v); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))
@@ -192,7 +193,7 @@ func updateLimiter(ctx *gin.Context) {
 
 	req.Data.Name = name
 
-	v := parser.ParseTrafficLimiter(&req.Data)
+	v := dashboard.WrapTrafficLimiter(name, parser.ParseTrafficLimiter(&req.Data))
 
 	registry.TrafficLimiterRegistry().Unregister(name)
 

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/x/config"
 	parser "github.com/go-gost/x/config/parsing/limiter"
+	"github.com/go-gost/x/dashboard"
 	"github.com/go-gost/x/registry"
 )
 
@@ -23,7 +24,7 @@ type getRateLimiterListResponse struct {
 }
 
 type rateLimiterList struct {
-	Count int                       `json:"count"`
+	Count int                     `json:"count"`
 	List  []*config.LimiterConfig `json:"list"`
 }
 
@@ -84,7 +85,7 @@ func getRateLimiter(ctx *gin.Context) {
 
 	var resp getRateLimiterResponse
 
-	for _, limiter := range config.Global().CLimiters{
+	for _, limiter := range config.Global().CLimiters {
 		if limiter == nil {
 			continue
 		}
@@ -136,7 +137,7 @@ func createRateLimiter(ctx *gin.Context) {
 		return
 	}
 
-	v := parser.ParseRateLimiter(&req.Data)
+	v := dashboard.WrapRateLimiter(name, parser.ParseRateLimiter(&req.Data))
 
 	if err := registry.RateLimiterRegistry().Register(name, v); err != nil {
 		writeError(ctx, NewError(http.StatusBadRequest, ErrCodeDup, fmt.Sprintf("limiter %s already exists", name)))
@@ -192,7 +193,7 @@ func updateRateLimiter(ctx *gin.Context) {
 
 	req.Data.Name = name
 
-	v := parser.ParseRateLimiter(&req.Data)
+	v := dashboard.WrapRateLimiter(name, parser.ParseRateLimiter(&req.Data))
 
 	registry.RateLimiterRegistry().Unregister(name)
 

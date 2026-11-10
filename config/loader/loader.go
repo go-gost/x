@@ -291,7 +291,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[traffic.TrafficLimiter]
 		for _, c := range cfg.Limiters {
-			entries = append(entries, named[traffic.TrafficLimiter]{c.Name, limiter_parser.ParseTrafficLimiter(c)})
+			entries = append(entries, named[traffic.TrafficLimiter]{c.Name, dashboard.WrapTrafficLimiter(c.Name, limiter_parser.ParseTrafficLimiter(c))})
 		}
 		if err := registerGroup(entries, registry.TrafficLimiterRegistry()); err != nil {
 			return err
@@ -311,7 +311,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[conn.ConnLimiter]
 		for _, c := range cfg.CLimiters {
-			entries = append(entries, named[conn.ConnLimiter]{c.Name, limiter_parser.ParseConnLimiter(c)})
+			entries = append(entries, named[conn.ConnLimiter]{c.Name, dashboard.WrapConnLimiter(c.Name, limiter_parser.ParseConnLimiter(c))})
 		}
 		if err := registerGroup(entries, registry.ConnLimiterRegistry()); err != nil {
 			return err
@@ -321,7 +321,7 @@ func register(cfg *config.Config) error {
 	{
 		var entries []named[rate.RateLimiter]
 		for _, c := range cfg.RLimiters {
-			entries = append(entries, named[rate.RateLimiter]{c.Name, limiter_parser.ParseRateLimiter(c)})
+			entries = append(entries, named[rate.RateLimiter]{c.Name, dashboard.WrapRateLimiter(c.Name, limiter_parser.ParseRateLimiter(c))})
 		}
 		if err := registerGroup(entries, registry.RateLimiterRegistry()); err != nil {
 			return err

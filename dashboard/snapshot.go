@@ -50,17 +50,28 @@ type ModuleSnapshot struct {
 
 // ModuleStats contains cumulative module counters and latency totals.
 type ModuleStats struct {
-	Calls            uint64 `json:"calls"`
-	Hits             uint64 `json:"hits"`
-	Misses           uint64 `json:"misses"`
-	Errors           uint64 `json:"errors"`
-	InputBytes       uint64 `json:"inputBytes"`
-	OutputBytes      uint64 `json:"outputBytes"`
-	LatencySumMicros uint64 `json:"latencySumMicros"`
-	LatencyCount     uint64 `json:"latencyCount"`
-	CacheHits        uint64 `json:"cacheHits"`
-	CacheMisses      uint64 `json:"cacheMisses"`
-	CacheStores      uint64 `json:"cacheStores"`
+	Calls            uint64        `json:"calls"`
+	Hits             uint64        `json:"hits"`
+	Misses           uint64        `json:"misses"`
+	Errors           uint64        `json:"errors"`
+	InputBytes       uint64        `json:"inputBytes"`
+	OutputBytes      uint64        `json:"outputBytes"`
+	LatencySumMicros uint64        `json:"latencySumMicros"`
+	LatencyCount     uint64        `json:"latencyCount"`
+	CacheHits        uint64        `json:"cacheHits"`
+	CacheMisses      uint64        `json:"cacheMisses"`
+	CacheStores      uint64        `json:"cacheStores"`
+	Limiter          *LimiterStats `json:"limiter,omitempty"`
+}
+
+// LimiterStats contains aggregate limiter counters.
+type LimiterStats struct {
+	Calls     uint64 `json:"calls"`
+	Allowed   uint64 `json:"allowed"`
+	Denied    uint64 `json:"denied"`
+	WaitCalls uint64 `json:"waitCalls"`
+	Requested uint64 `json:"requested"`
+	Granted   uint64 `json:"granted"`
 }
 
 // ChainSnapshot is the runtime state of one proxy chain.

@@ -23,13 +23,14 @@ type moduleCounters struct {
 	cacheStores atomic.Uint64
 
 	lastErrReported atomic.Uint64
+	sampleLimiter   atomic.Pointer[func() LimiterStats]
 }
 
 func (c *moduleCounters) snapshot() ModuleStats {
 	if c == nil {
 		return ModuleStats{}
 	}
-	return ModuleStats{
+	stats := ModuleStats{
 		Calls:            c.calls.Load(),
 		Hits:             c.hits.Load(),
 		Misses:           c.misses.Load(),
@@ -40,6 +41,11 @@ func (c *moduleCounters) snapshot() ModuleStats {
 		CacheMisses:      c.cacheMisses.Load(),
 		CacheStores:      c.cacheStores.Load(),
 	}
+	if fn := c.sampleLimiter.Load(); fn != nil {
+		s := (*fn)()
+		stats.Limiter = &s
+	}
+	return stats
 }
 
 // seriesEpoch is one generation of the series registry. ResetState swaps the
@@ -133,6 +139,7 @@ func Flush() {
 			CacheHits:        stats.CacheHits,
 			CacheMisses:      stats.CacheMisses,
 			CacheStores:      stats.CacheStores,
+			Limiter:          stats.Limiter,
 		})
 
 		if stats.Errors > 0 {
