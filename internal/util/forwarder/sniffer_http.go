@@ -231,6 +231,14 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 				}
 			}
 
+			if rs == nil && node != nil {
+				// A reused upstream connection skips dial and therefore the
+				// node select, so the node retained from the dial that opened
+				// it carries the retry policy. A retry drops cc, so the next
+				// attempt re-selects.
+				rs = newRetryState(req, node)
+			}
+
 			// --- Forward request and cache response ---
 			shouldClose, retry, err := h.httpRoundTrip(withAttempt(ctx, attempt), xio.NewReadWriteCloser(br, conn, conn), cc, node, req, &pStats, &ho, staleResp, rs)
 			if staleResp != nil && staleResp.Body != nil {
