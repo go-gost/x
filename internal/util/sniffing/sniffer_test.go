@@ -855,6 +855,67 @@ func TestH2HandlerServeHTTP_WithBodyRecording(t *testing.T) {
 	}
 }
 
+// slowBodyRoundTripper answers with a body that sends one byte every gap, n times.
+type slowBodyRoundTripper struct {
+	n   int
+	gap time.Duration
+}
+
+func (s *slowBodyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	pr, pw := io.Pipe()
+	go func() {
+		for i := 0; i < s.n; i++ {
+			time.Sleep(s.gap)
+			pw.Write([]byte("x"))
+		}
+		pw.Close()
+	}()
+	return &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": {"text/event-stream"}},
+		Body:          pr,
+		ContentLength: -1,
+	}, nil
+}
+
+func TestH2HandlerServeHTTP_StreamsBody(t *testing.T) {
+	for _, httpBody := range []bool{false, true} {
+		handler := &h2Handler{
+			transport:       &slowBodyRoundTripper{n: 3, gap: 300 * time.Millisecond},
+			sessionRecorder: xrecorder.NewSessionRecorder(&noopRecorder{}, xrecorder.SessionRecorderOptions{}),
+			recorderOptions: &recorder.Options{HTTPBody: httpBody, MaxBodySize: 1024},
+			recorderObject:  &xrecorder.HandlerRecorderObject{},
+			log:             xlogger.Nop(),
+		}
+		srv := httptest.NewUnstartedServer(handler)
+		srv.EnableHTTP2 = true
+		srv.StartTLS()
+
+		start := time.Now()
+		resp, err := srv.Client().Get(srv.URL + "/sse")
+		if err != nil {
+			srv.Close()
+			t.Fatal(err)
+		}
+		if resp.ProtoMajor != 2 {
+			t.Errorf("httpBody=%v: proto = %s, want HTTP/2", httpBody, resp.Proto)
+		}
+		// The header must not wait for the body, and the first byte must not wait for the body end (900 ms).
+		if head := time.Since(start); head > 200*time.Millisecond {
+			t.Errorf("httpBody=%v: header after %s", httpBody, head)
+		}
+		buf := make([]byte, 1)
+		if _, err := io.ReadFull(resp.Body, buf); err != nil {
+			t.Errorf("httpBody=%v: read: %v", httpBody, err)
+		}
+		if first := time.Since(start); first > 600*time.Millisecond {
+			t.Errorf("httpBody=%v: first byte after %s", httpBody, first)
+		}
+		resp.Body.Close()
+		srv.Close()
+	}
+}
+
 // =============================================================================
 // Sniff / isHTTP Tests
 // =============================================================================

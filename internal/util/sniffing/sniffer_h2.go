@@ -201,8 +201,12 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.setHeader(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
+	// Send the header and each body piece at once: the HTTP/2 server holds writes in a 4 KB buffer,
+	// which delays streamed responses (SSE) until the buffer fills or the body ends.
+	fw := flushWriter{w}
+	fw.Flush()
 
-	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(nil, w), &counters)
+	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(nil, fw), &counters)
 	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
@@ -225,4 +229,21 @@ func (h *h2Handler) setHeader(w http.ResponseWriter, header http.Header) {
 func countBody(body io.ReadCloser, counters stats.Stats) io.ReadCloser {
 	counted := stats_wrapper.WrapReadWriter(xio.NewReadWriter(body, io.Discard), counters)
 	return xio.NewReadWriteCloser(counted, io.Discard, body)
+}
+
+// flushWriter flushes the response after each write.
+type flushWriter struct {
+	w http.ResponseWriter
+}
+
+func (f flushWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	f.Flush()
+	return n, err
+}
+
+func (f flushWriter) Flush() {
+	if fl, ok := f.w.(http.Flusher); ok {
+		fl.Flush()
+	}
 }
