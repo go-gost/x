@@ -293,12 +293,12 @@ git commit -m "feat(limiter): add aggregate stats counters"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-10 — complete.
+- Repo + commit: `go-gost/x` @ `8dce439`.
+- Files changed: `x/limiter/stats/{stats.go,stats_test.go}`; `x/limiter/conn/{limiter.go,generator.go,conn.go,conn_test.go}`; `x/limiter/rate/{limiter.go,generator.go,rate.go,rate_test.go}`; `x/limiter/traffic/{limiter.go,generator.go,traffic.go,generator_test.go,traffic_test.go}`.
+- Tests/commands and results: `go test ./limiter/stats/ -run TestStatsGatedByEnable -v` RED (package undefined) → GREEN; `go test ./limiter/conn/ ./limiter/rate/ ./limiter/traffic/ -run 'Test.*LimiterStats' -v` RED (unknown `stats` fields / `Stats()` undefined) → GREEN; `go test ./limiter/conn/ ./limiter/rate/ ./limiter/traffic/ -count=1` PASS; `go test -race ./limiter/conn/ ./limiter/rate/ ./limiter/traffic/ -count=1` PASS; `go test ./limiter/stats/ ./limiter/conn/ ./limiter/rate/ ./limiter/traffic/ -count=1` PASS.
+- Review findings and fixes: `limiter/traffic/generator_test.go` direct `newLimitGenerator` calls updated to pass `nil` stats; no behavior change.
+- Deferred items/limitations: none.
 
 ---
 
