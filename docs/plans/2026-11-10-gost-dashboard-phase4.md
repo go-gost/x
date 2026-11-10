@@ -495,9 +495,9 @@ git commit -m "docs(plans): record dashboard phase 4 implementation"
 ```
 
 **Implementation record:**
-- Date/status: _to fill_
-- Repo + commit: _to fill_
-- Files changed: _to fill_
-- Tests/commands and results: _to fill_
-- Review findings and fixes: _to fill_
-- Deferred items/limitations: _to fill_
+- Date/status: 2026-11-10 — complete.
+- Repo + commit: `go-gost/x` @ `713ea2b` (base; this plan commit records Task 4); memory repo `go-gost` @ `a562697`.
+- Files changed: `x/docs/plans/2026-11-10-gost-dashboard-phase4.md`; `.memory/notes/gost-dashboard-port-eval.md`; `.memory/MEMORY.md` (index line updated in the working tree, not committed with unrelated pre-existing changes).
+- Tests/commands and results: `go test ./dashboard/ ./limiter/... ./metrics/ ./resolver/ ./internal/util/resolver/ ./config/loader/ ./api/ ./chain/ -count=1` PASS; `go test -race ./dashboard/ ./limiter/... ./metrics/ -count=1` PASS; `go vet ./dashboard/ ./limiter/... ./metrics/ ./config/loader/` clean; `cd gost && go build ./cmd/gost` exit 0; `git status --short` in `x/` shows only the pre-existing untracked docs.
+- Review findings and fixes: none.
+- Deferred items/limitations: `MEMORY.md` index update left uncommitted alongside other working-tree changes; Phase 4 implementation is complete.
