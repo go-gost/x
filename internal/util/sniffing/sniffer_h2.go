@@ -206,11 +206,15 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if bodySize := ClampBodySize(h.recorderOptions); bodySize > 0 && ro.RecordMode != "headers" && ro.RecordMode != "off" {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
-		io.Copy(counted, resp.Body)
+		_, err = io.Copy(counted, resp.Body)
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	} else {
-		io.Copy(counted, resp.Body)
+		_, err = io.Copy(counted, resp.Body)
+	}
+	// A stream reset or a dropped connection cuts the body short.
+	if err != nil {
+		err = wrapErr("write response", err)
 	}
 }
 
