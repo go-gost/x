@@ -174,15 +174,23 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.setHeader(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
+	// Send the header and each body piece at once: the HTTP/2 server holds writes in a 4 KB buffer,
+	// which delays streamed responses (SSE) until the buffer fills or the body ends.
+	fw := flushWriter{w}
+	fw.Flush()
 
 	if bodySize := clampBodySize(h.recorderOptions); bodySize > 0 {
 		respBody := xhttp.NewBody(resp.Body, bodySize)
 		resp.Body = respBody
-		_, _ = io.Copy(w, resp.Body)
+		_, err = io.Copy(fw, resp.Body)
 		ro.HTTP.Response.Body = respBody.Content()
 		ro.HTTP.Response.ContentLength = respBody.Length()
 	} else {
-		_, _ = io.Copy(w, resp.Body)
+		_, err = io.Copy(fw, resp.Body)
+	}
+	// A stream reset or a dropped connection cuts the body short.
+	if err != nil {
+		err = fmt.Errorf("write response: %w", err)
 	}
 }
 
@@ -191,5 +199,26 @@ func (h *h2Handler) setHeader(w http.ResponseWriter, header http.Header) {
 		for i := range v {
 			w.Header().Add(k, v[i])
 		}
+	}
+}
+
+// flushWriter flushes the response after each write, and skips the flush when
+// the write itself failed.
+type flushWriter struct {
+	w http.ResponseWriter
+}
+
+func (f flushWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	if err != nil {
+		return n, err
+	}
+	f.Flush()
+	return n, nil
+}
+
+func (f flushWriter) Flush() {
+	if fl, ok := f.w.(http.Flusher); ok {
+		fl.Flush()
 	}
 }
