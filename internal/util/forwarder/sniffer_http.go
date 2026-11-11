@@ -176,8 +176,12 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		if !freshHit {
 			if cc == nil {
 				var dialRes *http.Response
+				// Take the attempt start before the dial: the retry state for
+				// the first attempt is only built once the dial resolves, and
+				// its duration must still cover the connect.
+				dialStart := time.Now()
 				if rs != nil {
-					rs.attemptStart = time.Now()
+					rs.attemptStart = dialStart
 				}
 				node, cc, dialRes, err = h.dial(ctx, req, &ho)
 				if err != nil {
@@ -199,6 +203,11 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 					// failed replay cannot record a retry that never happened.
 					if rs == nil {
 						rs = newRetryState(req, node)
+					}
+					if rs != nil {
+						// The state is built after the dial resolved, so the
+						// failed connect is timed from dialStart.
+						rs.attemptStart = dialStart
 					}
 					if rs != nil && rs.budget > 0 {
 						if replay, rerr := replayRetryRequest(rs.replay); rerr == nil {
@@ -244,6 +253,11 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 					// client request so a later attempt can be replayed against
 					// another node.
 					rs = newRetryState(req, node)
+				}
+				if rs != nil {
+					// The state is created after the connect, so the first
+					// attempt is timed from the dial start.
+					rs.attemptStart = dialStart
 				}
 			}
 
@@ -800,7 +814,6 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			ResponseHeader: resp.Header.Clone(),
 			ResponseBody:   preview,
 		})
-		ho.RecorderObject.HTTP.Attempts = rs.attempts
 		return false, true, nil
 	}
 

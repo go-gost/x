@@ -732,6 +732,42 @@ func TestHandleHTTP_RecordsDiscardedDialFailure(t *testing.T) {
 	}
 }
 
+// TestHandleHTTP_DialFailureAttemptKeepsConnectTime pins the duration of a
+// first attempt. Its retry state is built only after the dial resolves, so the
+// attempt has to be timed from before the connect; otherwise a 30 s connect
+// timeout would publish a near-zero duration while later attempts publish
+// dial+response time.
+func TestHandleHTTP_DialFailureAttemptKeepsConnectTime(t *testing.T) {
+	good := newRetryUpstream(t, upstreamReply{status: http.StatusOK, body: "ok", read: true})
+
+	hh := &sequenceHop{nodes: []*chain.Node{
+		retryNode("a", "127.0.0.1:1", 1, "429,5xx"),
+		retryNode("b", good.addr(), 1, "429,5xx"),
+	}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+	const dialDelay = 50 * time.Millisecond
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr == "127.0.0.1:1" {
+			time.Sleep(dialDelay)
+			return nil, io.ErrUnexpectedEOF
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
+	}
+
+	status, _, ro := retryRequest(t, h, hh, `{"m":1}`, nil, sniffing.WithDial(dial))
+
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if ro.HTTP == nil || len(ro.HTTP.Attempts) != 1 {
+		t.Fatalf("recorded attempts = %+v, want 1", ro.HTTP)
+	}
+	if got := ro.HTTP.Attempts[0].DurationMS; got < 40 {
+		t.Fatalf("attempt duration = %d ms, want the connect time (>= 40)", got)
+	}
+}
+
 func TestHandleHTTP_RecordsAttemptWhenBodyIsCut(t *testing.T) {
 	trunc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Promises 1024 bytes, writes a few, then returns: Go closes the
