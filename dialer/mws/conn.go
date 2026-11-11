@@ -1,6 +1,7 @@
 package mws
 
 import (
+	"context"
 	"net"
 
 	"github.com/go-gost/x/internal/util/mux"
@@ -13,6 +14,10 @@ type muxSession struct {
 
 func (session *muxSession) GetConn() (net.Conn, error) {
 	return session.session.GetConn()
+}
+
+func (session *muxSession) GetConnContext(ctx context.Context) (net.Conn, error) {
+	return session.session.GetConnContext(ctx)
 }
 
 func (session *muxSession) Accept() (net.Conn, error) {

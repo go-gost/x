@@ -359,12 +359,12 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 
 ### Task 4
 
-- Date/status:
-- Repo + commit:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-11 — complete
+- Repo + commit: `x/` — this commit
+- Files changed: `dialer/mtcp/{dialer,conn,metadata}.go`, `dialer/mws/{dialer,conn,metadata}.go`, `dialer/mtcp/dialer_test.go`, `dialer/mws/dialer_test.go`
+- Tests/commands and results: `go test ./dialer/mtcp/ ./dialer/mws/ -count=1` PASS (4 + 5 tests); `-race` PASS ×3 each; `go vet` clean; `go build ./...` clean
+- Review findings and fixes: the mws websocket keepalive goroutine deleted `sessions[optAddr]` unconditionally when a ping failed, so a stale conn's keepalive could evict a *replacement* session; it now deletes only while the cached entry is still its own conn. Added the concurrent-convergence test to both packages (mtcp has an echo harness, so the rebuild test was not skipped).
+- Deferred items/limitations: `dialer/kcp` and other mux users (`pht`, `quic`, `grpc`, …) have their own session handling and were not audited here; only the three `smux`-over-`mtls/mtcp/mws` dialers share this code path.
 
 ### Task 5
 
