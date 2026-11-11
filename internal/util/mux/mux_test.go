@@ -107,8 +107,17 @@ func TestStreamDeadlineStaysOnTheStream(t *testing.T) {
 	}
 }
 
-func smuxClientConn(c net.Conn) (Session, error) { return ClientSession(c, &Config{Version: 2}) }
-func smuxServerConn(c net.Conn) (Session, error) { return ServerSession(c, &Config{Version: 2}) }
+// clientFor and serverFor bind a config to a backend constructor.
+func clientFor(cfg *Config) func(net.Conn) (Session, error) {
+	return func(c net.Conn) (Session, error) { return ClientSession(c, cfg) }
+}
+
+func serverFor(cfg *Config) func(net.Conn) (Session, error) {
+	return func(c net.Conn) (Session, error) { return ServerSession(c, cfg) }
+}
+
+func smuxConfig() *Config  { return &Config{Version: 2} }
+func yamuxConfig() *Config { return &Config{Type: "yamux"} }
 
 // stallConn is a session conn whose Write can be frozen, so frames handed to it
 // never reach the peer. That is the only externally visible difference between
@@ -211,17 +220,23 @@ func waitSessionClosed(t *testing.T, s Session) {
 	t.Fatal("session stayed open")
 }
 
+// stallConfig shortens the stall window so the tests do not have to wait out
+// the production ten seconds of silence.
+func stallConfig() *Config {
+	return &Config{Version: 2, StallWindow: 10 * time.Millisecond}
+}
+
 // A stream write that times out is the only signal a stalled send path gives:
 // the session stays open (its keepalive tracks received frames only) and every
 // later stream stalls on it. Two in a row, with no successful write in
 // between, must close the session so its owner rebuilds the tunnel.
 func TestSessionClosesAfterRepeatedWriteTimeouts(t *testing.T) {
-	cli, stream, sc := stalledSession(t, smuxClientConn, smuxServerConn)
+	cli, stream, sc := stalledSession(t, clientFor(stallConfig()), serverFor(smuxConfig()))
 	sc.block(true)
 	defer sc.block(false)
 
 	for i := 1; i <= 2; i++ {
-		if err := stream.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		if err := stream.SetWriteDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
 			t.Fatal(err)
 		}
 		_, err := stream.Write(make([]byte, 1024))
@@ -231,6 +246,8 @@ func TestSessionClosesAfterRepeatedWriteTimeouts(t *testing.T) {
 		if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
 			t.Fatalf("write %d: err = %v, want a timeout", i, err)
 		}
+		// A session is condemned only after a window with no completed write.
+		time.Sleep(2 * stallConfig().StallWindow)
 	}
 
 	waitSessionClosed(t, cli)
@@ -239,7 +256,7 @@ func TestSessionClosesAfterRepeatedWriteTimeouts(t *testing.T) {
 // One timeout proves nothing on its own: a successful write in between clears
 // the strike, so only a second consecutive one condemns the session.
 func TestSessionSurvivesSingleWriteTimeout(t *testing.T) {
-	cli, stream, sc := stalledSession(t, smuxClientConn, smuxServerConn)
+	cli, stream, sc := stalledSession(t, clientFor(stallConfig()), serverFor(smuxConfig()))
 
 	sc.block(true)
 	if err := stream.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
@@ -320,48 +337,121 @@ func openBlockedSession(t *testing.T, cfg *Config) Session {
 }
 
 // A stalled open must return when the caller's context expires instead of
-// waiting out smux's own 30s SYN timer.
+// waiting out the backend's own SYN timer (smux 30s, yamux 75s).
 func TestGetConnContextHonoursContextDeadline(t *testing.T) {
-	cli := openBlockedSession(t, &Config{Version: 2})
+	for _, tc := range []struct {
+		name   string
+		config *Config
+	}{
+		{"smux", smuxConfig()},
+		{"yamux", yamuxConfig()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cli := openBlockedSession(t, tc.config)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+			defer cancel()
 
-	start := time.Now()
-	_, err := cli.GetConnContext(ctx)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
-	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("open returned after %v, want the context deadline", d)
+			start := time.Now()
+			_, err := cli.GetConnContext(ctx)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+			}
+			if d := time.Since(start); d > 2*time.Second {
+				t.Fatalf("open returned after %v, want the context deadline", d)
+			}
+		})
 	}
 }
 
 // With no context deadline the configured open timeout is the backstop.
 func TestGetConnContextUsesOpenTimeout(t *testing.T) {
-	cli := openBlockedSession(t, &Config{Version: 2, OpenTimeout: 300 * time.Millisecond})
+	for _, tc := range []struct {
+		name   string
+		config *Config
+	}{
+		{"smux", &Config{Version: 2, OpenTimeout: 300 * time.Millisecond}},
+		{"yamux", &Config{Type: "yamux", OpenTimeout: 300 * time.Millisecond}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cli := openBlockedSession(t, tc.config)
 
-	start := time.Now()
-	_, err := cli.GetConnContext(context.Background())
-	if !errors.Is(err, ErrOpenTimeout) {
-		t.Fatalf("err = %v, want ErrOpenTimeout", err)
-	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("open returned after %v, want the open timeout", d)
+			start := time.Now()
+			_, err := cli.GetConnContext(context.Background())
+			if !errors.Is(err, ErrOpenTimeout) {
+				t.Fatalf("err = %v, want ErrOpenTimeout", err)
+			}
+			if d := time.Since(start); d > 2*time.Second {
+				t.Fatalf("open returned after %v, want the open timeout", d)
+			}
+		})
 	}
 }
 
-// GetConn keeps working on a healthy session and still returns a usable stream.
+// A healthy session still opens a usable stream.
 func TestGetConnStillOpensOnHealthySession(t *testing.T) {
-	cli, _, _ := stalledSession(t, smuxClientConn, smuxServerConn)
+	for _, tc := range []struct {
+		name   string
+		config *Config
+	}{
+		{"smux", smuxConfig()},
+		{"yamux", yamuxConfig()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cli, _, _ := stalledSession(t, clientFor(tc.config), serverFor(tc.config))
 
-	conn, err := cli.GetConnContext(context.Background())
-	if err != nil {
-		t.Fatal("open: ", err)
-	}
-	defer conn.Close()
+			conn, err := cli.GetConnContext(context.Background())
+			if err != nil {
+				t.Fatal("open: ", err)
+			}
+			defer conn.Close()
 
-	if _, err := conn.Write([]byte("ping")); err != nil {
-		t.Fatal("write: ", err)
+			if _, err := conn.Write([]byte("ping")); err != nil {
+				t.Fatal("write: ", err)
+			}
+		})
 	}
 }
+
+// Two strikes are not enough while the session is still busy: a peer that
+// consumes slowly produces write timeouts on one stream while others complete,
+// and closing the session there would reset every stream multiplexed on it.
+func TestSessionStallRequiresSilence(t *testing.T) {
+	closed := make(chan struct{})
+	stall := newSessionStall(time.Hour, func() error {
+		close(closed)
+		return nil
+	})
+
+	stall.observe(timeoutErr{})
+	stall.observe(timeoutErr{})
+
+	select {
+	case <-closed:
+		t.Fatal("busy session closed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// The same strikes do condemn a session that has been silent for the
+	// whole window.
+	stall = newSessionStall(time.Nanosecond, func() error {
+		close(closed)
+		return nil
+	})
+	stall.observe(timeoutErr{})
+	stall.observe(timeoutErr{})
+
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("silent session not closed")
+	}
+}
+
+// timeoutErr is a net.Error with Timeout() true, as the backends report a
+// stream write that missed its deadline.
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }
