@@ -341,12 +341,12 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 
 ### Task 2
 
-- Date/status:
-- Repo + commit:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-11 — complete
+- Repo + commit: `x/` — this commit
+- Files changed: `internal/util/mux/mux.go` (`Config.OpenTimeout`, `defaultOpenTimeout`, `ErrOpenTimeout`, `Session.GetConnContext`, shared `openBound`/`openAwaited`, both backends), `internal/util/mux/mux_test.go` (3 new tests + `openBlockedSession` helper)
+- Tests/commands and results: `go test ./internal/util/mux/ -count=1` PASS ×5; `-race` PASS ×3; `go vet` clean; `go build ./...` (x module) clean
+- Review findings and fixes: the first implementation raced the configured timeout against `ctx.Done()` with one shared timer, so when the caller's deadline was the tighter bound the timer could fire first and report `ErrOpenTimeout` instead of `context.DeadlineExceeded` — flaky 4 runs in 6. `openBound` now reports which bound is tighter and, when it is the context, the code waits on `ctx.Done()` only; the abandon-and-close logic is shared in `openAwaited`. Five consecutive runs green after the fix.
+- Deferred items/limitations: `Accept()` is deliberately unbounded; only dialers pass a context.
 
 ### Task 3
 

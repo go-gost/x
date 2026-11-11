@@ -301,3 +301,67 @@ func TestSessionStallIgnoresNonTimeoutErrors(t *testing.T) {
 	stall.observe(io.ErrClosedPipe)
 	stall.observe(errors.New("boom"))
 }
+
+// openBlockedSession returns a client session whose peer never reads, so a SYN
+// frame cannot be written and the open hangs exactly like a stalled tunnel.
+func openBlockedSession(t *testing.T, cfg *Config) Session {
+	t.Helper()
+
+	p1, p2 := net.Pipe()
+	cli, err := ClientSession(p1, cfg)
+	if err != nil {
+		t.Fatal("client session: ", err)
+	}
+	t.Cleanup(func() {
+		cli.Close()
+		p2.Close()
+	})
+	return cli
+}
+
+// A stalled open must return when the caller's context expires instead of
+// waiting out smux's own 30s SYN timer.
+func TestGetConnContextHonoursContextDeadline(t *testing.T) {
+	cli := openBlockedSession(t, &Config{Version: 2})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := cli.GetConnContext(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("open returned after %v, want the context deadline", d)
+	}
+}
+
+// With no context deadline the configured open timeout is the backstop.
+func TestGetConnContextUsesOpenTimeout(t *testing.T) {
+	cli := openBlockedSession(t, &Config{Version: 2, OpenTimeout: 300 * time.Millisecond})
+
+	start := time.Now()
+	_, err := cli.GetConnContext(context.Background())
+	if !errors.Is(err, ErrOpenTimeout) {
+		t.Fatalf("err = %v, want ErrOpenTimeout", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("open returned after %v, want the open timeout", d)
+	}
+}
+
+// GetConn keeps working on a healthy session and still returns a usable stream.
+func TestGetConnStillOpensOnHealthySession(t *testing.T) {
+	cli, _, _ := stalledSession(t, smuxClientConn, smuxServerConn)
+
+	conn, err := cli.GetConnContext(context.Background())
+	if err != nil {
+		t.Fatal("open: ", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		t.Fatal("write: ", err)
+	}
+}

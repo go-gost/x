@@ -7,14 +7,22 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-gost/x/ctx"
+	xctx "github.com/go-gost/x/ctx"
 	"github.com/hashicorp/yamux"
 	smux "github.com/xtaci/smux"
 )
 
 const (
 	defaultVersion = 1
+
+	// defaultOpenTimeout bounds a stream open whose caller cannot say how long
+	// it may take.
+	defaultOpenTimeout = 15 * time.Second
 )
+
+// ErrOpenTimeout reports that a stream open exceeded its bound. The session is
+// left open: closing it is the caller's decision.
+var ErrOpenTimeout = errors.New("mux: open stream timeout")
 
 type Config struct {
 	// Type selects the mux backend: "smux" (default) or "yamux".
@@ -47,14 +55,80 @@ type Config struct {
 
 	// MaxStreamWindow is the yamux MaxStreamWindowSize in bytes.
 	MaxStreamWindow int
+
+	// OpenTimeout bounds a stream open. Zero selects defaultOpenTimeout.
+	OpenTimeout time.Duration
 }
 
 // Session multiplexes streams over a single underlying connection.
 type Session interface {
+	// GetConn opens a stream, bounded by defaultOpenTimeout.
 	GetConn() (net.Conn, error)
+	// GetConnContext opens a stream bounded by ctx as well.
+	GetConnContext(ctx context.Context) (net.Conn, error)
 	Accept() (net.Conn, error)
 	Close() error
 	IsClosed() bool
+}
+
+// openBound returns how long an open may take, and whether the caller's
+// context is the tighter of the two bounds.
+func openBound(ctx context.Context, timeout time.Duration) (time.Duration, bool) {
+	if timeout <= 0 {
+		timeout = defaultOpenTimeout
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if left := time.Until(deadline); left < timeout {
+			return left, true
+		}
+	}
+	return timeout, false
+}
+
+// openAwaited runs open aside and waits for it, bounded by ctx and timeout.
+// Both backends have their own fixed open timeout (smux 30s, yamux 75s) that
+// ignores ctx, hence the race. Whichever bound is tighter decides the error
+// that is reported, so a caller's deadline is never disguised as a mux timeout.
+func openAwaited(ctx context.Context, timeout time.Duration, open func() (any, error)) (any, error) {
+	type result struct {
+		v   any
+		err error
+	}
+
+	ch := make(chan result, 1)
+	go func() {
+		v, err := open()
+		ch <- result{v: v, err: err}
+	}()
+
+	bound, ctxBound := openBound(ctx, timeout)
+	var expired <-chan time.Time
+	if !ctxBound {
+		timer := time.NewTimer(bound)
+		defer timer.Stop()
+		expired = timer.C
+	}
+
+	select {
+	case r := <-ch:
+		return r.v, r.err
+	case <-expired:
+	case <-ctx.Done():
+	}
+
+	// The open may still succeed later; that stream has no owner left.
+	go func() {
+		if r := <-ch; r.err == nil {
+			if c, ok := r.v.(net.Conn); ok && c != nil {
+				c.Close()
+			}
+		}
+	}()
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, ErrOpenTimeout
 }
 
 func muxType(cfg *Config) string {
@@ -156,9 +230,10 @@ func convertConfig(cfg *Config) *smux.Config {
 }
 
 type smuxSession struct {
-	conn    net.Conn
-	session *smux.Session
-	stall   *sessionStall
+	conn        net.Conn
+	session     *smux.Session
+	stall       *sessionStall
+	openTimeout time.Duration
 }
 
 func newSMUXClientSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -170,7 +245,7 @@ func newSMUXClientSession(conn net.Conn, cfg *Config) (Session, error) {
 		conn:    conn,
 		session: s,
 	}
-	ss.stall = &sessionStall{close: ss.Close}
+	ss.init(cfg)
 	return ss, nil
 }
 
@@ -183,16 +258,29 @@ func newSMUXServerSession(conn net.Conn, cfg *Config) (Session, error) {
 		conn:    conn,
 		session: s,
 	}
-	ss.stall = &sessionStall{close: ss.Close}
+	ss.init(cfg)
 	return ss, nil
 }
 
+func (session *smuxSession) init(cfg *Config) {
+	session.stall = &sessionStall{close: session.Close}
+	if cfg != nil {
+		session.openTimeout = cfg.OpenTimeout
+	}
+}
+
 func (session *smuxSession) GetConn() (net.Conn, error) {
-	stream, err := session.session.OpenStream()
+	return session.GetConnContext(context.Background())
+}
+
+func (session *smuxSession) GetConnContext(ctx context.Context) (net.Conn, error) {
+	v, err := openAwaited(ctx, session.openTimeout, func() (any, error) {
+		return session.session.OpenStream()
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &streamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
+	return &streamConn{Conn: session.conn, stream: v.(*smux.Stream), stall: session.stall}, nil
 }
 
 func (session *smuxSession) Accept() (net.Conn, error) {
@@ -260,7 +348,7 @@ func (c *streamConn) SetDeadline(t time.Time) error {
 }
 
 func (c *streamConn) Context() context.Context {
-	if sc, ok := c.Conn.(ctx.Context); ok {
+	if sc, ok := c.Conn.(xctx.Context); ok {
 		return sc.Context()
 	}
 	return nil
@@ -289,9 +377,10 @@ func convertYamuxConfig(cfg *Config) *yamux.Config {
 }
 
 type yamuxSession struct {
-	conn    net.Conn
-	session *yamux.Session
-	stall   *sessionStall
+	conn        net.Conn
+	session     *yamux.Session
+	stall       *sessionStall
+	openTimeout time.Duration
 }
 
 func newYamuxClientSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -303,7 +392,7 @@ func newYamuxClientSession(conn net.Conn, cfg *Config) (Session, error) {
 		conn:    conn,
 		session: s,
 	}
-	ys.stall = &sessionStall{close: ys.Close}
+	ys.init(cfg)
 	return ys, nil
 }
 
@@ -316,16 +405,29 @@ func newYamuxServerSession(conn net.Conn, cfg *Config) (Session, error) {
 		conn:    conn,
 		session: s,
 	}
-	ys.stall = &sessionStall{close: ys.Close}
+	ys.init(cfg)
 	return ys, nil
 }
 
+func (session *yamuxSession) init(cfg *Config) {
+	session.stall = &sessionStall{close: session.Close}
+	if cfg != nil {
+		session.openTimeout = cfg.OpenTimeout
+	}
+}
+
 func (session *yamuxSession) GetConn() (net.Conn, error) {
-	stream, err := session.session.Open()
+	return session.GetConnContext(context.Background())
+}
+
+func (session *yamuxSession) GetConnContext(ctx context.Context) (net.Conn, error) {
+	v, err := openAwaited(ctx, session.openTimeout, func() (any, error) {
+		return session.session.Open()
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &yamuxStreamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
+	return &yamuxStreamConn{Conn: session.conn, stream: v.(net.Conn), stall: session.stall}, nil
 }
 
 func (session *yamuxSession) Accept() (net.Conn, error) {
@@ -390,7 +492,7 @@ func (c *yamuxStreamConn) SetDeadline(t time.Time) error {
 }
 
 func (c *yamuxStreamConn) Context() context.Context {
-	if sc, ok := c.Conn.(ctx.Context); ok {
+	if sc, ok := c.Conn.(xctx.Context); ok {
 		return sc.Context()
 	}
 	return nil
