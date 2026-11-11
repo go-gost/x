@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -279,5 +280,218 @@ func TestConcurrentDialHandshakeConvergesOnOneSession(t *testing.T) {
 		if session.session == nil {
 			t.Fatal("cached session was never established")
 		}
+	}
+}
+
+// stallingListener accepts TCP conns and never answers, so a TLS handshake
+// through it hangs until the caller's context expires.
+func stallingListener(t *testing.T) (string, <-chan struct{}) {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+
+	accepted := make(chan struct{}, 1)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			select {
+			case accepted <- struct{}{}:
+			default:
+			}
+			// Hold the conn open, unread and unanswered.
+			_ = conn
+		}
+	}()
+
+	return ln.Addr().String(), accepted
+}
+
+// A node that accepts TCP and then stalls its TLS handshake must not hold up
+// dials to other addresses: session building is serialized per address, not
+// across the whole dialer.
+func TestHandshakeStallDoesNotBlockOtherAddresses(t *testing.T) {
+	echoAddr := echoServer(t)
+	stallAddr, accepted := stallingListener(t)
+
+	d := NewDialer(
+		dialer.TLSConfigOption(&tls.Config{InsecureSkipVerify: true}),
+		dialer.LoggerOption(xlogger.Nop()),
+	)
+	if err := d.Init(xmd.NewMetadata(nil)); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	dialHandshake := func(ctx context.Context, addr string) (net.Conn, error) {
+		conn, err := d.Dial(ctx, addr, dialer.NetDialerDialOption(netDialer{}))
+		if err != nil {
+			return nil, err
+		}
+		return d.(dialer.Handshaker).Handshake(ctx, conn, dialer.AddrHandshakeOption(addr))
+	}
+
+	if _, err := dialHandshake(ctx, echoAddr); err != nil {
+		t.Fatal("warm up: ", err)
+	}
+
+	stallCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	go func() {
+		if cc, err := dialHandshake(stallCtx, stallAddr); err == nil {
+			cc.Close()
+		}
+	}()
+	<-accepted
+	time.Sleep(20 * time.Millisecond) // let the stalled handshake start
+
+	start := time.Now()
+	cc, err := dialHandshake(ctx, echoAddr)
+	if err != nil {
+		t.Fatal("dial while another address stalls: ", err)
+	}
+	defer cc.Close()
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Fatalf("healthy address delayed %v behind a stalled handshake", d)
+	}
+	if _, err := cc.Write([]byte("ping")); err != nil {
+		t.Fatal("write: ", err)
+	}
+	if _, err := io.ReadFull(cc, make([]byte, 4)); err != nil {
+		t.Fatal("read: ", err)
+	}
+}
+
+// gatedDialer hands out conns whose writes can be frozen, which stalls the mux
+// send path of a real session.
+type gatedDialer struct {
+	mu   sync.Mutex
+	gate chan struct{}
+}
+
+func (d *gatedDialer) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	var nd netDialer
+	conn, err := nd.Dial(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	return &gatedConn{Conn: conn, d: d}, nil
+}
+
+func (d *gatedDialer) block(v bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if v {
+		if d.gate == nil {
+			d.gate = make(chan struct{})
+		}
+		return
+	}
+	if d.gate != nil {
+		close(d.gate)
+		d.gate = nil
+	}
+}
+
+type gatedConn struct {
+	net.Conn
+	d *gatedDialer
+}
+
+func (c *gatedConn) Write(b []byte) (int, error) {
+	c.d.mu.Lock()
+	gate := c.d.gate
+	c.d.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
+	return c.Conn.Write(b)
+}
+
+// The behaviour #925 is named after, end to end: a stalled send path makes
+// stream writes time out, the guard retires the dialer's session, and the next
+// dial builds a new tunnel that works.
+func TestStalledWritesRetireTheSession(t *testing.T) {
+	addr := echoServer(t)
+	d := NewDialer(
+		dialer.TLSConfigOption(&tls.Config{InsecureSkipVerify: true}),
+		dialer.LoggerOption(xlogger.Nop()),
+	)
+	// A short stall window keeps the test quick; production waits 10s.
+	if err := d.Init(xmd.NewMetadata(map[string]any{"mux.stallWindow": "10ms"})); err != nil {
+		t.Fatal(err)
+	}
+	gd := &gatedDialer{}
+	ctx := context.Background()
+
+	roundTrip := func(deadline time.Duration) error {
+		conn, err := d.Dial(ctx, addr, dialer.NetDialerDialOption(gd))
+		if err != nil {
+			return err
+		}
+		cc, err := d.(dialer.Handshaker).Handshake(ctx, conn, dialer.AddrHandshakeOption(addr))
+		if err != nil {
+			return err
+		}
+		defer cc.Close()
+		if deadline > 0 {
+			cc.SetWriteDeadline(time.Now().Add(deadline))
+		}
+		if _, err := cc.Write([]byte("ping")); err != nil {
+			return err
+		}
+		_, err = io.ReadFull(cc, make([]byte, 4))
+		return err
+	}
+
+	if err := roundTrip(0); err != nil {
+		t.Fatal("first round trip: ", err)
+	}
+
+	conn, err := d.Dial(ctx, addr, dialer.NetDialerDialOption(gd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc, err := d.(dialer.Handshaker).Handshake(ctx, conn, dialer.AddrHandshakeOption(addr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cc.Close()
+
+	gd.block(true)
+	defer gd.block(false)
+	for i := 1; i <= 2; i++ {
+		cc.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+		if _, err := cc.Write([]byte("ping")); err == nil {
+			t.Fatalf("write %d: expected a timeout", i)
+		}
+		time.Sleep(20 * time.Millisecond) // a window with no completed write
+	}
+
+	md := d.(*mtlsDialer)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		md.sessionMutex.Lock()
+		session := md.sessions[addr]
+		md.sessionMutex.Unlock()
+		if session == nil || session.IsClosed() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stalled session was not retired")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	gd.block(false)
+	if err := roundTrip(0); err != nil {
+		t.Fatal("round trip after recovery: ", err)
 	}
 }
