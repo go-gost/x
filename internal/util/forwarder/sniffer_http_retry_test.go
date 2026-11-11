@@ -234,6 +234,9 @@ func TestHandleHTTP_NoRetryWithoutRetryMetadata(t *testing.T) {
 	if ro.Retries != 0 {
 		t.Fatalf("recorded retries = %d, want 0", ro.Retries)
 	}
+	if ro.HTTP != nil && len(ro.HTTP.Attempts) != 0 {
+		t.Fatalf("recorded attempts = %+v, want none without retry metadata", ro.HTTP.Attempts)
+	}
 }
 
 func TestHandleHTTP_RetryBudgetIsBounded(t *testing.T) {
@@ -666,5 +669,95 @@ func TestRewriteBodyMetadataIncludesAttempt(t *testing.T) {
 	rb := &rewriteBody{ctx: withAttempt(context.Background(), 2), sid: "s", direction: "request", uri: "/u"}
 	if got := rb.baseMetadata()[MetaKeyAttempt]; got != 2 {
 		t.Fatalf("attempt metadata = %v, want 2", got)
+	}
+}
+
+func TestHandleHTTP_RecordsDiscardedAttempt(t *testing.T) {
+	a := newRetryUpstream(t, upstreamReply{status: http.StatusTooManyRequests, body: `{"error":{"type":"rate_limit_error","message":"Rate limit exceeded."}}`, read: true})
+	b := newRetryUpstream(t, upstreamReply{status: http.StatusOK, body: "ok", read: true})
+
+	hh := &sequenceHop{nodes: []*chain.Node{
+		retryNode("a", a.addr(), 1, "429,5xx"),
+		retryNode("b", b.addr(), 1, "429,5xx"),
+	}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+
+	status, _, ro := retryRequest(t, h, hh, `{"m":1}`, nil)
+
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if ro.HTTP == nil || len(ro.HTTP.Attempts) != 1 {
+		t.Fatalf("recorded attempts = %+v, want 1", ro.HTTP)
+	}
+	at := ro.HTTP.Attempts[0]
+	if at.Attempt != 0 || at.Node != "a" || at.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("attempt = %+v, want attempt 0 on node a with 429", at)
+	}
+	if !strings.Contains(string(at.ResponseBody), "Rate limit exceeded") {
+		t.Fatalf("attempt body = %q, want the upstream error body", at.ResponseBody)
+	}
+	if at.DurationMS < 0 {
+		t.Fatalf("attempt duration = %d, want >= 0", at.DurationMS)
+	}
+}
+
+func TestHandleHTTP_RecordsDiscardedDialFailure(t *testing.T) {
+	good := newRetryUpstream(t, upstreamReply{status: http.StatusOK, body: "ok", read: true})
+
+	hh := &sequenceHop{nodes: []*chain.Node{
+		retryNode("a", "127.0.0.1:1", 1, "429,5xx"),
+		retryNode("b", good.addr(), 1, "429,5xx"),
+	}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+	// The dial function is a HandleOption, not a Sniffer field.
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr == "127.0.0.1:1" {
+			return nil, io.ErrUnexpectedEOF
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
+	}
+
+	status, _, ro := retryRequest(t, h, hh, `{"m":1}`, nil, sniffing.WithDial(dial))
+
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if ro.HTTP == nil || len(ro.HTTP.Attempts) != 1 {
+		t.Fatalf("recorded attempts = %+v, want 1", ro.HTTP)
+	}
+	if at := ro.HTTP.Attempts[0]; at.StatusCode != 0 || at.Node != "a" || at.Error == "" {
+		t.Fatalf("attempt = %+v, want a status-0 dial failure on node a", at)
+	}
+}
+
+func TestHandleHTTP_RecordsAttemptWhenBodyIsCut(t *testing.T) {
+	trunc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Promises 1024 bytes, writes a few, then returns: Go closes the
+		// connection and the client read fails before the promised length.
+		w.Header().Set("Content-Length", "1024")
+		w.WriteHeader(http.StatusTooManyRequests)
+		io.WriteString(w, `{"error":{"message":"partial`)
+	}))
+	t.Cleanup(trunc.Close)
+	good := newRetryUpstream(t, upstreamReply{status: http.StatusOK, body: "ok", read: true})
+
+	hh := &sequenceHop{nodes: []*chain.Node{
+		retryNode("a", trunc.Listener.Addr().String(), 1, "429,5xx"),
+		retryNode("b", good.addr(), 1, "429,5xx"),
+	}}
+	h := &Sniffer{ReadTimeout: 5 * time.Second}
+
+	status, _, ro := retryRequest(t, h, hh, `{"m":1}`, nil)
+
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if ro.HTTP == nil || len(ro.HTTP.Attempts) != 1 || ro.HTTP.Attempts[0].StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("recorded attempts = %+v, want the cut 429 attempt", ro.HTTP)
+	}
+	if !strings.Contains(string(ro.HTTP.Attempts[0].ResponseBody), "partial") {
+		t.Fatalf("preview = %q, want the bytes that did arrive", ro.HTTP.Attempts[0].ResponseBody)
 	}
 }

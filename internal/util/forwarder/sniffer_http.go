@@ -148,6 +148,11 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 				Header:        req.Header.Clone(),
 			},
 		}
+		// A retry continues the loop, so re-attach the attempts already
+		// discarded for this request; the fresh object above drops them.
+		if rs != nil {
+			ro.HTTP.Attempts = rs.attempts
+		}
 
 		// --- Cache check before any upstream dial ---
 		var (
@@ -171,6 +176,9 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 		if !freshHit {
 			if cc == nil {
 				var dialRes *http.Response
+				if rs != nil {
+					rs.attemptStart = time.Now()
+				}
 				node, cc, dialRes, err = h.dial(ctx, req, &ho)
 				if err != nil {
 					// Prefer serving a stale cached entry over surfacing the
@@ -194,6 +202,14 @@ func (h *Sniffer) HandleHTTP(ctx context.Context, conn net.Conn, opts ...HandleO
 					}
 					if rs != nil && rs.budget > 0 {
 						if replay, rerr := replayRetryRequest(rs.replay); rerr == nil {
+							rs.addAttempt(xrecorder.HTTPAttemptRecorderObject{
+								Attempt:    attempt,
+								Node:       nodeName(node),
+								StatusCode: 0,
+								Error:      err.Error(),
+								DurationMS: time.Since(rs.attemptStart).Milliseconds(),
+							})
+							ro.HTTP.Attempts = rs.attempts
 							rs.budget--
 							rs.retries++
 							ho.RecorderObject.Retries = rs.retries
@@ -586,6 +602,11 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			Header:        req.Header.Clone(),
 		},
 	}
+	// One row covers every attempt of the request, so the row recorded below
+	// carries the earlier attempts that were discarded for a retry.
+	if rs != nil {
+		ro.HTTP.Attempts = rs.attempts
+	}
 
 	// Capture pre-rewrite originals only when this node actually configures a
 	// rewrite, so the recorder sees both client-sent and forwarded values.
@@ -765,6 +786,21 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 			marker.Mark()
 		}
 		log.Warnf("retryable status %d for node %s", resp.StatusCode, node.Name)
+		// Keep a bounded preview of the discarded response so the recorded
+		// row can explain the retry. The read error is expected when the
+		// upstream cuts the body short; whatever arrived is still kept.
+		preview, _ := io.ReadAll(io.LimitReader(resp.Body, attemptBodyLimit))
+		rs.addAttempt(xrecorder.HTTPAttemptRecorderObject{
+			Attempt:        attemptFromContext(ctx),
+			Node:           node.Name,
+			StatusCode:     resp.StatusCode,
+			DurationMS:     time.Since(rs.attemptStart).Milliseconds(),
+			BytesIn:        req.ContentLength,
+			BytesOut:       resp.ContentLength,
+			ResponseHeader: resp.Header.Clone(),
+			ResponseBody:   preview,
+		})
+		ho.RecorderObject.HTTP.Attempts = rs.attempts
 		return false, true, nil
 	}
 
@@ -934,7 +970,13 @@ func (h *Sniffer) recordDialFailure(ctx context.Context, req *http.Request, ro *
 	ro.Duration = time.Since(start)
 	ro.Err = err.Error()
 	// Rebuild the request object: a keep-alive connection can carry several
-	// requests, and a stale HTTP object would name the previous one.
+	// requests, and a stale HTTP object would name the previous one. The
+	// attempts already discarded for this request belong to the row and must
+	// survive the rebuild.
+	var attempts []xrecorder.HTTPAttemptRecorderObject
+	if ro.HTTP != nil {
+		attempts = ro.HTTP.Attempts
+	}
 	ro.HTTP = &xrecorder.HTTPRecorderObject{
 		Host:   req.Host,
 		Proto:  req.Proto,
@@ -945,6 +987,7 @@ func (h *Sniffer) recordDialFailure(ctx context.Context, req *http.Request, ro *
 			ContentLength: req.ContentLength,
 			Header:        req.Header.Clone(),
 		},
+		Attempts: attempts,
 	}
 	ro.HTTP.StatusCode = http.StatusServiceUnavailable
 	if res != nil && res.StatusCode != 0 {
