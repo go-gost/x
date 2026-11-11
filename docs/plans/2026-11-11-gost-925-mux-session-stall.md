@@ -368,9 +368,9 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 
 ### Task 5
 
-- Date/status:
-- Repo + commit:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-11 — complete
+- Repo + commit: `x/` — this commit (records only)
+- Files changed: this plan (records), `docs/superpowers/specs/2026-11-11-gost-925-mux-session-stall-design.md`
+- Tests/commands and results: `CGO_ENABLED=1 go test -race -count=1 ./internal/util/mux/ ./dialer/mtls/ ./dialer/mtcp/ ./dialer/mws/` PASS; `go test -count=1 ./chain/ ./listener/mtls/ ./listener/mtcp/ ./listener/mws/ ./handler/relay/` PASS (`listener/*` have no test files); `cd gost && go build ./cmd/gost` OK (workspace on, so the local `x` is linked); e2e `TestMTLSSuite|TestProxyProtoSuite|TestRoutingSuite` PASS (144.6s) and `TestChainGroupSuite|TestSelectorSuite|TestDNSSuite|TestFailCodesSuite` PASS (181.5s); `go vet ./dialer/mtls/ ./dialer/mtcp/ ./dialer/mws/ ./internal/util/mux/` clean
+- Review findings and fixes: none new.
+- Deferred items/limitations: no e2e scenario reproduces a stalled peer read path, so the recovery path itself (`write timeout → session closed → rebuilt`) is pinned only at the unit level (`TestSessionClosesAfterRepeatedWriteTimeouts` + `TestHandshakeRebuildsAfterSessionClosed`). `dialer/kcp/metadata.go` is flagged by `gofmt -l` from before this change and was left alone.
