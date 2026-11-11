@@ -149,8 +149,10 @@ func (c *obfsTLSConn) Write(b []byte) (n int, err error) {
 		if c.wbuf.Len() > 0 {
 			record.Type = dissector.Handshake
 			record.WriteTo(&c.wbuf)
-			_, err = c.wbuf.WriteTo(c.Conn)
-			return
+			if _, err = c.wbuf.WriteTo(c.Conn); err != nil {
+				return
+			}
+			continue
 		}
 
 		if _, err = record.WriteTo(c.Conn); err != nil {

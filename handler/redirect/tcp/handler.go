@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -278,12 +279,16 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 
 		// A protocol the sniffer does not classify (ssh, redis, or "" when
 		// nothing arrives within sniffing.timeout) has no error to report and
-		// nothing to fall back from, so it always reaches raw forwarding to the
+		// nothing to fall back from, so it reaches raw forwarding to the
 		// original dstAddr — the way every non-HTTP/TLS protocol was handled
-		// before sniffing gained a failure path. sniffing.fallback only governs
-		// what happens after HTTP/TLS handling itself fails (e.g. an empty SNI,
+		// before sniffing gained a failure path — unless sniffing.dropUnhandled
+		// asks for it to be dropped. sniffing.fallback only governs what
+		// happens after HTTP/TLS handling itself fails (e.g. an empty SNI,
 		// gost#891).
 		if !handled {
+			if h.md.sniffingDropUnhandled {
+				return fmt.Errorf("sniffing: protocol %q not handled, dropping: %w", proto, xbypass.ErrBypass)
+			}
 			log.Debugf("sniffing: protocol %q not handled, forwarding raw", proto)
 		} else if h.md.sniffingFallback {
 			log.Debugf("sniffing(%s) failed, falling back: %v", proto, sniffErr)

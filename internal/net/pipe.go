@@ -9,10 +9,9 @@ import (
 	xio "github.com/go-gost/x/internal/io"
 )
 
-const (
-	// tcpWaitTimeout implements a TCP half-close timeout.
-	tcpWaitTimeout = 10 * time.Second
-)
+// tcpWaitTimeout implements a TCP half-close timeout. It is a variable so
+// that tests can shorten it.
+var tcpWaitTimeout = 10 * time.Second
 
 // PipeOption configures the behaviour of Pipe.
 type PipeOption func(*pipeOptions)
@@ -153,6 +152,14 @@ func (r *readDeadliner) Read(p []byte) (int, error) {
 
 // halfClose 执行TCP半关闭
 func halfClose(src, dst io.ReadWriteCloser) {
+	// The other half of the pipe writes to src. Bound those writes like the
+	// reads below: a peer that has stopped reading, or a multiplexed stream
+	// whose remote end is gone and will never grant more window, would
+	// otherwise block that goroutine (and Pipe) forever.
+	if wd, ok := src.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		wd.SetWriteDeadline(time.Now().Add(tcpWaitTimeout))
+	}
+
 	// 关闭读取端
 	if cr, ok := src.(xio.CloseRead); ok {
 		cr.CloseRead()
