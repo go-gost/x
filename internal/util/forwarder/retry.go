@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-gost/core/chain"
 	mdutil "github.com/go-gost/x/metadata/util"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
 // Node metadata keys that opt a node into per-route HTTP retries. An absent
@@ -26,6 +27,17 @@ const (
 // It is a variable so tests can lower it.
 var retryBodyLimit = 32 << 20
 
+// attemptBodyLimit caps the response body preview kept for a discarded
+// attempt. The preview only has to explain why the attempt was retried, so a
+// small prefix is enough.
+const attemptBodyLimit = 4 << 10
+
+// attemptPreviewTimeout bounds the read of a discarded attempt's body preview.
+// The preview is read after the response head, so it would otherwise inherit
+// the header read deadline (tens of seconds) and a stalled body could hold the
+// retry for that whole time.
+const attemptPreviewTimeout = 2 * time.Second
+
 // retryState carries the retry budget and the serialized request replayed by
 // later attempts. A nil state means the request is not retryable.
 type retryState struct {
@@ -34,6 +46,13 @@ type retryState struct {
 	codes   chain.FailCodes
 	replay  []byte
 	start   time.Time
+
+	// attemptStart is when the current attempt started, in contrast to start,
+	// which is when the first attempt of the request started. attempts holds
+	// the discarded attempts so the row that is finally recorded can explain
+	// them.
+	attemptStart time.Time
+	attempts     []xrecorder.HTTPAttemptRecorderObject
 }
 
 // newRetryState builds the retry state for the selected node. It returns nil
@@ -60,12 +79,34 @@ func newRetryState(req *http.Request, node *chain.Node) *retryState {
 		return nil
 	}
 
+	now := time.Now()
 	return &retryState{
-		budget: budget,
-		codes:  parseRetryCodes(codes),
-		replay: replay,
-		start:  time.Now(),
+		budget:       budget,
+		codes:        parseRetryCodes(codes),
+		replay:       replay,
+		start:        now,
+		attemptStart: now,
 	}
+}
+
+// addAttempt appends one discarded attempt. Attempts are capped by the retry
+// budget, which bounds the slice to retry.max.
+func (rs *retryState) addAttempt(a xrecorder.HTTPAttemptRecorderObject) {
+	if rs == nil {
+		return
+	}
+	if len(rs.attempts) > 0 && a.Attempt < len(rs.attempts) {
+		return
+	}
+	rs.attempts = append(rs.attempts, a)
+}
+
+// nodeName returns the name of n, or an empty string when n is nil.
+func nodeName(n *chain.Node) string {
+	if n == nil {
+		return ""
+	}
+	return n.Name
 }
 
 // parseRetryCodes parses a comma-separated list of HTTP status codes to retry:
