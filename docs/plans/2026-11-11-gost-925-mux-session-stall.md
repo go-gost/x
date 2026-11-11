@@ -350,12 +350,12 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 
 ### Task 3
 
-- Date/status:
-- Repo + commit:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-11 — complete
+- Repo + commit: `x/` — this commit
+- Files changed: `dialer/mtls/dialer.go` (`Dial` fast path + dial outside the lock, `sessionConn`, `sessionForHandshake`, `dropSession`, `GetConnContext` outside the lock), `dialer/mtls/conn.go` (`muxSession.GetConnContext`), `dialer/mtls/metadata.go` (`mux.openTimeout`), `dialer/mtls/dialer_test.go` (3 new tests)
+- Tests/commands and results: `go test ./dialer/mtls/ -count=1` PASS (7 tests incl. ECH); `-race` PASS ×5; `go vet` clean; `go build ./...` clean
+- Review findings and fixes: added `TestConcurrentDialHandshakeConvergesOnOneSession` because moving the dial out of the lock makes two concurrent `Dial`s register placeholders that can overwrite each other — the pre-existing convergence test only covered sequential cases. All 8 concurrent callers end on one established session, race-clean.
+- Deferred items/limitations: `initSession` (TLS handshake) still runs under `sessionMutex` by design — it runs only on a cold/retired session and is bounded by ctx. The relay `tcpConn` half-close/promotion question and the resolved-vs-configured session key mismatch are untouched (see spec).
 
 ### Task 4
 

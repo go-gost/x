@@ -39,6 +39,7 @@ func (d *mtlsDialer) parseMetadata(md mdata.Metadata) (err error) {
 		MaxStreamBuffer:   mdutil.GetInt(md, "mux.maxStreamBuffer"),
 		Type:              mdutil.GetString(md, "mux.type"),
 		MaxStreamWindow:   mdutil.GetInt(md, "mux.maxStreamWindow"),
+		OpenTimeout:       mdutil.GetDuration(md, "mux.openTimeout"),
 	}
 
 	d.md.ech = ech.FromMetadata(md)
