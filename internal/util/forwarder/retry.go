@@ -32,6 +32,12 @@ var retryBodyLimit = 32 << 20
 // small prefix is enough.
 const attemptBodyLimit = 4 << 10
 
+// attemptPreviewTimeout bounds the read of a discarded attempt's body preview.
+// The preview is read after the response head, so it would otherwise inherit
+// the header read deadline (tens of seconds) and a stalled body could hold the
+// retry for that whole time.
+const attemptPreviewTimeout = 2 * time.Second
+
 // retryState carries the retry budget and the serialized request replayed by
 // later attempts. A nil state means the request is not retryable.
 type retryState struct {

@@ -803,6 +803,9 @@ func (h *Sniffer) httpRoundTrip(ctx context.Context, rw, cc io.ReadWriteCloser, 
 		// Keep a bounded preview of the discarded response so the recorded
 		// row can explain the retry. The read error is expected when the
 		// upstream cuts the body short; whatever arrived is still kept.
+		// Bound the read separately from the header deadline: the connection
+		// is dropped on this path, so the deadline is not restored.
+		xio.SetReadDeadline(cc, time.Now().Add(attemptPreviewTimeout))
 		preview, _ := io.ReadAll(io.LimitReader(resp.Body, attemptBodyLimit))
 		rs.addAttempt(xrecorder.HTTPAttemptRecorderObject{
 			Attempt:        attemptFromContext(ctx),
