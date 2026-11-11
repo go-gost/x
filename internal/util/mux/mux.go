@@ -2,7 +2,9 @@ package mux
 
 import (
 	"context"
+	"errors"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-gost/x/ctx"
@@ -73,6 +75,45 @@ func ClientSession(conn net.Conn, cfg *Config) (Session, error) {
 	return newSMUXClientSession(conn, cfg)
 }
 
+// sessionStall watches a session's send path. A stream write that times out
+// means its frame never reached the socket, and nothing else notices: the
+// session's keepalive only tracks received frames, so a peer that keeps sending
+// while it stops reading leaves the session open forever and every new stream
+// stalls on it. Closing the session is the only signal its owner can act on —
+// it retires the closed session and dials a new tunnel.
+type sessionStall struct {
+	suspect atomic.Bool
+	close   func() error
+}
+
+// observe records the outcome of one stream write. A successful write clears
+// the pending strike; two timed-out writes without one in between close the
+// session. A yamux connection write timeout is final on its own: yamux blocks
+// the following write of that stream indefinitely.
+//
+// The close runs on its own goroutine: yamux's Close waits for the send loop,
+// and the send loop is the goroutine this write path is blocked behind.
+func (s *sessionStall) observe(err error) {
+	if s == nil {
+		return
+	}
+	if err == nil {
+		s.suspect.Store(false)
+		return
+	}
+	if errors.Is(err, yamux.ErrConnectionWriteTimeout) {
+		go s.close()
+		return
+	}
+	var ne net.Error
+	if !errors.As(err, &ne) || !ne.Timeout() {
+		return
+	}
+	if s.suspect.Swap(true) {
+		go s.close()
+	}
+}
+
 // ServerSession creates a server-side mux session over conn.
 func ServerSession(conn net.Conn, cfg *Config) (Session, error) {
 	if muxType(cfg) == "yamux" {
@@ -117,6 +158,7 @@ func convertConfig(cfg *Config) *smux.Config {
 type smuxSession struct {
 	conn    net.Conn
 	session *smux.Session
+	stall   *sessionStall
 }
 
 func newSMUXClientSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -124,10 +166,12 @@ func newSMUXClientSession(conn net.Conn, cfg *Config) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &smuxSession{
+	ss := &smuxSession{
 		conn:    conn,
 		session: s,
-	}, nil
+	}
+	ss.stall = &sessionStall{close: ss.Close}
+	return ss, nil
 }
 
 func newSMUXServerSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -135,10 +179,12 @@ func newSMUXServerSession(conn net.Conn, cfg *Config) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &smuxSession{
+	ss := &smuxSession{
 		conn:    conn,
 		session: s,
-	}, nil
+	}
+	ss.stall = &sessionStall{close: ss.Close}
+	return ss, nil
 }
 
 func (session *smuxSession) GetConn() (net.Conn, error) {
@@ -146,7 +192,7 @@ func (session *smuxSession) GetConn() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &streamConn{Conn: session.conn, stream: stream}, nil
+	return &streamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
 }
 
 func (session *smuxSession) Accept() (net.Conn, error) {
@@ -154,7 +200,7 @@ func (session *smuxSession) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &streamConn{Conn: session.conn, stream: stream}, nil
+	return &streamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
 }
 
 func (session *smuxSession) Close() error {
@@ -174,6 +220,7 @@ func (session *smuxSession) IsClosed() bool {
 type streamConn struct {
 	net.Conn
 	stream *smux.Stream
+	stall  *sessionStall
 }
 
 func (c *streamConn) Read(b []byte) (n int, err error) {
@@ -181,7 +228,9 @@ func (c *streamConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *streamConn) Write(b []byte) (n int, err error) {
-	return c.stream.Write(b)
+	n, err = c.stream.Write(b)
+	c.stall.observe(err)
+	return
 }
 
 func (c *streamConn) Close() error {
@@ -242,6 +291,7 @@ func convertYamuxConfig(cfg *Config) *yamux.Config {
 type yamuxSession struct {
 	conn    net.Conn
 	session *yamux.Session
+	stall   *sessionStall
 }
 
 func newYamuxClientSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -249,10 +299,12 @@ func newYamuxClientSession(conn net.Conn, cfg *Config) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &yamuxSession{
+	ys := &yamuxSession{
 		conn:    conn,
 		session: s,
-	}, nil
+	}
+	ys.stall = &sessionStall{close: ys.Close}
+	return ys, nil
 }
 
 func newYamuxServerSession(conn net.Conn, cfg *Config) (Session, error) {
@@ -260,10 +312,12 @@ func newYamuxServerSession(conn net.Conn, cfg *Config) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &yamuxSession{
+	ys := &yamuxSession{
 		conn:    conn,
 		session: s,
-	}, nil
+	}
+	ys.stall = &sessionStall{close: ys.Close}
+	return ys, nil
 }
 
 func (session *yamuxSession) GetConn() (net.Conn, error) {
@@ -271,7 +325,7 @@ func (session *yamuxSession) GetConn() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &yamuxStreamConn{Conn: session.conn, stream: stream}, nil
+	return &yamuxStreamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
 }
 
 func (session *yamuxSession) Accept() (net.Conn, error) {
@@ -279,7 +333,7 @@ func (session *yamuxSession) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &yamuxStreamConn{Conn: session.conn, stream: stream}, nil
+	return &yamuxStreamConn{Conn: session.conn, stream: stream, stall: session.stall}, nil
 }
 
 func (session *yamuxSession) Close() error {
@@ -299,6 +353,7 @@ func (session *yamuxSession) IsClosed() bool {
 type yamuxStreamConn struct {
 	net.Conn
 	stream net.Conn
+	stall  *sessionStall
 }
 
 func (c *yamuxStreamConn) Read(b []byte) (n int, err error) {
@@ -306,7 +361,9 @@ func (c *yamuxStreamConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *yamuxStreamConn) Write(b []byte) (n int, err error) {
-	return c.stream.Write(b)
+	n, err = c.stream.Write(b)
+	c.stall.observe(err)
+	return
 }
 
 func (c *yamuxStreamConn) Close() error {

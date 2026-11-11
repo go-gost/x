@@ -2,11 +2,15 @@ package mux
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/yamux"
 )
 
 // A per-stream deadline must never reach the session conn underneath: the
@@ -101,4 +105,199 @@ func TestStreamDeadlineStaysOnTheStream(t *testing.T) {
 			}
 		})
 	}
+}
+
+func smuxClientConn(c net.Conn) (Session, error) { return ClientSession(c, &Config{Version: 2}) }
+func smuxServerConn(c net.Conn) (Session, error) { return ServerSession(c, &Config{Version: 2}) }
+
+// stallConn is a session conn whose Write can be frozen, so frames handed to it
+// never reach the peer. That is the only externally visible difference between
+// a healthy send path and one the peer has stopped draining: the socket stays
+// open, the peer keeps sending, and only the writes stop completing.
+type stallConn struct {
+	net.Conn
+	mu   sync.Mutex
+	gate chan struct{}
+}
+
+func newStallConn(c net.Conn) *stallConn {
+	return &stallConn{Conn: c}
+}
+
+// block freezes further writes; unblock releases the ones already frozen.
+func (c *stallConn) block(v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if v {
+		if c.gate == nil {
+			c.gate = make(chan struct{})
+		}
+		return
+	}
+	if c.gate != nil {
+		close(c.gate)
+		c.gate = nil
+	}
+}
+
+func (c *stallConn) Write(b []byte) (int, error) {
+	c.mu.Lock()
+	gate := c.gate
+	c.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
+	return c.Conn.Write(b)
+}
+
+// stalledSession pairs a client and a server session over a stallable conn and
+// returns the client session, one open stream, and the stall switch.
+func stalledSession(t *testing.T, client, server func(net.Conn) (Session, error)) (Session, net.Conn, *stallConn) {
+	t.Helper()
+
+	p1, p2 := net.Pipe()
+	sc := newStallConn(p1)
+	srv, err := server(p2)
+	if err != nil {
+		t.Fatal("server session: ", err)
+	}
+	cli, err := client(sc)
+	if err != nil {
+		t.Fatal("client session: ", err)
+	}
+
+	stream, err := cli.GetConn()
+	if err != nil {
+		t.Fatal("open stream: ", err)
+	}
+
+	go func() {
+		for {
+			conn, err := srv.Accept()
+			if err != nil {
+				return
+			}
+			go io.Copy(io.Discard, conn)
+		}
+	}()
+
+	// Cleanups run last registered first: release the conn before closing the
+	// stream (whose FIN would otherwise wait out smux's open-close timeout on a
+	// frozen conn), and close the sessions last.
+	t.Cleanup(func() {
+		cli.Close()
+		srv.Close()
+		p2.Close()
+	})
+	t.Cleanup(func() { stream.Close() })
+	t.Cleanup(sc.unblock)
+
+	return cli, stream, sc
+}
+
+func (c *stallConn) unblock() { c.block(false) }
+
+func waitSessionClosed(t *testing.T, s Session) {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if s.IsClosed() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("session stayed open")
+}
+
+// A stream write that times out is the only signal a stalled send path gives:
+// the session stays open (its keepalive tracks received frames only) and every
+// later stream stalls on it. Two in a row, with no successful write in
+// between, must close the session so its owner rebuilds the tunnel.
+func TestSessionClosesAfterRepeatedWriteTimeouts(t *testing.T) {
+	cli, stream, sc := stalledSession(t, smuxClientConn, smuxServerConn)
+	sc.block(true)
+	defer sc.block(false)
+
+	for i := 1; i <= 2; i++ {
+		if err := stream.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := stream.Write(make([]byte, 1024))
+		if err == nil {
+			t.Fatalf("write %d: expected a timeout", i)
+		}
+		if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
+			t.Fatalf("write %d: err = %v, want a timeout", i, err)
+		}
+	}
+
+	waitSessionClosed(t, cli)
+}
+
+// One timeout proves nothing on its own: a successful write in between clears
+// the strike, so only a second consecutive one condemns the session.
+func TestSessionSurvivesSingleWriteTimeout(t *testing.T) {
+	cli, stream, sc := stalledSession(t, smuxClientConn, smuxServerConn)
+
+	sc.block(true)
+	if err := stream.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write(make([]byte, 1024)); err == nil {
+		t.Fatal("expected a timeout")
+	}
+
+	sc.block(false)
+	if err := stream.SetWriteDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write([]byte("ping")); err != nil {
+		t.Fatal("write after release: ", err)
+	}
+
+	sc.block(true)
+	defer sc.block(false)
+	if err := stream.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write(make([]byte, 1024)); err == nil {
+		t.Fatal("expected a second timeout")
+	}
+
+	if cli.IsClosed() {
+		t.Fatal("session closed on a single new strike")
+	}
+}
+
+// yamux reports a stalled conn as ErrConnectionWriteTimeout, and then blocks
+// the next write of that stream forever, so the error is final on its own. It
+// surfaces after yamux's own 10s connection write timeout, so this asserts the
+// reaction rather than driving a real session into it.
+func TestYamuxConnectionWriteTimeoutClosesSession(t *testing.T) {
+	closed := make(chan struct{})
+	stall := &sessionStall{close: func() error {
+		close(closed)
+		return nil
+	}}
+
+	stall.observe(yamux.ErrConnectionWriteTimeout)
+
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("session left open after a connection write timeout")
+	}
+}
+
+// A session that has one strike is not closed until the next timed-out write.
+func TestSessionStallIgnoresNonTimeoutErrors(t *testing.T) {
+	stall := &sessionStall{close: func() error {
+		t.Error("session closed on a non-timeout error")
+		return nil
+	}}
+
+	stall.observe(io.ErrClosedPipe)
+	stall.observe(errors.New("boom"))
 }
