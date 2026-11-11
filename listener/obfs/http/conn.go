@@ -56,7 +56,9 @@ func (c *obfsHTTPConn) handshake() (err error) {
 
 	if r.ContentLength > 0 {
 		_, err = io.Copy(&c.rbuf, r.Body)
-	} else {
+	}
+	if err == nil {
+		// keep the data following the request body, if any.
 		var b []byte
 		b, err = br.Peek(br.Buffered())
 		if len(b) > 0 {
