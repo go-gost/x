@@ -63,42 +63,79 @@ Two secondary defects made the stall worse:
 
 Close the session; never try to repair it. Recovery comes from the owner rebuilding it.
 
-1. **Write-stall guard** (`sessionStall`, `x/internal/util/mux`): a stream write that
-   times out means the frame never reached the socket. Two of them with no successful
-   write in between close the session. A yamux `ErrConnectionWriteTimeout` is final on
-   its own (the next write blocks indefinitely). Every stream conn, on both the dialer
-   and the listener side, observes its writes.
+1. **Write-stall guard** (`sessionStall`, `x/internal/util/mux`): a timed-out stream
+   write is the only signal a stalled send path gives, but on its own it is not proof —
+   a slow peer produces the same error through back-pressure, and gost itself sets a 10 s
+   write deadline on the surviving half of a piped transfer
+   (`internal/net/pipe.go`). So the session is closed on **two strikes with no completed
+   write for a whole window** (`Config.StallWindow` / `mux.stallWindow`, 10 s default).
+   A yamux `ErrConnectionWriteTimeout` is final on its own (the next write blocks
+   indefinitely). Every stream conn, on both the dialer and the listener side, observes
+   its writes.
+   *Accepted cost:* a false positive drops every stream multiplexed on that session; the
+   owner rebuilds on the next dial. The window makes that unlikely, and the guard never
+   fires on a session that is still moving bytes.
 2. **Bounded open**: `Session.GetConnContext(ctx)` races the backend open against the
    caller's deadline and a `mux.openTimeout` backstop (default 15 s, matching
    `chain.Router`'s default), returning `ctx.Err()` or `ErrOpenTimeout`. `GetConn()`
    delegates with `context.Background()`; `Accept()` is never bounded.
-3. **Narrower locking** in `mtls`/`mtcp`/`mws`: the TCP dial and the stream open both run
-   outside `sessionMutex`; only map access and `initSession` convergence stay inside.
-   `dropSession` deletes only when the cached entry is still the exact session pointer.
+3. **Narrower locking** in `mtls`/`mtcp`/`mws`: the TCP dial and the stream open run
+   outside `sessionMutex`, and `initSession` runs under a **per-address** builder, so a
+   node that accepts TCP and then stalls its TLS/WS handshake no longer holds up dials to
+   other addresses (or the reuse fast path). Only map access is global.
+   `dropSession` deletes only when the cached entry is still the exact session pointer,
+   and closes outside the mutex because a backend's `Close` may wait for its own send
+   loop. The `handshakeTimeout` deadline is applied only to a conn the caller owns: on
+   the reused session conn it would bound its reads and could kill a live session.
 
-`initSession` (TLS handshake) stays under the mutex deliberately: it runs only when no
-session exists, it is bounded by `ctx`, and splitting it would weaken the
-one-session-per-address convergence fixed in `6911ecd`.
+## Scope and caveats
+
+- The guard and the open bound live in `x/internal/util/mux`, so they apply to **every**
+  session built there — including `connector/{relay,socks/v5,tunnel}`,
+  `handler/{relay,tunnel}` bind and entrypoint sessions. Their owners do not rebuild on
+  failure (`handler/relay/entrypoint.go` logs and returns), so for those paths a stalled
+  session now fails fast instead of hanging: better, but not self-healing. Only the three
+  mux dialers were changed to rebuild.
+- `mux.openTimeout` and `mux.stallWindow` are wired in `dialer/{mtls,mtcp,mws}` only. The
+  other `mux.*` consumers still get the defaults.
+- `IsClosed()` reports true for a session still waiting for its handshake, so "closed" as
+  used by the dialers means "not usable yet"; the distinction is preserved deliberately
+  to keep this change behaviour-preserving.
 
 ## Tests
 
 Unit tests with `net.Pipe()` as the stallable transport:
 
-- `TestSessionClosesAfterRepeatedWriteTimeouts` — two timed-out writes close the session.
+- `TestSessionClosesAfterRepeatedWriteTimeouts` — two timed-out writes close a silent
+  session.
 - `TestSessionSurvivesSingleWriteTimeout` — a successful write clears the strike.
-- `TestYamuxSessionClosesOnConnectionWriteTimeout`.
+- `TestSessionStallRequiresSilence` — strikes alone do not close a busy session; silence
+  does.
+- `TestYamuxConnectionWriteTimeoutClosesSession`, `TestSessionStallIgnoresNonTimeoutErrors`.
 - `TestGetConnContextHonoursContextDeadline`, `TestGetConnContextUsesOpenTimeout`,
   `TestGetConnStillOpensOnHealthySession`.
 - `TestDialDoesNotWaitForAnotherAddress` (mtls, mtcp, mws) — a blocked dial to one address
   does not delay a dial to another.
-- `TestHandshakeRebuildsAfterSessionClosed` (mtls) — a dropped session is rebuilt on the
-  next handshake and carries traffic.
+- `TestHandshakeStallDoesNotBlockOtherAddresses` (mtls, mtcp, mws) — a stalled TLS/WS
+  handshake does not delay a healthy address (1.98 s before the per-address builder,
+  20 ms after).
+- `TestHandshakeRebuildsAfterSessionClosed` (mtls, mtcp, mws) — a dropped session is
+  rebuilt on the next handshake and carries traffic.
+- `TestStalledWritesRetireTheSession` (mtls, mtcp, mws) — the composition the issue is
+  named after: a real session, gated writes, two timed-out writes, the session is
+  retired, and the next dial works.
+- `TestConcurrentDialHandshakeConvergesOnOneSession` (mtls, mtcp, mws) — eight concurrent
+  callers still end on one session with the locking narrowed.
 
 ## Still open (not in this change)
 
 - **No end-to-end reproduction.** Stalling a real peer's read path needs an injected
   transport fault, which the current e2e harness does not have; the unit tests pin the
   semantics at the mux boundary instead.
+- **Yamux wiring is tested only indirectly.** Driving a real yamux session into
+  `ErrConnectionWriteTimeout` takes its own 10 s connection timeout, so the guard's yamux
+  branch is asserted on `observe` rather than through a stream; the smux path is covered
+  end to end.
 - **Session key mismatch with a configured node resolver**: `Dial` keys the session map by
   the resolved candidate address while `Handshake` keys it by `Transport.options.Addr`
   (the configured hostname). With `resolver=` set on the chain this means one throwaway

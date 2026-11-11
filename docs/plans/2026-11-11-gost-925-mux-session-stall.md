@@ -333,7 +333,7 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 ### Task 1
 
 - Date/status: 2026-11-11 — complete
-- Repo + commit: `x/` — this commit
+- Repo + commit: `x/` — cda73ab (amended by 4f025bf)
 - Files changed: `internal/util/mux/mux.go` (new `sessionStall`, `stall` field on both session types and both stream conns, `observe` on write), `internal/util/mux/mux_test.go` (`stallConn` + 4 new tests)
 - Tests/commands and results: `go test ./internal/util/mux/ -count=1` PASS (5 tests, 1.2s); `go test -race ./internal/util/mux/` PASS; `go vet` clean; `gofmt` clean
 - Review findings and fixes: two found while driving the tests. (1) Closing the session synchronously from `observe` deadlocks yamux — its `Close` waits for the send loop, which is exactly the goroutine blocked behind the write that reported the error; the close is now asynchronous. (2) The yamux session-level test took 10s because yamux's own `ConnectionWriteTimeout` fires before any stream deadline, so it was replaced with a direct `observe` unit test (plus a non-timeout negative test).
@@ -342,7 +342,7 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 ### Task 2
 
 - Date/status: 2026-11-11 — complete
-- Repo + commit: `x/` — this commit
+- Repo + commit: `x/` — a69a5f0 (amended by 4f025bf)
 - Files changed: `internal/util/mux/mux.go` (`Config.OpenTimeout`, `defaultOpenTimeout`, `ErrOpenTimeout`, `Session.GetConnContext`, shared `openBound`/`openAwaited`, both backends), `internal/util/mux/mux_test.go` (3 new tests + `openBlockedSession` helper)
 - Tests/commands and results: `go test ./internal/util/mux/ -count=1` PASS ×5; `-race` PASS ×3; `go vet` clean; `go build ./...` (x module) clean
 - Review findings and fixes: the first implementation raced the configured timeout against `ctx.Done()` with one shared timer, so when the caller's deadline was the tighter bound the timer could fire first and report `ErrOpenTimeout` instead of `context.DeadlineExceeded` — flaky 4 runs in 6. `openBound` now reports which bound is tighter and, when it is the context, the code waits on `ctx.Done()` only; the abandon-and-close logic is shared in `openAwaited`. Five consecutive runs green after the fix.
@@ -351,7 +351,7 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 ### Task 3
 
 - Date/status: 2026-11-11 — complete
-- Repo + commit: `x/` — this commit
+- Repo + commit: `x/` — 4d8fe3a (amended by ee736b1)
 - Files changed: `dialer/mtls/dialer.go` (`Dial` fast path + dial outside the lock, `sessionConn`, `sessionForHandshake`, `dropSession`, `GetConnContext` outside the lock), `dialer/mtls/conn.go` (`muxSession.GetConnContext`), `dialer/mtls/metadata.go` (`mux.openTimeout`), `dialer/mtls/dialer_test.go` (3 new tests)
 - Tests/commands and results: `go test ./dialer/mtls/ -count=1` PASS (7 tests incl. ECH); `-race` PASS ×5; `go vet` clean; `go build ./...` clean
 - Review findings and fixes: added `TestConcurrentDialHandshakeConvergesOnOneSession` because moving the dial out of the lock makes two concurrent `Dial`s register placeholders that can overwrite each other — the pre-existing convergence test only covered sequential cases. All 8 concurrent callers end on one established session, race-clean.
@@ -360,7 +360,7 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 ### Task 4
 
 - Date/status: 2026-11-11 — complete
-- Repo + commit: `x/` — this commit
+- Repo + commit: `x/` — 93b6b83 (amended by ee736b1)
 - Files changed: `dialer/mtcp/{dialer,conn,metadata}.go`, `dialer/mws/{dialer,conn,metadata}.go`, `dialer/mtcp/dialer_test.go`, `dialer/mws/dialer_test.go`
 - Tests/commands and results: `go test ./dialer/mtcp/ ./dialer/mws/ -count=1` PASS (4 + 5 tests); `-race` PASS ×3 each; `go vet` clean; `go build ./...` clean
 - Review findings and fixes: the mws websocket keepalive goroutine deleted `sessions[optAddr]` unconditionally when a ping failed, so a stale conn's keepalive could evict a *replacement* session; it now deletes only while the cached entry is still its own conn. Added the concurrent-convergence test to both packages (mtcp has an echo harness, so the rebuild test was not skipped).
@@ -369,8 +369,30 @@ git -C x commit -m "docs(plans): record gost#925 verification"
 ### Task 5
 
 - Date/status: 2026-11-11 — complete
-- Repo + commit: `x/` — this commit (records only)
+- Repo + commit: `x/` — 49156a2 (records only)
 - Files changed: this plan (records), `docs/superpowers/specs/2026-11-11-gost-925-mux-session-stall-design.md`
 - Tests/commands and results: `CGO_ENABLED=1 go test -race -count=1 ./internal/util/mux/ ./dialer/mtls/ ./dialer/mtcp/ ./dialer/mws/` PASS; `go test -count=1 ./chain/ ./listener/mtls/ ./listener/mtcp/ ./listener/mws/ ./handler/relay/` PASS (`listener/*` have no test files); `cd gost && go build ./cmd/gost` OK (workspace on, so the local `x` is linked); e2e `TestMTLSSuite|TestProxyProtoSuite|TestRoutingSuite` PASS (144.6s) and `TestChainGroupSuite|TestSelectorSuite|TestDNSSuite|TestFailCodesSuite` PASS (181.5s); `go vet ./dialer/mtls/ ./dialer/mtcp/ ./dialer/mws/ ./internal/util/mux/` clean
 - Review findings and fixes: none new.
 - Deferred items/limitations: no e2e scenario reproduces a stalled peer read path, so the recovery path itself (`write timeout → session closed → rebuilt`) is pinned only at the unit level (`TestSessionClosesAfterRepeatedWriteTimeouts` + `TestHandshakeRebuildsAfterSessionClosed`). `dialer/kcp/metadata.go` is flagged by `gofmt -l` from before this change and was left alone.
+
+---
+
+## Review round 1 (independent reviewer, diff `c4dc77c..49156a2`)
+
+Verdict: with fixes. The reviewer confirmed both central tests fail when the fix is
+reverted, and raised five important issues; all were addressed.
+
+| # | finding | resolution |
+|---|---|---|
+| 1 | The Task 4 port added a `handshakeTimeout` `SetDeadline` to mws that never existed, and any `SetDeadline` on the *reused* session conn also bounds its reads, which can kill a live session | deadline now applied only in the cold path, to a conn the caller owns; removed from mws entirely (`ee736b1`). `TestStalledWritesRetireTheSession` and all e2e still pass |
+| 2 | Two write timeouts can be back-pressure, not death: gost's own `internal/net/pipe.go` sets a 10s write deadline on the surviving half of a piped transfer | guard requires two strikes **and** a whole window with no completed write (`mux.stallWindow`, 10s default) (`4f025bf`); `TestSessionStallRequiresSilence` pins both halves |
+| 3 | `initSession` still ran under the global `sessionMutex`, so a stalled TLS/WS handshake held up every dial, cache hits included | per-address `sessionBuilder`; `TestHandshakeStallDoesNotBlockOtherAddresses` (1.98s before the fix, 20ms after) (`ee736b1`) |
+| 4 | Nothing tested the composition the issue is named after | `TestStalledWritesRetireTheSession` in all three dialers: real session, gated conn, two timed-out writes → session retired → next dial works (`ee736b1`) |
+| 5 | A session is now retired silently | `Debugf` on the reuse path, `Warnf` when a failed open drops it (`ee736b1`) |
+
+Minor items taken: `Close` moved outside `sessionMutex` in `sessionConn`/`dropSession`
+(yamux's `Close` waits for its send loop), `openAwaited` made generic, yamux rows added
+to the open-timeout and healthy-open tests, session-key and scope caveats recorded in the
+spec. Minor items declined: making the strike count configurable (the window already
+bounds false positives), and promoting the falsy `IsClosed()`-on-placeholder semantics to
+a real liveness method (behaviour-preserving this round; noted in the spec).
