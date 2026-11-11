@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/go-gost/core/bypass"
@@ -852,6 +853,68 @@ func TestH2HandlerServeHTTP_WithBodyRecording(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestH2HandlerServeHTTP_RecordsBodyCopyError(t *testing.T) {
+	tests := []struct {
+		name     string
+		httpBody bool
+		cut      bool
+	}{
+		{name: "complete", httpBody: false, cut: false},
+		{name: "complete with body recording", httpBody: true, cut: false},
+		{name: "cut", httpBody: false, cut: true},
+		{name: "cut with body recording", httpBody: true, cut: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader = strings.NewReader("abcd")
+			if tt.cut {
+				// The upstream body fails the way it does when the client resets the stream.
+				body = io.MultiReader(body, iotest.ErrReader(context.Canceled))
+			}
+
+			rec := &captureRecorder{}
+			handler := &h2Handler{
+				transport: &mockRoundTripper{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{},
+						Body:       io.NopCloser(body),
+					},
+				},
+				sessionRecorder: xrecorder.NewSessionRecorder(rec, xrecorder.SessionRecorderOptions{}),
+				recorderOptions: &recorder.Options{HTTPBody: tt.httpBody, MaxBodySize: 1024},
+				recorderObject:  &xrecorder.HandlerRecorderObject{},
+				log:             xlogger.Nop(),
+			}
+
+			req := httptest.NewRequest("GET", "https://example.com/path", nil)
+			req.RequestURI = "/path"
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			if len(rec.data) != 1 {
+				t.Fatalf("expected 1 recorder event, got %d", len(rec.data))
+			}
+			var recorded xrecorder.HandlerRecorderObject
+			if err := json.Unmarshal(rec.data[0], &recorded); err != nil {
+				t.Fatalf("unmarshal recorder event: %v", err)
+			}
+			if recorded.HTTP == nil || recorded.HTTP.StatusCode != http.StatusOK {
+				t.Fatalf("recorded http = %+v, want status %d", recorded.HTTP, http.StatusOK)
+			}
+			if tt.cut {
+				if !strings.Contains(recorded.Err, context.Canceled.Error()) {
+					t.Errorf("recorded err = %q, want it to contain %q", recorded.Err, context.Canceled)
+				}
+			} else if recorded.Err != "" {
+				t.Errorf("recorded err = %q, want none", recorded.Err)
+			}
+			if tt.httpBody && string(recorded.HTTP.Response.Body) != "abcd" {
+				t.Errorf("recorded body = %q, want %q", recorded.HTTP.Response.Body, "abcd")
+			}
+		})
 	}
 }
 
