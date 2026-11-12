@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -834,11 +835,21 @@ func (c *Config) Read(r io.Reader, configType string) error {
 	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
 }
 
-func (c *Config) ReadFile(file string) error {
+func (c *Config) ReadFile(file string, expandEnv ...bool) error {
 	v.SetConfigFile(file)
 	v.SetConfigType(strings.TrimPrefix(filepath.Ext(file), ".")) // force format from extension
-	if err := v.ReadInConfig(); err != nil {
-		return err
+	if len(expandEnv) > 0 && expandEnv[0] {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		if err := v.ReadConfig(strings.NewReader(os.ExpandEnv(string(data)))); err != nil {
+			return err
+		}
+	} else {
+		if err := v.ReadInConfig(); err != nil {
+			return err
+		}
 	}
 	configFile.Store(file)
 	return v.Unmarshal(c, viper.DecodeHook(gostDecodeHook()))
