@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -48,6 +47,10 @@ type Args struct {
 	// Multiple sources are merged left-to-right.
 	CfgFiles []string
 
+	// ExpandEnv expands environment variables in configuration sources before
+	// they are decoded.
+	ExpandEnv bool
+
 	// Services is the list of service definitions from -L flags.
 	Services []string
 
@@ -79,7 +82,7 @@ func (p *parser) Parse() (*config.Config, error) {
 		if cfgFile == "" {
 			continue
 		}
-		fcfg, err := readConfig(cfgFile)
+		fcfg, err := readConfig(cfgFile, p.args.ExpandEnv)
 		if err != nil {
 			return nil, err
 		}
@@ -254,34 +257,38 @@ func applyMetricsAddr(cfg *config.MetricsConfig, addr string) {
 
 // readConfig reads a single configuration source, which may be "-" (stdin),
 // an HTTP(S) URL, an inline JSON string starting with "{", or a file path.
-func readConfig(cfgFile string) (*config.Config, error) {
+func readConfig(cfgFile string, expandEnv bool) (*config.Config, error) {
 	cfg := &config.Config{}
 
 	if cfgFile == "-" { // stdin
-		br := bufio.NewReader(os.Stdin)
-		b, err := br.Peek(1)
+		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return nil, err
 		}
-		if b[0] == '{' {
-			if err := cfg.Read(br, "json"); err != nil {
-				return nil, err
-			}
-		} else {
-			if err := cfg.Read(br, "yaml"); err != nil {
-				return nil, err
-			}
+		if expandEnv {
+			data = []byte(os.ExpandEnv(string(data)))
+		}
+		format := "yaml"
+		if len(data) > 0 && data[0] == '{' {
+			format = "json"
+		}
+		if err := cfg.Read(bytes.NewReader(data), format); err != nil {
+			return nil, err
 		}
 	} else if strings.HasPrefix(cfgFile, "{") && strings.HasSuffix(cfgFile, "}") { // inline
-		if err := json.Unmarshal([]byte(cfgFile), cfg); err != nil {
+		data := cfgFile
+		if expandEnv {
+			data = os.ExpandEnv(data)
+		}
+		if err := json.Unmarshal([]byte(data), cfg); err != nil {
 			return nil, err
 		}
 	} else if isHTTPURL(cfgFile) { // URL
-		if err := readConfigFromURL(cfgFile, cfg); err != nil {
+		if err := readConfigFromURL(cfgFile, cfg, expandEnv); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := cfg.ReadFile(cfgFile); err != nil { // file
+		if err := cfg.ReadFile(cfgFile, expandEnv); err != nil { // file
 			return nil, err
 		}
 	}
@@ -308,7 +315,7 @@ var sharedHTTPClient = &http.Client{
 // readConfigFromURL fetches a configuration from an HTTP(S) URL and reads it
 // into cfg. The format (yaml or json) is detected from the Content-Type header
 // or the URL path extension.
-func readConfigFromURL(urlStr string, cfg *config.Config) error {
+func readConfigFromURL(urlStr string, cfg *config.Config, expandEnv ...bool) error {
 	resp, err := sharedHTTPClient.Get(urlStr)
 	if err != nil {
 		return fmt.Errorf("fetch config from %s: %w", sanitizeURL(urlStr), err)
@@ -326,6 +333,9 @@ func readConfigFromURL(urlStr string, cfg *config.Config) error {
 	}
 	if len(data) > maxConfigSize {
 		return fmt.Errorf("config from %s exceeds maximum size %d", sanitizeURL(urlStr), maxConfigSize)
+	}
+	if len(expandEnv) > 0 && expandEnv[0] {
+		data = []byte(os.ExpandEnv(string(data)))
 	}
 
 	format := detectFormat(resp.Header.Get("Content-Type"), urlStr)

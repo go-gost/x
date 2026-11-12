@@ -210,6 +210,7 @@ func TestMergeConfig_ScalarKeepsCfg1WhenCfg2Nil(t *testing.T) {
 func TestInit(t *testing.T) {
 	Init(Args{
 		CfgFiles:    []string{"test.yml"},
+		ExpandEnv:   true,
 		Services:    []string{"s1"},
 		Nodes:       []string{"n1"},
 		Debug:       true,
@@ -220,6 +221,9 @@ func TestInit(t *testing.T) {
 
 	if len(defaultParser.args.CfgFiles) != 1 || defaultParser.args.CfgFiles[0] != "test.yml" {
 		t.Fatalf("CfgFiles not set: got %v", defaultParser.args.CfgFiles)
+	}
+	if !defaultParser.args.ExpandEnv {
+		t.Fatal("ExpandEnv not set")
 	}
 	if len(defaultParser.args.Services) != 1 || defaultParser.args.Services[0] != "s1" {
 		t.Fatal("Services not set")
@@ -504,6 +508,39 @@ func TestParse_APIFlagCredentialsOverrideConfigFile(t *testing.T) {
 	}
 	if got.API.Auth.Username != "flaguser" || got.API.Auth.Password != "flagpass" {
 		t.Fatalf("API auth: got %+v, want flaguser/flagpass", got.API.Auth)
+	}
+}
+
+func TestParse_ExpandEnv(t *testing.T) {
+	t.Setenv("GOST_TEST_SERVICE_ADDR", "127.0.0.1:18080")
+
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte("services:\n- name: service-0\n  addr: ${GOST_TEST_SERVICE_ADDR}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		expandEnv bool
+		want      string
+	}{
+		{name: "disabled", want: "${GOST_TEST_SERVICE_ADDR}"},
+		{name: "enabled", expandEnv: true, want: "127.0.0.1:18080"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			Init(Args{CfgFiles: []string{file}, ExpandEnv: tt.expandEnv})
+
+			cfg, err := Parse()
+			if err != nil {
+				t.Fatalf("Parse(): %v", err)
+			}
+			if len(cfg.Services) != 1 {
+				t.Fatalf("services = %d, want 1", len(cfg.Services))
+			}
+			if got := cfg.Services[0].Addr; got != tt.want {
+				t.Fatalf("service address = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
