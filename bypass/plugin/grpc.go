@@ -19,9 +19,10 @@ import (
 // If the connection fails or the client is nil, all addresses bypass
 // the proxy (fail-open).
 type grpcPlugin struct {
-	conn   grpc.ClientConnInterface
-	client proto.BypassClient
-	log    logger.Logger
+	conn      grpc.ClientConnInterface
+	client    proto.BypassClient
+	log       logger.Logger
+	whitelist bool
 }
 
 // NewGRPCPlugin creates a Bypass that delegates decisions to a gRPC
@@ -43,8 +44,9 @@ func NewGRPCPlugin(name string, addr string, opts ...plugin.Option) bypass.Bypas
 	}
 
 	p := &grpcPlugin{
-		conn: conn,
-		log:  log,
+		conn:      conn,
+		log:       log,
+		whitelist: options.Whitelist,
 	}
 	if conn != nil {
 		p.client = proto.NewBypassClient(conn)
@@ -86,5 +88,5 @@ func (p *grpcPlugin) Close() error {
 }
 
 func (p *grpcPlugin) IsWhitelist() bool {
-	return false
+	return p.whitelist
 }

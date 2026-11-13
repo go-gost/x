@@ -31,10 +31,11 @@ type httpPluginResponse struct {
 // All error paths return true (fail-open) so that a down plugin
 // does not block traffic.
 type httpPlugin struct {
-	url    string
-	client *http.Client
-	header http.Header
-	log    logger.Logger
+	url       string
+	client    *http.Client
+	header    http.Header
+	log       logger.Logger
+	whitelist bool
 }
 
 // NewHTTPPlugin creates a Bypass that delegates decisions to an HTTP
@@ -47,9 +48,10 @@ func NewHTTPPlugin(name string, url string, opts ...plugin.Option) bypass.Bypass
 	}
 
 	return &httpPlugin{
-		url:    url,
-		client: plugin.NewHTTPClient(&options),
-		header: options.Header,
+		url:       url,
+		client:    plugin.NewHTTPClient(&options),
+		header:    options.Header,
+		whitelist: options.Whitelist,
 		log: logger.Default().WithFields(map[string]any{
 			"kind":   "bypass",
 			"bypass": name,
@@ -125,5 +127,5 @@ func (p *httpPlugin) Close() error {
 }
 
 func (p *httpPlugin) IsWhitelist() bool {
-	return false
+	return p.whitelist
 }

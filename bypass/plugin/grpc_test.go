@@ -179,8 +179,8 @@ func TestNewGRPCPlugin_RealConn(t *testing.T) {
 }
 
 func TestGRPCPlugin_IsWhitelist(t *testing.T) {
-	p := &grpcPlugin{}
-	assert.False(t, p.IsWhitelist())
+	assert.False(t, NewGRPCPlugin("test", "").IsWhitelist())
+	assert.True(t, NewGRPCPlugin("test", "", plugin.WhitelistOption(true)).IsWhitelist())
 }
 
 // --- test helpers ---

@@ -167,8 +167,8 @@ func TestHTTPPlugin_Close_WithClient(t *testing.T) {
 }
 
 func TestHTTPPlugin_IsWhitelist(t *testing.T) {
-	hp := &httpPlugin{}
-	assert.False(t, hp.IsWhitelist())
+	assert.False(t, NewHTTPPlugin("test", "").IsWhitelist())
+	assert.True(t, NewHTTPPlugin("test", "", plugin.WhitelistOption(true)).IsWhitelist())
 }
 
 var _ io.Closer = (*httpPlugin)(nil)
