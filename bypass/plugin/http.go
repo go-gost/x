@@ -114,7 +114,7 @@ func (p *httpPlugin) Contains(ctx context.Context, network, addr string, opts ..
 		log.Error(err)
 		return true
 	}
-	return res.OK
+	return res.OK != p.whitelist
 }
 
 func (p *httpPlugin) Close() error {

@@ -2,6 +2,7 @@ package bypass
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,28 @@ func TestHTTPPlugin_Contains_Deny(t *testing.T) {
 
 	p := NewHTTPPlugin("test", srv.URL)
 	assert.False(t, p.Contains(context.Background(), "tcp", "192.168.1.1"))
+}
+
+func TestHTTPPlugin_Contains_Whitelist(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ok   bool
+		want bool
+	}{
+		{name: "match", ok: true, want: false},
+		{name: "no match", ok: false, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]bool{"ok": tc.ok})
+			}))
+			defer srv.Close()
+
+			p := NewHTTPPlugin("test", srv.URL, plugin.WhitelistOption(true))
+			assert.Equal(t, tc.want, p.Contains(context.Background(), "tcp", "192.168.1.1"))
+		})
+	}
 }
 
 func TestHTTPPlugin_Contains_Non200(t *testing.T) {

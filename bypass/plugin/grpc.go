@@ -77,7 +77,7 @@ func (p *grpcPlugin) Contains(ctx context.Context, network, addr string, opts ..
 		p.log.Error(err)
 		return true
 	}
-	return r.Ok
+	return r.Ok != p.whitelist
 }
 
 func (p *grpcPlugin) Close() error {
