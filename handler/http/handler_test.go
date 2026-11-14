@@ -8,11 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+type fixedAuthenticator struct{}
+
+func (fixedAuthenticator) Authenticate(context.Context, string, string, ...auth.Option) (string, bool) {
+	return "account-42", true
+}
 
 func TestNewHandler(t *testing.T) {
 	h := NewHandler()
@@ -160,6 +166,35 @@ func TestHandle_PRIMethod(t *testing.T) {
 	err := h.Handle(ctx, server)
 	if err != nil {
 		t.Logf("Handle returned: %v", err)
+	}
+}
+
+func TestHandle_TrafficLogIncludesHTTPIdentity(t *testing.T) {
+	log := newCaptureLogger()
+	h := NewHandler(
+		handler.LoggerOption(log),
+		handler.AutherOption(fixedAuthenticator{}),
+		handler.BypassOption(&testBypass{contains: true}),
+	).(*httpHandler)
+	if err := h.Init(testMD(map[string]any{})); err != nil {
+		t.Fatal(err)
+	}
+
+	conn := newStringConn("CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\nProxy-Authorization: Basic dXNlcjpwYXNz\r\n\r\n")
+	_ = h.Handle(context.Background(), conn)
+
+	entry, ok := log.trafficEntry()
+	if !ok {
+		t.Fatal("traffic log containing inputBytes was not emitted")
+	}
+	if got := entry.fields["user"]; got != "user" {
+		t.Errorf("traffic log user = %v, want user", got)
+	}
+	if got := entry.fields["clientID"]; got != "account-42" {
+		t.Errorf("traffic log clientID = %v, want account-42", got)
+	}
+	if _, ok := entry.fields["outputBytes"]; !ok {
+		t.Error("traffic log does not contain outputBytes")
 	}
 }
 
@@ -346,4 +381,3 @@ func TestHandleRequest_Bypass_Test(t *testing.T) {
 		t.Error("expected bypass error")
 	}
 }
-
