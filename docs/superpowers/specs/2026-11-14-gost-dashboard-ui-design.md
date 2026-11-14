@@ -1,7 +1,8 @@
 # GOST Dashboard UI Design (Phase 5)
 
 Date: 2026-11-14
-Status: draft
+Status: **superseded** — the UI ships in `gost-ui` instead of the `gost` binary.
+See `gost-ui/docs/superpowers/specs/2026-11-14-dashboard-design.md`.
 
 ## Intent
 
