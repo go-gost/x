@@ -452,7 +452,6 @@ func (h *httpHandler) handleRequest(ctx context.Context, conn net.Conn, req *htt
 
 	if u, _, _ := basicProxyAuth(req.Header.Get("Proxy-Authorization")); u != "" {
 		fields["user"] = u
-		ro.ClientID = u
 	}
 	log = log.WithFields(fields)
 

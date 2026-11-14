@@ -319,10 +319,17 @@ func TestHandleRequest_ProbeResistanceAuth(t *testing.T) {
 
 	conn := newStringConn("")
 	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+	req.SetBasicAuth("untrusted-user", "bad-password")
+	req.Header["Proxy-Authorization"] = req.Header["Authorization"]
+	req.Header.Del("Authorization")
+	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	err := h.handleRequest(context.Background(), conn, req, ro, &testLogger{})
 	if err == nil {
 		t.Error("expected auth failure")
+	}
+	if ro.ClientID != "" {
+		t.Errorf("client ID = %q after rejected authentication, want empty", ro.ClientID)
 	}
 }
 
