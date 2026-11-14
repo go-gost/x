@@ -385,11 +385,15 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 			log.Error("record: %v", err)
 		}
 
-		log.WithFields(map[string]any{
+		fields := map[string]any{
 			"duration":    time.Since(start),
 			"inputBytes":  ro.InputBytes,
 			"outputBytes": ro.OutputBytes,
-		}).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
+		}
+		if ro.ClientID != "" {
+			fields["clientID"] = ro.ClientID
+		}
+		log.WithFields(fields).Infof("%s >< %s", conn.RemoteAddr(), conn.LocalAddr())
 	}()
 
 	if !h.checkRateLimit(conn.RemoteAddr()) {
@@ -403,6 +407,13 @@ func (h *httpHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return err
 	}
 	defer req.Body.Close()
+
+	// Keep request-scoped identity fields on the logger captured by the
+	// completion callback. handleRequest receives its logger by value, so
+	// fields added only there would otherwise be absent from the traffic log.
+	if user, _, _ := basicProxyAuth(req.Header.Get("Proxy-Authorization")); user != "" {
+		log = log.WithFields(map[string]any{"user": user})
+	}
 
 	// Extract mTLS peer certificate from the raw connection.
 	if peerCert := getTLSPeerCert(rawConn); peerCert != nil {
