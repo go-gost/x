@@ -30,6 +30,7 @@ import (
 )
 
 func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network string, ro *xrecorder.HandlerRecorderObject, pStats stats.Stats, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	log = log.WithFields(map[string]any{
 		"network": network,
 		"cmd":     network,
@@ -74,7 +75,7 @@ func (h *socks5Handler) handleUDP(ctx context.Context, conn net.Conn, network st
 	// Verify the upstream chain is reachable before replying Success,
 	// per RFC 1928 §7.
 	var buf bytes.Buffer
-	dialContext := ictx.ContextWithBuffer(ctx, &buf)
+	dialContext := ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro)
 	if h.md.udpBindDevice {
 		dialContext = ictx.ContextWithUDPBindDevice(dialContext)
 	}

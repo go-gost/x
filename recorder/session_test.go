@@ -447,3 +447,46 @@ func TestSessionRecorderAccountsConcurrentTraffic(t *testing.T) {
 		t.Errorf("sessions reported = %d, want %d", len(seen), sessions)
 	}
 }
+
+func TestConnectionSinkNotCalledWithRecordModeOff(t *testing.T) {
+	var got int
+	orig := ConnectionSink
+	ConnectionSink = func(*HandlerRecorderObject) { got++ }
+	defer func() { ConnectionSink = orig }()
+
+	r := NewSessionRecorder(nil, SessionRecorderOptions{})
+	defer r.Close()
+
+	session := r.NewSession(context.Background(), xstats.NewStats(false))
+	session.Start(HandlerRecorderObject{Service: "test", Time: time.Now(), RecordMode: "off"})
+
+	if err := session.Finish(context.Background(), HandlerRecorderObject{
+		Service: "test", Time: time.Now(), RecordMode: "off",
+	}); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	if got != 0 {
+		t.Fatalf("sink called %d times with recording off", got)
+	}
+}
+
+func TestConnectionSinkCalledWithRecordModeEmpty(t *testing.T) {
+	var got int
+	orig := ConnectionSink
+	ConnectionSink = func(*HandlerRecorderObject) { got++ }
+	defer func() { ConnectionSink = orig }()
+
+	r := NewSessionRecorder(nil, SessionRecorderOptions{})
+	defer r.Close()
+
+	session := r.NewSession(context.Background(), xstats.NewStats(false))
+
+	if err := session.Finish(context.Background(), HandlerRecorderObject{
+		Service: "test", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("finish: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("sink called %d times, want 1", got)
+	}
+}

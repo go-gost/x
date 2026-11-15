@@ -62,6 +62,7 @@ import (
 //     HTTP/TLS traffic can be MITM-decrypted or recorded.
 //   - Route info (node chain) is recorded via ictx.ContextWithBuffer into ro.Route.
 func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) (err error) {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	if network == "unix" || network == "serial" {
 		if host, _, _ := net.SplitHostPort(address); host != "" {
 			address = host
@@ -145,7 +146,7 @@ func (h *relayHandler) handleConnect(ctx context.Context, conn net.Conn, network
 		}
 	default:
 		var buf bytes.Buffer
-		cc, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+		cc, err = h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, address)
 		ro.Route = buf.String()
 	}
 	if err != nil {

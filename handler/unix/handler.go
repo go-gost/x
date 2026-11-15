@@ -17,6 +17,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/recorder"
 	ctxvalue "github.com/go-gost/x/ctx"
+	ictx "github.com/go-gost/x/internal/ctx"
 	xio "github.com/go-gost/x/internal/io"
 	xnet "github.com/go-gost/x/internal/net"
 	"github.com/go-gost/x/internal/util/sniffing"
@@ -137,7 +138,7 @@ func (h *unixHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 		return h.forwardUnix(ctx, conn, target, ro, log)
 	}
 
-	cc, err := h.options.Router.Dial(ctx, "tcp", "@")
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ctx, ro), "tcp", "@")
 	if err != nil {
 		log.Error(err)
 		return err
@@ -215,7 +216,7 @@ func (h *unixHandler) forwardUnix(ctx context.Context, conn net.Conn, target *ch
 	var cc io.ReadWriteCloser
 
 	if opts := h.options.Router.Options(); opts != nil && opts.Chain != nil {
-		cc, err = h.options.Router.Dial(ctx, "unix", target.Addr)
+		cc, err = h.options.Router.Dial(ictx.ContextWithRecorderObject(ctx, ro), "unix", target.Addr)
 	} else {
 		cc, err = (&net.Dialer{}).DialContext(ctx, "unix", target.Addr)
 	}

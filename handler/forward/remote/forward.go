@@ -21,6 +21,7 @@ import (
 // router, and pipes the raw connection. It is used when sniffing is disabled
 // or the protocol was not HTTP/TLS.
 func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, network, proto string) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	target := h.selectTarget(ctx, proto)
 	if target == nil {
 		log.Error(errNodeNotAvailable)
@@ -51,7 +52,7 @@ func (h *forwardHandler) handleRawForwarding(ctx context.Context, conn net.Conn,
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, addr)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

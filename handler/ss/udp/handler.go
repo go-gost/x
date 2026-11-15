@@ -163,7 +163,7 @@ func (h *ssuHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.
 
 		// UDP over TCP still behaves like a regular packet tunnel.
 		var buf bytes.Buffer
-		c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "")
+		c, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "udp", "")
 		ro.Route = buf.String()
 		if err != nil {
 			log.Error(err)
@@ -253,7 +253,7 @@ func (h *ssuHandler) packetConnForSession(ctx context.Context, src net.PacketCon
 	}
 
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "")
+	c, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "udp", "")
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

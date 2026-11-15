@@ -3,8 +3,7 @@ package dashboard
 import (
 	"testing"
 	"time"
-
-	)
+)
 
 func records(n int) []ConnectionRecord {
 	out := make([]ConnectionRecord, n)
@@ -118,5 +117,27 @@ func TestConnectionsCapZeroDisables(t *testing.T) {
 	got := Default().Connections(10000, "", "")
 	if len(got) != 10 {
 		t.Fatalf("got %d", len(got))
+	}
+}
+
+func TestConnectionsRecordSeriesAreClonedOnRead(t *testing.T) {
+	ResetState()
+	defer ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	Default().RecordConnection(ConnectionRecord{
+		SID: "s1", Service: "svc", Path: []PathHop{{Chain: "c", Hop: 0, Node: "n"}},
+	})
+
+	snap := Default().Connections(10, "", "")
+	if len(snap) != 1 {
+		t.Fatalf("records = %d, want 1", len(snap))
+	}
+	snap[0].Path[0].Chain = "mutated"
+
+	snap2 := Default().Connections(10, "", "")
+	if snap2[0].Path[0].Chain != "c" {
+		t.Fatalf("ring mutated through snapshot: %q", snap2[0].Path[0].Chain)
 	}
 }

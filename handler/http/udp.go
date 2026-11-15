@@ -29,6 +29,7 @@ import (
 //
 // If UDP relay is disabled (enableUDP=false), a 403 Forbidden is returned.
 func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, clientID string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	log = log.WithFields(map[string]any{
 		"cmd": "udp",
 	})
@@ -79,7 +80,7 @@ func (h *httpHandler) handleUDP(ctx context.Context, conn net.Conn, clientID str
 		return errors.New("nil router")
 	}
 	var buf bytes.Buffer
-	c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", "")
+	c, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "udp", "")
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

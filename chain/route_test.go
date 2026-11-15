@@ -10,12 +10,13 @@ import (
 
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/dialer"
+	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
 	ioctx "github.com/go-gost/x/internal/ctx"
-	xrecorder "github.com/go-gost/x/recorder"
 	xlogger "github.com/go-gost/x/logger"
 	xmetrics "github.com/go-gost/x/metrics"
+	xrecorder "github.com/go-gost/x/recorder"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
@@ -547,4 +548,90 @@ func TestConnectRecordsPathOnRecorder(t *testing.T) {
 	require.Equal(t, "n1", ro.Path[1].Node)
 	require.Equal(t, 1, ro.Path[1].Hop)
 	require.Equal(t, "chain-0", ro.Path[0].Chain)
+}
+
+func TestConnectDialFailureRecordsDial(t *testing.T) {
+	var calls []recordedHop
+	defer withChainRecorded(t, func(chainName string, hop int, node string, d time.Duration, err error) {
+		calls = append(calls, recordedHop{chainName, hop, node, d, err})
+	})()
+
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		return nil, errors.New("dial refused")
+	}}
+	node := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(d, &plainConnector{})))
+
+	rt := NewRoute()
+	rt.addNode(node)
+	rt.options.Chain = NewChain("chain-0")
+
+	_, err := rt.connect(context.Background(), xlogger.Nop())
+	require.Error(t, err)
+	require.Len(t, calls, 1)
+	require.Equal(t, "dial", calls[0].err.Error())
+	require.Equal(t, 0, calls[0].hop)
+	require.Equal(t, "n0", calls[0].node)
+}
+
+func TestConnectHandshakeFailureRecordsHandshake(t *testing.T) {
+	var calls []recordedHop
+	defer withChainRecorded(t, func(chainName string, hop int, node string, d time.Duration, err error) {
+		calls = append(calls, recordedHop{chainName, hop, node, d, err})
+	})()
+
+	d := &testDialer{handshakeFn: func(ctx context.Context, conn net.Conn, opts ...dialer.HandshakeOption) (net.Conn, error) {
+		return nil, errors.New("handshake failed")
+	}}
+	c := &testConnector{}
+	node := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(d, c)))
+
+	rt := NewRoute()
+	rt.addNode(node)
+	rt.options.Chain = NewChain("chain-0")
+
+	_, err := rt.connect(context.Background(), xlogger.Nop())
+	require.Error(t, err)
+	require.Len(t, calls, 1)
+	require.Equal(t, "handshake", calls[0].err.Error())
+	require.Equal(t, 0, calls[0].hop)
+	require.Equal(t, "n0", calls[0].node)
+}
+
+func TestMultiplexSplitChainRecordedOrder(t *testing.T) {
+	var calls []recordedHop
+	defer withChainRecorded(t, func(chainName string, hop int, node string, d time.Duration, err error) {
+		calls = append(calls, recordedHop{chainName, hop, node, d, err})
+	})()
+
+	prefixNode := chain.NewNode("prefix", "10.0.0.1:80",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &testConnector{})))
+	muxTr := NewTransport(&testDialer{hasMux: true, multiplexVal: true}, &testConnector{})
+	muxNode := chain.NewNode("mux", "10.0.0.2:80",
+		chain.TransportNodeOption(muxTr))
+	tailNode := chain.NewNode("tail", "10.0.0.3:80",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &testConnector{})))
+
+	h1 := &testHop{selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node { return prefixNode }}
+	h2 := &testHop{selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node { return muxNode }}
+	h3 := &testHop{selectFn: func(ctx context.Context, opts ...hop.SelectOption) *chain.Node { return tailNode }}
+	c := NewChain("multi-chain")
+	c.AddHop(h1)
+	c.AddHop(h2)
+	c.AddHop(h3)
+
+	rt := c.Route(context.Background(), "tcp", "127.0.0.1:80")
+	require.NotNil(t, rt)
+	require.Len(t, rt.Nodes(), 2) // prefix is embedded in mux's transport
+	conn, err := rt.Dial(context.Background(), "tcp", "127.0.0.1:80")
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	// After the multiplex split, the surviving record order must still
+	// be 0, 1, ... with the same hop indices the dial sequence runs in.
+	require.Len(t, calls, 2)
+	require.Equal(t, 0, calls[0].hop)
+	require.Equal(t, "mux", calls[0].node)
+	require.Equal(t, 1, calls[1].hop)
+	require.Equal(t, "tail", calls[1].node)
+	require.Nil(t, calls[0].err)
+	require.Nil(t, calls[1].err)
 }

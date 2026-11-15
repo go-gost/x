@@ -83,11 +83,11 @@ func init() {
 
 var (
 	// ErrBadRequest indicates the request was malformed or invalid.
-	ErrBadRequest         = errors.New("masque: bad request")
+	ErrBadRequest = errors.New("masque: bad request")
 	// ErrMethodNotAllowed indicates the request method is not CONNECT.
-	ErrMethodNotAllowed   = errors.New("masque: method not allowed")
+	ErrMethodNotAllowed = errors.New("masque: method not allowed")
 	// ErrCapsuleRequired indicates the Capsule-Protocol header is missing or invalid.
-	ErrCapsuleRequired    = errors.New("masque: capsule-protocol header required")
+	ErrCapsuleRequired = errors.New("masque: capsule-protocol header required")
 	// ErrDatagramNotSupport indicates that the QUIC connection does not support HTTP/3 datagrams.
 	ErrDatagramNotSupport = errors.New("masque: datagrams not supported")
 )
@@ -104,12 +104,12 @@ var (
 //   - Prometheus metrics collection
 //   - Traffic recording for audit/logging
 type masqueHandler struct {
-	md       metadata                  // parsed configuration metadata
-	options  handler.Options           // handler options (auth, bypass, router, etc.)
-	stats    *stats_util.HandlerStats  // per-client connection statistics for observer
-	limiter  traffic.TrafficLimiter    // cached traffic limiter wrapping the global limiter
-	cancel   context.CancelFunc        // cancels the background observer goroutine
-	recorder recorder.RecorderObject   // traffic recorder for handler-level events
+	md       metadata                 // parsed configuration metadata
+	options  handler.Options          // handler options (auth, bypass, router, etc.)
+	stats    *stats_util.HandlerStats // per-client connection statistics for observer
+	limiter  traffic.TrafficLimiter   // cached traffic limiter wrapping the global limiter
+	cancel   context.CancelFunc       // cancels the background observer goroutine
+	recorder recorder.RecorderObject  // traffic recorder for handler-level events
 }
 
 // NewHandler creates a new MASQUE handler instance. It supports CONNECT-UDP
@@ -380,7 +380,7 @@ func (h *masqueHandler) handleConnectUDP(ctx context.Context, w http.ResponseWri
 
 	if h.options.Router != nil {
 		// Use router to dial through chain (for forwarding through upstream proxy)
-		c, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "udp", targetAddr)
+		c, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "udp", targetAddr)
 		ro.Route = buf.String()
 		if err != nil {
 			log.Error("masque: failed to dial through router: ", err)
@@ -553,7 +553,7 @@ func (h *masqueHandler) handleConnectTCP(ctx context.Context, w http.ResponseWri
 	var buf bytes.Buffer
 
 	if h.options.Router != nil {
-		cc, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
+		cc, err = h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", targetAddr)
 	} else {
 		cc, err = net.Dial("tcp", targetAddr)
 	}

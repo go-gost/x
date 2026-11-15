@@ -24,6 +24,7 @@ import (
 )
 
 func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	log = log.WithFields(map[string]any{
 		"dst":  fmt.Sprintf("%s/%s", address, network),
 		"cmd":  "connect",
@@ -68,7 +69,7 @@ func (h *socks5Handler) handleConnect(ctx context.Context, conn net.Conn, networ
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, address)
 	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks5.NewReply(gosocks5.NetUnreachable, nil)

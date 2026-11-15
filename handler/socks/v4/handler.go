@@ -250,7 +250,7 @@ func (h *socks4Handler) handleConnect(ctx context.Context, conn net.Conn, req *g
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", addr)
 	ro.Route = buf.String()
 	if err != nil {
 		resp := gosocks4.NewReply(gosocks4.Failed, nil)

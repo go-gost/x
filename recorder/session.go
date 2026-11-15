@@ -73,7 +73,9 @@ func (s *Session) Finish(ctx context.Context, final HandlerRecorderObject) error
 	if final.Labels == nil {
 		final.Labels = s.labels
 	}
-	ConnectionSink(&final)
+	if final.RecordMode != "off" {
+		ConnectionSink(&final)
+	}
 
 	if final.Time.IsZero() || final.RecordMode == "off" {
 		return nil

@@ -187,7 +187,7 @@ func (h *ssHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler.H
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", target.String())
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", target.String())
 	ro.Route = buf.String()
 	if err != nil {
 		return err

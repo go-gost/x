@@ -190,7 +190,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 				ro.Host = address
 
 				var buf bytes.Buffer
-				cc, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+				cc, err = h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", address)
 				ro.Route = buf.String()
 				if err != nil && !h.md.sniffingFallback {
 					return nil, err
@@ -202,7 +202,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 					return nil, xbypass.ErrBypass
 				}
 				var buf bytes.Buffer
-				cc, err = h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				cc, err = h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", dstAddr.String())
 				ro.Route = buf.String()
 				ro.Host = dstAddr.String()
 			}
@@ -215,7 +215,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 		if h.md.sniffingDialOriginalDst {
 			dial = func(ctx context.Context, network, address string) (net.Conn, error) {
 				var buf bytes.Buffer
-				cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", dstAddr.String())
+				cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", dstAddr.String())
 				ro.Route = buf.String()
 				return cc, err
 			}
@@ -312,7 +312,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	log.Debugf("%s >> %s", conn.RemoteAddr(), dstAddr)
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), dstAddr.Network(), dstAddr.String())
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), dstAddr.Network(), dstAddr.String())
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

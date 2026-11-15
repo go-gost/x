@@ -62,7 +62,13 @@ func (*defaultRoute) Dial(ctx context.Context, network, address string, opts ...
 		netd.Mark = options.SockOpts.Mark
 	}
 
-	return netd.Dial(ctx, network, address)
+	tStart := time.Now()
+	conn, err := netd.Dial(ctx, network, address)
+	RecordTargetHop(ctx, address, time.Since(tStart), err)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 func (*defaultRoute) Bind(ctx context.Context, network, address string, opts ...chain.BindOption) (net.Listener, error) {
@@ -167,7 +173,9 @@ func (r *chainRoute) Dial(ctx context.Context, network, address string, opts ...
 		return nil, err
 	}
 
+	tStart := time.Now()
 	cc, err := r.getNode(len(r.Nodes())-1).Options().Transport.Connect(ctx, conn, network, address)
+	RecordTargetHop(ctx, address, time.Since(tStart), err)
 	if err != nil {
 		if conn != nil {
 			conn.Close()
@@ -211,6 +219,7 @@ func (r *chainRoute) Bind(ctx context.Context, network, address string, opts ...
 }
 
 func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn net.Conn, err error) {
+	resetPath(ctx, chainName(r.options.Chain))
 	network := "ip"
 	node := r.nodes[0]
 	failedNode := node
@@ -237,18 +246,18 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		}
 	}()
 
+	start := time.Now()
 	addrs, err := xnet.ResolveAll(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
 	marker := node.Marker()
 	if err != nil {
-		ChainRecorded(chainName(r.options.Chain), 0, node.Name, 0, errResolve)
-		recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, Err: "resolve"})
+		ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errResolve)
+		recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "resolve"})
 		if marker != nil {
 			marker.Mark()
 		}
 		return
 	}
 
-	start := time.Now()
 	var cn net.Conn
 	for _, addr := range orderCandidates(node.Addr, addrs) {
 		if ctx.Err() != nil {

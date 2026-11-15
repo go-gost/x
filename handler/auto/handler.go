@@ -159,7 +159,7 @@ func (h *autoHandler) handleTLS(ctx context.Context, conn net.Conn, log logger.L
 	sniffer := &sniffing.Sniffer{}
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		var buf bytes.Buffer
-		cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+		cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", address)
 		if err != nil {
 			return nil, err
 		}

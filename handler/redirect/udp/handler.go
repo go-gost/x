@@ -183,7 +183,7 @@ func (h *redirectHandler) Handle(ctx context.Context, conn net.Conn, opts ...han
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), dstAddr.Network(), dstAddr.String())
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), dstAddr.Network(), dstAddr.String())
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

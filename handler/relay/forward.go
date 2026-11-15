@@ -45,6 +45,7 @@ import (
 //     in subsequent selections.
 //   - On successful dial, the marker is reset, indicating recovery.
 func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	resp := relay.Response{
 		Version: relay.Version1,
 		Status:  relay.StatusOK,
@@ -92,7 +93,7 @@ func (h *relayHandler) handleForward(ctx context.Context, conn net.Conn, network
 
 	// Dial the target node, recording the route path.
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, target.Addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, target.Addr)
 	ro.Route = buf.String()
 	if err != nil {
 		// TODO: the router itself may fail because of a failed node in the route.

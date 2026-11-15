@@ -34,6 +34,7 @@ import (
 // when server returns an non-200 status code,
 // May be fixed in go1.18.
 func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req *http.Request, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	if w == nil || req == nil {
 		return nil
 	}
@@ -149,7 +150,7 @@ func (h *http2Handler) roundTrip(ctx context.Context, w http.ResponseWriter, req
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", host)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", host)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)

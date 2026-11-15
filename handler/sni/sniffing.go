@@ -63,13 +63,14 @@ func (b *SnifferBuilder) Build() *sniffing.Sniffer {
 // [chain.Router.Dial] with context-based hash selection, route recording,
 // and source/destination address population for the recorder.
 func (h *sniHandler) sniffingDial(ctx context.Context, network, address string, ro *xrecorder.HandlerRecorderObject) (net.Conn, error) {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	switch h.md.hash {
 	case "host":
 		ctx = xctx.ContextWithHash(ctx, &xctx.Hash{Source: address})
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", address)
 	ro.Route = buf.String()
 
 	if cc != nil {

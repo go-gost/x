@@ -160,7 +160,7 @@ func (h *forwardHandler) handleDirectForward(ctx context.Context, targetAddr str
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", targetAddr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", targetAddr)
 	ro.Route = buf.String()
 	if err != nil {
 		return err

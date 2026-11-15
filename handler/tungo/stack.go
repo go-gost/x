@@ -201,7 +201,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 				ro.Host = address
 
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, address)
+				cc, err = h.opts.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, address)
 				ro.Route = buf.String()
 				if err != nil && !h.sniffingFallback {
 					return nil, err
@@ -210,7 +210,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 
 			if cc == nil {
 				var buf bytes.Buffer
-				cc, err = h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+				cc, err = h.opts.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, dstAddr.String())
 				ro.Route = buf.String()
 				ro.Host = dstAddr.String()
 			}
@@ -260,7 +260,7 @@ func (h *transportHandler) handleTCPConn(originConn adapter.TCPConn) {
 	}
 
 	var buf bytes.Buffer
-	cc, err := h.opts.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, dstAddr.String())
+	cc, err := h.opts.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, dstAddr.String())
 	ro.Route = buf.String()
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)
@@ -340,7 +340,7 @@ func (h *transportHandler) handleUDPConn(uc adapter.UDPConn) {
 		}).Infof("%s >< %s", remoteAddr.String(), dstAddr.String())
 	}()
 
-	cc, err := h.opts.Router.Dial(ctx, "udp", dstAddr.String())
+	cc, err := h.opts.Router.Dial(ictx.ContextWithRecorderObject(ctx, ro), "udp", dstAddr.String())
 	if err != nil {
 		log.Errorf("dial %s: %v", dstAddr.String(), err)
 		return

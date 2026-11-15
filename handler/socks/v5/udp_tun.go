@@ -23,6 +23,7 @@ import (
 )
 
 func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network, address string, ro *xrecorder.HandlerRecorderObject, log logger.Logger) error {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	log = log.WithFields(map[string]any{
 		"network": network,
 		"cmd":     "udp-tun",
@@ -69,7 +70,7 @@ func (h *socks5Handler) handleUDPTun(ctx context.Context, conn net.Conn, network
 
 		// obtain a udp connection
 		var buf bytes.Buffer
-		dialContext := ictx.ContextWithBuffer(ctx, &buf)
+		dialContext := ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro)
 		if h.md.udpBindDevice {
 			dialContext = ictx.ContextWithUDPBindDevice(dialContext)
 		}

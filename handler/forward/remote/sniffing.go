@@ -36,7 +36,7 @@ type SnifferBuilder struct {
 	// ReadTimeout is the timeout for reading upstream HTTP response headers
 	// and TLS ServerHello during sniffing. Passed through to forwarder.Sniffer.
 	// See forwarder.Sniffer.ReadTimeout for details.
-	ReadTimeout         time.Duration
+	ReadTimeout time.Duration
 	// Cache is the HTTP response cache (nil when caching is disabled).
 	Cache *httpcache.Cache
 }
@@ -61,8 +61,9 @@ func (b *SnifferBuilder) Build() *forwarder.Sniffer {
 // sniffingDial creates a dial function for the sniffing branch that wraps
 // Router.Dial with route recording and proxy protocol encapsulation.
 func (h *forwardHandler) sniffingDial(ctx context.Context, network, address string, ro *xrecorder.HandlerRecorderObject) (net.Conn, error) {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), "tcp", address)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), "tcp", address)
 	ro.Route = buf.String()
 	return proxyproto.WrapClientConn(
 		h.md.proxyProtocol,

@@ -7,11 +7,11 @@ import (
 	"net"
 	"time"
 
-	quicdissector "github.com/go-gost/quic-dissector"
+	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/hop"
 	"github.com/go-gost/core/logger"
-	"github.com/go-gost/core/bypass"
+	quicdissector "github.com/go-gost/quic-dissector"
 	xbypass "github.com/go-gost/x/bypass"
 	xctx "github.com/go-gost/x/ctx"
 	ictx "github.com/go-gost/x/internal/ctx"
@@ -35,6 +35,7 @@ type dialResult struct {
 //
 // The caller must close cc when done.
 func (h *forwardHandler) dialTarget(ctx context.Context, conn net.Conn, ro *xrecorder.HandlerRecorderObject, log logger.Logger, network, proto string) (*dialResult, error) {
+	ctx = ictx.ContextWithRecorderObject(ctx, ro)
 	target := &chain.Node{}
 	if curHop := h.getHop(); curHop != nil {
 		target = curHop.Select(ctx,
@@ -70,7 +71,7 @@ func (h *forwardHandler) dialTarget(ctx context.Context, conn net.Conn, ro *xrec
 	log.Debugf("%s >> %s", conn.RemoteAddr(), addr)
 
 	var buf bytes.Buffer
-	cc, err := h.options.Router.Dial(ictx.ContextWithBuffer(ctx, &buf), network, addr)
+	cc, err := h.options.Router.Dial(ictx.ContextWithRecorderObject(ictx.ContextWithBuffer(ctx, &buf), ro), network, addr)
 	ro.Route = buf.String()
 	if err != nil {
 		log.Error(err)
