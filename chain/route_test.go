@@ -12,6 +12,8 @@ import (
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/hosts"
 	"github.com/go-gost/core/resolver"
+	ioctx "github.com/go-gost/x/internal/ctx"
+	xrecorder "github.com/go-gost/x/recorder"
 	xlogger "github.com/go-gost/x/logger"
 	xmetrics "github.com/go-gost/x/metrics"
 	dto "github.com/prometheus/client_model/go"
@@ -521,4 +523,28 @@ func TestConnectResolveFailureRecordsResolve(t *testing.T) {
 	require.Equal(t, "resolve", calls[0].err.Error())
 	require.Equal(t, 0, calls[0].hop)
 	require.Equal(t, "n0", calls[0].node)
+}
+
+func TestConnectRecordsPathOnRecorder(t *testing.T) {
+	ro := &xrecorder.HandlerRecorderObject{Service: "svc"}
+	ctx := ioctx.ContextWithRecorderObject(context.Background(), ro)
+
+	n0 := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+	n1 := chain.NewNode("n1", "10.0.0.2:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+
+	rt := NewRoute()
+	rt.addNode(n0)
+	rt.addNode(n1)
+	rt.options.Chain = NewChain("chain-0")
+
+	conn, err := rt.connect(ctx, xlogger.Nop())
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, "chain-0", ro.Chain)
+	require.Len(t, ro.Path, 2)
+	require.Equal(t, 0, ro.Path[0].Hop)
+	require.Equal(t, "n0", ro.Path[0].Node)
+	require.Equal(t, "n1", ro.Path[1].Node)
+	require.Equal(t, 1, ro.Path[1].Hop)
+	require.Equal(t, "chain-0", ro.Path[0].Chain)
 }

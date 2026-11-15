@@ -302,12 +302,12 @@ Fill one subsection per task after it is complete, then include it in that task'
 - Deferred items/limitations: hop node state is never set; metrics service remains optional for external Prometheus consumers.
 
 ### Task 2
-- Date/status:
-- Repository + commit SHA:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ (this commit)
+- Files changed: `recorder/recorder.go` (new `PathHop`, `Path`, `Chain` omitempty fields), `chain/route.go` (populate Path on every hop success/failure, incl. first-hop dial/handshake/resolve), `chain/record.go` (helpers `recordChainName`, `recordPath`, `hopMs`), `recorder/recorder_test.go` (golden round trip), `chain/route_test.go` (`TestConnectRecordsPathOnRecorder`).
+- Tests/commands and results: `go test ./recorder/ ./chain/ -count=1` → ok (8.9s / 2.4s); `go build ./chain/` clean.
+- Review findings and fixes: `Path` reuses the same `RecorderObjectFromContext` ctx path as `Route`, so all dialed hops emit structured records with zero change to handlers; pre-dial refusals remain on the `err`-only record with absent `Path`.
+- Deferred items/limitations: long-lived connections never refresh Path, it reflects the dial path only (as intended).
 
 ### Task 3
 - Date/status:

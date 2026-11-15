@@ -881,3 +881,35 @@ func (w *writeOnceThenError) Write(b []byte) (int, error) {
 func (w *writeOnceThenError) Close() error {
 	return nil
 }
+
+func TestHandlerRecorderObjectSerializesPath(t *testing.T) {
+	ro := HandlerRecorderObject{
+		Service: "svc",
+		Chain:   "c1",
+		Route:   "n1@10.0.0.1:80 > 10.0.0.2:80",
+		Path:    []PathHop{{Chain: "c1", Hop: 0, Node: "n1", Addr: "10.0.0.1:80", ConnectMs: 3}},
+		Time:    time.Now(),
+	}
+	data, err := json.Marshal(ro)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var round map[string]any
+	if err := json.Unmarshal(data, &round); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	pathRaw, ok := round["path"].([]any)
+	if !ok || len(pathRaw) != 1 {
+		t.Fatalf("path = %v", round["path"])
+	}
+	path, ok := pathRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("path[0] = %v", pathRaw[0])
+	}
+	if path["node"] != "n1" || path["addr"] != "10.0.0.1:80" || path["chain"] != "c1" {
+		t.Fatalf("path[0] = %v", path)
+	}
+	if round["route"] != "n1@10.0.0.1:80 > 10.0.0.2:80" {
+		t.Fatalf("route = %v", round["route"])
+	}
+}

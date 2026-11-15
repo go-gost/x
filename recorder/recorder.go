@@ -139,6 +139,17 @@ type RedisRecorderObject struct {
 	Key     string `json:"key"`
 }
 
+// PathHop describes one hop inside the dialed chain for a connection. The
+// outermost hop is index 0 and the final target is the last entry.
+type PathHop struct {
+	Chain     string `json:"chain,omitempty"`
+	Hop       int    `json:"hop"`
+	Node      string `json:"node"`
+	Addr      string `json:"addr"`
+	ConnectMs uint64 `json:"connectMs"`
+	Err       string `json:"err,omitempty"`
+}
+
 // HandlerRecorderObject bundles traffic metadata recorded at the handler
 // level — addresses, protocols, transferred bytes, and optional sub-records
 // for HTTP, WebSocket, TLS, and DNS traffic.
@@ -172,6 +183,8 @@ type HandlerRecorderObject struct {
 	Err        string        `json:"err,omitempty"`
 	SID        string        `json:"sid"`
 	Duration   time.Duration `json:"duration"`
+	Chain      string        `json:"chain,omitempty"`
+	Path       []PathHop     `json:"path,omitempty"`
 	Time       time.Time     `json:"time"`
 	RecordMode string        `json:"-"` // "" = full, "headers" = metadata only, "off" = no recording
 }

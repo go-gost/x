@@ -1,10 +1,13 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"github.com/go-gost/core/chain"
+	ioctx "github.com/go-gost/x/internal/ctx"
+	xrecorder "github.com/go-gost/x/recorder"
 )
 
 // ChainRecorded is the in-process hook invoked once per node dial that goes
@@ -34,3 +37,29 @@ func chainName(c chain.Chainer) string {
 	return ""
 }
 
+
+// recordChainName writes the chain name into the recorder object carried in
+// ctx (if any). It is called once per route, on every dial — “record” means
+// "attach to the in-flight record".
+func recordChainName(ctx context.Context, name string) {
+	if ro := ioctx.RecorderObjectFromContext(ctx); ro != nil && ro.Chain == "" {
+		ro.Chain = name
+	}
+}
+
+// recordPath appends one structured hop onto the recorder carried in ctx (if
+// any). It is zero-allocation for the common no-recorder case.
+func recordPath(ctx context.Context, hop xrecorder.PathHop) {
+	if ro := ioctx.RecorderObjectFromContext(ctx); ro != nil {
+		ro.Path = append(ro.Path, hop)
+	}
+}
+
+// hopMs casts a duration to milliseconds, clamped to at least 1 for metrics.
+func hopMs(d time.Duration) uint64 {
+	ms := uint64(d.Milliseconds())
+	if ms == 0 {
+		return 1
+	}
+	return ms
+}
