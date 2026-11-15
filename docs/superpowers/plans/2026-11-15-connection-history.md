@@ -291,7 +291,38 @@ git commit -m "feat(api): expose /dashboard/connections"
 
 ## Implementation records
 
-Fill one subsection per task after it is complete, then include it in that task's commit.
+### Task 1
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ 7ef536d (feat) + e69fad6/a71806c (fix pass)
+- Files changed: chain/record.go, chain/route.go, dashboard/chains.go, dashboard/collector.go, dashboard/apply.go, dashboard/chains_test.go
+- Tests/commands and results: `go test ./chain/ ./dashboard/ -count=1` green; full suite green except pre-existing handler/tunnel/entrypoint panic (stash-verified unrelated at base 1d741eb)
+- Review findings and fixes: C2 (final-target hop missing) → RecordTargetHop in chainRoute.Dial and defaultRoute.Dial; I2 (duplicate PathHop across candidates) → recordPath replaces existing hop of same index; atomic hooks; gofmt; ADDR now resolved IP not configured host
+- Deferred items/limitations: direct control-plane dials (resolver/register/direct-connect) get no path — correctly no recorder object in scope; remaining raw-dial sites (N4/N5 residual — masque fallback, probe-resistance decoys, tunnel pooled conn, DNS handler) need owner decisions
+
+### Task 2
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ 2fd0e14 (feat) + e69fad6/a71806c (fix pass)
+- Files changed: recorder/recorder.go, recorder/session.go, recorder/session_record.go, recorder/session_test.go, chain/record.go, chain/route.go, chain/route_test.go
+- Tests/commands and results: `go test ./recorder/ ./chain/ -count=1` green; serialization unchanged for pre-existing fields, omitempty on Path/Chain keeps inspectors/plugins compatible
+- Review findings and fixes: I5 tests (dial/handshake classification, multiplex-split order, clone-on-read); I1 RecordMode gate before ConnectionSink; I6 hop0 timing starts before resolver
+- Deferred items/limitations: hop index == dial order but multiplex splits renumber sub-route hop indices (documented); ring merges duplicate sid rows from HTTP keep-alive TCP connections (mergeConnections)
+
+### Task 3
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ 2c993a2 (feat) + e69fad6/a71806c (fix pass)
+- Files changed: dashboard/connections.go, dashboard/connections_test.go, dashboard/collector.go, recorder/session.go, config/config.go, config/loader/loader.go (ConnectionsLimit), dashboard/apply.go
+- Tests/commands and results: `go test ./dashboard/ ./config/ ./recorder/ ./chain/ -count=1 -timeout=2m` green; 1024 cap eviction test, service+sid filter test, zero-disables-recording, multi-Finish dedupe
+- Review findings and fixes: I4 (exponential SID scan) → whole-ring scan, bounded by cap; M1 hop targets now resolved IP; M5 Path clone-on-read test
+- Deferred items/limitations: `ConnectionRecord.Path` still JSON `"path"` without omitempty (spec §1's shape; UI null-check — M2); `limit<=0` returns the whole ring (M4) so the 1000-row API cap is only a server-side cap, not an absolute limit — cosmetic, not security; SID merge reorders older records to newest
+
+### Task 4
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ 1d741eb (feat) — unchanged after fix pass
+- Files changed: api/dashboard.go, api/api.go, api/swagger.yaml, api/dashboard_test.go
+- Tests/commands and results: `go test ./api/ -count=1` green; 404 when disabled, 400 negative limit, 200 with merged ring, unauthenticated 401
+- Review findings and fixes: fix pass of Task 3 re-validated API semantics (unchanged); residual M4 (limit<=0 returns ring, spec caps at 1000)
+- Deferred items/limitations: M4 (limit<=0 semantic); M10 (plan record text) now updated — see Task 4 note: caller mutates cannot verify against this branch's test env
+
 
 ### Task 1
 - Date/status: 2026-11-15 — complete
