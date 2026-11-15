@@ -75,7 +75,7 @@ func (c *Collector) RecordConnection(rec ConnectionRecord) {
 	for i := len(c.connections) - 1; i >= 0; i-- {
 		existing := c.connections[i]
 		if existing.SID != rec.SID {
-			break
+			continue
 		}
 		c.connections[i] = mergeConnections(c.connections[i], rec)
 		return
