@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-gost/core/chain"
@@ -21,7 +22,24 @@ import (
 // d is the elapsed time of the attempt; it is only meaningful (non-zero
 // on average) for a successful call, but is always measured. err is the
 // classified error for failures, nil on success.
-var ChainRecorded = func(chainName string, hop int, node string, d time.Duration, err error) {}
+func ChainRecorded(chainName string, hop int, node string, d time.Duration, err error) {
+	chainRecorded.Load().(chainRecordedFn)(chainName, hop, node, d, err)
+}
+
+type chainRecordedFn func(chainName string, hop int, node string, d time.Duration, err error)
+
+var chainRecorded atomic.Value
+
+func init() {
+	chainRecorded.Store(chainRecordedFn(func(string, int, string, time.Duration, error) {}))
+}
+
+// SetChainRecorded installs fn atomically and returns an undo function.
+func SetChainRecorded(fn chainRecordedFn) (restore func()) {
+	prev := chainRecorded.Load().(chainRecordedFn)
+	chainRecorded.Store(fn)
+	return func() { chainRecorded.Store(prev) }
+}
 
 var (
 	errResolve   = errors.New("resolve")
@@ -47,9 +65,16 @@ func recordChainName(ctx context.Context, name string) {
 }
 
 // recordPath appends one structured hop onto the recorder carried in ctx (if
-// any). It is zero-allocation for the common no-recorder case.
+// any). If the same hop index already has an entry (from a retry within one
+// connect), it is replaced so the final path never shows duplicate attempts.
 func recordPath(ctx context.Context, hop xrecorder.PathHop) {
 	if ro := ioctx.RecorderObjectFromContext(ctx); ro != nil {
+		for i := range ro.Path {
+			if ro.Path[i].Hop == hop.Hop {
+				ro.Path[i] = hop
+				return
+			}
+		}
 		ro.Path = append(ro.Path, hop)
 	}
 }

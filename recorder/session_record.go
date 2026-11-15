@@ -1,6 +1,9 @@
 package recorder
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 const (
 	PhaseInterim = "interim"
@@ -62,4 +65,21 @@ func (c *cursor) commit(record SessionRecord) {
 // dashboard installs a sink that stores the record in its in-process
 // connection history; the default is a no-op. It must not block or return an
 // error (there is no return value), so latency-sensitive paths stay cheap.
-var ConnectionSink = func(final *HandlerRecorderObject) {}
+func ConnectionSink(final *HandlerRecorderObject) {
+	connectionSink.Load().(connectionSinkFn)(final)
+}
+
+type connectionSinkFn func(final *HandlerRecorderObject)
+
+var connectionSink atomic.Value
+
+func init() {
+	connectionSink.Store(connectionSinkFn(func(*HandlerRecorderObject) {}))
+}
+
+// SetConnectionSink installs fn atomically and returns an undo function.
+func SetConnectionSink(fn connectionSinkFn) (restore func()) {
+	prev := connectionSink.Load().(connectionSinkFn)
+	connectionSink.Store(fn)
+	return func() { connectionSink.Store(prev) }
+}

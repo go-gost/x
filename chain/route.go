@@ -259,11 +259,13 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	}
 
 	var cn net.Conn
+	var dialedAddr string
 	for _, addr := range orderCandidates(node.Addr, addrs) {
 		if ctx.Err() != nil {
 			err = ctx.Err()
 			return
 		}
+		dialedAddr = addr
 		for attempt := 0; ; attempt++ {
 			if ctx.Err() != nil {
 				err = ctx.Err()
@@ -278,7 +280,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 					continue
 				}
 				ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errDial)
-				recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "dial"})
+				recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: addr, ConnectMs: hopMs(time.Since(start)), Err: "dial"})
 				markAddrFailed(node.Addr, addr)
 				break
 			}
@@ -294,7 +296,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 				continue
 			}
 			ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errHandshake)
-			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "handshake"})
+			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: addr, ConnectMs: hopMs(time.Since(start)), Err: "handshake"})
 			markAddrFailed(node.Addr, addr)
 			break
 		}
@@ -314,7 +316,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 
 	r.observeNodeConnectDuration(node, time.Since(start))
 	ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), nil)
-	recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start))})
+	recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: dialedAddr, ConnectMs: hopMs(time.Since(start))})
 
 	preNode := node
 	var (
@@ -340,7 +342,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		cc, err = preNode.Options().Transport.Connect(ctx, cn, "tcp", addr)
 		if err != nil {
 			ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), errDial)
-			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "dial"})
+			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: addr, ConnectMs: hopMs(time.Since(start)), Err: "dial"})
 			if cc != nil {
 				cc.Close()
 			}
@@ -354,7 +356,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		cc2, err = node.Options().Transport.Handshake(ctx, cc)
 		if err != nil {
 			ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), errHandshake)
-			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "handshake"})
+			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: addr, ConnectMs: hopMs(time.Since(start)), Err: "handshake"})
 			if cc2 != nil {
 				cc2.Close()
 			}
@@ -372,7 +374,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 
 		r.observeNodeConnectDuration(node, time.Since(start))
 		ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), nil)
-		recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start))})
+		recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: index, Node: node.Name, Addr: addr, ConnectMs: hopMs(time.Since(start))})
 
 		cn = cc
 		preNode = node

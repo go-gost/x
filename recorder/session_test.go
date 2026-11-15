@@ -450,9 +450,8 @@ func TestSessionRecorderAccountsConcurrentTraffic(t *testing.T) {
 
 func TestConnectionSinkNotCalledWithRecordModeOff(t *testing.T) {
 	var got int
-	orig := ConnectionSink
-	ConnectionSink = func(*HandlerRecorderObject) { got++ }
-	defer func() { ConnectionSink = orig }()
+	restore := SetConnectionSink(func(*HandlerRecorderObject) { got++ })
+	defer restore()
 
 	r := NewSessionRecorder(nil, SessionRecorderOptions{})
 	defer r.Close()
@@ -472,9 +471,8 @@ func TestConnectionSinkNotCalledWithRecordModeOff(t *testing.T) {
 
 func TestConnectionSinkCalledWithRecordModeEmpty(t *testing.T) {
 	var got int
-	orig := ConnectionSink
-	ConnectionSink = func(*HandlerRecorderObject) { got++ }
-	defer func() { ConnectionSink = orig }()
+	restore := SetConnectionSink(func(*HandlerRecorderObject) { got++ })
+	defer restore()
 
 	r := NewSessionRecorder(nil, SessionRecorderOptions{})
 	defer r.Close()

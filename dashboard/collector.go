@@ -476,12 +476,12 @@ var enabled atomic.Bool
 func Enable(on bool) {
 	enabled.Store(on)
 	if on {
-		chain.ChainRecorded = recordChainHop
-		recorder.ConnectionSink = recordConnection
+		chain.SetChainRecorded(recordChainHop)
+		recorder.SetConnectionSink(recordConnection)
 		return
 	}
-	chain.ChainRecorded = func(string, int, string, time.Duration, error) {}
-	recorder.ConnectionSink = func(*recorder.HandlerRecorderObject) {}
+	chain.SetChainRecorded(func(string, int, string, time.Duration, error) {})
+	recorder.SetConnectionSink(func(*recorder.HandlerRecorderObject) {})
 }
 
 // Enabled reports whether dashboard collection is on.

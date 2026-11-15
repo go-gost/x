@@ -463,9 +463,8 @@ type recordedHop struct {
 
 func withChainRecorded(t *testing.T, fn func(chain string, hop int, node string, d time.Duration, err error)) func() {
 	t.Helper()
-	old := ChainRecorded
-	ChainRecorded = fn
-	return func() { ChainRecorded = old }
+	restore := SetChainRecorded(chainRecordedFn(fn))
+	return restore
 }
 
 func TestConnectTwoHopsRecordsHopSequence(t *testing.T) {
@@ -634,4 +633,77 @@ func TestMultiplexSplitChainRecordedOrder(t *testing.T) {
 	require.Equal(t, "tail", calls[1].node)
 	require.Nil(t, calls[0].err)
 	require.Nil(t, calls[1].err)
+}
+
+// withPathHolder runs fn with a fresh recorder object attached to ctx.
+func withPathHolder(fn func(ctx context.Context)) {
+	ctx := ioctx.ContextWithRecorderObject(context.Background(), &xrecorder.HandlerRecorderObject{})
+	fn(ctx)
+}
+
+func TestPathRecordedTwoHopsSuccess(t *testing.T) {
+	orig := xrecorder.ConnectionSink
+	_ = orig
+
+	n0 := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+	n1 := chain.NewNode("n1", "10.0.0.2:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+
+	ro := &xrecorder.HandlerRecorderObject{}
+	ctx := ioctx.ContextWithRecorderObject(context.Background(), ro)
+
+	rt := NewRoute()
+	rt.addNode(n0)
+	rt.addNode(n1)
+	rt.options.Chain = NewChain("chain-0")
+
+	conn, err := rt.connect(ctx, xlogger.Nop())
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+
+	require.Equal(t, "chain-0", ro.Chain)
+	require.Len(t, ro.Path, 2)
+	require.Equal(t, "n0", ro.Path[0].Node)
+	require.Equal(t, "n1", ro.Path[1].Node)
+	require.Equal(t, "", ro.Path[0].Err)
+	require.Equal(t, "", ro.Path[1].Err)
+	conn.Close()
+}
+
+func TestPathRecordedTwoHopsDialFailure(t *testing.T) {
+	d := &testDialer{dialFn: func(ctx context.Context, addr string, opts ...dialer.DialOption) (net.Conn, error) {
+		return nil, errors.New("nope")
+	}}
+	n0 := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(d, &plainConnector{})))
+	n1 := chain.NewNode("n1", "10.0.0.2:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+
+	ro := &xrecorder.HandlerRecorderObject{}
+	ctx := ioctx.ContextWithRecorderObject(context.Background(), ro)
+
+	rt := NewRoute()
+	rt.addNode(n0)
+	rt.addNode(n1)
+	rt.options.Chain = NewChain("chain-0")
+
+	_, err := rt.connect(ctx, xlogger.Nop())
+	require.Error(t, err)
+
+	require.Equal(t, "chain-0", ro.Chain)
+	// Only the failed node is recorded — the dial stops early.
+	require.Len(t, ro.Path, 1)
+	require.Equal(t, "n0", ro.Path[0].Node)
+	require.Equal(t, "dial", ro.Path[0].Err)
+}
+
+func TestTargetHopRecordedDirect(t *testing.T) {
+	ro := &xrecorder.HandlerRecorderObject{}
+	ctx := ioctx.ContextWithRecorderObject(context.Background(), ro)
+
+	conn, err := DefaultRoute.Dial(ctx, "tcp", "127.0.0.1:0")
+	_ = conn
+	_ = err
+
+	require.Len(t, ro.Path, 1)
+	require.Equal(t, "", ro.Path[0].Chain)
+	require.Equal(t, "", ro.Path[0].Node)
+	require.GreaterOrEqual(t, ro.Path[0].ConnectMs, uint64(1))
 }
