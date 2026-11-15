@@ -28,6 +28,9 @@ to capture a connection; it only needs structure and a consumer.
 
 - One structured record per connection: path (hop → node, per-hop timing and
   error), service, bytes, duration, client identity, reason of refusal.
+- **Chain/hop/node statistics are collected in-process by the dashboard
+  itself**, so every topology value on the graph works with no metrics endpoint
+  configured.
 - The record is the same `HandlerRecorderObject` already written to every
   configured recorder, so HTTP/Redis/file recorders and the external inspector
   all receive the enrichment for free.
@@ -36,7 +39,8 @@ to capture a connection; it only needs structure and a consumer.
 - The history is capped and memory-bounded; defaults are sane for a busy proxy.
 - Privacy: keep the same fields as today's record (`host`, `dst` included) —
   the record was already per-connection in every deployment.
-- No changes to the monitoring counters or the module/chain aggregates.
+- No changes to the monitoring counters; the module/chain aggregates now read
+  only from in-process records, not from Prometheus.
 
 ## Non-Goals
 
@@ -60,6 +64,66 @@ to capture a connection; it only needs structure and a consumer.
 - Re-encoding the path string client-side; the record carries the structure.
 
 ## Data available today
+
+### Direct chain/hop/node collection (replaces the Prometheus path)
+
+Motivation: chain/node stats came from `xmetrics.GatherFamilies`
+(`gost_chain_errors_total`, `gost_chain_node_connect_duration_seconds`) — only
+when a metrics service was configured and only as process-cumulative
+counters. Zero-config deployments got nothing, and metrics cannot be relied
+on for a real-time graph.
+
+Design:
+
+1. **`x/chain` gains a hook it does not otherwise depend on**:
+   `var ChainRecorded = func(chain string, hop int, node string, d time.Duration, err error) {}`.
+   The zero value is a no-op; callers do not import `x/dashboard`.
+2. `x/chain/route.go:connect()` calls `ChainRecorded` per hop as each connect
+   or handshake completes:
+   - success → `err == nil`, `d = time.Since(start)`;
+   - failure → classify as `resolve` (resolution of `node.Addr` failed),
+     `dial` (Transport.Dial failed), or `handshake` (Transport.Handshake
+     failed);
+   - hop index == node index within the route (each hop contributes exactly one
+     node to the flat route list).
+   The final target's own dial is outside the chain (`DefaultRoute`) and is not
+   recorded as a hop.
+3. `x/dashboard.Enable(true)` replaces `chain.ChainRecorded` with the
+   collector's recorder; `Enable(false)` restores the no-op. The record path
+   is one or two atomic increments plus a store of the node name — no
+   allocation on the hot path.
+4. Collector keeps per-chain, per-hop, per-node atomic series:
+
+   ```text
+   chains map[string]*chainSeries
+   chainSeries  { connects, errors, durationSumMicros, connectCount }    // atomic uint64
+                { hops  []hopSeries   // fixed size = max hops seen, index = hop
+                  hopSeries { connects, errors, durationSumMicros, connectCount } ;
+                  nodes map[string]*nodeSeries }
+   ```
+
+   Node series are keyed by node name (the chain/hop are known at record time,
+   so both keys are available). `ResetState` zeroes the map; `SetChainFilter`
+   still filters what `Snapshot()` writes into `chains` and `nodes` (now it
+   works even without metrics).
+5. `Snapshot()` fills `Hops` and `Nodes` from the in-process series:
+   - `Hops[i].Name` carries the hop's node name;
+   - `Nodes[i].Name` carries the node name; `State` is never set
+     (no node state exists at that layer);
+   - `connects` and `connectDurationSumMicros` per node/hop replace the
+     Prometheus reads;
+   - `connects = connectCount`.
+6. Prometheus counters (`gost_chain_errors_total`,
+   `gost_chain_node_connect_duration_seconds`) are still written for external
+   metrics consumers but are no longer read by the dashboard.
+7. `Snapshot.metricsEnabled` stays for API compatibility but is no longer read
+   for chains; the UI's "metrics disabled" hint is dropped.
+8. Tests: hook called with correct hop index and classification on the three
+   failure classes; collector records increment/zero on reset; filter excludes
+   unconfigured chains when no metrics are enabled; snapshot contains hops when
+   a 2-hop route is dialed successfully.
+
+### Recorder path
 
 - `ro.Route` already contains the flat path (`"node@addr > ... > target"`),
   built in `x/chain/router.go:dial()` from `routePath(route)`: the nodes of the
@@ -173,6 +237,8 @@ pans to it; an aggregate filter can limit to a single `service`/sid.
 | Approach | Tradeoff | Verdict |
 |---|---|---|
 | **Enrich `HandlerRecorderObject` + in-process ring** — records and history from one struct | one code path, every recorder benefits, zero new infra; memory bounded | **chosen** |
+| Chain/hop/node stats gathered directly in-process, replacing the Prometheus read | zero-metrics deployments get full chain visibility; counters reset with config reloads | **chosen** |
+| Chain/hop/node stats via Prometheus only | requires a metrics service; process-cumulative rows; config filters already exist | **rejected** (kept for external metrics consumers, no longer read by the dashboard) |
 | Ship a separate connection-history service (inspector-style) | needs Mongo/Redis; duplicates what recorder already has | rejected for now (external inspector remains possible because records carry the path) |
 | Keep ring only in JS/API (query-record from a remote inspector) | requires inspector deployed; no local fallback | rejected |
 | Events ring gets one event per connection | blurs stats events with connections; floods the events table | rejected |
@@ -182,8 +248,14 @@ pans to it; an aggregate filter can limit to a single `service`/sid.
 - `x/chain` route/router: golden-path test asserting the structured path
   produced for a two-hop route (order, chain names, hop indices, per-node
   `connectMs ≥ 0`, error classification on a dial failure).
+- `x/chain` `ChainRecorded` hook: called once per hop with the correct index
+  and error class (`resolve`/`dial`/`handshake`); the no-op default leaves
+  zero overhead outside a dashboard deployment.
 - `x/dashboard`: unit tests for ring cap (rollover), `service`/`sid` query
   filters, disabled-dashboard 404, and record copy semantics.
+- `x/dashboard` chain series: direct increment without metrics enabled;
+  snapshot contains hops and nodes; `ResetState` clears; `SetChainFilter`
+  excludes unconfigured chains.
 - `session.Finish` funnel tested via existing recorder test cases: the enriched
   record must still serialize identically for the string `route` field.
 - `x/api`: integration test for `/dashboard/connections` limit/filter/404.
