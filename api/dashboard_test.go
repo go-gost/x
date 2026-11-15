@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-gost/core/auth"
@@ -15,6 +17,7 @@ import (
 	"github.com/go-gost/core/observer"
 	"github.com/go-gost/x/config"
 	dashboard "github.com/go-gost/x/dashboard"
+	xchain "github.com/go-gost/x/chain"
 	xlogger "github.com/go-gost/x/logger"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/registry"
@@ -125,8 +128,7 @@ func TestChainMutationsRefreshDashboardFilter(t *testing.T) {
 
 	oldCfg := config.Global()
 	config.Set(&config.Config{})
-	dashboard.Enable(true)
-	dashboard.Apply(&config.Config{})
+	dashboard.Apply(&config.Config{Dashboard: &config.DashboardConfig{Enabled: true}})
 	t.Cleanup(func() {
 		registry.ChainRegistry().Unregister("api-chain")
 		dashboard.Apply(nil)
@@ -144,9 +146,7 @@ func TestChainMutationsRefreshDashboardFilter(t *testing.T) {
 		t.Fatalf("create status = %d, body = %s", w.Code, w.Body.String())
 	}
 
-	dashboard.Default().ObserveChains(map[string]*dashboard.ChainSnapshot{
-		"api-chain": {Name: "api-chain"},
-	})
+	xchain.ChainRecorded("api-chain", 0, "node-api", time.Millisecond, nil)
 	if _, ok := dashboard.Default().Snapshot().Chains["api-chain"]; !ok {
 		t.Fatal("API-created chain was filtered out")
 	}
@@ -158,10 +158,92 @@ func TestChainMutationsRefreshDashboardFilter(t *testing.T) {
 		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body.String())
 	}
 
-	dashboard.Default().ObserveChains(map[string]*dashboard.ChainSnapshot{
-		"api-chain": {Name: "api-chain"},
-	})
+	xchain.ChainRecorded("api-chain", 0, "node-api", time.Millisecond, nil)
 	if _, ok := dashboard.Default().Snapshot().Chains["api-chain"]; ok {
 		t.Fatal("API-deleted chain still visible")
 	}
 }
+
+func TestConnectionsReturnsNewestFirst(t *testing.T) {
+	dashboard.ResetState()
+	dashboard.Enable(true)
+	defer dashboard.Enable(false)
+
+	dashboard.Default().RecordConnection(dashboard.ConnectionRecord{
+		SID: "c-old", Service: "svc", RemoteAddr: "10.0.0.1:80", Time: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+	})
+	dashboard.Default().RecordConnection(dashboard.ConnectionRecord{
+		SID: "c-new", Service: "svc", RemoteAddr: "10.0.0.2:80", Time: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	r := newDashboardRouter(t, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard/connections?service=svc", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"c-new"`) {
+		t.Fatalf("newest record missing: %s", w.Body.String())
+	}
+	if idx := strings.Index(w.Body.String(), `"c-old"`); idx < 0 {
+		t.Fatalf("newest record missing: %s", w.Body.String())
+	}
+	if !(strings.Index(w.Body.String(), `"c-new"`) < strings.Index(w.Body.String(), `"c-old"`)) {
+		t.Fatalf("records are not newest-first: %s", w.Body.String())
+	}
+}
+
+func TestConnectionsFiltersByService(t *testing.T) {
+	dashboard.ResetState()
+	dashboard.Enable(true)
+	defer dashboard.Enable(false)
+
+	for _, s := range []string{"a", "b", "a"} {
+		dashboard.Default().RecordConnection(dashboard.ConnectionRecord{
+			SID: s, Service: "s-" + s, RemoteAddr: "10.0.0.1:80", Time: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+	r := newDashboardRouter(t, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard/connections?service=s-a", nil))
+	got := w.Body.String()
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if strings.Contains(got, `"s-b"`) {
+		t.Fatalf("unrelated service leaked: %s", got)
+	}
+}
+
+func TestConnections404WhenDisabled(t *testing.T) {
+	dashboard.Enable(false)
+	r := newDashboardRouter(t, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard/connections", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestConnectionsLimitCapped(t *testing.T) {
+	dashboard.ResetState()
+	dashboard.Enable(true)
+	defer dashboard.Enable(false)
+
+	for i := 0; i < 5; i++ {
+		dashboard.Default().RecordConnection(dashboard.ConnectionRecord{
+			SID: fmt.Sprintf("s-%d", i), Service: "svc", RemoteAddr: "10.0.0.1:80", Time: time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+	r := newDashboardRouter(t, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard/connections?limit=2", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	count := strings.Count(w.Body.String(), `"sid"`)
+	if count > 2 {
+		t.Fatalf("limit=2 ignored: %s", w.Body.String())
+	}
+}
+

@@ -318,9 +318,9 @@ Fill one subsection per task after it is complete, then include it in that task'
 - Deferred items/limitations: `ResetState` wipes the ring (reload wipes connection history — same deal as snapshot history); ring is memory-bounded at configured cap (mode '0 disables explicitly).
 
 ### Task 4
-- Date/status:
-- Repository + commit SHA:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-15 — complete (with fixes found in smoke)
+- Repository + commit SHA: x @ (this commit)
+- Files changed: `api/dashboard.go` (`getDashboardConnections` + `limit` parse/cap), `api/api.go` (route), `api/dashboard_test.go` (4 tests incl. adapter of `TestChainMutationsRefreshDashboardFilter` to the direct-collection path), `dashboard/connections.go` (merge records by SID when HTTP proxies produce two records per TCP connection, and fall back `time.Now` for empty record times), `dashboard/connections_test.go` (`TestConnectionsMergeSameSID` + `TestConnectionsCapZeroDisables` adapted).
+- Tests/commands and results: `go test ./api/ -run 'Connections|Dashboard|ChainMutations' -v -count=1` → all pass; `go test ./dashboard/ -count=1` → ok; live smoke (gost binary built against local x): a failing chained service records the record with path+err; a direct HTTP proxy records the merged record without a path.
+- Review findings and fixes: (1) the API smoke showed the handler emits two `session.Finish` records per TCP connection for HTTP keep-alive (outer bytes + inner per-request) — merged by SID in the ring so the UI sees one row; (2) `time.Time{}` zero output for refused connections (connectionRecordFromRecorder gets final.Time zero when no request body is sent) — clamped to `time.Now()`; (3) HTTP Handler integration tests had to move from Prometheus-driven chain/node state to the collection path added in Task 1 — the filter test now drives a chain dial directly via the recorder.
+- Deferred items/limitations: 403/400 for negative limit, `limit=0` returns empty ring; only the Go status error string is shown per path hop, not a structured classification.

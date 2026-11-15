@@ -269,6 +269,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 					continue
 				}
 				ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errDial)
+				recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "dial"})
 				markAddrFailed(node.Addr, addr)
 				break
 			}
@@ -284,6 +285,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 				continue
 			}
 			ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errHandshake)
+			recordPath(ctx, xrecorder.PathHop{Chain: chainName(r.options.Chain), Hop: 0, Node: node.Name, Addr: node.Addr, ConnectMs: hopMs(time.Since(start)), Err: "handshake"})
 			markAddrFailed(node.Addr, addr)
 			break
 		}

@@ -65,6 +65,30 @@ func TestConnectionsFilterByServiceSid(t *testing.T) {
 	}
 }
 
+func TestConnectionsMergeSameSID(t *testing.T) {
+	ResetState()
+	Enable(true)
+	defer Enable(false)
+
+	Default().RecordConnection(ConnectionRecord{
+		SID: "x", Service: "svc", BytesIn: 56, BytesOut: 55, DurationMs: 1, Time: "2026-11-15T00:00:00Z",
+	})
+	Default().RecordConnection(ConnectionRecord{
+		SID: "x", Service: "svc", Path: []PathHop{{Chain: "chain-0", Hop: 0, Node: "n0", Addr: "127.0.0.1:9", ConnectMs: 1, Err: "dial"}},
+		Chain: "chain-0", Err: "dial tcp x", Time: "2026-11-15T00:00:01Z",
+	})
+	got := Default().Connections(0, "", "")
+	if len(got) != 1 {
+		t.Fatalf("len = %d", len(got))
+	}
+	if got[0].Chain != "chain-0" || len(got[0].Path) != 1 || got[0].Err != "dial tcp x" {
+		t.Fatalf("merge kept wrong fields: %+v", got[0])
+	}
+	if got[0].BytesIn != 56 {
+		t.Fatalf("bytes lost: %+v", got[0])
+	}
+}
+
 func TestConnectionsDefaultCap(t *testing.T) {
 	ResetState()
 	Enable(true)
@@ -87,7 +111,9 @@ func TestConnectionsCapZeroDisables(t *testing.T) {
 	defer Enable(false)
 
 	for i := 0; i < 10; i++ {
-		Default().RecordConnection(records(1)[0])
+		rec := records(1)[0]
+		rec.SID = string(rune('a' + i))
+		Default().RecordConnection(rec)
 	}
 	got := Default().Connections(10000, "", "")
 	if len(got) != 10 {

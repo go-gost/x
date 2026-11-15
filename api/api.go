@@ -56,6 +56,7 @@ func Register(r *gin.Engine, opts *Options) {
 	dash := router.Group("/dashboard")
 	dash.Use(mwBasicAuth(opts.Auther))
 	dash.GET("/snapshot", getDashboardSnapshot)
+	dash.GET("/connections", getDashboardConnections)
 
 	config := router.Group("/config")
 	config.Use(mwBasicAuth(opts.Auther))

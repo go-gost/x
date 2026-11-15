@@ -59,16 +59,71 @@ func (c *Collector) Connections(limit int, service, sid string) []ConnectionReco
 
 // RecordConnection stores one connection snapshot. The record is copied, so
 // the caller may reuse or mutate its own struct after the call returns.
+//
+// HTTP proxies open a session per exchange inside one TCP connection, so a
+// single SID can produce two Finish records (outer session carrying the
+// full-connection counters, inner session carrying the dial path). Rather
+// than duplicate rows we merge in place: the stored record keeps the richest
+// path and labels, the freshest time and the largest byte counts.
 func (c *Collector) RecordConnection(rec ConnectionRecord) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.connectionsLimit <= 0 {
 		return
 	}
-	c.connections = append(c.connections, cloneConnection(rec))
+	rec = cloneConnection(rec)
+	for i := len(c.connections) - 1; i >= 0; i-- {
+		existing := c.connections[i]
+		if existing.SID != rec.SID {
+			break
+		}
+		c.connections[i] = mergeConnections(c.connections[i], rec)
+		return
+	}
+	c.connections = append(c.connections, rec)
 	for len(c.connections) > c.connectionsLimit {
 		c.connections = c.connections[1:]
 	}
+}
+
+// mergeConnections folds a fresher record into the stored one. The richer
+// record keeps its path, chain and labels; blanks are filled from the other.
+func mergeConnections(older, newer ConnectionRecord) ConnectionRecord {
+	out := older
+	if newer.Service != "" {
+		out.Service = newer.Service
+	}
+	if newer.ClientIP != "" {
+		out.ClientIP = newer.ClientIP
+	}
+	if newer.RemoteAddr != "" {
+		out.RemoteAddr = newer.RemoteAddr
+	}
+	if newer.BytesIn > out.BytesIn {
+		out.BytesIn = newer.BytesIn
+	}
+	if newer.BytesOut > out.BytesOut {
+		out.BytesOut = newer.BytesOut
+	}
+	if newer.DurationMs > out.DurationMs {
+		out.DurationMs = newer.DurationMs
+	}
+	if out.Chain == "" {
+		out.Chain = newer.Chain
+	}
+	if len(out.Path) == 0 && len(newer.Path) > 0 {
+		out.Path = newer.Path
+	}
+	if out.Err == "" {
+		out.Err = newer.Err
+	}
+	if newer.Time != "" {
+		out.Time = newer.Time
+	}
+	if len(out.Labels) == 0 && len(newer.Labels) > 0 {
+		out.Labels = newer.Labels
+	}
+	return out
 }
 
 func cloneConnection(rec ConnectionRecord) ConnectionRecord {
@@ -93,6 +148,10 @@ func connectionRecordFromRecorder(final *recorder.HandlerRecorderObject) Connect
 	if ms <= 0 {
 		ms = 1
 	}
+	ts := final.Time
+	if ts.IsZero() {
+		ts = time.Now()
+	}
 	rec := ConnectionRecord{
 		SID:        final.SID,
 		Service:    final.Service,
@@ -103,7 +162,7 @@ func connectionRecordFromRecorder(final *recorder.HandlerRecorderObject) Connect
 		DurationMs: uint64(ms),
 		Chain:      final.Chain,
 		Err:        final.Err,
-		Time:       final.Time.UTC().Format(time.RFC3339),
+		Time:       ts.UTC().Format(time.RFC3339),
 		Labels:     final.Labels,
 	}
 	if len(final.Path) > 0 {
