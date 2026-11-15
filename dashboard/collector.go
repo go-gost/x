@@ -11,26 +11,38 @@ import (
 	"github.com/go-gost/x/chain"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
+	"github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/service"
 )
 
 const (
-	defaultHistoryInterval = 5 * time.Second
-	defaultHistorySize     = 720 // one hour at 5s
-	defaultEventLimit      = 500
-	defaultClientLimit     = 4096
+	defaultHistoryInterval  = 5 * time.Second
+	defaultHistorySize      = 720 // one hour at 5s
+	defaultEventLimit       = 500
+	defaultClientLimit      = 4096
+	defaultConnectionsLimit = 1024
 )
 
 type options struct {
-	historyInterval time.Duration
-	historySize     int
-	eventLimit      int
-	clientLimit     int
-	clock           func() time.Time
+	historyInterval  time.Duration
+	historySize      int
+	eventLimit       int
+	clientLimit      int
+	connectionsLimit int
+	clock            func() time.Time
 }
 
 // Option configures a Collector.
 type Option func(*options)
+
+// ConnectionsOption sets the maximum number of connection records retained.
+func ConnectionsOption(n int) Option {
+	return func(o *options) {
+		if n >= 0 {
+			o.connectionsLimit = n
+		}
+	}
+}
 
 // HistoryOption sets the sample interval and the number of samples retained.
 func HistoryOption(interval time.Duration, size int) Option {
@@ -98,21 +110,24 @@ type Collector struct {
 	lastErrorSeq map[Key]uint64
 	events       eventRing
 	history      historyRing
+	connections  []ConnectionRecord
 
-	historyInterval time.Duration
-	clientLimit     int
-	clock           func() time.Time
-	lastSample      time.Time
+	historyInterval  time.Duration
+	clientLimit      int
+	connectionsLimit int
+	clock            func() time.Time
+	lastSample       time.Time
 }
 
 // NewCollector creates a collector with bounded rings and default limits.
 func NewCollector(opts ...Option) *Collector {
 	o := options{
-		historyInterval: defaultHistoryInterval,
-		historySize:     defaultHistorySize,
-		eventLimit:      defaultEventLimit,
-		clientLimit:     defaultClientLimit,
-		clock:           time.Now,
+		historyInterval:  defaultHistoryInterval,
+		historySize:      defaultHistorySize,
+		eventLimit:       defaultEventLimit,
+		clientLimit:      defaultClientLimit,
+		connectionsLimit: defaultConnectionsLimit,
+		clock:            time.Now,
 	}
 	for _, opt := range opts {
 		opt(&o)
@@ -132,6 +147,7 @@ func NewCollector(opts ...Option) *Collector {
 		history:         newHistoryRing(o.historySize),
 		historyInterval: o.historyInterval,
 		clientLimit:     o.clientLimit,
+		connectionsLimit: o.connectionsLimit,
 		clock:           o.clock,
 		lastSample:      start,
 	}
@@ -446,6 +462,7 @@ func (c *Collector) Reset() {
 	c.modules = make(map[Key]*ModuleSnapshot)
 	c.chains = make(map[string]*chainSeries)
 	c.chainFilter = nil
+	c.connections = nil
 	c.lastErrorSeq = make(map[Key]uint64)
 	c.events = newEventRing(len(c.events.buf))
 	c.history = newHistoryRing(len(c.history.buf))
@@ -460,9 +477,11 @@ func Enable(on bool) {
 	enabled.Store(on)
 	if on {
 		chain.ChainRecorded = recordChainHop
+		recorder.ConnectionSink = recordConnection
 		return
 	}
 	chain.ChainRecorded = func(string, int, string, time.Duration, error) {}
+	recorder.ConnectionSink = func(*recorder.HandlerRecorderObject) {}
 }
 
 // Enabled reports whether dashboard collection is on.

@@ -124,7 +124,14 @@ type MetricsConfig struct {
 // DashboardConfig enables the in-process monitoring dashboard read model,
 // exposed by the API service at GET /dashboard/snapshot.
 type DashboardConfig struct {
-	Enabled bool `yaml:",omitempty" json:"enabled,omitempty"`
+	Enabled    bool                     `yaml:",omitempty" json:"enabled,omitempty"`
+	Connections *ConnectionLimitConfig `yaml:",omitempty" json:"connections,omitempty"`
+}
+
+// ConnectionLimitConfig toggles and caps the in-process connection history
+// ring retained by the dashboard. Omit to keep the default of 1024.
+type ConnectionLimitConfig struct {
+	Limit int `yaml:"limit,omitempty" json:"limit,omitempty"`
 }
 
 type TLSConfig struct {

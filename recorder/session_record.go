@@ -57,3 +57,9 @@ func (c *cursor) commit(record SessionRecord) {
 	c.recordIndex = record.RecordIndex
 	c.last = record.Time
 }
+
+// ConnectionSink is invoked once per completed connection, from Finish. The
+// dashboard installs a sink that stores the record in its in-process
+// connection history; the default is a no-op. It must not block or return an
+// error (there is no return value), so latency-sensitive paths stay cheap.
+var ConnectionSink = func(final *HandlerRecorderObject) {}

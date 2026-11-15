@@ -29,10 +29,20 @@ func Apply(cfg *config.Config) {
 	limiterstats.Enable(on)
 	ResetState()
 	Default().SetChainFilter(chainNames(cfg))
+	Default().SetConnectionsLimit(connectionsLimit(cfg))
 
 	if on {
 		startReporter()
 	}
+}
+
+// connectionsLimit reads the configured connection-history cap. A nil cfg or
+// nil section keeps the default (1024); an explicit 0 disables recording.
+func connectionsLimit(cfg *config.Config) int {
+	if cfg == nil || cfg.Dashboard == nil || cfg.Dashboard.Connections == nil {
+		return defaultConnectionsLimit
+	}
+	return cfg.Dashboard.Connections.Limit
 }
 
 // chainNames returns the set of chain names defined in cfg. A nil cfg means

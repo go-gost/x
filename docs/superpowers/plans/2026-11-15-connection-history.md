@@ -310,12 +310,12 @@ Fill one subsection per task after it is complete, then include it in that task'
 - Deferred items/limitations: long-lived connections never refresh Path, it reflects the dial path only (as intended).
 
 ### Task 3
-- Date/status:
-- Repository + commit SHA:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ (this commit)
+- Files changed: `dashboard/connections.go` (new ring + public read model `ConnectionRecord`), `dashboard/collector.go` (`connections` field, `ConnectionsOption`, `SetConnectionsLimit`, ring trim on set), `dashboard/connections_test.go` (4 ring tests), `config/config.go` (`DashboardConfig.Connections` → `ConnectionLimitConfig`), `dashboard/apply.go` (read limit, default 1024), `recorder/session.go` (tap `ConnectionSink` at Finish — every protocol funnels here; no handler edits), `recorder/session_record.go` (hook), `recorder/session_connection_sink_test.go` (external-test end-to-end of ring fill), `dashboard/apply_test.go` / `dashboard/collector_test.go` (adapted from ObserveChains to direct recordChainHop).
+- Tests/commands and results: `go test ./dashboard/ ./config/ ./recorder/ -count=1 -timeout=2m` → ok; `go vet ./dashboard/ ./recorder/ ./config/` → clean; ring tests 4/4 pass.
+- Review findings and fixes: ConnectionSink wires recorder→dashboard without the import cycle (recorder stays producer-pure; dashboard registers in `Enable`). The ring syncs one-way at Finish — no per-read overhead.
+- Deferred items/limitations: `ResetState` wipes the ring (reload wipes connection history — same deal as snapshot history); ring is memory-bounded at configured cap (mode '0 disables explicitly).
 
 ### Task 4
 - Date/status:

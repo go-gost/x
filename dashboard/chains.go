@@ -133,3 +133,17 @@ func (c *Collector) SetChainFilter(names map[string]struct{}) {
 	defer c.mu.Unlock()
 	c.chainFilter = names
 }
+
+// SetConnectionsLimit adjusts the ring capacity. The ring is kept and trimmed
+// to fit; passing 0 disables recording.
+func (c *Collector) SetConnectionsLimit(limit int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.connectionsLimit = limit
+	if limit <= 0 {
+		return
+	}
+	for len(c.connections) > limit {
+		c.connections = c.connections[1:]
+	}
+}
