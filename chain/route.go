@@ -238,6 +238,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	addrs, err := xnet.ResolveAll(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
 	marker := node.Marker()
 	if err != nil {
+		ChainRecorded(chainName(r.options.Chain), 0, node.Name, 0, errResolve)
 		if marker != nil {
 			marker.Mark()
 		}
@@ -264,6 +265,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 				if attempt == 0 && isRetryableHandshake(derr) {
 					continue
 				}
+				ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errDial)
 				markAddrFailed(node.Addr, addr)
 				break
 			}
@@ -278,6 +280,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 			if attempt == 0 && isRetryableHandshake(herr) {
 				continue
 			}
+			ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), errHandshake)
 			markAddrFailed(node.Addr, addr)
 			break
 		}
@@ -296,19 +299,22 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 	}
 
 	r.observeNodeConnectDuration(node, time.Since(start))
+	ChainRecorded(chainName(r.options.Chain), 0, node.Name, time.Since(start), nil)
 
 	preNode := node
 	var (
 		addr string
 		cc   net.Conn
 	)
-	for _, node := range r.nodes[1:] {
+	for index := 1; index < len(r.nodes); index++ {
+		node = r.nodes[index]
 		failedNode = node
 		start := time.Now()
 
 		marker := node.Marker()
 		addr, err = xnet.Resolve(ctx, network, node.Addr, node.Options().Resolver, node.Options().HostMapper, logger)
 		if err != nil {
+			ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), errResolve)
 			cn.Close()
 			if marker != nil {
 				marker.Mark()
@@ -317,6 +323,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		}
 		cc, err = preNode.Options().Transport.Connect(ctx, cn, "tcp", addr)
 		if err != nil {
+			ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), errDial)
 			if cc != nil {
 				cc.Close()
 			}
@@ -329,6 +336,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		var cc2 net.Conn
 		cc2, err = node.Options().Transport.Handshake(ctx, cc)
 		if err != nil {
+			ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), errHandshake)
 			if cc2 != nil {
 				cc2.Close()
 			}
@@ -345,6 +353,7 @@ func (r *chainRoute) connect(ctx context.Context, logger logger.Logger) (conn ne
 		}
 
 		r.observeNodeConnectDuration(node, time.Since(start))
+		ChainRecorded(chainName(r.options.Chain), index, node.Name, time.Since(start), nil)
 
 		cn = cc
 		preNode = node

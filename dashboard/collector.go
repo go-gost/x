@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-gost/core/observer"
+	"github.com/go-gost/x/chain"
 	xmetrics "github.com/go-gost/x/metrics"
 	xstats "github.com/go-gost/x/observer/stats"
 	"github.com/go-gost/x/service"
@@ -92,7 +93,7 @@ type Collector struct {
 	handlers     map[handlerKey]handlerEntry
 	handlerCount map[string]int
 	modules      map[Key]*ModuleSnapshot
-	chains       map[string]*ChainSnapshot
+	chains       map[string]*chainSeries
 	chainFilter  map[string]struct{}
 	lastErrorSeq map[Key]uint64
 	events       eventRing
@@ -125,7 +126,7 @@ func NewCollector(opts ...Option) *Collector {
 		handlers:        make(map[handlerKey]handlerEntry),
 		handlerCount:    make(map[string]int),
 		modules:         make(map[Key]*ModuleSnapshot),
-		chains:          make(map[string]*ChainSnapshot),
+		chains:          make(map[string]*chainSeries),
 		lastErrorSeq:    make(map[Key]uint64),
 		events:          newEventRing(o.eventLimit),
 		history:         newHistoryRing(o.historySize),
@@ -314,10 +315,7 @@ func (c *Collector) Snapshot() Snapshot {
 		return modules[i].Name < modules[j].Name
 	})
 
-	chains := make(map[string]ChainSnapshot, len(c.chains))
-	for name, ch := range c.chains {
-		chains[name] = copyChain(ch)
-	}
+	chains := c.chainsLocked()
 
 	services := c.servicesLocked()
 	rates := c.ratesLocked()
@@ -434,52 +432,6 @@ func (c *Collector) historyLocked() []HistoryPoint {
 	return out
 }
 
-func copyChain(ch *ChainSnapshot) ChainSnapshot {
-	out := ChainSnapshot{Name: ch.Name, Stats: ch.Stats}
-	if len(ch.Hops) > 0 {
-		out.Hops = make([]HopSnapshot, len(ch.Hops))
-		for i, h := range ch.Hops {
-			out.Hops[i] = HopSnapshot{Name: h.Name}
-			if len(h.Nodes) > 0 {
-				out.Hops[i].Nodes = append([]NodeSnapshot(nil), h.Nodes...)
-			}
-		}
-	}
-	if len(ch.Nodes) > 0 {
-		out.Nodes = append([]NodeSnapshot(nil), ch.Nodes...)
-	}
-	return out
-}
-
-// ObserveChains replaces the chain read model with the latest Prometheus
-// counters. Metrics are process-cumulative, so a whole-map replacement keeps
-// the snapshot consistent with what Grafana would show. An empty map clears
-// the previous rows so disabled or failed gathers do not leave stale data.
-func (c *Collector) ObserveChains(chains map[string]*ChainSnapshot) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	out := make(map[string]*ChainSnapshot, len(chains))
-	for name, ch := range chains {
-		if c.chainFilter != nil {
-			if _, ok := c.chainFilter[name]; !ok {
-				continue
-			}
-		}
-		cp := copyChain(ch)
-		out[name] = &cp
-	}
-	c.chains = out
-}
-
-// SetChainFilter replaces the set of chain names kept by ObserveChains. A
-// nil set disables filtering; an empty non-nil set filters out every chain.
-func (c *Collector) SetChainFilter(names map[string]struct{}) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.chainFilter = names
-}
-
 // Reset clears all series and history while preserving the process start time
 // and configured limits. Config reloads call it so services removed or
 // reconfigured by the new config do not leave stale state behind.
@@ -492,7 +444,7 @@ func (c *Collector) Reset() {
 	c.handlers = make(map[handlerKey]handlerEntry)
 	c.handlerCount = make(map[string]int)
 	c.modules = make(map[Key]*ModuleSnapshot)
-	c.chains = make(map[string]*ChainSnapshot)
+	c.chains = make(map[string]*chainSeries)
 	c.chainFilter = nil
 	c.lastErrorSeq = make(map[Key]uint64)
 	c.events = newEventRing(len(c.events.buf))
@@ -506,6 +458,11 @@ var enabled atomic.Bool
 // configuration reloads.
 func Enable(on bool) {
 	enabled.Store(on)
+	if on {
+		chain.ChainRecorded = recordChainHop
+		return
+	}
+	chain.ChainRecorded = func(string, int, string, time.Duration, error) {}
 }
 
 // Enabled reports whether dashboard collection is on.

@@ -176,13 +176,11 @@ func TestCollectorConcurrentObserveAndSnapshot(t *testing.T) {
 	wg.Wait()
 }
 
-func TestObserveChainsFiltersByAllowedNames(t *testing.T) {
+func TestChainSnapshotFiltersByAllowedNames(t *testing.T) {
 	c := NewCollector()
 	c.SetChainFilter(map[string]struct{}{"chain-0": {}})
-	c.ObserveChains(map[string]*ChainSnapshot{
-		"chain-0":   {Name: "chain-0"},
-		"chain-old": {Name: "chain-old"},
-	})
+	c.recordChainHop("chain-0", 0, "node-0", time.Millisecond, nil)
+	c.recordChainHop("chain-old", 0, "node-old", time.Millisecond, nil)
 	snap := c.Snapshot()
 	if _, ok := snap.Chains["chain-0"]; !ok {
 		t.Fatal("chain-0 should be present")
@@ -192,7 +190,7 @@ func TestObserveChainsFiltersByAllowedNames(t *testing.T) {
 	}
 }
 
-func TestCollectorConcurrentObserveChainsAndFilter(t *testing.T) {
+func TestCollectorConcurrentRecordChainHopAndFilter(t *testing.T) {
 	c := NewCollector()
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -200,9 +198,7 @@ func TestCollectorConcurrentObserveChainsAndFilter(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 50; j++ {
-				c.ObserveChains(map[string]*ChainSnapshot{
-					"chain-0": {Name: "chain-0"},
-				})
+				c.recordChainHop("chain-0", 0, "node-0", time.Millisecond, nil)
 			}
 		}()
 		go func() {

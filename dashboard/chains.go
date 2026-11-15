@@ -1,98 +1,135 @@
 package dashboard
 
 import (
-	xmetrics "github.com/go-gost/x/metrics"
-	dto "github.com/prometheus/client_model/go"
+	"sync/atomic"
+	"time"
 )
 
-// chainGatherer is a seam so tests can inject synthetic Prometheus families.
-var chainGatherer = func() ([]*dto.MetricFamily, error) {
-	if !xmetrics.IsEnabled() {
-		return nil, nil
-	}
-	return xmetrics.GatherFamilies(
-		xmetrics.MetricChainErrorsCounter,
-		xmetrics.MetricNodeConnectDurationObserver,
-	)
+// connectSeries holds process-cumulative connection counters for one series
+// (chain, hop, or node). Metrics are in-process; they reset on config reload
+// and do not depend on a metrics service.
+type connectSeries struct {
+	connects                 atomic.Uint64
+	errors                   atomic.Uint64
+	connectDurationSumMicros atomic.Uint64
+	connectCount             atomic.Uint64
 }
 
-// CollectChainStats reads the chain/node counters already exported to
-// Prometheus. Metrics are process-cumulative and survive config reloads.
-func CollectChainStats() map[string]*ChainSnapshot {
-	mfs, err := chainGatherer()
-	if err != nil || len(mfs) == 0 {
-		return nil
+func (s *connectSeries) recordSuccess(d time.Duration) {
+	s.connects.Add(1)
+	s.connectDurationSumMicros.Add(uint64(d.Microseconds()))
+	s.connectCount.Add(1)
+}
+
+func (s *connectSeries) recordFailure() {
+	s.errors.Add(1)
+}
+
+func (s *connectSeries) snapshotStats() ChainStats {
+	return ChainStats{
+		Connects:                 s.connects.Load(),
+		Errors:                   s.errors.Load(),
+		ConnectDurationSumMicros: s.connectDurationSumMicros.Load(),
+		ConnectCount:             s.connectCount.Load(),
+	}
+}
+
+type hopSeries struct {
+	name string
+	connectSeries
+}
+
+type chainSeries struct {
+	connectSeries
+	hops  []hopSeries
+	nodes map[string]*connectSeries
+}
+
+func (s *chainSeries) nodeLocked(name string) *connectSeries {
+	if s.nodes == nil {
+		s.nodes = make(map[string]*connectSeries)
+	}
+	if n, ok := s.nodes[name]; ok {
+		return n
+	}
+	s.nodes[name] = &connectSeries{}
+	return s.nodes[name]
+}
+
+func (s *chainSeries) hopLocked(index int) *hopSeries {
+	for len(s.hops) <= index {
+		s.hops = append(s.hops, hopSeries{})
+	}
+	return &s.hops[index]
+}
+
+// recordChainHop is the direct-collection recorder. dashboard enablement
+// installs it on the chain package; a miss record counts as an error.
+func recordChainHop(chainName string, hop int, node string, d time.Duration, err error) {
+	Default().recordChainHop(chainName, hop, node, d, err)
+}
+
+// recordChainHop records one dial attempt against a hop/node pair.
+func (c *Collector) recordChainHop(chainName string, hop int, node string, d time.Duration, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cs := c.chains
+	if cs == nil {
+		cs = make(map[string]*chainSeries)
+		c.chains = cs
+	}
+	s := cs[chainName]
+	if s == nil {
+		s = &chainSeries{}
+		cs[chainName] = s
 	}
 
-	chains := make(map[string]*ChainSnapshot)
-	for _, mf := range mfs {
-		switch mf.GetName() {
-		case string(xmetrics.MetricChainErrorsCounter):
-			for _, m := range mf.GetMetric() {
-				chainName := metricLabel(m, "chain")
-				nodeName := metricLabel(m, "node")
-				if chainName == "" || nodeName == "" {
-					continue
-				}
-				n := uint64(m.GetCounter().GetValue())
-				cs := ensureChain(chains, chainName)
-				cs.Stats.Errors += n
-				ensureNode(cs, nodeName).Stats.Errors += n
+	hopS := s.hopLocked(hop)
+	hopS.name = node
+
+	ns := s.nodeLocked(node)
+	if err == nil {
+		hopS.recordSuccess(d)
+		ns.recordSuccess(d)
+		s.recordSuccess(d)
+		return
+	}
+	hopS.recordFailure()
+	ns.recordFailure()
+	s.recordFailure()
+}
+
+// chainsLocked deep-copies the chain read model for a snapshot, applying
+// the configured chain name filter when set.
+func (c *Collector) chainsLocked() map[string]ChainSnapshot {
+	out := make(map[string]ChainSnapshot, len(c.chains))
+	for name, s := range c.chains {
+		if c.chainFilter != nil {
+			if _, ok := c.chainFilter[name]; !ok {
+				continue
 			}
-		case string(xmetrics.MetricNodeConnectDurationObserver):
-			for _, m := range mf.GetMetric() {
-				chainName := metricLabel(m, "chain")
-				nodeName := metricLabel(m, "node")
-				if chainName == "" || nodeName == "" {
-					continue
-				}
-				h := m.GetHistogram()
-				count := h.GetSampleCount()
-				micros := uint64(h.GetSampleSum()*1e6 + 0.5)
-
-				cs := ensureChain(chains, chainName)
-				cs.Stats.ConnectCount += count
-				cs.Stats.Connects = cs.Stats.ConnectCount
-				cs.Stats.ConnectDurationSumMicros += micros
-
-				ns := ensureNode(cs, nodeName)
-				ns.Stats.ConnectCount += count
-				ns.Stats.Connects = ns.Stats.ConnectCount
-				ns.Stats.ConnectDurationSumMicros += micros
-			}
 		}
+		snap := ChainSnapshot{Name: name, Stats: s.snapshotStats()}
+		for i := range s.hops {
+			hs := &s.hops[i]
+			snap.Hops = append(snap.Hops, HopSnapshot{
+				Name:  hs.name,
+				Nodes: []NodeSnapshot{{Name: hs.name, Stats: hs.snapshotStats()}},
+			})
+		}
+		for node, ns := range s.nodes {
+			snap.Nodes = append(snap.Nodes, NodeSnapshot{Name: node, Stats: ns.snapshotStats()})
+		}
+		out[name] = snap
 	}
-
-	if len(chains) == 0 {
-		return nil
-	}
-	return chains
+	return out
 }
 
-func metricLabel(m *dto.Metric, name string) string {
-	for _, l := range m.GetLabel() {
-		if l.GetName() == name {
-			return l.GetValue()
-		}
-	}
-	return ""
-}
-
-func ensureChain(chains map[string]*ChainSnapshot, name string) *ChainSnapshot {
-	if cs := chains[name]; cs != nil {
-		return cs
-	}
-	cs := &ChainSnapshot{Name: name}
-	chains[name] = cs
-	return cs
-}
-
-func ensureNode(cs *ChainSnapshot, name string) *NodeSnapshot {
-	for i := range cs.Nodes {
-		if cs.Nodes[i].Name == name {
-			return &cs.Nodes[i]
-		}
-	}
-	cs.Nodes = append(cs.Nodes, NodeSnapshot{Name: name})
-	return &cs.Nodes[len(cs.Nodes)-1]
+// SetChainFilter replaces the set of chain names kept by snapshot. A nil set
+// disables filtering; an empty non-nil set filters out every chain.
+func (c *Collector) SetChainFilter(names map[string]struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chainFilter = names
 }

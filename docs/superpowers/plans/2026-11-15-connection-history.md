@@ -294,12 +294,12 @@ git commit -m "feat(api): expose /dashboard/connections"
 Fill one subsection per task after it is complete, then include it in that task's commit.
 
 ### Task 1
-- Date/status:
-- Repository + commit SHA:
-- Files changed:
-- Tests/commands and results:
-- Review findings and fixes:
-- Deferred items/limitations:
+- Date/status: 2026-11-15 — complete
+- Repository + commit SHA: x @ (this commit)
+- Files changed: `chain/record.go` (new hook), `chain/route.go` (hop records with success/failure classification), `chain/route_test.go` (2 golden tests), `dashboard/chains.go` (rewrite: in-process connectSeries keyed per chain/hop/node), `dashboard/chains_test.go` (rewrite), `dashboard/collector.go` (`chains map[string]*chainSeries`, snapshot via `chainsLocked`, `Enable` swaps the hook), `dashboard/module.go` (drop Prometheus `CollectChainStats`), `dashboard/apply_test.go` / `collector_test.go` (ObserveChains → recordChainHop), `dashboard/chains_test.go`.
+- Tests/commands and results: `go test ./chain/ ./dashboard/ -count=1` → ok; `go vet ./chain/ ./dashboard/ ./recorder/` → clean; `go test ./chain/ -run 'TestConnect.*Records' -v` → 2 passed.
+- Review findings and fixes: `xmetrics` remains imported in dashboard/collector.go for the informational `metricsEnabled` flag only; the chain series no longer read Prometheus, so metrics is no longer required for chain/node visibility.
+- Deferred items/limitations: hop node state is never set; metrics service remains optional for external Prometheus consumers.
 
 ### Task 2
 - Date/status:

@@ -11,6 +11,7 @@ import (
 	"github.com/go-gost/core/chain"
 	"github.com/go-gost/core/dialer"
 	"github.com/go-gost/core/hosts"
+	"github.com/go-gost/core/resolver"
 	xlogger "github.com/go-gost/x/logger"
 	xmetrics "github.com/go-gost/x/metrics"
 	dto "github.com/prometheus/client_model/go"
@@ -447,4 +448,77 @@ func TestChainRoute_Connect_PerHopDurationObserved(t *testing.T) {
 	}
 	require.Nil(t, findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-1"))
 	require.Nil(t, findChainMetric(t, string(xmetrics.MetricChainErrorsCounter), chainName, "hop-2"))
+}
+
+type recordedHop struct {
+	chain string
+	hop   int
+	node  string
+	d     time.Duration
+	err   error
+}
+
+func withChainRecorded(t *testing.T, fn func(chain string, hop int, node string, d time.Duration, err error)) func() {
+	t.Helper()
+	old := ChainRecorded
+	ChainRecorded = fn
+	return func() { ChainRecorded = old }
+}
+
+func TestConnectTwoHopsRecordsHopSequence(t *testing.T) {
+	var calls []recordedHop
+	defer withChainRecorded(t, func(chainName string, hop int, node string, d time.Duration, err error) {
+		calls = append(calls, recordedHop{chainName, hop, node, d, err})
+	})()
+
+	n0 := chain.NewNode("n0", "10.0.0.1:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+	n1 := chain.NewNode("n1", "10.0.0.2:80", chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})))
+
+	rt := NewRoute()
+	rt.addNode(n0)
+	rt.addNode(n1)
+	rt.options.Chain = NewChain("chain-0")
+
+	conn, err := rt.connect(context.Background(), xlogger.Nop())
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Len(t, calls, 2)
+	require.Equal(t, "chain-0", calls[0].chain)
+	require.Equal(t, 0, calls[0].hop)
+	require.Equal(t, "n0", calls[0].node)
+	require.GreaterOrEqual(t, calls[0].d.Nanoseconds(), int64(1))
+	require.Nil(t, calls[0].err)
+	require.Equal(t, "chain-0", calls[1].chain)
+	require.Equal(t, 1, calls[1].hop)
+	require.Equal(t, "n1", calls[1].node)
+	require.Nil(t, calls[1].err)
+}
+
+type failingResolver struct{}
+
+func (failingResolver) Resolve(ctx context.Context, network, host string, opts ...resolver.Option) ([]net.IP, error) {
+	return nil, errors.New("boom")
+}
+
+func TestConnectResolveFailureRecordsResolve(t *testing.T) {
+	var calls []recordedHop
+	defer withChainRecorded(t, func(chainName string, hop int, node string, d time.Duration, err error) {
+		calls = append(calls, recordedHop{chainName, hop, node, d, err})
+	})()
+
+	n0 := chain.NewNode("n0", "example.test:80",
+		chain.TransportNodeOption(NewTransport(&testDialer{}, &plainConnector{})),
+		chain.ResolverNodeOption(failingResolver{}),
+	)
+
+	rt := NewRoute()
+	rt.addNode(n0)
+	rt.options.Chain = NewChain("chain-0")
+
+	_, err := rt.connect(context.Background(), xlogger.Nop())
+	require.Error(t, err)
+	require.Len(t, calls, 1)
+	require.Equal(t, "resolve", calls[0].err.Error())
+	require.Equal(t, 0, calls[0].hop)
+	require.Equal(t, "n0", calls[0].node)
 }
