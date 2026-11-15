@@ -1,7 +1,7 @@
 # GOST Connection History — Design
 
 Date: 2026-11-15
-Status: draft — implements the connection-level topology requirement; extends
+Status: approved — backend phase; UI consumption scheduled later.
 `docs/superpowers/specs/2026-11-14-gost-dashboard-ui-design.md`
 (`gost-ui/docs/superpowers/specs/2026-11-14-topology-overview-design.md`).
 
@@ -190,10 +190,11 @@ pans to it; an aggregate filter can limit to a single `service`/sid.
 
 ## Open questions
 
-- Default cap for the in-process ring (proposed 1024; with `limit` configurable).
-- Should refusal reasons (`rate limit`, admission deny) appear as a
-  `connection` record with `err` set, or is `rejected: "<reason>"` a separate
-  field? — Proposal: reuse `err` with the reason text, since `path` is absent
-  for pre-dial rejections and the record still tells the whole story.
-- Whether the UI issue-visualization phase (call it "连接详情") needs the raw
-  `labels` — included by default because the record carries them.
+- Default cap for the in-process ring is confirmed: **1024**, set in the
+  `dashboard` section as `connections: { limit: 1024 }`, user-adjustable; `0`
+  disables.
+- Pre-dial rejections (admission/limiter/rate-limit before Dial) are **recorded**,
+  never dropped: `err` carries the reason (`rate limit`, `admission denied`, …)
+  and `path` is absent.
+- Ordering: this document is the **backend** phase; UI consumption is scheduled
+  after it lands.
