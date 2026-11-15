@@ -127,8 +127,9 @@ wiring. `recordMode`/`off` semantics are unchanged.
 
 `x/dashboard` (`Collector`) gains a `recent []ConnectionRecord` ring:
 
-- Default cap **1024** records, configurable via `dashboard.history` in the
-  config section (`enabled` semantics unchanged; ring is always present).
+- Default cap **1024** records, configured via the `dashboard` section:
+  `connections: { limit: 1024 }` — a single number, user-adjustable to the
+  instance's needs; `0` disables the ring entirely; absent keeps the default.
 - Record type mirrors the recorder: `sid`, `service`, `clientIP`, `remoteAddr`,
   `bytes` in/out, `durationMs`, `chain?`, `path[]`, `err`, `time`, plus the
   `labels` from the request ctx.
