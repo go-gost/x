@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 	xrecorder "github.com/go-gost/x/recorder"
 	"github.com/go-gost/x/registry"
 )
+
+// ErrRawTLSWithAuther reports a raw TLS connection that cannot provide
+// credentials to an auto handler with authentication configured.
+var ErrRawTLSWithAuther = errors.New("auto: raw TLS is unavailable when authentication is configured")
 
 func init() {
 	registry.HandlerRegistry().Register("auto", NewHandler)
@@ -133,6 +138,18 @@ func (h *autoHandler) Handle(ctx context.Context, conn net.Conn, opts ...handler
 	conn = xnet.NewReadWriteConn(br, conn, conn)
 
 	if proto == sniffing.ProtoTLS {
+		// The service does not close accepted connections after Handle returns,
+		// so this path owns the downstream connection on every exit, including
+		// ClientHello parse errors, bypass decisions, and dial failures.
+		defer conn.Close()
+
+		// A raw TLS ClientHello carries no GOST credentials. Forwarding it
+		// while an auther is configured would bypass the authenticated HTTP
+		// and SOCKS subhandlers entirely.
+		if h.options.Auther != nil {
+			log.Debug(ErrRawTLSWithAuther)
+			return ErrRawTLSWithAuther
+		}
 		return h.handleTLS(ctx, conn, log)
 	}
 
