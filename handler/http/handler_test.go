@@ -8,11 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-gost/core/auth"
 	"github.com/go-gost/core/handler"
 	stats_util "github.com/go-gost/x/internal/util/stats"
 	xrecorder "github.com/go-gost/x/recorder"
 )
 
+type fixedAuthenticator struct{}
+
+func (fixedAuthenticator) Authenticate(context.Context, string, string, ...auth.Option) (string, bool) {
+	return "account-42", true
+}
 
 func TestNewHandler(t *testing.T) {
 	h := NewHandler()
@@ -163,6 +169,35 @@ func TestHandle_PRIMethod(t *testing.T) {
 	}
 }
 
+func TestHandle_TrafficLogIncludesHTTPIdentity(t *testing.T) {
+	log := newCaptureLogger()
+	h := NewHandler(
+		handler.LoggerOption(log),
+		handler.AutherOption(fixedAuthenticator{}),
+		handler.BypassOption(&testBypass{contains: true}),
+	).(*httpHandler)
+	if err := h.Init(testMD(map[string]any{})); err != nil {
+		t.Fatal(err)
+	}
+
+	conn := newStringConn("CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\nProxy-Authorization: Basic dXNlcjpwYXNz\r\n\r\n")
+	_ = h.Handle(context.Background(), conn)
+
+	entry, ok := log.trafficEntry()
+	if !ok {
+		t.Fatal("traffic log containing inputBytes was not emitted")
+	}
+	if got := entry.fields["user"]; got != "user" {
+		t.Errorf("traffic log user = %v, want user", got)
+	}
+	if got := entry.fields["clientID"]; got != "account-42" {
+		t.Errorf("traffic log clientID = %v, want account-42", got)
+	}
+	if _, ok := entry.fields["outputBytes"]; !ok {
+		t.Error("traffic log does not contain outputBytes")
+	}
+}
+
 func TestHandle_InvalidHost(t *testing.T) {
 	h := NewHandler(
 		handler.LoggerOption(&testLogger{}),
@@ -284,10 +319,17 @@ func TestHandleRequest_ProbeResistanceAuth(t *testing.T) {
 
 	conn := newStringConn("")
 	req, _ := http.NewRequest("GET", "http://example.com:80/path", nil)
+	req.SetBasicAuth("untrusted-user", "bad-password")
+	req.Header["Proxy-Authorization"] = req.Header["Authorization"]
+	req.Header.Del("Authorization")
+	ro := &xrecorder.HandlerRecorderObject{}
 
-	err := h.handleRequest(context.Background(), conn, req, &xrecorder.HandlerRecorderObject{}, &testLogger{})
+	err := h.handleRequest(context.Background(), conn, req, ro, &testLogger{})
 	if err == nil {
 		t.Error("expected auth failure")
+	}
+	if ro.ClientID != "" {
+		t.Errorf("client ID = %q after rejected authentication, want empty", ro.ClientID)
 	}
 }
 
@@ -346,4 +388,3 @@ func TestHandleRequest_Bypass_Test(t *testing.T) {
 		t.Error("expected bypass error")
 	}
 }
-
