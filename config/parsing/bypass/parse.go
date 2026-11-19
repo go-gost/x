@@ -24,6 +24,7 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 	}
 
 	if cfg.Plugin != nil {
+		whitelist := cfg.Reverse || cfg.Whitelist
 		if err := xplugin.Spawn(cfg.Plugin.Command); err != nil {
 			logger.Default().Errorf("spawn plugin %s: %v", cfg.Name, err)
 		}
@@ -41,12 +42,14 @@ func ParseBypass(cfg *config.BypassConfig) bypass.Bypass {
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
 				plugin.TimeoutOption(cfg.Plugin.Timeout),
+				plugin.WhitelistOption(whitelist),
 			)
 		default:
 			return bypass_plugin.NewGRPCPlugin(
 				cfg.Name, cfg.Plugin.Addr,
 				plugin.TokenOption(cfg.Plugin.Token),
 				plugin.TLSConfigOption(tlsCfg),
+				plugin.WhitelistOption(whitelist),
 			)
 		}
 	}

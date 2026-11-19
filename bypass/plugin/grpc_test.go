@@ -81,6 +81,30 @@ func TestGRPCPlugin_Contains_Deny(t *testing.T) {
 	assert.False(t, p.Contains(context.Background(), "tcp", "192.168.1.1"))
 }
 
+func TestGRPCPlugin_Contains_Whitelist(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ok   bool
+		want bool
+	}{
+		{name: "match", ok: true, want: false},
+		{name: "no match", ok: false, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, cleanup := newTestGRPCConn(t, &testBypassServer{ok: tc.ok})
+			defer cleanup()
+
+			p := &grpcPlugin{
+				conn:      conn,
+				client:    proto.NewBypassClient(conn),
+				log:       xlogger.Nop(),
+				whitelist: true,
+			}
+			assert.Equal(t, tc.want, p.Contains(context.Background(), "tcp", "192.168.1.1"))
+		})
+	}
+}
+
 func TestGRPCPlugin_Contains_WithService(t *testing.T) {
 	srv := &testBypassServer{ok: true}
 	conn, cleanup := newTestGRPCConn(t, srv)
@@ -179,8 +203,8 @@ func TestNewGRPCPlugin_RealConn(t *testing.T) {
 }
 
 func TestGRPCPlugin_IsWhitelist(t *testing.T) {
-	p := &grpcPlugin{}
-	assert.False(t, p.IsWhitelist())
+	assert.False(t, NewGRPCPlugin("test", "").IsWhitelist())
+	assert.True(t, NewGRPCPlugin("test", "", plugin.WhitelistOption(true)).IsWhitelist())
 }
 
 // --- test helpers ---

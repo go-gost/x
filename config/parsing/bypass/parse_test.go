@@ -82,6 +82,26 @@ func TestParseBypass_Whitelist(t *testing.T) {
 	if bp == nil {
 		t.Fatal("expected non-nil bypass")
 	}
+	if !bp.IsWhitelist() {
+		t.Fatal("expected whitelist bypass")
+	}
+}
+
+func TestParseBypass_PluginWhitelist(t *testing.T) {
+	for _, typ := range []string{"http", "grpc"} {
+		t.Run(typ, func(t *testing.T) {
+			bp := ParseBypass(&config.BypassConfig{
+				Name:      typ + "-whitelist-bp",
+				Whitelist: true,
+				Plugin: &config.PluginConfig{
+					Type: typ,
+				},
+			})
+			if !bp.IsWhitelist() {
+				t.Fatal("expected plugin bypass to preserve whitelist setting")
+			}
+		})
+	}
 }
 
 func TestParseBypass_Reverse(t *testing.T) {
@@ -91,6 +111,9 @@ func TestParseBypass_Reverse(t *testing.T) {
 	})
 	if bp == nil {
 		t.Fatal("expected non-nil bypass")
+	}
+	if !bp.IsWhitelist() {
+		t.Fatal("expected reverse bypass to operate as a whitelist")
 	}
 }
 

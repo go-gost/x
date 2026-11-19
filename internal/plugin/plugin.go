@@ -28,6 +28,7 @@ type Options struct {
 	TLSConfig *tls.Config
 	Header    http.Header
 	Timeout   time.Duration
+	Whitelist bool
 }
 
 // Option configures Options.
@@ -58,6 +59,13 @@ func HeaderOption(header http.Header) Option {
 func TimeoutOption(timeout time.Duration) Option {
 	return func(opts *Options) {
 		opts.Timeout = timeout
+	}
+}
+
+// WhitelistOption sets whether a bypass plugin operates in whitelist mode.
+func WhitelistOption(whitelist bool) Option {
+	return func(opts *Options) {
+		opts.Whitelist = whitelist
 	}
 }
 

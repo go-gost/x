@@ -919,6 +919,30 @@ func TestChainRoute_Dial_MultipleNodes(t *testing.T) {
 	conn.Close()
 }
 
+func TestChainRoute_Dial_PreservesIntermediateHostname(t *testing.T) {
+	var intermediateAddr string
+	tr1 := NewTransport(&testDialer{}, &testConnector{
+		connectFn: func(ctx context.Context, conn net.Conn, network, address string, opts ...connector.ConnectOption) (net.Conn, error) {
+			intermediateAddr = address
+			return conn, nil
+		},
+	})
+	tr2 := NewTransport(&testDialer{}, &testConnector{})
+
+	node1 := chain.NewNode("entry", "127.0.0.1:8080", chain.TransportNodeOption(tr1))
+	node2 := chain.NewNode("exit", "upstream:1080", chain.TransportNodeOption(tr2))
+
+	rt := NewRoute()
+	rt.addNode(node1, node2)
+
+	conn, err := rt.Dial(context.Background(), "tcp", "example.com:80")
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
+
+	assert.Equal(t, "upstream:1080", intermediateAddr)
+}
+
 func TestChainRoute_Dial_DialError(t *testing.T) {
 	dialErr := errors.New("cannot dial")
 	tr := NewTransport(
