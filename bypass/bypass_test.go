@@ -214,6 +214,30 @@ func TestContains_WildcardWithPort(t *testing.T) {
 	assert.False(t, b.Contains(context.Background(), "tcp", "foo.example.com:9090"))
 }
 
+func TestContains_DomainTrailingDotEquivalent(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		addr    string
+	}{
+		{name: "undotted item", pattern: "example.com", addr: "example.com."},
+		{name: "dotted item", pattern: "example.com.", addr: "example.com"},
+		{name: "undotted item with port", pattern: "example.com:443", addr: "example.com.:443"},
+		{name: "dotted item with port", pattern: "example.com.:443", addr: "example.com:443"},
+		{name: "undotted wildcard", pattern: "*.example.com", addr: "www.example.com."},
+		{name: "dotted wildcard", pattern: "*.example.com.", addr: "www.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newSyncedBypass(MatchersOption([]string{tt.pattern}))
+			defer b.Close()
+
+			assert.True(t, b.Contains(context.Background(), "tcp", tt.addr))
+		})
+	}
+}
+
 // --- IsWhitelist tests ---
 
 func TestIsWhitelist_Blacklist(t *testing.T) {

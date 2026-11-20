@@ -181,6 +181,7 @@ func (ps *patternSet) matchAny(addr string) bool {
 	if ps == nil {
 		return false
 	}
+	addr = trimDomainRootDot(addr)
 	if ps.ipRange.Match(addr) {
 		return true
 	}
@@ -311,6 +312,7 @@ func classifyPatterns(patterns []string, log logger.Logger) *patternSet {
 	var ipRanges []xnet.IPRange
 
 	for _, pattern := range patterns {
+		pattern = trimDomainRootDot(pattern)
 		if _, inet, err := net.ParseCIDR(pattern); err == nil {
 			inets = append(inets, inet)
 			continue
@@ -339,6 +341,20 @@ func classifyPatterns(patterns []string, log logger.Logger) *patternSet {
 		wildcard: matcher.WildcardMatcher(wildcards),
 		ipRange:  matcher.IPRangeMatcher(ipRanges),
 	}
+}
+
+// trimDomainRootDot returns the canonical form of a domain address by
+// removing its optional DNS root dot while preserving any port.
+func trimDomainRootDot(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err == nil {
+		host = strings.TrimSuffix(host, ".")
+		return net.JoinHostPort(host, port)
+	}
+	if net.ParseIP(addr) == nil {
+		return strings.TrimSuffix(addr, ".")
+	}
+	return addr
 }
 
 // load reads patterns from file, Redis and HTTP loaders if configured.
