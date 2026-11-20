@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/resolver"
 	ctxvalue "github.com/go-gost/x/ctx"
 	"github.com/go-gost/x/internal/loader"
 	"github.com/go-gost/x/internal/matcher"
@@ -74,6 +75,10 @@ type options struct {
 	// logger is used for debug and warning messages.
 	// Falls back to a no-op logger if nil.
 	logger logger.Logger
+
+	// resolver optionally resolves domain names before matching. A match on
+	// any returned IP address is treated as an address match.
+	resolver resolver.Resolver
 }
 
 // Option is a functional option for configuring a Bypass instance.
@@ -101,6 +106,14 @@ func NetworkOption(network string) Option {
 func MatchersOption(matchers []string) Option {
 	return func(opts *options) {
 		opts.matchers = matchers
+	}
+}
+
+// ResolverOption sets the resolver used to match domain names against their
+// resolved IP addresses.
+func ResolverOption(r resolver.Resolver) Option {
+	return func(opts *options) {
+		opts.resolver = r
 	}
 }
 
@@ -433,7 +446,7 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 		return false
 	}
 
-	decision := p.decide(network, addr)
+	decision := p.decideResolved(ctx, network, addr)
 
 	log := p.logger.WithFields(map[string]any{
 		"sid": ctxvalue.SidFromContext(ctx),
@@ -441,6 +454,51 @@ func (p *localBypass) Contains(ctx context.Context, network, addr string, opts .
 	log.Debugf("%s: %s, whitelist: %t", decision, addr, p.options.whitelist)
 
 	return decision == decisionBypass
+}
+
+// decideResolved matches the original address, then, when configured, every
+// IP returned for a domain name. The original port is retained for address
+// patterns that include a port.
+func (p *localBypass) decideResolved(ctx context.Context, network, addr string) bypassDecision {
+	p.mu.RLock()
+	patterns := p.patterns
+	p.mu.RUnlock()
+
+	matched := p.options.network == "" || p.options.network == network
+	if matched && patterns != nil {
+		matched = patterns.matchAny(addr)
+		if !matched && p.options.resolver != nil {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				host, port = addr, ""
+			}
+			if net.ParseIP(host) == nil {
+				ips, err := p.options.resolver.Resolve(ctx, "ip", host)
+				if err != nil {
+					p.logger.Debugf("resolve %s: %v", host, err)
+				} else {
+					for _, ip := range ips {
+						resolvedAddr := ip.String()
+						if port != "" {
+							resolvedAddr = net.JoinHostPort(resolvedAddr, port)
+						}
+						if patterns.matchAny(resolvedAddr) {
+							matched = true
+							break
+						}
+					}
+				}
+			}
+		}
+	} else if matched && p.options.network == "" {
+		// A bypass with no predicates has no base match.
+		matched = false
+	}
+
+	if matched == p.options.whitelist {
+		return decisionProxy
+	}
+	return decisionBypass
 }
 
 // decide returns the bypass decision for the given address. Network and

@@ -1,13 +1,25 @@
 package bypass
 
 import (
+	"context"
 	"io"
+	"net"
 	"testing"
 
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/x/config"
 	xlogger "github.com/go-gost/x/logger"
+	"github.com/go-gost/x/registry"
 )
+
+type staticResolver struct {
+	ips []net.IP
+}
+
+func (r *staticResolver) Resolve(context.Context, string, string, ...resolver.Option) ([]net.IP, error) {
+	return r.ips, nil
+}
 
 func TestMain(m *testing.M) {
 	logger.SetDefault(xlogger.NewLogger(xlogger.OutputOption(io.Discard)))
@@ -71,6 +83,26 @@ func TestParseBypass_WithMatchers(t *testing.T) {
 	})
 	if bp == nil {
 		t.Fatal("expected non-nil bypass")
+	}
+}
+
+func TestParseBypass_WithResolver(t *testing.T) {
+	const name = "bypass-parse-test-resolver"
+	registry.ResolverRegistry().Unregister(name)
+	t.Cleanup(func() { registry.ResolverRegistry().Unregister(name) })
+	if err := registry.ResolverRegistry().Register(name, &staticResolver{
+		ips: []net.IP{net.ParseIP("8.8.8.8")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	bp := ParseBypass(&config.BypassConfig{
+		Name:     "resolver-bp",
+		Resolver: name,
+		Matchers: []string{"8.8.8.8"},
+	})
+	if !bp.Contains(context.Background(), "tcp", "dns.google:443") {
+		t.Fatal("expected resolved IP to match bypass")
 	}
 }
 

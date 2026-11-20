@@ -2,18 +2,32 @@ package bypass
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-gost/core/bypass"
 	"github.com/go-gost/core/logger"
+	"github.com/go-gost/core/resolver"
 	"github.com/go-gost/x/internal/loader"
 	xlogger "github.com/go-gost/x/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockResolver struct {
+	ips   []net.IP
+	err   error
+	calls int
+}
+
+func (r *mockResolver) Resolve(context.Context, string, string, ...resolver.Option) ([]net.IP, error) {
+	r.calls++
+	return r.ips, r.err
+}
 
 // --- Option tests ---
 
@@ -30,6 +44,13 @@ func TestMatchersOption(t *testing.T) {
 	var opts options
 	MatchersOption([]string{"192.168.1.1", "10.0.0.0/8"})(&opts)
 	assert.Equal(t, []string{"192.168.1.1", "10.0.0.0/8"}, opts.matchers)
+}
+
+func TestResolverOption(t *testing.T) {
+	var opts options
+	r := &mockResolver{}
+	ResolverOption(r)(&opts)
+	assert.Same(t, r, opts.resolver)
 }
 
 func TestReloadPeriodOption(t *testing.T) {
@@ -236,6 +257,56 @@ func TestContains_DomainTrailingDotEquivalent(t *testing.T) {
 			assert.True(t, b.Contains(context.Background(), "tcp", tt.addr))
 		})
 	}
+}
+
+func TestContains_ResolvedIPAnyMatch(t *testing.T) {
+	r := &mockResolver{ips: []net.IP{net.ParseIP("1.1.1.1"), net.ParseIP("8.8.8.8")}}
+	b := newSyncedBypass(
+		MatchersOption([]string{"8.8.8.8"}),
+		ResolverOption(r),
+	)
+	defer b.Close()
+
+	assert.True(t, b.Contains(context.Background(), "tcp", "dns.google:443"))
+	assert.Equal(t, 1, r.calls)
+}
+
+func TestContains_ResolvedIPPreservesPort(t *testing.T) {
+	r := &mockResolver{ips: []net.IP{net.ParseIP("8.8.8.8")}}
+	b := newSyncedBypass(
+		MatchersOption([]string{"8.8.8.8:443"}),
+		ResolverOption(r),
+	)
+	defer b.Close()
+
+	assert.True(t, b.Contains(context.Background(), "tcp", "dns.google:443"))
+	assert.False(t, b.Contains(context.Background(), "tcp", "dns.google:53"))
+}
+
+func TestContains_ResolverFailureKeepsOriginalResult(t *testing.T) {
+	r := &mockResolver{err: errors.New("lookup failed")}
+	b := newSyncedBypass(
+		MatchersOption([]string{"8.8.8.8"}),
+		ResolverOption(r),
+	)
+	defer b.Close()
+
+	assert.False(t, b.Contains(context.Background(), "tcp", "dns.google:443"))
+}
+
+func TestContains_DoesNotResolveUnneededAddresses(t *testing.T) {
+	r := &mockResolver{ips: []net.IP{net.ParseIP("8.8.8.8")}}
+	b := newSyncedBypass(
+		NetworkOption("tcp"),
+		MatchersOption([]string{"dns.google", "8.8.8.8"}),
+		ResolverOption(r),
+	)
+	defer b.Close()
+
+	assert.True(t, b.Contains(context.Background(), "tcp", "dns.google:443"))
+	assert.False(t, b.Contains(context.Background(), "udp", "other.example:443"))
+	assert.True(t, b.Contains(context.Background(), "tcp", "8.8.8.8:443"))
+	assert.Equal(t, 0, r.calls)
 }
 
 // --- IsWhitelist tests ---
